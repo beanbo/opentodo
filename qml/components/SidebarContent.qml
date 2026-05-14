@@ -723,19 +723,19 @@ Rectangle {
                             // не оценивалось как undefined при первом построении.
                             MouseArea {
                                 id: chevronMouse
-                                // Extend the hit-zone 4px outward in every
-                                // direction. The visual chevron stays 16×16
-                                // (radius:3 Rectangle), but the actual click
-                                // target is 24×24. The previous 16×16 hit-zone
-                                // was unreliable to click on Windows DPI ≥1.25
-                                // (touchpad jitter routinely missed it), and at
-                                // the right edge x≈19-21 the click bled into
-                                // SidebarItem.hoverMouse (which starts at x=20)
-                                // and triggered navigateToProject instead of
-                                // toggleExpanded — the "клик по шеврону не
-                                // разворачивает родительский проект" regression.
+                                // Extend the hit-zone 8px outward in every
+                                // direction (32×32 hit-target around a 16×16
+                                // visual). Earlier iterations tried -4 margins
+                                // (24×24), which were still missed on Windows
+                                // high-DPI / touchpad setups. 32×32 is the
+                                // platform-recommended minimum for "fat
+                                // finger" touch targets. The visual chevron
+                                // stays compact — only the hit zone widens.
+                                // The accompanying double-click handler on
+                                // the SidebarItem row provides a second,
+                                // even-larger affordance.
                                 anchors.fill: parent
-                                anchors.margins: -4
+                                anchors.margins: -8
                                 hoverEnabled: true
                                 // Belt-and-braces against parent MouseAreas / Flickable
                                 // intercepting clicks: explicitly accept the press and
@@ -860,6 +860,16 @@ Rectangle {
                                           : "transparent"
                             border.width: projTreeDropArea.containsDrag ? 2 : 0
                             onClicked: sidebarViewModel.navigateToProject(projTreeDelegate.projectId)
+                            // Double-click toggles expand/collapse for parent
+                            // projects. This is a more discoverable affordance
+                            // than the small chevron — especially on high-DPI
+                            // / touchpad setups where 16×16 click targets are
+                            // missed. The chevron remains as the primary
+                            // explicit affordance.
+                            onDoubleClicked: {
+                                if (projTreeDelegate.hasChildren)
+                                    sidebarContent.toggleExpanded(projTreeDelegate.projectId)
+                            }
 
                             // ── Row tooltip: breakdown on hover ───────────────
                             ToolTip.visible: rowHoverHandler.hovered &&
@@ -2302,6 +2312,7 @@ Rectangle {
         property bool isDarkTheme: false
 
         signal clicked()
+        signal doubleClicked()
 
         // Объявлено раньше color-привязки ниже, чтобы hoverMouse.containsMouse
         // не давало undefined при первом построении компонента.
@@ -2310,7 +2321,12 @@ Rectangle {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
+            // Double-click is an additional way for users to expand
+            // hierarchical sidebar items (projects with sub-projects) when
+            // the small chevron hit-zone is hard to target with a touchpad
+            // or high-DPI mouse. The single-click handler still navigates.
             onClicked: sidebarItem.clicked()
+            onDoubleClicked: sidebarItem.doubleClicked()
         }
 
         height: 36
