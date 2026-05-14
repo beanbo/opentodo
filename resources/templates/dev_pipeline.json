@@ -1,0 +1,24 @@
+{
+    "name": "Development Pipeline",
+    "description": "Software development feature pipeline from spec to deploy",
+    "icon": "code",
+    "sections": ["Planning", "Development", "Review", "Testing", "Deploy"],
+    "tasks": [
+        {"content": "Write feature specification", "section": "Planning", "priority": 1},
+        {"content": "Create technical design document", "section": "Planning", "priority": 2},
+        {"content": "Break down into subtasks", "section": "Planning", "priority": 2},
+        {"content": "Set up feature branch", "section": "Development", "priority": 3},
+        {"content": "Implement core functionality", "section": "Development", "priority": 1},
+        {"content": "Write unit tests", "section": "Development", "priority": 1},
+        {"content": "Add documentation", "section": "Development", "priority": 3},
+        {"content": "Create pull request", "section": "Review", "priority": 1},
+        {"content": "Address code review feedback", "section": "Review", "priority": 1},
+        {"content": "Run integration tests", "section": "Testing", "priority": 1},
+        {"content": "Manual QA testing", "section": "Testing", "priority": 2},
+        {"content": "Performance testing", "section": "Testing", "priority": 3},
+        {"content": "Merge to main branch", "section": "Deploy", "priority": 1},
+        {"content": "Deploy to staging", "section": "Deploy", "priority": 1},
+        {"content": "Deploy to production", "section": "Deploy", "priority": 1},
+        {"content": "Monitor for issues post-deploy", "section": "Deploy", "priority": 2}
+    ]
+}

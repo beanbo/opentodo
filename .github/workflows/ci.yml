@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          modules: qt5compat
+          tools: 'tools_mingw1310 tools_cmake tools_ninja'
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          cmake --build build --config Release
+
+      - name: Test
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --test-dir build --output-on-failure -C Release
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentodo-windows-x64
+          path: build/OpenTodo.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure -C Release
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install the Qt WASM kit.  jurplel/install-qt-action supports the
+      # all_os host + wasm target for the wasm_singlethread architecture.
+      - name: Install Qt for WebAssembly
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          dir: ${{ runner.temp }}/Qt
+
+      # Also install the desktop host tools that qt.toolchain.cmake needs
+      # in QT_HOST_PATH (qmake, moc, rcc, etc.).
+      - name: Install Qt host tools
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          dir: ${{ runner.temp }}/Qt
+
+      # Qt 6.11.0 requires Emscripten 4.0.7 exactly.
+      - name: Setup Emscripten 4.0.7
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '4.0.7'
+
+      - name: Configure (WASM)
+        run: |
+          QT_WASM=${{ runner.temp }}/Qt/Qt/6.11.0/wasm_singlethread
+          QT_HOST=${{ runner.temp }}/Qt/Qt/6.11.0/linux_gcc_64
+          # Qt's WASM toolchain hardcodes a default emsdk path; override it
+          # with QT_CHAINLOAD_TOOLCHAIN_FILE so it finds the runner's emsdk.
+          cmake -S . -B build-wasm -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${QT_WASM}/lib/cmake/Qt6/qt.toolchain.cmake" \
+            -DQT_CHAINLOAD_TOOLCHAIN_FILE="${EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake" \
+            -DQT_HOST_PATH="${QT_HOST}" \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (WASM)
+        run: cmake --build build-wasm --parallel
+
+      - name: Upload WASM bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentodo-wasm
+          path: |
+            build-wasm/OpenTodo.html
+            build-wasm/OpenTodo.js
+            build-wasm/OpenTodo.wasm
+            build-wasm/qtloader.js

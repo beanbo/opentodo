@@ -1,0 +1,20 @@
+{
+    "name": "Personal Routine",
+    "description": "Daily morning and evening routine checklist",
+    "icon": "routine",
+    "sections": ["Morning Routine", "Evening Routine", "Weekly"],
+    "tasks": [
+        {"content": "Wake up and hydrate", "section": "Morning Routine", "priority": 3},
+        {"content": "Exercise or stretch (30 min)", "section": "Morning Routine", "priority": 2},
+        {"content": "Shower and get ready", "section": "Morning Routine", "priority": 3},
+        {"content": "Review today's tasks and priorities", "section": "Morning Routine", "priority": 1},
+        {"content": "Healthy breakfast", "section": "Morning Routine", "priority": 3},
+        {"content": "Review completed tasks", "section": "Evening Routine", "priority": 2},
+        {"content": "Plan tomorrow's top 3 priorities", "section": "Evening Routine", "priority": 1},
+        {"content": "Journal or reflect (10 min)", "section": "Evening Routine", "priority": 3},
+        {"content": "Prepare clothes and bag for tomorrow", "section": "Evening Routine", "priority": 4},
+        {"content": "Weekly review and planning", "section": "Weekly", "priority": 1},
+        {"content": "Grocery shopping", "section": "Weekly", "priority": 2},
+        {"content": "Clean and organize workspace", "section": "Weekly", "priority": 3}
+    ]
+}

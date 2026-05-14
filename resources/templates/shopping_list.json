@@ -1,0 +1,22 @@
+{
+    "name": "Shopping List",
+    "description": "Organized grocery and household shopping list",
+    "icon": "shopping",
+    "sections": ["Produce", "Dairy & Eggs", "Meat & Fish", "Pantry", "Household", "Other"],
+    "tasks": [
+        {"content": "Fruits (bananas, apples, berries)", "section": "Produce", "priority": 4},
+        {"content": "Vegetables (spinach, tomatoes, onions)", "section": "Produce", "priority": 4},
+        {"content": "Fresh herbs", "section": "Produce", "priority": 4},
+        {"content": "Milk", "section": "Dairy & Eggs", "priority": 4},
+        {"content": "Eggs", "section": "Dairy & Eggs", "priority": 4},
+        {"content": "Cheese", "section": "Dairy & Eggs", "priority": 4},
+        {"content": "Yogurt", "section": "Dairy & Eggs", "priority": 4},
+        {"content": "Chicken breast", "section": "Meat & Fish", "priority": 4},
+        {"content": "Ground beef", "section": "Meat & Fish", "priority": 4},
+        {"content": "Rice / Pasta", "section": "Pantry", "priority": 4},
+        {"content": "Olive oil", "section": "Pantry", "priority": 4},
+        {"content": "Canned tomatoes", "section": "Pantry", "priority": 4},
+        {"content": "Paper towels", "section": "Household", "priority": 4},
+        {"content": "Dish soap", "section": "Household", "priority": 4}
+    ]
+}

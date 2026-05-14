@@ -1,0 +1,341 @@
+opentodo_add_unit_test(test_smoke          App)
+opentodo_add_unit_test(test_models         Domain)
+opentodo_add_unit_test(test_datastore      Infra)
+opentodo_add_unit_test(test_filemanager    Infra)
+opentodo_add_unit_test(test_dateparser_ru  Domain)
+opentodo_add_unit_test(test_dateparser_en  Domain)
+opentodo_add_unit_test(test_filterparser   Domain)
+opentodo_add_unit_test(test_filterevaluator Infra)
+opentodo_add_unit_test(test_merger         Infra)
+opentodo_add_unit_test(test_recurrence     App)
+opentodo_add_unit_test(test_viewmodels     App)
+opentodo_add_unit_test(test_reminderscheduler Infra)
+opentodo_add_unit_test(test_datastore_reset   Infra)
+opentodo_add_unit_test(test_quickaddparser    Domain)
+opentodo_add_unit_test(test_selection         App)
+opentodo_add_unit_test(test_subtasks          App)
+opentodo_add_unit_test(test_undostack         Infra)
+opentodo_add_unit_test(test_label_color       Infra)
+opentodo_add_unit_test(test_aiassistant       Infra)
+opentodo_add_unit_test(test_subtask_generator Infra)
+opentodo_add_unit_test(test_dragdrop          App)
+opentodo_add_unit_test(test_updatechecker     Infra)
+opentodo_add_unit_test(test_telemetry         Infra)
+opentodo_add_unit_test(test_crdt              Infra)
+opentodo_add_unit_test(test_syncengine        Infra)
+
+# Quality round (May 2026): coverage for actions added in I18-I27.
+opentodo_add_unit_test(test_taskviewmodel_actions     App)
+opentodo_add_unit_test(test_pomodoroservice           Infra)
+opentodo_add_unit_test(test_projectviewmodel_defaults App)
+
+# Mega integration test — exercises every public Q_INVOKABLE/Q_PROPERTY/signal
+# across DataStore, ViewModels, services, sync, NLP, filter DSL, recurrence,
+# CRDT merger, HLC, telemetry call sites — in one big sequenced slot. Catches
+# integration regressions when feature wiring drifts apart from individual
+# unit-test fixtures.
+opentodo_add_unit_test(test_mega_integration         App)
+
+# Quality round 2 (May 2026): coverage for previously-untested ViewModels
+# and edge cases for filter DSL + recurrence engine.
+opentodo_add_unit_test(test_sidebarviewmodel         App)
+opentodo_add_unit_test(test_karmaviewmodel           App)
+opentodo_add_unit_test(test_searchviewmodel          App)
+opentodo_add_unit_test(test_filter_edge_cases        Infra)
+opentodo_add_unit_test(test_recurrence_edge_cases    App)
+
+# Quality round 2.2: untested VMs (filter, notifications) + filemanager
+# rotation + CRDT merger edge cases.
+opentodo_add_unit_test(test_filterviewmodel          App)
+opentodo_add_unit_test(test_notificationsviewmodel   App)
+opentodo_add_unit_test(test_filemanager_backups      Infra)
+opentodo_add_unit_test(test_merger_edge_cases        Infra)
+
+# Quality round 2.3: SettingsViewModel + AIAssistant new methods +
+# TaskExporter CSV escaping + QuickAdd parser extensions + HLC edge cases.
+opentodo_add_unit_test(test_settingsviewmodel             App)
+opentodo_add_unit_test(test_aiassistant_extended          Infra)
+opentodo_add_unit_test(test_taskexporter                  Infra)
+opentodo_add_unit_test(test_quickaddparser_extensions     Domain)
+opentodo_add_unit_test(test_hlc_edge_cases                Infra)
+
+# Quality round 2.4: ReminderScheduler edge cases + DataStore migration +
+# extended drag-drop + ProjectViewModel CRUD + Telemetry retry/persistence.
+opentodo_add_unit_test(test_reminderscheduler_edge_cases  Infra)
+opentodo_add_unit_test(test_datastore_migration           Infra)
+opentodo_add_unit_test(test_dragdrop_extended             App)
+opentodo_add_unit_test(test_projectviewmodel_crud         App)
+opentodo_add_unit_test(test_telemetry_retry               Infra)
+
+# Quality round 2.5: UndoStack extended (cross-domain LIFO + capacity edge),
+# SubtaskGenerator extended (parsing, busy-flag, count clamping), CrashLogger
+# (rotation, level prefixes, restore handler), DailyReviewService (custom
+# time, disable gate, payload, persistence).
+opentodo_add_unit_test(test_undostack_extended            App)
+opentodo_add_unit_test(test_subtaskgenerator_extended     Infra)
+opentodo_add_unit_test(test_crashlogger                   Infra)
+opentodo_add_unit_test(test_dailyreviewservice            Infra)
+
+# Quality round 2.6: UpdateChecker semver/JSON/error-paths, DateParser
+# round-trip invariants (parse(format(x)) == x), TodoistImporter API token
+# + CSV escaping + ZIP fixtures, drag-drop mime data construction edges.
+opentodo_add_unit_test(test_updatechecker_extended        Infra)
+opentodo_add_unit_test(test_dateparser_invariants         Domain)
+opentodo_add_unit_test(test_todoist_importer_extended     Infra)
+opentodo_add_unit_test(test_dragdrop_mime                 App)
+
+# Quality round 2.7: DataStore query edges (datetime-only today, soft-delete
+# filter), FileManager 1s autosave debounce, Section/Comment/Reminder
+# model + CRDT meta + DataStore ops.
+opentodo_add_unit_test(test_datastore_queries             Infra)
+opentodo_add_unit_test(test_filemanager_autosave          Infra)
+opentodo_add_unit_test(test_section_model                 Infra)
+opentodo_add_unit_test(test_comment_extended              Infra)
+opentodo_add_unit_test(test_reminder_model                Infra)
+
+# Quality round 2.8: Label color/edge cases + SnapshotManager + TaskViewModel
+# filterMode coverage + SubtaskGenerator end-to-end via the QML wiring shape.
+opentodo_add_unit_test(test_label_extended                Infra)
+opentodo_add_unit_test(test_snapshot_manager              Infra)
+opentodo_add_unit_test(test_taskviewmodel_filter          App)
+opentodo_add_unit_test(test_subtaskgenerator_e2e          App)
+
+# Quality round 2.9: stricter QML warning audit (catches Invalid property
+# assignment, Binding loop, Delegate type mismatch, Layout-anchors warnings).
+# Same env setup as test_qml_load_smoke.
+opentodo_add_unit_test(test_qml_warning_audit             App)
+target_link_libraries(test_qml_warning_audit PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_qml_warning_audit PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_qml_warning_audit>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# Pin the production _meta double-wrap quirk (silent CRDT degradation; fix
+# requires schema migration).
+opentodo_add_unit_test(test_meta_double_wrap_pin          Infra)
+
+# Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
+# machine + HotkeyService (Win32 RegisterHotKey + native event filter).
+opentodo_add_unit_test(test_q_gadgets                     Infra)
+opentodo_add_unit_test(test_taskviewmodel_selection       App)
+opentodo_add_unit_test(test_hotkeyservice                 App)
+
+# Quality round 2.11: post-_meta-fix verification — field-level CRDT for
+# all non-Task entity types, DataStore meta helpers + migration robustness,
+# subtask hierarchy edge cases (multi-level promote/demote + cycles).
+opentodo_add_unit_test(test_merger_field_level_per_entity Infra)
+opentodo_add_unit_test(test_datastore_meta_helpers        Infra)
+opentodo_add_unit_test(test_subtask_hierarchy_edge        App)
+
+# Quality round 2.12: parallel-test flake fix (per-test org/app names) +
+# SyncEngine state machine (offline) + FileManager error paths +
+# SettingsViewModel reactivity + CalendarView QML smoke.
+opentodo_add_unit_test(test_syncengine_state              Infra)
+opentodo_add_unit_test(test_filemanager_error_paths       Infra)
+opentodo_add_unit_test(test_settingsviewmodel_reactivity  App)
+opentodo_add_unit_test(test_calendar_view_smoke           App)
+target_link_libraries(test_calendar_view_smoke PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_calendar_view_smoke PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_calendar_view_smoke>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# Quality round 2.13: QuickAdd recurrence presets, InAppBanner smoke,
+# full task lifecycle integration, settings export/import round-trip.
+opentodo_add_unit_test(test_quickadd_recurrence_presets   App)
+opentodo_add_unit_test(test_inapp_banner_smoke            App)
+target_link_libraries(test_inapp_banner_smoke PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_inapp_banner_smoke PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_inapp_banner_smoke>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+opentodo_add_unit_test(test_task_lifecycle                App)
+opentodo_add_unit_test(test_settings_export_import        App)
+
+# Quality round 2.14: ProjectView/TrashView/AIView smoke (3 in one) +
+# recurrence engine advance() chain & extreme edges.
+opentodo_add_unit_test(test_views_smoke                   App)
+target_link_libraries(test_views_smoke PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_views_smoke PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_views_smoke>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+opentodo_add_unit_test(test_recurrence_advance_chain      Domain)
+
+# Quality round 2.15: AchievementUnlocked wiring (in main.cpp + VM) +
+# Pomodoro full N-cycle session integration. (Q2.15-B/C/E hit rate limit.)
+opentodo_add_unit_test(test_pomodoro_full_session         Infra)
+
+# Quality round 2.15-C: Q_INVOKABLE QObject*-return ownership audit.
+# Documents that every Q_INVOKABLE in production headers returning a single
+# entity pointer (Task*, Project*, Section*, Label*, Filter*, Reminder*,
+# Comment*) returns an object with a Qt parent — preventing QML GC from
+# reaping a borrowed pointer and causing a use-after-free in C++.
+opentodo_add_unit_test(test_qobject_ownership_audit       App)
+
+# GUI smoke test — boots the full QML engine and asserts no critical
+# load failures. Catches the May 2026 black-screen incident class
+# (qmlsettingsplugin not deployed → DesktopLayout fails → blank window
+# despite green build + green non-GUI tests).
+opentodo_add_unit_test(test_qml_load_smoke            App)
+# Link the QML module's plugin target so the engine registers
+# "OpenTodoUI" at startup; without this the engine fails with
+# "No module named OpenTodoUI found" before reaching any assertion.
+target_link_libraries(test_qml_load_smoke PRIVATE OpenTodoAppplugin)
+# Override the WORKING_DIRECTORY: the smoke test loads the QML engine and
+# the offscreen platform plugin, which transitively pulls in Qt6Quick /
+# Qt6Qml / mingw runtime DLLs. Those live next to the executable in
+# build/release/ — running from there ensures Windows DLL search resolves
+# them all. The default WD (tests/unit/) leaves the offscreen plugin
+# unable to load its mingw dependencies and the test exits before reaching
+# main(). Other unit tests don't trip this because they're guiless.
+set_tests_properties(test_qml_load_smoke PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_qml_load_smoke>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# Quality round 2.16: NLP parser robustness — DoS-length inputs, NUL bytes,
+# RTL+LTR scripts, NFC/NFD combining-diacritic equivalence, year overflow,
+# emoji-only "dates", mixed RU/EN expressions. Bugs surfaced via qInfo()
+# rather than QFAIL so the suite still passes if rules_ru has known quirks.
+opentodo_add_unit_test(test_nlp_robustness                Domain)
+
+# Quality round 2.18 follow-up: QuickAddParser DEEPER adversarial coverage —
+# token-grammar boundary cases that test_nlp_robustness misses (sigil at
+# token boundary, repeated priorities, multi-# inbox-less Todoist convention,
+# project name with embedded space, label with hyphen/dot/slash, escaped
+# sigils, lone-sigil empty tokens, mid-sentence priority, 3 KB single token,
+# 25 labels, pipe-as-content, mixed-case priority, recurrence + token
+# interleaving). 15 slots, no production-code edits.
+opentodo_add_unit_test(test_quickaddparser_adversarial    Domain)
+
+# Quality round 2.16: schema_version downgrade — what happens when an
+# older build loads a state.json written by a NEWER build (schema_version >
+# CURRENT). Pins the "soft warning + best-effort load + downgrade-on-save"
+# contract observed in DataStore::loadFromJson / toJson.
+opentodo_add_unit_test(test_schema_downgrade              Infra)
+
+# Quality round 2.16: SettingsSection*.qml smoke loader — boots each of the
+# 9 SettingsSection components in isolation through QQmlComponent and
+# verifies no critical load errors. Catches the ITER1 black-screen class
+# where a bad import in one section can cascade and break the entire
+# settings panel. Requires the OpenTodoUI QML plugin like other GUI smokes.
+opentodo_add_unit_test(test_settings_sections_smoke       App)
+target_link_libraries(test_settings_sections_smoke PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_settings_sections_smoke PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_settings_sections_smoke>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# Quality round 2.17-A: TaskExporter ↔ TodoistImporter round-trip property
+# test. Since the two paths don't share a wire format, the suite verifies
+# round-trip via JSON export+reimport (lossless) and Todoist CSV-via-ZIP
+# (lossy by design — drops _meta, tombstones, original UUIDs, dayOrder,
+# isPinned; inverts priority). Pins which fields survive each path.
+opentodo_add_unit_test(test_export_import_roundtrip       Infra)
+
+# Quality round 2.17-B: FilterParser adversarial / fuzz — 50-deep parens,
+# 1000-OR chains, NUL bytes, mixed Unicode, unmatched brackets, garbage
+# tokens. Confirmed: parser is genuinely robust — no crashes, no infinite
+# loops, no stack overflow. Pins the "Empty query" lastError contract and
+# documents that !!!!today is NOT canonicalised.
+opentodo_add_unit_test(test_filterparser_adversarial      Domain)
+
+# Quality round 2.17-C: Karma day-rollover and streak edge cases. SURFACED
+# TWO REAL PRODUCTION BUGS (documented via qInfo, slots stay green):
+#   1. m_lastStreakIncrementDate is in-memory only — restart wipes streak
+#      on first completion.
+#   2. karmaScore double-counts on toggle (uncomplete → recomplete adds
+#      +2) while completedToday only counts +1 — karma is farmable.
+opentodo_add_unit_test(test_karma_rollover                App)
+
+# Quality round 2.17-D: SnapshotManager compaction equivalence property
+# test. Replay-A == Replay-B-then-compact == Load-snapshot-then-tail. SURFACED
+# CRITICAL CRDT BUG: SyncEngine::applyCommit silently drops inbound
+# per-field _meta in every *_update branch, degrading per-field LWW to
+# whole-object LWW for inbound updates. (See Q2.18-FOLLOWUP.) Plus
+# secondary atomicity gap in snapshot.cpp (deleteFile loop continues on
+# failure but resetCommitCount runs unconditionally).
+opentodo_add_unit_test(test_snapshot_compaction_equivalence Infra)
+
+# Quality round 2.17-E: SyncEngine resilience under failure paths
+# (offline, fake-token 401, repeated push, corrupt local commit, no-auth
+# pull, fake-auth pull). Pending commits stay on disk across all six —
+# canary holds. Documented gaps: no engine-level authError signal,
+# loadPendingCommitsFromDisk accepts JSON missing required fields
+# (weak validation), push/pull not virtual (DI blocked).
+opentodo_add_unit_test(test_syncengine_resilience         Infra)
+
+# REGRESSION TEST for the "Не раскрывается родительский проект 'Дом'" bug
+# (user-reported 2026-05-12). Documents the QML-vs-C++ split: SidebarViewModel
+# exposes NO expansion API; the QML chevron + expandedProjects map is the only
+# state, and the chevron-doesn't-toggle regression lives in QML, not C++.
+# Pins the C++ contract that the QML rebuild() depends on.
+opentodo_add_unit_test(test_sidebar_expand                App)
+
+# Quality round 2.19-D: AIAssistant safety audit — huge content clamping,
+# garbage response handling, cancel race, log leakage, prompt-injection role
+# preservation, empty-input fast-fail. Uses a custom QNetworkAccessManager
+# installed via setNetworkManagerForTesting() to intercept outbound HTTP.
+opentodo_add_unit_test(test_aiassistant_safety            Infra)
+
+# Quality round 2.18: BoardView (kanban) drag-drop edge cases. Twelve slots
+# covering cross-section move, cross-project drop, "(Без раздела)" pseudo-
+# column drop, empty-column round-trip with order/dayOrder invariant,
+# same-section noop signal/undo contract, unknown-id quiet rejection, bulk
+# multi-select section-clearing quirk, rename-section dialog round-trip
+# (surfaced the BoardView dataStore.updateSection → renameSection typo fix
+# in this branch), delete-section idempotence, tombstone exclusion from
+# columns, repeated-drop dedupe, drag-cancel zero-call invariant.
+opentodo_add_unit_test(test_board_dragdrop_edges          App)
+
+# REGRESSION TEST for the "Послать тестовое" Windows-toast crash
+# (reported by user 2026-05-09). Root cause was main.cpp using
+# QGuiApplication while WindowsNotificationService uses QSystemTrayIcon
+# (a QtWidgets type that requires QApplication). Constructing the tray
+# icon under QGuiApplication crashed on the first showMessage() call.
+# This test uses QTEST_MAIN (not QTEST_GUILESS_MAIN) so it runs under a
+# real QApplication and would have caught the regression. Pins the
+# QApplication-not-QGuiApplication contract going forward.
+opentodo_add_unit_test(test_notification_service_smoke    App)
+
+# Quality round 2.19: HotkeyService conflict detection + rebinding +
+# modifier-only rejection. New surface: setShortcut(QString) (live re-bind),
+# wouldConflict(QString) (probe + release), isValidShortcut(QString),
+# registrationFailed(shortcut, reason) (2-arg signal). Tests use QTEST_MAIN
+# under QApplication because RegisterHotKey needs a window handle.
+opentodo_add_unit_test(test_hotkeyservice_conflicts       App)
+
+# Quality round 2.19-A: deep-dive edge cases for three services that had
+# only superficial coverage — PomodoroService (crash recovery, mid-session
+# settings change, suspend/resume, custom-duration extremes),
+# DailyReviewService (DST spring-forward / fall-back, mid-session reschedule,
+# clock skew, first-run defaults), UpdateChecker (network down without
+# infinite retry, malformed JSON variants, version-compare edges,
+# rate-limit / re-entrancy protections).
+opentodo_add_unit_test(test_pomodoro_edges                Infra)
+opentodo_add_unit_test(test_dailyreview_dst               Infra)
+opentodo_add_unit_test(test_updatechecker_resilience      Infra)
+
+# Todoist import tests — needs fixture ZIP next to the binary.
+qt_add_executable(test_todoist_import test_todoist_import.cpp)
+target_link_libraries(test_todoist_import PRIVATE OpenTodoInfra Qt6::Test)
+target_compile_definitions(test_todoist_import PRIVATE
+    TODOIST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample"
+)
+add_test(NAME test_todoist_import COMMAND test_todoist_import)
+set_tests_properties(test_todoist_import PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+# Copy fixture ZIPs alongside the test binary so the build-dir path works too.
+add_custom_command(TARGET test_todoist_import POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        $<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample/Todoist Backup 2024-01-01.zip"
+        "$<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample/Todoist Backup 2024-01-01.zip"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample/user_backup.zip"
+        "$<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample/user_backup.zip"
+    COMMENT "Copying Todoist fixture ZIPs to test output dir"
+)

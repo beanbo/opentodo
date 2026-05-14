@@ -1,0 +1,291 @@
+#pragma once
+
+#include <QObject>
+#include <QList>
+#include <QMap>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QQmlEngine>
+
+#include "model/task.h"
+#include "model/project.h"
+#include "model/section.h"
+#include "model/label.h"
+#include "model/filter.h"
+#include "model/reminder.h"
+#include "model/comment.h"
+
+
+/**
+ * @brief In-memory source of truth for all application data.
+ *
+ * DataStore holds parallel QList (for ordered iteration) + QMap index
+ * (for O(1) id lookup) per entity type.  All mutations:
+ *   - set the entity's `updated_at` timestamp,
+ *   - emit the type-specific signal (`tasksChanged`, `projectsChanged`, …),
+ *   - emit the aggregate `dataChanged()` signal so FileManager can autosave.
+ *
+ * Deletions are always soft (set `is_deleted = true`; tombstones travel
+ * through sync and all query methods filter them out).
+ *
+ * Access from QML uses the context-property name set in main.cpp
+ * (`dataStore`), not the QML_SINGLETON import — do not try to access it
+ * via the module import.
+ *
+ * @invariant Every entity stored here has a non-empty UUID id.
+ * @invariant m_taskIndex.size() == m_tasks.size() (index kept in sync).
+ */
+class DataStore : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+
+    Q_PROPERTY(int taskCount READ taskCount NOTIFY tasksChanged)
+    Q_PROPERTY(int projectCount READ projectCount NOTIFY projectsChanged)
+    Q_PROPERTY(QJsonObject settings READ settings WRITE setSettings NOTIFY settingsChanged)
+
+public:
+    // Bump this when adding/renaming/restructuring JSON fields.
+    // Migrations live in DataStore::migrateJson and run forward-only.
+    //
+    // v2: per-entity CRDT meta blob is now stored as a single-wrap
+    //     entity["_meta"][field] = {ts, dev}. Earlier writers produced a
+    //     double-wrap entity["_meta"]["_meta"][field] = {ts, dev} due to a
+    //     bug in stampEntityField — migrateJson detects and flattens that.
+    static constexpr int CURRENT_SCHEMA_VERSION = 2;
+
+    // Returns the schema version stored in state.json that was loaded,
+    // or 0 if no version was present (i.e. legacy file from before
+    // versioning was added).
+    int loadedSchemaVersion() const { return m_loadedSchemaVersion; }
+
+    explicit DataStore(QObject *parent = nullptr);
+
+    // --- Tasks ---
+    Q_INVOKABLE Task *addTask(const QString &content, const QString &projectId);
+    Q_INVOKABLE Task *taskById(const QString &id) const;
+    Q_INVOKABLE bool removeTask(const QString &id);
+    // Restore a soft-deleted task. Mirrors the cascade in removeTask:
+    // any reminder/comment that was tombstoned by the same removeTask call
+    // (identified by sharing the task's tombstone updatedAt and matching
+    // taskId) is also restored. Returns true on success, false if the task
+    // does not exist. Comments/reminders that were independently tombstoned
+    // (different updatedAt) are intentionally left as tombstones.
+    Q_INVOKABLE bool restoreTask(const QString &id);
+    // Hard-remove: actually erases the task from m_tasks and the index.
+    // Used by the Trash view's "permanently delete". Local-only; sync log not
+    // produced (the soft-delete tombstone has already propagated, if any).
+    Q_INVOKABLE bool purgeTask(const QString &id);
+    Q_INVOKABLE QList<Task *> allTasks() const;
+    // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
+    QList<Task *> allTasksIncludingDeleted() const;
+    Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;
+    Q_INVOKABLE QList<Task *> tasksForSection(const QString &sectionId) const;
+    Q_INVOKABLE QList<Task *> tasksForToday() const;
+    Q_INVOKABLE QList<Task *> overdueTasks() const;
+    Q_INVOKABLE QList<Task *> completedTasks() const;
+    Q_INVOKABLE QList<Task *> subtasks(const QString &parentId) const;
+    Q_INVOKABLE QList<Task *> searchTasks(const QString &query) const;
+    int taskCount() const;
+    void addExistingTask(Task *task);
+
+    // --- Projects ---
+    Q_INVOKABLE Project *addProject(const QString &name);
+    Q_INVOKABLE Project *projectById(const QString &id) const;
+    Q_INVOKABLE bool removeProject(const QString &id);
+    Q_INVOKABLE QList<Project *> allProjects() const;
+    Q_INVOKABLE Project *inboxProject() const;
+    int projectCount() const;
+    void addExistingProject(Project *project);
+
+    // --- Sections ---
+    Q_INVOKABLE Section *addSection(const QString &name, const QString &projectId);
+    Q_INVOKABLE Section *sectionById(const QString &id) const;
+    Q_INVOKABLE bool removeSection(const QString &id);
+    Q_INVOKABLE QList<Section *> sectionsForProject(const QString &projectId) const;
+    Q_INVOKABLE bool renameSection(const QString &id, const QString &newName);
+    void addExistingSection(Section *section);
+
+    // Tell listeners that some data changed (autosave + UI).
+    void markDataChanged() {
+        emit sectionsChanged();
+        emit dataChanged();
+    }
+
+    // --- Labels ---
+    Q_INVOKABLE Label *addLabel(const QString &name);
+    Q_INVOKABLE Label *labelById(const QString &id) const;
+    Q_INVOKABLE Label *labelByName(const QString &name) const;
+    Q_INVOKABLE bool removeLabel(const QString &id);
+    Q_INVOKABLE QList<Label *> allLabels() const;
+    void addExistingLabel(Label *label);
+
+    // --- Filters ---
+    Q_INVOKABLE Filter *addFilter(const QString &name, const QString &query);
+    Q_INVOKABLE Filter *filterById(const QString &id) const;
+    Q_INVOKABLE bool removeFilter(const QString &id);
+    Q_INVOKABLE QList<Filter *> allFilters() const;
+    void addExistingFilter(Filter *filter);
+
+    // --- Reminders ---
+    Q_INVOKABLE Reminder *addReminder(const QString &taskId, const QString &type);
+    Q_INVOKABLE Reminder *reminderById(const QString &id) const;
+    Q_INVOKABLE bool removeReminder(const QString &id);
+    Q_INVOKABLE QList<Reminder *> remindersForTask(const QString &taskId) const;
+    // Returns ALL reminders, including soft-deleted ones. Used by the
+    // reminder scheduler to cascade-cancel platform notifications for
+    // reminders that were tombstoned by removeTask() — by the time the
+    // scheduler runs, remindersForTask() filters tombstones out, so the
+    // armed QTimer would otherwise fire for a task that no longer exists.
+    QList<Reminder *> allRemindersIncludingDeleted() const;
+    void addExistingReminder(Reminder *reminder);
+
+    // --- Comments ---
+    Q_INVOKABLE Comment *addComment(const QString &content, const QString &taskId, const QString &projectId);
+    Comment *commentById(const QString &id) const;
+    Q_INVOKABLE bool removeComment(const QString &id);
+    Q_INVOKABLE bool updateComment(const QString &id, const QString &content);
+    Q_INVOKABLE QList<Comment *> commentsForTask(const QString &taskId) const;
+    QList<Comment *> commentsForProject(const QString &projectId) const;
+    void addExistingComment(Comment *comment);
+
+    // --- Settings / Karma ---
+    QJsonObject settings() const;
+    void setSettings(const QJsonObject &settings);
+    Q_INVOKABLE QVariant setting(const QString &key) const;
+    Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
+
+    // Export current settings to a JSON file.
+    // Writes to <dir>/opentodo-settings-<timestamp>.json (Documents if dir is empty).
+    // Returns the absolute path on success, or an empty string on failure.
+    Q_INVOKABLE QString exportSettings(const QString &dir = QString());
+
+    // Import settings from a JSON file exported by exportSettings().
+    // Validates the "format" sentinel before applying.
+    // Returns true on success, false on parse error or unrecognised format.
+    Q_INVOKABLE bool importSettings(const QString &filePath);
+
+    // --- Notifications ---
+    // Called by ViewModels after they've mutated a model object directly
+    // (e.g. Task::setIsCompleted) to notify subscribers (autosave, list views,
+    // reminder scheduler) without making them break encapsulation by emitting
+    // DataStore's own signals.
+    void markTaskModified(const QString &id);
+    void markProjectModified(const QString &id);
+    void markLabelModified(const QString &id);
+
+    // --- Inbound CRDT meta application ---
+    // Q2.18-A FIX: SyncEngine::applyCommit needs to push the merged per-field
+    // _meta back into the corresponding meta map after applying an inbound
+    // *_update. The semantics are PER-FIELD MERGE: every field key present
+    // in `incomingMeta` overwrites the local stamp; fields not present are
+    // left untouched. This preserves local-only stamps (the inbound commit
+    // only carries stamps for the fields it modified) while accepting the
+    // inbound stamps for the fields it touched.
+    //
+    // These methods also emit the corresponding <entity>Changed() + the
+    // aggregate dataChanged() signals so FileManager autosaves and the UI
+    // refreshes — but they do NOT re-stamp updated_at (which would clobber
+    // the inbound updated_at stamp and silently downgrade per-field LWW).
+    //
+    // No-op if the entity does not exist locally.
+    void applyInboundTaskMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundProjectMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundSectionMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundLabelMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundFilterMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundReminderMeta(const QString &id, const QJsonObject &incomingMeta);
+    void applyInboundCommentMeta(const QString &id, const QJsonObject &incomingMeta);
+
+    // --- Auto-archive ---
+    // Iterates non-archived non-inbox projects. For each, computes the most
+    // recent task `updated_at` timestamp. If all tasks are completed AND the
+    // most recent timestamp is older than `daysThreshold`, archives the
+    // project. Returns the count of newly archived projects.
+    // No-op when daysThreshold <= 0.
+    int autoArchiveStaleProjects(int daysThreshold);
+
+    // --- Serialization ---
+    QJsonObject toJson() const;
+    void loadFromJson(const QJsonObject &root);
+    void clear();
+
+    // --- CRDT field stamping ---
+    /**
+     * @brief Stamp CRDT per-field metadata on a JSON entity object for a
+     *        specific field. Reads deviceId from QSettings.
+     *
+     * This is a static utility intentionally exposed here so ViewModels that
+     * build SyncOperation data payloads can stamp fields they are sending.
+     */
+    static void stampField(QJsonObject &entity, const QString &fieldName);
+
+signals:
+    void aboutToReset();
+    void tasksChanged();
+    void projectsChanged();
+    void sectionsChanged();
+    void labelsChanged();
+    void filtersChanged();
+    void remindersChanged();
+    void commentsChanged();
+    void settingsChanged();
+    void dataChanged();
+
+private:
+    // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
+    void stampEntityField(const QString &entityId,
+                          QMap<QString, QJsonObject> &metaMap,
+                          const QString &fieldName);
+
+    // Inject the stored _meta blob back into a serialised entity JSON.
+    static QJsonObject injectMeta(QJsonObject entityJson,
+                                  const QMap<QString, QJsonObject> &metaMap,
+                                  const QString &entityId);
+
+    // Extract and remove _meta from a loaded entity JSON, storing it in metaMap.
+    static QJsonObject extractMeta(QJsonObject entityJson,
+                                   QMap<QString, QJsonObject> &metaMap,
+                                   const QString &entityId);
+
+    // Apply forward-only migrations to bring `root` up to CURRENT_SCHEMA_VERSION.
+    // Operates on the QJsonObject in-place. Returns the version after migration.
+    static int migrateJson(QJsonObject &root, int fromVersion);
+
+    // Return the local deviceId (from QSettings, same key as SyncEngine uses).
+    static QString localDeviceId();
+
+    int m_loadedSchemaVersion = 0;
+
+    QList<Task *> m_tasks;
+    QMap<QString, Task *> m_taskIndex;
+    QMap<QString, QJsonObject> m_taskMeta;       ///< entityId → "_meta" blob
+
+    QList<Project *> m_projects;
+    QMap<QString, Project *> m_projectIndex;
+    QMap<QString, QJsonObject> m_projectMeta;
+
+    QList<Section *> m_sections;
+    QMap<QString, Section *> m_sectionIndex;
+    QMap<QString, QJsonObject> m_sectionMeta;
+
+    QList<Label *> m_labels;
+    QMap<QString, Label *> m_labelIndex;
+    QMap<QString, Label *> m_labelNameIndex;
+    QMap<QString, QJsonObject> m_labelMeta;
+
+    QList<Filter *> m_filters;
+    QMap<QString, Filter *> m_filterIndex;
+    QMap<QString, QJsonObject> m_filterMeta;
+
+    QList<Reminder *> m_reminders;
+    QMap<QString, Reminder *> m_reminderIndex;
+    QMap<QString, QJsonObject> m_reminderMeta;
+
+    QList<Comment *> m_comments;
+    QMap<QString, Comment *> m_commentIndex;
+    QMap<QString, QJsonObject> m_commentMeta;
+
+    QJsonObject m_settings;
+};

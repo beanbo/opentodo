@@ -1,0 +1,575 @@
+import QtQuick
+import QtQuick.Controls.Material
+import QtQuick.Layouts
+import OpenTodoUI
+
+// Root is a Rectangle (not Item) so the `color` background binding below
+// is valid — Qt's strict QML compiler rejects `color:` on plain Item and
+// makes the entire type unavailable, which transitively breaks ProjectView.
+Rectangle {
+    id: root
+    anchors.fill: parent
+
+    // ── Design constants ──────────────────────────────────────────────────────
+    readonly property color todoistRed:    ThemeManager.accentColor
+    readonly property bool  isDarkTheme:   ThemeManager.isDark
+    readonly property color bgColor:       ThemeManager.backgroundColor
+    readonly property color contentColor:  ThemeManager.surfaceColor
+    readonly property color borderColor:   ThemeManager.borderColor
+    readonly property color textPrimary:   ThemeManager.textColor
+    readonly property color textSecondary: ThemeManager.secondaryTextColor
+
+    // ── Public API ────────────────────────────────────────────────────────────
+    property string projectId: ""
+
+    signal taskClicked(string taskId)
+
+    color: bgColor
+
+    // ── Section data ──────────────────────────────────────────────────────────
+    property var _sections: []
+
+    function _refreshSections() {
+        var raw    = dataStore.sectionsForProject(projectId)
+        var result = [{ id: "", name: "(Без раздела)" }]
+        for (var i = 0; i < raw.length; i++) {
+            result.push({ id: raw[i].id, name: raw[i].name })
+        }
+        _sections = result
+    }
+
+    function _tasksForSection(sectionId) {
+        var tasks = []
+        for (var i = 0; i < taskViewModel.count; i++) {
+            var t = taskViewModel.taskAt(i)
+            if (t && t.sectionId === sectionId && !t.isCompleted) {
+                tasks.push({
+                    id:        t.id,
+                    content:   t.content,
+                    priority:  t.priority,
+                    dueDate:   t.dueDate   || "",
+                    dueString: t.dueString || "",
+                    labels:    t.labels    || [],
+                    sectionId: t.sectionId
+                })
+            }
+        }
+        return tasks
+    }
+
+    function _priorityColor(p) {
+        switch (p) {
+            case 1:  return ThemeManager.priorityP1Color
+            case 2:  return ThemeManager.priorityP2Color
+            case 3:  return ThemeManager.priorityP3Color
+            default: return ThemeManager.priorityP4Color
+        }
+    }
+
+    function _isOverdue(dateStr) {
+        if (!dateStr || dateStr === "") return false
+        var due   = new Date(dateStr)
+        var today = new Date()
+        today.setHours(0, 0, 0, 0)
+        return due < today
+    }
+
+    Component.onCompleted: _refreshSections()
+    onProjectIdChanged:    _refreshSections()
+
+    // ── Board scroll area ─────────────────────────────────────────────────────
+    ScrollView {
+        anchors.fill: parent
+        // L-6.49 — removed the extra + 32; padding already included in implicitWidth
+        contentWidth: boardRow.implicitWidth
+        contentHeight: height
+
+        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical:   ScrollBar { policy: ScrollBar.AlwaysOff }
+
+        Row {
+            id:      boardRow
+            spacing: 12
+            padding: 16
+            height:  parent.height
+
+            // ── Columns (one per section) ─────────────────────────────────────
+            Repeater {
+                id:    columnRepeater
+                model: root._sections
+
+                delegate: Rectangle {
+                    id: column
+
+                    required property int index
+                    required property var modelData   // { id, name }
+
+                    width:  280
+                    height: boardRow.height - 32
+                    radius: Radius.md
+                    color:  root.isDarkTheme ? "#242424" : "#f7f7f7"
+                    border.color: root.borderColor
+                    border.width: 1
+
+                    // Re-evaluate the task list each time taskViewModel changes
+                    property var columnTasks: root._tasksForSection(modelData.id)
+
+                    Connections {
+                        target: taskViewModel
+                        function onDataChanged()  { column.columnTasks = root._tasksForSection(column.modelData.id) }
+                        function onRowsInserted() { column.columnTasks = root._tasksForSection(column.modelData.id) }
+                        function onRowsRemoved()  { column.columnTasks = root._tasksForSection(column.modelData.id) }
+                        function onModelReset()   { column.columnTasks = root._tasksForSection(column.modelData.id) }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill:    parent
+                        anchors.margins: 8
+                        spacing: 8
+
+                        // Column header
+                        RowLayout {
+                            Layout.fillWidth: true
+                            height: 36
+
+                            Label {
+                                text:             modelData.name
+                                font.pixelSize:   FontSize.body
+                                font.bold:        true
+                                color:            root.textPrimary
+                                elide:            Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+
+                            // Task count badge
+                            Rectangle {
+                                visible: column.columnTasks.length > 0
+                                width:  countLabel.implicitWidth + 8
+                                height: 18; radius: Radius.pill
+                                color:  root.isDarkTheme ? "#383838" : "#e8e8e8"
+
+                                Text {
+                                    id:             countLabel
+                                    anchors.centerIn: parent
+                                    text:           column.columnTasks.length
+                                    font.pixelSize: FontSize.small
+                                    color:          root.textSecondary
+                                }
+                            }
+
+                            // Column menu
+                            ToolButton {
+                                id:    columnMenuBtn
+                                text:  "⋯"
+                                font.pixelSize: 16
+                                Material.foreground: root.textSecondary
+                                onClicked: columnMenu.open()
+                            }
+
+                            Menu {
+                                id: columnMenu
+                                y:  columnMenuBtn.height
+
+                                MenuItem {
+                                    text: "Переименовать раздел"
+                                    onTriggered: {
+                                        renameSectionDialog.sectionId   = modelData.id
+                                        renameSectionDialog.sectionName = modelData.name
+                                        renameSectionDialog.open()
+                                    }
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    text: "Удалить раздел"
+                                    Material.foreground: root.todoistRed
+                                    onTriggered: {
+                                        // B-6.40 — canonical API is removeSection (not deleteSection)
+                                        if (modelData.id !== "")
+                                            dataStore.removeSection(modelData.id)
+                                        root._refreshSections()
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Card list ─────────────────────────────────────────
+                        // F-6.45 — drop area covering the whole card list for inter-column moves
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            ListView {
+                                id:               cardList
+                                anchors.fill:     parent
+                                model:   column.columnTasks
+                                clip:    true
+                                spacing: 8
+
+                                delegate: Rectangle {
+                                    id: card
+
+                                    required property int index
+                                    required property var modelData   // task snapshot
+
+                                    width:  cardList.width
+                                    height: cardContent.implicitHeight + 24
+                                    radius: Radius.md
+                                    color:  root.contentColor
+                                    border.color: root.borderColor
+                                    border.width: 1
+
+                                    // Bug 8 fix: switched from Drag.Internal to Drag.Automatic
+                                    // so the ghost image is created at the system/scene level
+                                    // and can cross between column ListViews without being
+                                    // clipped by the source column's contentItem. The MouseArea
+                                    // drag.target points at a tiny invisible helper (cardGhost)
+                                    // — same pattern as TaskItem.qml — so the visible card
+                                    // never gets reparented or pulled out of the ListView,
+                                    // while drag.active still toggles correctly to engage the
+                                    // Drag attached property.
+                                    Drag.active:       cardMouse.drag.active
+                                    Drag.hotSpot.x:    width  / 2
+                                    Drag.hotSpot.y:    height / 2
+                                    Drag.dragType:     Drag.Automatic
+                                    Drag.supportedActions: Qt.MoveAction
+                                    Drag.mimeData:     ({ "application/x-opentodo-task": modelData.id,
+                                                          "application/x-opentodo-section": modelData.sectionId })
+                                    Drag.keys:         ["application/x-opentodo-task"]
+
+                                    states: State {
+                                        when: cardMouse.drag.active
+                                        PropertyChanges { target: card; opacity: 0.6; z: 10 }
+                                    }
+
+                                    MouseArea {
+                                        id: cardMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                                        // Drag.target is an invisible 1×1 helper outside the
+                                        // layout flow. Movement of cardGhost engages drag.active
+                                        // but never visually shifts the card — the actual ghost
+                                        // image is provided by Drag.Automatic at the system level.
+                                        drag.target:     cardGhost
+                                        drag.threshold:  6
+                                        drag.smoothed:   false
+                                        // Click only fires when no drag occurred.
+                                        onClicked: if (!drag.active) root.taskClicked(modelData.id)
+                                    }
+
+                                    // Invisible drag.target helper — see comment on cardMouse.
+                                    Item {
+                                        id: cardGhost
+                                        width: 1; height: 1
+                                        visible: false
+                                    }
+
+                                    // Hover colour effect
+                                    Behavior on color { ColorAnimation { duration: 80 } }
+                                    property bool _cardHovered: cardMouse.containsMouse && !cardMouse.drag.active
+                                    color: _cardHovered
+                                           ? (root.isDarkTheme ? "#303030" : "#f5f5f5")
+                                           : root.contentColor
+
+                                    ColumnLayout {
+                                        id: cardContent
+                                        anchors {
+                                            left:   parent.left
+                                            right:  parent.right
+                                            top:    parent.top
+                                            margins: 12
+                                        }
+                                        spacing: 6
+
+                                        // Priority colour bar
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            height:  3; radius: 1.5
+                                            color:   root._priorityColor(modelData.priority)
+                                            visible: modelData.priority < 4
+                                        }
+
+                                        // Task title
+                                        Text {
+                                            text:            modelData.content
+                                            font.pixelSize:  FontSize.body
+                                            color:           root.textPrimary
+                                            wrapMode:        Text.Wrap
+                                            Layout.fillWidth: true
+                                        }
+
+                                        // Due date
+                                        RowLayout {
+                                            visible: modelData.dueDate !== ""
+                                            spacing: 4
+
+                                            Text {
+                                                text:           "📅"
+                                                font.pixelSize: 11
+                                            }
+                                            Text {
+                                                text:           modelData.dueString !== ""
+                                                                ? modelData.dueString
+                                                                : modelData.dueDate
+                                                font.pixelSize: 11
+                                                color:          root._isOverdue(modelData.dueDate)
+                                                                ? root.todoistRed
+                                                                : root.textSecondary
+                                            }
+                                        }
+
+                                        // Label chips
+                                        Flow {
+                                            Layout.fillWidth: true
+                                            spacing: 4
+                                            visible: modelData.labels && modelData.labels.length > 0
+
+                                            Repeater {
+                                                model: modelData.labels || []
+                                                delegate: Rectangle {
+                                                    required property string modelData
+                                                    height: 18
+                                                    width:  chipLabel.implicitWidth + 8
+                                                    radius: Radius.pill
+                                                    color:  root.isDarkTheme ? "#3a3a3a" : "#eeeeee"
+
+                                                    Text {
+                                                        id:             chipLabel
+                                                        anchors.centerIn: parent
+                                                        text:           modelData
+                                                        font.pixelSize: FontSize.xs
+                                                        color:          root.textSecondary
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // ITER1 #1/#7: removed the redundant second MouseArea
+                                    // that referenced an undefined `dragHandler` and
+                                    // shadowed cardMouse's drag handling. cardMouse now
+                                    // also handles click — see its onClicked above.
+                                }
+
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                            }
+
+                            // F-6.45 — drop area for receiving cards from other columns
+                            DropArea {
+                                id: columnDropArea
+                                anchors.fill: parent
+                                keys: ["application/x-opentodo-task"]
+
+                                // Visual drop indicator — thin accent line at top of column
+                                Rectangle {
+                                    anchors.top:   parent.top
+                                    anchors.left:  parent.left
+                                    anchors.right: parent.right
+                                    height: 3
+                                    radius: 1.5
+                                    color:  root.todoistRed
+                                    visible: parent.containsDrag
+                                    opacity: 0.85
+                                }
+
+                                onDropped: function(drop) {
+                                    var tid = drop.getDataAsString("application/x-opentodo-task")
+                                    if (tid && tid.length > 0) {
+                                        // Move task to this column's section
+                                        taskViewModel.moveTask(tid, root.projectId, column.modelData.id)
+                                        drop.accept(Qt.MoveAction)
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Add card button ───────────────────────────────────
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 36; radius: Radius.xs
+                            color:  addCardHover.containsMouse
+                                    ? (root.isDarkTheme ? "#333333" : "#eeeeee")
+                                    : "transparent"
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                Text {
+                                    text:           "+"
+                                    color:          root.textSecondary
+                                    font.pixelSize: FontSize.subtitle
+                                }
+                                Text {
+                                    text:           "Добавить задачу"
+                                    color:          root.textSecondary
+                                    font.pixelSize: FontSize.body
+                                }
+                            }
+
+                            HoverHandler { id: addCardHover }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape:  Qt.PointingHandCursor
+                                onClicked: {
+                                    addCardDialog.targetSectionId = modelData.id
+                                    addCardDialog.open()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Add column button ─────────────────────────────────────────────
+            Rectangle {
+                width:  280
+                height: boardRow.height - 32
+                radius: Radius.md
+                color:  "transparent"
+                border.color: root.borderColor
+                border.width: 1
+                opacity: 0.7
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 8
+
+                    Text {
+                        text:           "+"
+                        font.pixelSize: 24
+                        color:          root.textSecondary
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Text {
+                        text:           "Добавить раздел"
+                        font.pixelSize: FontSize.body
+                        color:          root.textSecondary
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                }
+
+                HoverHandler { id: addColHover }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape:  Qt.PointingHandCursor
+                    onClicked:    addColumnDialog.open()
+                }
+            }
+        }
+    }
+
+    // ── Add card dialog ───────────────────────────────────────────────────────
+    Dialog {
+        id:    addCardDialog
+        title: "Добавить задачу"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string targetSectionId: ""
+
+        // ITER1 #38: clear text and focus the field when the dialog opens
+        onOpened: {
+            addCardField.text = ""
+            addCardField.forceActiveFocus()
+        }
+        onAccepted: {
+            var t = addCardField.text.trim()
+            if (t !== "") {
+                // B-6.41 — addTask returns QString taskId; use return value for moveTask
+                var taskId = taskViewModel.addTask(t, root.projectId, 4, "", [])
+                if (taskId && targetSectionId !== "")
+                    taskViewModel.moveTask(taskId, root.projectId, targetSectionId)
+            }
+        }
+
+        ColumnLayout {
+            spacing: 8
+            width:   280
+
+            Label { text: "Название задачи"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            TextField {
+                id:              addCardField
+                Layout.fillWidth: true
+                placeholderText: "Название задачи"
+                color:           root.textPrimary
+            }
+        }
+    }
+
+    // ── Add column dialog ─────────────────────────────────────────────────────
+    Dialog {
+        id:    addColumnDialog
+        title: "Добавить раздел"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // ITER1 #39: clear text and focus the field when the dialog opens
+        onOpened: {
+            colNameField.text = ""
+            colNameField.forceActiveFocus()
+        }
+        onAccepted: {
+            var name = colNameField.text.trim()
+            if (name !== "") {
+                dataStore.addSection(name, root.projectId)
+                root._refreshSections()
+            }
+        }
+
+        ColumnLayout {
+            spacing: 8
+            width:   280
+
+            Label { text: "Название раздела"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            TextField {
+                id:              colNameField
+                Layout.fillWidth: true
+                placeholderText: "Название раздела"
+                color:           root.textPrimary
+            }
+        }
+    }
+
+    // ── Rename section dialog ─────────────────────────────────────────────────
+    Dialog {
+        id:    renameSectionDialog
+        title: "Переименовать раздел"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string sectionId:   ""
+        property string sectionName: ""
+
+        onOpened:   renameField.text = sectionName
+        onAccepted: {
+            var name = renameField.text.trim()
+            if (name !== "" && sectionId !== "") {
+                // Bug fix: DataStore exposes renameSection(id, newName) — there is
+                // no Q_INVOKABLE updateSection on DataStore, so the previous
+                // dataStore.updateSection(id, "name", value) call was a silent no-op
+                // (TypeError in the QML console, dialog dismissed without effect).
+                dataStore.renameSection(sectionId, name)
+                root._refreshSections()
+            }
+        }
+
+        ColumnLayout {
+            spacing: 8
+            width:   280
+
+            Label { text: "Название раздела"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            TextField {
+                id:              renameField
+                Layout.fillWidth: true
+                placeholderText: "Название раздела"
+                color:           root.textPrimary
+            }
+        }
+    }
+}

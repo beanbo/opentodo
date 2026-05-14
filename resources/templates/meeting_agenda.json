@@ -1,0 +1,17 @@
+{
+    "name": "Meeting Agenda",
+    "description": "Organize meetings with before, during, and after tasks",
+    "icon": "meeting",
+    "sections": ["Before Meeting", "During Meeting", "After Meeting"],
+    "tasks": [
+        {"content": "Define meeting objectives", "section": "Before Meeting", "priority": 2},
+        {"content": "Prepare agenda and share with attendees", "section": "Before Meeting", "priority": 2},
+        {"content": "Book meeting room or set up video call", "section": "Before Meeting", "priority": 3},
+        {"content": "Take notes", "section": "During Meeting", "priority": 1},
+        {"content": "Track decisions and action items", "section": "During Meeting", "priority": 1},
+        {"content": "Assign action items with deadlines", "section": "During Meeting", "priority": 2},
+        {"content": "Send meeting summary to attendees", "section": "After Meeting", "priority": 1},
+        {"content": "Follow up on action items", "section": "After Meeting", "priority": 2},
+        {"content": "Schedule next meeting if needed", "section": "After Meeting", "priority": 3}
+    ]
+}

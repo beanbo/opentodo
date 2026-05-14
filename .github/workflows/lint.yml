@@ -1,0 +1,25 @@
+name: Lint
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  qmllint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+
+      - name: Run qmllint
+        run: |
+          find qml -name "*.qml" -print0 | \
+            xargs -0 $Qt6_DIR/bin/qmllint -I qml || true  # warn only

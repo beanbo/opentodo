@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenTodo</string>
+    <string name="widget_name">Today Tasks</string>
+    <string name="notification_channel_tasks">Tasks</string>
+    <string name="notification_channel_reminders">Reminders</string>
+    <string name="notification_channel_sync">Sync</string>
+</resources>

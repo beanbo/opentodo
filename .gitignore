@@ -1,0 +1,106 @@
+# ────────────────────────────────────────────────────────────────────────
+# Build directories
+# ────────────────────────────────────────────────────────────────────────
+build/
+build-*/
+build-android-arm64/
+build-wasm/
+deploy/
+dist/
+out/
+
+# CMake user files
+CMakeLists.txt.user*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Qt
+*.user
+*.user.*
+.qmake.stash
+.qtc_clangd/
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+.qt/
+
+# Qt Creator
+.qtcreator/
+
+# VSCode
+.vscode/
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# ────────────────────────────────────────────────────────────────────────
+# Binaries, runtime artifacts, logs
+# ────────────────────────────────────────────────────────────────────────
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.pdb
+
+# App runtime output
+app_stdout.txt
+app_stderr.txt
+*.log
+nlp_robust_out.txt
+_testout.txt
+_test_*.txt
+
+# Crash / diagnostic dumps
+*.dmp
+core.*
+
+# ────────────────────────────────────────────────────────────────────────
+# Python (used by helper scripts only)
+# ────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+
+# ────────────────────────────────────────────────────────────────────────
+# OS junk
+# ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ────────────────────────────────────────────────────────────────────────
+# Local-only documentation / drafts
+# ────────────────────────────────────────────────────────────────────────
+# Audit notes and review docs are kept out of the public repo by default
+# (they reference internal task IDs and review iterations). Remove these
+# lines if you want them tracked.
+AUDIT.md
+AUDIT_ITER*.md
+
+# Personal test data / backups
+Todoist backup *.zip
+state-backup-*.json
+
+# Claude-related local state (not part of the project)
+.claude/
+
+# Audit-pipeline scratch outputs (ad-hoc grep dumps, build logs etc.)
+audit_*.txt
+audit_*.xml
+smoke_out.txt
+aqt_settings.ini

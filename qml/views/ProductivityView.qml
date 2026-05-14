@@ -1,0 +1,2163 @@
+import QtQuick
+import QtQuick.Controls.Material
+import QtQuick.Layouts
+import QtCore
+import OpenTodoUI
+
+Item {
+    id: root
+    anchors.fill: parent
+    readonly property bool isDarkTheme: ThemeManager.isDark
+
+    // Color properties
+    property color bgColor: ThemeManager.backgroundColor
+    property color contentColor: ThemeManager.surfaceColor
+    property color borderColor: ThemeManager.borderColor
+    property color textPrimary: ThemeManager.textColor
+    property color textSecondary: ThemeManager.secondaryTextColor
+
+    // ── Briefing helpers ──────────────────────────────────────────────────────
+
+    // Russian plural: задача / задачи / задач
+    function taskWord(n) {
+        var m100 = n % 100
+        var m10  = n % 10
+        if (m100 >= 11 && m100 <= 14) return "задач"
+        if (m10 === 1) return "задача"
+        if (m10 >= 2 && m10 <= 4) return "задачи"
+        return "задач"
+    }
+
+    // Russian plural: очко / очка / очков
+    function _milestoneSuffix(n) {
+        var m100 = n % 100
+        var m10  = n % 10
+        if (m100 >= 11 && m100 <= 14) return "очков"
+        if (m10 === 1) return "очко"
+        if (m10 >= 2 && m10 <= 4) return "очка"
+        return "очков"
+    }
+
+    function _greetingByTime() {
+        var h = new Date().getHours()
+        if (h < 5)  return { emoji: "🌙", text: "Доброй ночи" }
+        if (h < 12) return { emoji: "🌅", text: "Доброе утро" }
+        if (h < 18) return { emoji: "☀️",  text: "Добрый день" }
+        return      { emoji: "🌆", text: "Добрый вечер" }
+    }
+
+    function _briefingMessage(kick) {
+        // `kick` is read so the binding re-evaluates when the counter changes.
+        void kick
+        var todayTasks   = dataStore.tasksForToday()
+        var overdueTasks = dataStore.overdueTasks()
+        var total        = todayTasks.length
+        var overdueCount = overdueTasks.length
+        var done         = 0
+        for (var i = 0; i < todayTasks.length; i++) {
+            if (todayTasks[i].isCompleted) done++
+        }
+        var remaining = total - done
+        var greet = _greetingByTime()
+
+        if (total === 0) {
+            return { emoji: "🎉",
+                     title: greet.text + "!",
+                     body: "Сегодня свободный день — можно отдохнуть." }
+        }
+        if (done === total) {
+            return { emoji: "🏆",
+                     title: "Ты умница!",
+                     body: "Все задачи на сегодня выполнены — заслуженный отдых." }
+        }
+        if (overdueCount > 0) {
+            return { emoji: "🚨",
+                     title: greet.text + "!",
+                     body: "Сегодня " + remaining + " " + taskWord(remaining)
+                         + ", из них " + overdueCount + " просрочено."
+                         + " Самое время сосредоточиться." }
+        }
+        return { emoji: "💪",
+                 title: greet.text + "!",
+                 body: "Сегодня " + remaining + " " + taskWord(remaining)
+                     + ". Вперёд — ты справишься!" }
+    }
+
+    ScrollView {
+        anchors.fill: parent
+        contentWidth: availableWidth
+
+        ColumnLayout {
+            width: Math.min(parent.width, 600)
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 24
+
+            Item { Layout.preferredHeight: 24 }
+
+            // === Pomodoro Timer Card ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: pomodoroCol.implicitHeight + 32
+                color: contentColor
+                radius: 12
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: pomodoroCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 10
+
+                    // Header row: title + daily counter
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            text: "🍅 Помодоро"
+                            font.pixelSize: 16
+                            font.bold: true
+                            color: textPrimary
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            visible: pomodoroService.completedCyclesToday > 0
+                            text: "Сегодня: " + pomodoroService.completedCyclesToday
+                            color: textSecondary
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    // Big countdown
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        font.pixelSize: 52
+                        font.bold: true
+                        color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
+                        text: {
+                            var sec = pomodoroService.remainingSeconds
+                            var m = Math.floor(sec / 60)
+                            var s = sec % 60
+                            return m + ":" + (s < 10 ? "0" : "") + s
+                        }
+                    }
+
+                    // Phase label
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        font.pixelSize: 14
+                        color: textSecondary
+                        text: {
+                            if (pomodoroService.phase === "work")  return "Работа"
+                            if (pomodoroService.phase === "break") return "Перерыв"
+                            return "Готов к старту"
+                        }
+                    }
+
+                    // Progress bar (remaining / cycle length)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 4
+                        radius: 2
+                        color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                        Rectangle {
+                            width: pomodoroService.cycleSeconds > 0
+                                ? parent.width * (pomodoroService.remainingSeconds / pomodoroService.cycleSeconds)
+                                : 0
+                            height: parent.height
+                            radius: 2
+                            color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
+                            Behavior on width { NumberAnimation { duration: 800 } }
+                        }
+                    }
+
+                    // Control buttons
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 8
+
+                        Button {
+                            text: pomodoroService.running
+                                ? "Пауза"
+                                : (pomodoroService.phase === "idle" ? "Старт" : "Продолжить")
+                            onClicked: {
+                                if (pomodoroService.running)         pomodoroService.pause()
+                                else if (pomodoroService.phase === "idle") pomodoroService.start()
+                                else                                 pomodoroService.resume()
+                            }
+                        }
+                        Button {
+                            text: "Пропустить"
+                            enabled: pomodoroService.phase !== "idle"
+                            onClicked: pomodoroService.skip()
+                        }
+                        Button {
+                            text: "Сброс"
+                            enabled: pomodoroService.phase !== "idle"
+                            onClicked: pomodoroService.reset()
+                        }
+                    }
+                }
+            }
+
+            // === Pomodoro Statistics Card ===
+            // PomodoroService only persists today's count under
+            // `pomodoro/completed_count` + `pomodoro/completed_date` (see
+            // src/services/pomodoroservice.cpp). To reach week / total / 7-day
+            // history we maintain our own JSON map of {ISODate: count} via
+            // Qt.labs.settings, kept in sync with the service's today counter.
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: pomodoroStatsCol.implicitHeight + 32
+                color: contentColor
+                radius: 8
+                border.color: borderColor
+                border.width: 1
+
+                // Persisted per-day history. JSON object: {"2026-05-08": 3, ...}
+                Settings {
+                    id: pomodoroStatsStore
+                    property string history: "{}"
+                    property int total: 0
+                    // Last seen "today" count, so we can detect monotonic
+                    // increments emitted by PomodoroService.
+                    property string lastSeenDate: ""
+                    property int lastSeenCount: 0
+                }
+
+                ColumnLayout {
+                    id: pomodoroStatsCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    // ── Reactive state ─────────────────────────────────────
+                    property int _kick: 0
+                    property var _stats: _computeStats()
+
+                    // Today's date in ISO form. Re-read by tickTimer in case
+                    // the user keeps the app open across midnight.
+                    property string _todayIso: Qt.formatDate(new Date(), "yyyy-MM-dd")
+
+                    // Russian abbreviated day-of-week labels, Mon-first.
+                    readonly property var _dayLabels: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+                    // Last 7 ISO dates, oldest → today.
+                    function _last7Dates() {
+                        var arr = []
+                        var now = new Date()
+                        for (var i = 6; i >= 0; i--) {
+                            var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+                            arr.push(Qt.formatDate(d, "yyyy-MM-dd"))
+                        }
+                        return arr
+                    }
+
+                    // Day-of-week label for an ISO date string. Mon-first, so
+                    // JS Sunday(0) → 6, others shift by -1.
+                    function _dowLabel(iso) {
+                        var d = Date.fromLocaleString(Qt.locale("en_US"), iso, "yyyy-MM-dd")
+                        if (isNaN(d.getTime())) d = new Date(iso)
+                        var jsDow = d.getDay()           // 0=Sun..6=Sat
+                        var monIdx = (jsDow + 6) % 7      // 0=Mon..6=Sun
+                        return _dayLabels[monIdx]
+                    }
+
+                    function _parseHistory() {
+                        try {
+                            var obj = JSON.parse(pomodoroStatsStore.history || "{}")
+                            return (obj && typeof obj === "object") ? obj : {}
+                        } catch (e) {
+                            return {}
+                        }
+                    }
+
+                    // Build {today, week, total, daily[7]} from stored history.
+                    function _computeStats() {
+                        void _kick   // reactive dependency
+                        var hist = _parseHistory()
+                        var dates = _last7Dates()
+                        var daily = []
+                        var weekSum = 0
+                        for (var i = 0; i < dates.length; i++) {
+                            var c = hist[dates[i]] | 0
+                            daily.push({ date: dates[i], count: c, label: _dowLabel(dates[i]) })
+                            weekSum += c
+                        }
+                        var todayIso = dates[dates.length - 1]
+                        // Today's authoritative count comes from the service,
+                        // not the JSON map (which only catches up on increments
+                        // we observed in the current session).
+                        var todayCount = pomodoroService
+                            ? pomodoroService.completedCyclesToday | 0
+                            : (hist[todayIso] | 0)
+                        // Patch today's value so the chart reflects the live
+                        // service count even before the next save.
+                        daily[daily.length - 1].count = todayCount
+                        weekSum = weekSum - (hist[todayIso] | 0) + todayCount
+                        return {
+                            today: todayCount,
+                            week:  weekSum,
+                            total: pomodoroStatsStore.total,
+                            daily: daily
+                        }
+                    }
+
+                    // Sync the persisted map with the service's today counter.
+                    // Service only resets to 1 (date rollover) or increments by
+                    // 1 (work cycle complete); we mirror that into total + map.
+                    function _onCountChanged() {
+                        if (!pomodoroService) return
+                        var n = pomodoroService.completedCyclesToday | 0
+                        var todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd")
+                        var prevDate  = pomodoroStatsStore.lastSeenDate
+                        var prevCount = pomodoroStatsStore.lastSeenCount | 0
+
+                        var delta = 0
+                        if (prevDate === todayIso) {
+                            // Same day — only count strictly positive deltas.
+                            delta = Math.max(0, n - prevCount)
+                        } else {
+                            // New day or first-ever observation.
+                            // The full `n` represents new completions today.
+                            delta = Math.max(0, n)
+                        }
+
+                        if (delta > 0) {
+                            var hist = _parseHistory()
+                            hist[todayIso] = (hist[todayIso] | 0) + delta
+                            // Trim entries older than ~60 days to keep the
+                            // QSettings string from growing unbounded.
+                            var cutoff = new Date()
+                            cutoff.setDate(cutoff.getDate() - 60)
+                            for (var k in hist) {
+                                // BUG-FIX (C-4): keys are "yyyy-MM-dd" pomodoro day
+                                // markers. Bare ISO date parses as UTC midnight in JS,
+                                // so for UTC- users the day shifts and a key could be
+                                // pruned ~24h early near the cutoff boundary. Append
+                                // "T00:00:00" so the comparison happens in local time.
+                                var kd = new Date(k + "T00:00:00")
+                                if (!isNaN(kd.getTime()) && kd < cutoff) {
+                                    delete hist[k]
+                                }
+                            }
+                            pomodoroStatsStore.history = JSON.stringify(hist)
+                            pomodoroStatsStore.total   = (pomodoroStatsStore.total | 0) + delta
+                        }
+
+                        pomodoroStatsStore.lastSeenDate  = todayIso
+                        pomodoroStatsStore.lastSeenCount = n
+
+                        _kick = (_kick + 1) % 1000000
+                        _stats = _computeStats()
+                    }
+
+                    // Force re-evaluation without rewriting persistent state
+                    // (used when only the view-side date / display needs to
+                    // refresh).
+                    function _refresh() {
+                        _todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd")
+                        _kick = (_kick + 1) % 1000000
+                        _stats = _computeStats()
+                    }
+
+                    Component.onCompleted: {
+                        // First run: ensure the lastSeen* baseline is set so
+                        // we don't double-count at startup.
+                        if (pomodoroService) {
+                            var n = pomodoroService.completedCyclesToday | 0
+                            var todayIso = Qt.formatDate(new Date(), "yyyy-MM-dd")
+                            if (pomodoroStatsStore.lastSeenDate === "") {
+                                // Seed today's history with the service value
+                                // and total (best-effort recovery; previous
+                                // sessions' totals are unknown).
+                                var hist = _parseHistory()
+                                if ((hist[todayIso] | 0) < n) {
+                                    var delta = n - (hist[todayIso] | 0)
+                                    hist[todayIso] = n
+                                    pomodoroStatsStore.history = JSON.stringify(hist)
+                                    pomodoroStatsStore.total = (pomodoroStatsStore.total | 0) + delta
+                                }
+                                pomodoroStatsStore.lastSeenDate  = todayIso
+                                pomodoroStatsStore.lastSeenCount = n
+                            } else {
+                                _onCountChanged()
+                            }
+                        }
+                        _refresh()
+                    }
+
+                    Connections {
+                        target: pomodoroService
+                        function onCompletedCyclesTodayChanged() {
+                            pomodoroStatsCol._onCountChanged()
+                        }
+                    }
+
+                    // Periodic refresh: catches midnight rollover and keeps
+                    // the chart in sync if the user leaves the app open.
+                    Timer {
+                        id: tickTimer
+                        interval: 60 * 1000
+                        running: true
+                        repeat: true
+                        onTriggered: pomodoroStatsCol._refresh()
+                    }
+
+                    // ── Header ─────────────────────────────────────────────
+                    Text {
+                        text: "🍅 Pomodoro статистика"
+                        font.pixelSize: 16
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    // ── 3 stat tiles ───────────────────────────────────────
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+
+                        Repeater {
+                            model: [
+                                { label: "Сегодня",   value: pomodoroStatsCol._stats.today },
+                                { label: "За неделю", value: pomodoroStatsCol._stats.week },
+                                { label: "Всего",     value: pomodoroStatsCol._stats.total }
+                            ]
+                            delegate: Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 64
+                                radius: 6
+                                color: Qt.rgba(ThemeManager.accentColor.r,
+                                               ThemeManager.accentColor.g,
+                                               ThemeManager.accentColor.b,
+                                               0.10)
+                                border.color: borderColor
+                                border.width: 1
+
+                                ColumnLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 2
+
+                                    Text {
+                                        text: modelData.value
+                                        font.pixelSize: 22
+                                        font.bold: true
+                                        color: textPrimary
+                                        horizontalAlignment: Text.AlignHCenter
+                                        Layout.alignment: Qt.AlignHCenter
+                                    }
+                                    Text {
+                                        text: modelData.label
+                                        font.pixelSize: 11
+                                        color: textSecondary
+                                        horizontalAlignment: Text.AlignHCenter
+                                        Layout.alignment: Qt.AlignHCenter
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Empty state OR mini-bar chart ──────────────────────
+                    readonly property bool _isEmpty:
+                        pomodoroStatsCol._stats.today === 0 &&
+                        pomodoroStatsCol._stats.week  === 0
+
+                    Text {
+                        visible: pomodoroStatsCol._isEmpty
+                        text: "Запусти первый Pomodoro в селе"
+                        color: textSecondary
+                        font.pixelSize: 12
+                        font.italic: true
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                        Layout.topMargin: 6
+                        Layout.bottomMargin: 6
+                    }
+
+                    // 7-day mini bar chart
+                    ColumnLayout {
+                        id: chartColumn
+                        visible: !pomodoroStatsCol._isEmpty
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 4
+
+                        readonly property int _maxCount: {
+                            var m = 0
+                            var d = pomodoroStatsCol._stats.daily
+                            for (var i = 0; i < d.length; i++) {
+                                if (d[i].count > m) m = d[i].count
+                            }
+                            return Math.max(1, m)
+                        }
+
+                        // Bars
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 80
+                            spacing: 6
+
+                            Repeater {
+                                model: pomodoroStatsCol._stats.daily
+
+                                delegate: ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    spacing: 2
+
+                                    // Spacer + bar = vertical alignment to the bottom
+                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
+
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: {
+                                            var ratio = modelData.count / chartColumn._maxCount
+                                            // Always show a faint stub so empty
+                                            // bars remain visible on the surface.
+                                            return Math.max(2, Math.round(74 * ratio))
+                                        }
+                                        radius: 2
+                                        color: modelData.count > 0
+                                               ? ThemeManager.accentColor
+                                               : Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.10)
+                                        border.color: borderColor
+                                        border.width: modelData.count > 0 ? 0 : 1
+
+                                        Behavior on Layout.preferredHeight {
+                                            NumberAnimation { duration: 300; easing.type: Easing.OutQuad }
+                                        }
+
+                                        // Numeric label on top of bars with count > 0
+                                        Text {
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            anchors.bottom: parent.top
+                                            anchors.bottomMargin: 1
+                                            visible: modelData.count > 0
+                                            text: modelData.count
+                                            font.pixelSize: 9
+                                            font.bold: true
+                                            color: textPrimary
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Day labels (Пн / Вт / ...) aligned under each bar
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Repeater {
+                                model: pomodoroStatsCol._stats.daily
+
+                                delegate: Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.label
+                                    font.pixelSize: 10
+                                    color: textSecondary
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Per-Project Completion Rate Card ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: projectChartCol.implicitHeight + 32
+                color: contentColor
+                radius: 8
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: projectChartCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    // Cached chart data: [{ id, name, icon, color, total, completed, ratio }]
+                    property var _projectChartData: []
+
+                    function _rebuildProjectChart() {
+                        if (!dataStore) {
+                            _projectChartData = []
+                            return
+                        }
+                        var tasks = dataStore.allTasks()
+                        // Aggregate per-project totals & completion counts.
+                        var agg = ({}) // { projectId: { total, completed } }
+                        for (var i = 0; i < tasks.length; i++) {
+                            var t = tasks[i]
+                            if (!t || t.isDeleted) continue
+                            var pid = t.projectId
+                            if (!pid || pid === "") continue
+                            if (!agg[pid]) agg[pid] = { total: 0, completed: 0 }
+                            agg[pid].total += 1
+                            if (t.isCompleted) agg[pid].completed += 1
+                        }
+                        // Resolve project metadata and filter projects with >0 tasks.
+                        var rows = []
+                        for (var pid2 in agg) {
+                            var rec = agg[pid2]
+                            if (rec.total <= 0) continue
+                            var p = dataStore.projectById(pid2)
+                            if (!p) continue
+                            // Skip soft-deleted/archived projects defensively.
+                            if (p.isDeleted || p.isArchived) continue
+                            rows.push({
+                                id:        pid2,
+                                name:      p.name || "",
+                                icon:      p.icon || "",
+                                color:     (p.color && p.color !== "" && p.color !== "charcoal" && p.color !== "grey")
+                                           ? p.color : ThemeManager.accentColor,
+                                total:     rec.total,
+                                completed: rec.completed,
+                                ratio:     rec.total > 0 ? (rec.completed / rec.total) : 0
+                            })
+                        }
+                        // Sort by total desc, then take top 8.
+                        rows.sort(function (a, b) { return b.total - a.total })
+                        if (rows.length > 8) rows = rows.slice(0, 8)
+                        _projectChartData = rows
+                    }
+
+                    function _scheduleRebuild() {
+                        Qt.callLater(_rebuildProjectChart)
+                    }
+
+                    Component.onCompleted: _scheduleRebuild()
+
+                    Connections {
+                        target: dataStore
+                        function onTasksChanged()    { projectChartCol._scheduleRebuild() }
+                        function onProjectsChanged() { projectChartCol._scheduleRebuild() }
+                    }
+
+                    // ── Header ─────────────────────────────────────────────
+                    Text {
+                        text: "📊 Прогресс по проектам"
+                        font.pixelSize: 16
+                        font.bold: true
+                        color: textPrimary
+                    }
+                    Text {
+                        text: "Доля выполненных задач"
+                        font.pixelSize: 12
+                        color: textSecondary
+                        Layout.bottomMargin: 4
+                    }
+
+                    // ── Empty state ────────────────────────────────────────
+                    Text {
+                        visible: projectChartCol._projectChartData.length === 0
+                        text: "Нет проектов с задачами"
+                        color: textSecondary
+                        font.pixelSize: 12
+                        font.italic: true
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                        Layout.topMargin: 6
+                        Layout.bottomMargin: 6
+                    }
+
+                    // ── Per-project rows ───────────────────────────────────
+                    Repeater {
+                        model: projectChartCol._projectChartData
+
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            // Project icon emoji (or accent dot fallback)
+                            Text {
+                                text: modelData.icon && modelData.icon !== ""
+                                      ? modelData.icon : "•"
+                                font.pixelSize: 16
+                                color: modelData.icon && modelData.icon !== ""
+                                       ? textPrimary : modelData.color
+                                Layout.preferredWidth: 20
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            // Project name (elided)
+                            Text {
+                                text: modelData.name
+                                font.pixelSize: 13
+                                color: textPrimary
+                                elide: Text.ElideRight
+                                Layout.preferredWidth: 110
+                                Layout.maximumWidth: 110
+                            }
+
+                            // "N из M"
+                            Text {
+                                text: modelData.completed + " из " + modelData.total
+                                font.pixelSize: 11
+                                color: textSecondary
+                                horizontalAlignment: Text.AlignRight
+                                Layout.preferredWidth: 60
+                            }
+
+                            // Progress bar (fills 60% of remaining width)
+                            Rectangle {
+                                id: barTrack
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 9
+                                radius: 4
+                                color: Qt.rgba(ThemeManager.accentColor.r,
+                                               ThemeManager.accentColor.g,
+                                               ThemeManager.accentColor.b,
+                                               0.12)
+                                border.width: 0
+
+                                Rectangle {
+                                    id: barFill
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    radius: parent.radius
+                                    color: modelData.color
+                                    width: parent.width * Math.max(0, Math.min(1, modelData.ratio))
+
+                                    Behavior on width {
+                                        NumberAnimation { duration: 450; easing.type: Easing.OutQuad }
+                                    }
+                                }
+                            }
+
+                            // Percent text
+                            Text {
+                                text: Math.round(modelData.ratio * 100) + "%"
+                                font.pixelSize: 12
+                                font.bold: true
+                                color: textPrimary
+                                Layout.preferredWidth: 38
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Morning Briefing Card ===
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: briefingCol.implicitHeight + 32
+                color: contentColor
+                radius: 12
+
+                // Accent stripe on the leading edge
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 4
+                    radius: parent.radius
+                    color: ThemeManager.accentColor
+                }
+
+                ColumnLayout {
+                    id: briefingCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 6
+
+                    // Kick counter — incremented by Connections to force re-evaluation.
+                    property int _msgKick: 0
+                    readonly property var _msg: _briefingMessage(_msgKick)
+
+                    RowLayout {
+                        spacing: 10
+
+                        Text {
+                            text: briefingCol._msg.emoji
+                            font.pixelSize: 28
+                        }
+                        Text {
+                            text: briefingCol._msg.title
+                            font.pixelSize: 18
+                            font.bold: true
+                            color: textPrimary
+                        }
+                    }
+
+                    Text {
+                        text: briefingCol._msg.body
+                        color: textSecondary
+                        font.pixelSize: 14
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                }
+
+                // Refresh when any task data changes.
+                Connections {
+                    target: dataStore
+                    function onTasksChanged() {
+                        briefingCol._msgKick = (briefingCol._msgKick + 1) % 1000
+                    }
+                }
+            }
+
+            // === Karma Score Hero ===
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: karmaHeroCol.implicitHeight + 32
+                radius: 16
+                // ITER1 #21: use theme accent instead of hardcoded red
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: ThemeManager.accentColor }
+                    GradientStop { position: 1.0; color: Qt.darker(ThemeManager.accentColor, 1.2) }
+                }
+
+                ColumnLayout {
+                    id: karmaHeroCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 16
+                    anchors.topMargin: 16
+                    spacing: 4
+
+                    Text {
+                        text: karmaViewModel.karmaScore.toString()
+                        font.pixelSize: 48
+                        font.bold: true
+                        color: "white"
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Text {
+                        text: "Карма · " + karmaViewModel.karmaLevel
+                        font.pixelSize: 16
+                        color: Qt.rgba(1, 1, 1, 0.85)
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+
+                    // ── Milestone progress bar ──────────────────────────────
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: karmaViewModel.nextMilestone > 0
+                        spacing: 4
+                        Layout.topMargin: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Text {
+                                text: "До " + karmaViewModel.nextMilestone + " кармы:"
+                                font.pixelSize: 12
+                                color: Qt.rgba(1, 1, 1, 0.75)
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                readonly property int _remaining: karmaViewModel.nextMilestone - karmaViewModel.karmaScore
+                                text: _remaining + " " + _milestoneSuffix(_remaining)
+                                font.pixelSize: 12
+                                font.bold: true
+                                color: "white"
+                            }
+                        }
+
+                        // Progress bar track
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 6
+                            radius: 3
+                            color: Qt.rgba(0, 0, 0, 0.20)
+
+                            // Filled portion
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                radius: parent.radius
+
+                                readonly property int _prev: karmaViewModel.previousMilestone
+                                readonly property int _next: karmaViewModel.nextMilestone
+                                readonly property int _cur:  karmaViewModel.karmaScore
+
+                                width: {
+                                    if (_next <= _prev) return 0
+                                    var ratio = Math.max(0, Math.min(1, (_cur - _prev) / (_next - _prev)))
+                                    return parent.width * ratio
+                                }
+                                color: "white"
+                                opacity: 0.90
+                                Behavior on width { NumberAnimation { duration: 600; easing.type: Easing.OutQuad } }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Daily & Weekly Progress ===
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                // Daily card
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 120
+                    radius: 12
+                    color: contentColor
+                    border.color: borderColor
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 8
+
+                        Text {
+                            text: "Прогресс за день"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: textPrimary
+                        }
+
+                        Text {
+                            text: karmaViewModel.completedToday + " / " + karmaViewModel.dailyGoal
+                            font.pixelSize: 28
+                            font.bold: true
+                            color: karmaViewModel.dailyGoalMet ? "#4caf50" : textPrimary
+                        }
+
+                        // Progress bar
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 6
+                            radius: 3
+                            color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                            Rectangle {
+                                width: parent.width * Math.min(karmaViewModel.dailyProgress, 1.0)
+                                height: parent.height
+                                radius: 3
+                                color: karmaViewModel.dailyGoalMet ? "#4caf50" : "#db4c3f"
+                                Behavior on width { NumberAnimation { duration: 300 } }
+                            }
+                        }
+                    }
+                }
+
+                // Weekly card
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 120
+                    radius: 12
+                    color: contentColor
+                    border.color: borderColor
+                    border.width: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 8
+
+                        Text {
+                            text: "Прогресс за неделю"
+                            font.pixelSize: 14
+                            font.bold: true
+                            color: textPrimary
+                        }
+
+                        Text {
+                            text: karmaViewModel.completedThisWeek + " / " + karmaViewModel.weeklyGoal
+                            font.pixelSize: 28
+                            font.bold: true
+                            color: karmaViewModel.weeklyGoalMet ? "#4caf50" : textPrimary
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 6
+                            radius: 3
+                            color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                            Rectangle {
+                                width: parent.width * Math.min(karmaViewModel.weeklyProgress, 1.0)
+                                height: parent.height
+                                radius: 3
+                                color: karmaViewModel.weeklyGoalMet ? "#4caf50" : "#db4c3f"
+                                Behavior on width { NumberAnimation { duration: 300 } }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Streaks ===
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                // Daily streak
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 80
+                    radius: 12
+                    color: contentColor
+                    border.color: borderColor
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "\uD83D\uDD25"
+                            font.pixelSize: 28
+                        }
+
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: karmaViewModel.dailyStreak.toString()
+                                font.pixelSize: 24
+                                font.bold: true
+                                color: textPrimary
+                            }
+                            Text {
+                                text: "дн. подряд"
+                                font.pixelSize: 12
+                                color: textSecondary
+                            }
+                        }
+                    }
+                }
+
+                // Weekly streak
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 80
+                    radius: 12
+                    color: contentColor
+                    border.color: borderColor
+                    border.width: 1
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Text {
+                            text: "\u2B50"
+                            font.pixelSize: 28
+                        }
+
+                        ColumnLayout {
+                            spacing: 2
+                            Text {
+                                text: karmaViewModel.weeklyStreak.toString()
+                                font.pixelSize: 24
+                                font.bold: true
+                                color: textPrimary
+                            }
+                            Text {
+                                text: "нед. подряд"
+                                font.pixelSize: 12
+                                color: textSecondary
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Karma Trend Chart (Canvas) ===
+            Rectangle {
+                Layout.fillWidth: true
+                height: 220
+                radius: 12
+                color: contentColor
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "Динамика кармы (30 дней)"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    Canvas {
+                        id: trendCanvas
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        property bool darkTheme: isDarkTheme
+
+                        onDarkThemeChanged: requestPaint()
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            var w = width
+                            var h = height
+                            ctx.clearRect(0, 0, w, h)
+
+                            var data = karmaViewModel.karmaTrend
+                            if (!data || data.length === 0) return
+
+                            // Find min/max
+                            var scores = []
+                            for (var i = 0; i < data.length; i++) {
+                                scores.push(data[i].score || 0)
+                            }
+                            var minVal = Math.min.apply(null, scores)
+                            var maxVal = Math.max.apply(null, scores)
+                            if (maxVal === minVal) {
+                                minVal -= 10
+                                maxVal += 10
+                            }
+
+                            var padding = 8
+                            var chartW = w - padding * 2
+                            var chartH = h - padding * 2
+
+                            // Draw grid lines
+                            ctx.strokeStyle = darkTheme ? "#363636" : "#e0e0e0"
+                            ctx.lineWidth = 0.5
+                            for (var g = 0; g < 4; g++) {
+                                var gy = padding + (chartH / 3) * g
+                                ctx.beginPath()
+                                ctx.moveTo(padding, gy)
+                                ctx.lineTo(w - padding, gy)
+                                ctx.stroke()
+                            }
+
+                            // Draw line
+                            ctx.strokeStyle = "#db4c3f"
+                            ctx.lineWidth = 2
+                            ctx.lineJoin = "round"
+                            ctx.beginPath()
+
+                            for (var j = 0; j < data.length; j++) {
+                                var x = padding + (data.length > 1 ? (chartW / (data.length - 1)) * j : chartW / 2)
+                                var y = padding + chartH - ((scores[j] - minVal) / (maxVal - minVal)) * chartH
+                                if (j === 0) {
+                                    ctx.moveTo(x, y)
+                                } else {
+                                    ctx.lineTo(x, y)
+                                }
+                            }
+                            ctx.stroke()
+
+                            // Fill area under the line
+                            var lastX = padding + (data.length > 1 ? chartW : chartW / 2)
+                            ctx.lineTo(lastX, padding + chartH)
+                            ctx.lineTo(padding, padding + chartH)
+                            ctx.closePath()
+                            ctx.fillStyle = "rgba(219, 76, 63, 0.1)"
+                            ctx.fill()
+                        }
+
+                        Connections {
+                            target: karmaViewModel
+                            function onKarmaScoreChanged() { trendCanvas.requestPaint() }
+                        }
+                    }
+                }
+            }
+
+            // === Activity Heatmap ===
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 12
+                color: contentColor
+                border.color: borderColor
+                border.width: 1
+                implicitHeight: heatmapCol.implicitHeight + 32
+
+                ColumnLayout {
+                    id: heatmapCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: "Активность за 90 дней"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    // Day-of-week labels (Пн–Вс) aligned above the grid columns
+                    // The grid flows column-major (column = week, row = day-of-week)
+                    // so we place row labels to the left instead.
+                    Row {
+                        spacing: 0
+
+                        // Left gutter for row labels
+                        Column {
+                            spacing: 3
+                            Repeater {
+                                model: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                                delegate: Text {
+                                    width: 20
+                                    height: 14
+                                    text: modelData
+                                    font.pixelSize: 9
+                                    color: textSecondary
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+
+                        // The heatmap grid: 13 columns (weeks) × 7 rows (days Mon–Sun).
+                        // data[0] = 89 days ago, data[89] = today.
+                        // We need to figure out which column/row each index falls into,
+                        // anchoring column 12 row (todayDow-1) to today.
+                        Grid {
+                            id: heatmapGrid
+                            columns: 13
+                            rows: 7
+                            rowSpacing: 3
+                            columnSpacing: 3
+                            flow: Grid.TopToBottom   // fill each column top-to-bottom
+
+                            property var heatData: []
+                            // todayDow: 0=Mon … 6=Sun (matches our Mon-first grid rows)
+                            property int todayDow: (new Date().getDay() + 6) % 7
+
+                            // Total cells = 13 * 7 = 91.
+                            // Cell (col, row) with col in [0..12], row in [0..6].
+                            // The last column's last filled row = todayDow = today.
+                            // dataIndex for cell = 89 - ((12 - col)*7 + (todayDow - row))
+                            //                    = 89 - (12-col)*7 - todayDow + row
+
+                            Repeater {
+                                // 91 cells, column-major order (flow: TopToBottom)
+                                model: 91
+                                delegate: Rectangle {
+                                    width: 14
+                                    height: 14
+                                    radius: 2
+
+                                    // col and row within the grid (column-major)
+                                    readonly property int col: Math.floor(index / 7)
+                                    readonly property int row: index % 7
+
+                                    // Which index in heatData does this cell map to?
+                                    // Anchor: col=12, row=todayDow → dataIndex=89 (today).
+                                    readonly property int dataIndex: 89 - (12 - col) * 7 - heatmapGrid.todayDow + row
+
+                                    // Only show cells within the 90-day window.
+                                    readonly property bool inRange: dataIndex >= 0 && dataIndex < 90
+
+                                    readonly property int taskCount: (inRange && heatmapGrid.heatData.length > dataIndex)
+                                                                     ? (heatmapGrid.heatData[dataIndex].count || 0) : 0
+                                    readonly property string cellDate: (inRange && heatmapGrid.heatData.length > dataIndex)
+                                                                       ? (heatmapGrid.heatData[dataIndex].date || "") : ""
+
+                                    // Plural helper: Russian task count word
+                                    function taskWord(n) {
+                                        var mod10 = n % 10
+                                        var mod100 = n % 100
+                                        if (mod100 >= 11 && mod100 <= 14) return "задач"
+                                        if (mod10 === 1) return "задача"
+                                        if (mod10 >= 2 && mod10 <= 4) return "задачи"
+                                        return "задач"
+                                    }
+
+                                    // Format date from "YYYY-MM-DD" to "DD.MM.YYYY"
+                                    function formatDate(iso) {
+                                        if (!iso || iso.length < 10) return ""
+                                        return iso.slice(8, 10) + "." + iso.slice(5, 7) + "." + iso.slice(0, 4)
+                                    }
+
+                                    color: {
+                                        if (!inRange)
+                                            return "transparent"
+                                        var n = taskCount
+                                        if (n === 0)
+                                            return Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.07)
+                                        var a = ThemeManager.accentColor
+                                        if (n <= 2)  return Qt.rgba(a.r, a.g, a.b, 0.30)
+                                        if (n <= 5)  return Qt.rgba(a.r, a.g, a.b, 0.55)
+                                        if (n <= 9)  return Qt.rgba(a.r, a.g, a.b, 0.80)
+                                        return a
+                                    }
+
+                                    HoverHandler { id: cellHover }
+                                    ToolTip.visible: cellHover.hovered && inRange && cellDate !== ""
+                                    ToolTip.delay: 300
+                                    ToolTip.text: taskCount + " " + taskWord(taskCount) + " — " + formatDate(cellDate)
+                                }
+                            }
+
+                            Component.onCompleted: heatData = karmaViewModel.completionsByDay(90)
+
+                            Connections {
+                                target: karmaViewModel
+                                function onKarmaChanged() {
+                                    heatmapGrid.heatData = karmaViewModel.completionsByDay(90)
+                                }
+                            }
+                        }
+                    }
+
+                    // Legend
+                    RowLayout {
+                        spacing: 6
+                        Text {
+                            text: "Меньше"
+                            font.pixelSize: 10
+                            color: textSecondary
+                        }
+                        Repeater {
+                            model: [0, 1, 3, 6, 10]
+                            delegate: Rectangle {
+                                width: 14
+                                height: 14
+                                radius: 2
+                                color: {
+                                    var n = modelData
+                                    if (n === 0)
+                                        return Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.07)
+                                    var a = ThemeManager.accentColor
+                                    if (n <= 2)  return Qt.rgba(a.r, a.g, a.b, 0.30)
+                                    if (n <= 5)  return Qt.rgba(a.r, a.g, a.b, 0.55)
+                                    if (n <= 9)  return Qt.rgba(a.r, a.g, a.b, 0.80)
+                                    return a
+                                }
+                            }
+                        }
+                        Text {
+                            text: "Больше"
+                            font.pixelSize: 10
+                            color: textSecondary
+                        }
+                    }
+                }
+            }
+
+            // === Tasks by Priority Bar Chart ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: priorityChartCol.implicitHeight + 32
+                color: contentColor
+                radius: 12
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: priorityChartCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "Задачи по приоритету"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    property int _kick: 0
+
+                    property var _counts: _computeCounts()
+
+                    function _computeCounts() {
+                        void _kick   // establish reactive dependency
+                        const result = { p1: 0, p2: 0, p3: 0, p4: 0 }
+                        const all = dataStore.allTasks()
+                        for (let i = 0; i < all.length; i++) {
+                            const t = all[i]
+                            if (!t || t.isDeleted || t.isCompleted) continue
+                            const p = t.priority
+                            if (p === 1)      result.p1++
+                            else if (p === 2) result.p2++
+                            else if (p === 3) result.p3++
+                            else              result.p4++
+                        }
+                        return result
+                    }
+
+                    Connections {
+                        target: dataStore
+                        function onTasksChanged() {
+                            priorityChartCol._kick = (priorityChartCol._kick + 1) % 10000
+                            priorityChartCol._counts = priorityChartCol._computeCounts()
+                        }
+                    }
+
+                    readonly property int _maxCount: Math.max(
+                        1,
+                        priorityChartCol._counts.p1,
+                        priorityChartCol._counts.p2,
+                        priorityChartCol._counts.p3,
+                        priorityChartCol._counts.p4
+                    )
+
+                    readonly property int _totalCount:
+                        priorityChartCol._counts.p1 + priorityChartCol._counts.p2 +
+                        priorityChartCol._counts.p3 + priorityChartCol._counts.p4
+
+                    // Empty state
+                    Text {
+                        visible: priorityChartCol._totalCount === 0
+                        text: "Нет активных задач."
+                        color: textSecondary
+                        font.pixelSize: 12
+                    }
+
+                    // Bar rows
+                    Repeater {
+                        model: priorityChartCol._totalCount > 0 ? [
+                            { label: "P1 — высокий", count: priorityChartCol._counts.p1, color: "#db4c3f" },
+                            { label: "P2 — средний", count: priorityChartCol._counts.p2, color: "#f49c18" },
+                            { label: "P3 — низкий",  count: priorityChartCol._counts.p3, color: "#4073ff" },
+                            { label: "P4 — обычный", count: priorityChartCol._counts.p4, color: "#808080" }
+                        ] : []
+
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Text {
+                                text: modelData.label
+                                color: textPrimary
+                                font.pixelSize: 13
+                                Layout.preferredWidth: 110
+                            }
+
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 18
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    radius: 3
+                                    color: modelData.color
+                                    opacity: 0.85
+                                    width: parent.width * (modelData.count / priorityChartCol._maxCount)
+                                    Behavior on width {
+                                        NumberAnimation { duration: 400; easing.type: Easing.OutQuad }
+                                    }
+                                }
+
+                                Text {
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.rightMargin: 4
+                                    text: modelData.count
+                                    font.bold: true
+                                    font.pixelSize: 11
+                                    color: textPrimary
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Recently Completed Tasks ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: recentDoneCol.implicitHeight + 32
+                color: contentColor
+                radius: 12
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: recentDoneCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "Недавно завершённые"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    // Kick counter — forces _recentTasks to re-evaluate on any task change.
+                    property int _kick: 0
+                    property var _recentTasks: _computeRecent()
+
+                    function _computeRecent() {
+                        void _kick   // reactive dependency
+                        const all = (typeof dataStore.completedTasks === "function")
+                            ? dataStore.completedTasks()
+                            : dataStore.allTasks().filter(function(t) {
+                                  return t && !t.isDeleted && t.isCompleted
+                              })
+                        const arr = []
+                        for (let i = 0; i < all.length; i++) {
+                            const t = all[i]
+                            if (!t) continue
+                            arr.push({
+                                id:          t.id          || "",
+                                content:     t.content     || "",
+                                completedAt: String(t.completedAt || ""),
+                                projectId:   t.projectId   || "",
+                                priority:    t.priority    || 4
+                            })
+                        }
+                        // Sort newest-first by ISO completedAt string, then take top 10.
+                        arr.sort(function(a, b) { return b.completedAt.localeCompare(a.completedAt) })
+                        return arr.slice(0, 10)
+                    }
+
+                    // Re-compute whenever any task changes in DataStore.
+                    Connections {
+                        target: dataStore
+                        function onTasksChanged() {
+                            recentDoneCol._kick = (recentDoneCol._kick + 1) % 10000
+                            recentDoneCol._recentTasks = recentDoneCol._computeRecent()
+                        }
+                    }
+
+                    // Relative-time formatter (Russian).
+                    function _formatRelative(iso) {
+                        if (!iso) return ""
+                        const d = new Date(iso)
+                        if (isNaN(d.getTime())) return ""
+                        const diffMs = new Date() - d
+                        const min  = 60 * 1000
+                        const hour = 60 * min
+                        const day  = 24 * hour
+                        if (diffMs < min)       return "только что"
+                        if (diffMs < hour)      return Math.floor(diffMs / min)  + " мин назад"
+                        if (diffMs < day)       return Math.floor(diffMs / hour) + " ч назад"
+                        if (diffMs < 7 * day)   return Math.floor(diffMs / day)  + " дн назад"
+                        return Qt.formatDate(d, "dd.MM.yyyy")
+                    }
+
+                    // Empty state — shown when there are no completed tasks.
+                    Text {
+                        visible: !recentDoneCol._recentTasks || recentDoneCol._recentTasks.length === 0
+                        text: "Пока нет завершённых задач."
+                        color: textSecondary
+                        font.pixelSize: 12
+                        Layout.topMargin: 4
+                    }
+
+                    // One hoverable row per task.
+                    Repeater {
+                        model: recentDoneCol._recentTasks
+
+                        delegate: Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+                            radius: 4
+                            color: rowHover.containsMouse
+                                ? Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.06)
+                                : "transparent"
+
+                            MouseArea {
+                                id: rowHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: taskViewModel.openTaskById(modelData.id)
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 8
+
+                                // Checkmark icon
+                                Text {
+                                    text: "✓"
+                                    color: "#2e8b57"
+                                    font.pixelSize: 14
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+
+                                // Task content + time/project line
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignVCenter
+                                    spacing: 0
+
+                                    Text {
+                                        text: modelData.content
+                                        color: textPrimary
+                                        font.pixelSize: 13
+                                        font.strikeout: true
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        color: textSecondary
+                                        font.pixelSize: 11
+                                        text: {
+                                            const rel  = recentDoneCol._formatRelative(modelData.completedAt)
+                                            const proj = (typeof projectViewModel.projectById === "function")
+                                                ? projectViewModel.projectById(modelData.projectId)
+                                                : null
+                                            const projName = (proj && proj.name) ? " · #" + proj.name : ""
+                                            return rel + projName
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Activity Feed (last 30 events) ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: activityFeedCol.implicitHeight + 32
+                color: contentColor
+                radius: 8
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: activityFeedCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    // Header: title + subtitle
+                    Text {
+                        text: "Лента активности"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+                    Text {
+                        text: "Последние 30 событий"
+                        color: textSecondary
+                        font.pixelSize: 11
+                        Layout.bottomMargin: 4
+                    }
+
+                    // Reactive kick: bumped when DataStore signals task changes.
+                    property int _kick: 0
+                    property var _feed: rebuildFeed()
+
+                    // Russian plural helpers ──────────────────────────────────
+                    function _pluralMin(n) {
+                        var m100 = n % 100, m10 = n % 10
+                        if (m100 >= 11 && m100 <= 14) return "минут"
+                        if (m10 === 1) return "минуту"
+                        if (m10 >= 2 && m10 <= 4) return "минуты"
+                        return "минут"
+                    }
+                    function _pluralHour(n) {
+                        var m100 = n % 100, m10 = n % 10
+                        if (m100 >= 11 && m100 <= 14) return "часов"
+                        if (m10 === 1) return "час"
+                        if (m10 >= 2 && m10 <= 4) return "часа"
+                        return "часов"
+                    }
+                    function _pluralDay(n) {
+                        var m100 = n % 100, m10 = n % 10
+                        if (m100 >= 11 && m100 <= 14) return "дней"
+                        if (m10 === 1) return "день"
+                        if (m10 >= 2 && m10 <= 4) return "дня"
+                        return "дней"
+                    }
+
+                    // Relative-time formatter (Russian).
+                    function _formatRelative(date) {
+                        if (!date || isNaN(date.getTime())) return ""
+                        var diffMs = new Date() - date
+                        if (diffMs < 0) diffMs = 0
+                        var min  = 60 * 1000
+                        var hour = 60 * min
+                        var day  = 24 * hour
+                        if (diffMs < min) return "только что"
+                        if (diffMs < hour) {
+                            var n = Math.floor(diffMs / min)
+                            return n + " " + _pluralMin(n) + " назад"
+                        }
+                        if (diffMs < day) {
+                            var n2 = Math.floor(diffMs / hour)
+                            return n2 + " " + _pluralHour(n2) + " назад"
+                        }
+                        if (diffMs < 2 * day) return "вчера"
+                        if (diffMs < 7 * day) {
+                            var n3 = Math.floor(diffMs / day)
+                            return n3 + " " + _pluralDay(n3) + " назад"
+                        }
+                        return Qt.formatDate(date, "dd.MM.yyyy")
+                    }
+
+                    // Build [{kind, content, when, sortKey}] for the feed.
+                    function rebuildFeed() {
+                        void _kick   // reactive dependency
+                        var all = dataStore.allTasks()
+                        var entries = []
+                        for (var i = 0; i < all.length; i++) {
+                            var t = all[i]
+                            if (!t || t.isDeleted) continue
+
+                            var created   = t.createdAt   ? new Date(t.createdAt)   : null
+                            var updated   = t.updatedAt   ? new Date(t.updatedAt)   : null
+                            var completed = t.completedAt ? new Date(t.completedAt) : null
+
+                            // Pick the newest meaningful timestamp.
+                            var times = []
+                            if (created   && !isNaN(created.getTime()))   times.push(created.getTime())
+                            if (updated   && !isNaN(updated.getTime()))   times.push(updated.getTime())
+                            if (completed && !isNaN(completed.getTime())) times.push(completed.getTime())
+                            if (times.length === 0) continue
+                            var maxTime = Math.max.apply(null, times)
+
+                            var kind, emoji, prefix
+                            if (completed && !isNaN(completed.getTime()) && completed.getTime() === maxTime) {
+                                kind = "completed"
+                                emoji = "✅"
+                                prefix = "Выполнено: "
+                            } else if (created && updated
+                                       && !isNaN(created.getTime()) && !isNaN(updated.getTime())
+                                       && Math.abs(updated.getTime() - created.getTime()) <= 5000) {
+                                kind = "created"
+                                emoji = "➕"
+                                prefix = "Создано: "
+                            } else if (updated && !isNaN(updated.getTime())) {
+                                kind = "edited"
+                                emoji = "✏"
+                                prefix = "Изменено: "
+                            } else {
+                                kind = "created"
+                                emoji = "➕"
+                                prefix = "Создано: "
+                            }
+
+                            entries.push({
+                                kind:    kind,
+                                emoji:   emoji,
+                                prefix:  prefix,
+                                content: t.content || "",
+                                sortKey: maxTime,
+                                when:    new Date(maxTime)
+                            })
+                        }
+                        entries.sort(function(a, b) { return b.sortKey - a.sortKey })
+                        return entries.slice(0, 30)
+                    }
+
+                    Connections {
+                        target: dataStore
+                        function onTasksChanged() {
+                            activityFeedCol._kick = (activityFeedCol._kick + 1) % 10000
+                            activityFeedCol._feed = activityFeedCol.rebuildFeed()
+                        }
+                    }
+
+                    Component.onCompleted: _feed = rebuildFeed()
+
+                    // Empty state
+                    Text {
+                        visible: !activityFeedCol._feed || activityFeedCol._feed.length === 0
+                        text: "Пока нет активности"
+                        color: textSecondary
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        Layout.bottomMargin: 8
+                    }
+
+                    // Feed entries
+                    Repeater {
+                        model: activityFeedCol._feed
+
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            // Emoji prefix (32 px wide)
+                            Text {
+                                text: modelData.emoji
+                                font.pixelSize: 16
+                                Layout.preferredWidth: 32
+                                Layout.alignment: Qt.AlignVCenter
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            // Description (kind + content), elided
+                            Label {
+                                Layout.fillWidth: true
+                                text: modelData.prefix + modelData.content
+                                color: textPrimary
+                                font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+
+                            // Relative time
+                            Text {
+                                text: activityFeedCol._formatRelative(modelData.when)
+                                color: textSecondary
+                                font.pixelSize: 11
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Karma Trend by Day (30 days) ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 200
+                color: contentColor
+                radius: 12
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "Карма за 30 дней"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    Canvas {
+                        id: trendCanvas30
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 130
+
+                        property var trendData: karmaViewModel.karmaTrendByDay(30)
+
+                        onWidthChanged:      requestPaint()
+                        onHeightChanged:     requestPaint()
+                        onTrendDataChanged:  requestPaint()
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.clearRect(0, 0, width, height)
+                            var data = trendData
+                            if (!data || data.length === 0) return
+
+                            // Compute max for vertical scale
+                            var maxScore = 0
+                            for (var i = 0; i < data.length; i++)
+                                maxScore = Math.max(maxScore, data[i].score)
+                            if (maxScore === 0) maxScore = 1   // avoid /0; flat line at bottom
+
+                            var padX = 30
+                            var padY = 20
+                            var w = width  - padX * 2
+                            var h = height - padY * 2
+
+                            // Y-axis grid lines (4 levels)
+                            var accent = ThemeManager.accentColor
+                            var txtClr = ThemeManager.textColor
+                            ctx.strokeStyle = Qt.rgba(txtClr.r, txtClr.g, txtClr.b, 0.10)
+                            ctx.lineWidth = 1
+                            for (var g = 0; g <= 3; g++) {
+                                var gy = padY + h - (h * g / 3)
+                                ctx.beginPath()
+                                ctx.moveTo(padX, gy)
+                                ctx.lineTo(padX + w, gy)
+                                ctx.stroke()
+                            }
+
+                            // Draw line
+                            ctx.strokeStyle = accent
+                            ctx.lineWidth = 2
+                            ctx.lineJoin = "round"
+                            ctx.beginPath()
+                            for (var j = 0; j < data.length; j++) {
+                                var x = padX + (data.length === 1 ? w / 2 : w * j / (data.length - 1))
+                                var y = padY + h - (h * data[j].score / maxScore)
+                                if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                            }
+                            ctx.stroke()
+
+                            // Fill area below line (subtle)
+                            var lastX = padX + (data.length === 1 ? w / 2 : w)
+                            ctx.lineTo(lastX, padY + h)
+                            ctx.lineTo(padX,  padY + h)
+                            ctx.closePath()
+                            ctx.fillStyle = Qt.rgba(accent.r, accent.g, accent.b, 0.18)
+                            ctx.fill()
+
+                            // Y-axis labels: max at top, 0 at bottom
+                            var sec = ThemeManager.secondaryTextColor
+                            ctx.fillStyle = Qt.rgba(sec.r, sec.g, sec.b, 1.0)
+                            ctx.font = "11px sans-serif"
+                            ctx.textAlign = "right"
+                            ctx.fillText(maxScore.toString(), padX - 4, padY + 4)
+                            ctx.fillText("0",                padX - 4, padY + h)
+
+                            // X-axis labels: first / middle / last date  (MM-DD)
+                            ctx.textAlign = "center"
+                            if (data.length > 0) {
+                                var firstDate = data[0].date.substring(5)
+                                var lastDate  = data[data.length - 1].date.substring(5)
+                                ctx.fillText(firstDate, padX,         padY + h + 14)
+                                ctx.fillText(lastDate,  padX + w,     padY + h + 14)
+                                if (data.length > 2) {
+                                    var midIdx  = Math.floor(data.length / 2)
+                                    var midDate = data[midIdx].date.substring(5)
+                                    ctx.fillText(midDate, padX + w / 2, padY + h + 14)
+                                }
+                            }
+                        }
+
+                        Connections {
+                            target: karmaViewModel
+                            function onKarmaChanged() {
+                                trendCanvas30.trendData = karmaViewModel.karmaTrendByDay(30)
+                            }
+                        }
+                    }
+
+                    // Total karma earned in the last 30 days
+                    Text {
+                        color: textSecondary
+                        font.pixelSize: 12
+                        text: {
+                            if (!trendCanvas30.trendData) return ""
+                            var sum = 0
+                            for (var i = 0; i < trendCanvas30.trendData.length; i++)
+                                sum += trendCanvas30.trendData[i].score
+                            var word = (sum === 1) ? "очко"
+                                     : (sum % 100 >= 11 && sum % 100 <= 14) ? "очков"
+                                     : (sum % 10 >= 2 && sum % 10 <= 4) ? "очка"
+                                     : "очков"
+                            return "За 30 дней: +" + sum + " " + word
+                        }
+                    }
+                }
+            }
+
+            // === Tag Cloud ===
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: tagCloudCol.implicitHeight + 32
+                color: contentColor
+                radius: 12
+                border.color: borderColor
+                border.width: 1
+
+                ColumnLayout {
+                    id: tagCloudCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 8
+
+                    Text {
+                        text: "Облако меток"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    // Reactive kick counter — incremented on any relevant dataStore signal
+                    // so that _tagData re-evaluates without a two-way binding fight.
+                    property int _kick: 0
+
+                    property var _tagData: _computeTagData()
+
+                    // Build [{name, count}] sorted descending by count.
+                    function _computeTagData() {
+                        void _kick   // establish reactive dependency
+                        const counts = {}
+                        const all = dataStore.allTasks()
+                        for (let i = 0; i < all.length; i++) {
+                            const t = all[i]
+                            if (!t || t.isDeleted) continue
+                            const labels = t.labels || []
+                            for (let j = 0; j < labels.length; j++) {
+                                counts[labels[j]] = (counts[labels[j]] || 0) + 1
+                            }
+                        }
+                        const result = []
+                        for (const name in counts) {
+                            result.push({ name: name, count: counts[name] })
+                        }
+                        result.sort(function(a, b) { return b.count - a.count })
+                        return result
+                    }
+
+                    // Refresh when tasks or labels change in DataStore.
+                    Connections {
+                        target: dataStore
+                        function onTasksChanged() {
+                            tagCloudCol._kick = (tagCloudCol._kick + 1) % 10000
+                            tagCloudCol._tagData = tagCloudCol._computeTagData()
+                        }
+                        function onLabelsChanged() {
+                            tagCloudCol._kick = (tagCloudCol._kick + 1) % 10000
+                            tagCloudCol._tagData = tagCloudCol._computeTagData()
+                        }
+                    }
+
+                    // Font size: log scale mapped to [11 .. 22] px.
+                    // count=1/maxCount=1 → 14 px (flat guard).
+                    // count=maxCount     → 22 px.
+                    // count=1            → 11 px (minimum).
+                    function _fontSize(count, maxCount) {
+                        if (maxCount <= 1) return 14
+                        const ratio = Math.log(1 + count) / Math.log(1 + maxCount)
+                        return 11 + Math.round(ratio * 11)
+                    }
+
+                    // Empty state
+                    Text {
+                        visible: !tagCloudCol._tagData || tagCloudCol._tagData.length === 0
+                        text: "Метки не используются. Добавьте @метку к задаче, чтобы она появилась здесь."
+                        color: textSecondary
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    // Chip flow — visible only when there is at least one labelled task.
+                    Flow {
+                        visible: tagCloudCol._tagData && tagCloudCol._tagData.length > 0
+                        spacing: 6
+                        Layout.fillWidth: true
+
+                        // tags are sorted descending, so [0].count is the maximum.
+                        readonly property int _maxCount: (tagCloudCol._tagData && tagCloudCol._tagData.length > 0)
+                                                         ? tagCloudCol._tagData[0].count : 0
+
+                        Repeater {
+                            model: tagCloudCol._tagData
+
+                            delegate: Rectangle {
+                                id: tagChip
+                                height: chipLabel.implicitHeight + 8
+                                width:  chipLabel.implicitWidth  + 16
+                                radius: height / 2
+
+                                // Background opacity scales linearly with relative count:
+                                // least-used → 10 % alpha, most-used → 30 % alpha.
+                                color: Qt.rgba(
+                                    ThemeManager.accentColor.r,
+                                    ThemeManager.accentColor.g,
+                                    ThemeManager.accentColor.b,
+                                    0.10 + 0.20 * (modelData.count / Math.max(parent._maxCount, 1))
+                                )
+
+                                Text {
+                                    id: chipLabel
+                                    anchors.centerIn: parent
+                                    text: "@" + modelData.name + " (" + modelData.count + ")"
+                                    font.pixelSize: tagCloudCol._fontSize(modelData.count, parent._maxCount)
+                                    color: textPrimary
+                                }
+
+                                HoverHandler {
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        taskViewModel.filterMode = TaskViewModel.Label
+                                        taskViewModel.currentFilter = modelData.name
+                                    }
+                                }
+
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // === Goals ===
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 12
+                color: contentColor
+                border.color: borderColor
+                border.width: 1
+                implicitHeight: goalsCol.implicitHeight + 32
+
+                ColumnLayout {
+                    id: goalsCol
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: "Цели"
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: textPrimary
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "Дневная цель"
+                            font.pixelSize: 14
+                            color: textPrimary
+                            Layout.fillWidth: true
+                        }
+                        // B-6.67 — one-way bind via Component.onCompleted + onValueModified
+                        // to avoid the two-way binding fight while the user is typing.
+                        SpinBox {
+                            id: dailyGoalSpin
+                            from: 1
+                            to: 50
+                            // F-6.96 — KeyNavigation chain: Tab moves to weeklyGoalSpin
+                            KeyNavigation.tab: weeklyGoalSpin
+                            Component.onCompleted: value = settingsViewModel.dailyGoal
+                            onValueModified: settingsViewModel.updateSetting("dailyGoal", value)
+                            Connections {
+                                target: settingsViewModel
+                                function onDailyGoalChanged() {
+                                    if (dailyGoalSpin.value !== settingsViewModel.dailyGoal)
+                                        dailyGoalSpin.value = settingsViewModel.dailyGoal
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "Недельная цель"
+                            font.pixelSize: 14
+                            color: textPrimary
+                            Layout.fillWidth: true
+                        }
+                        // B-6.67 — same pattern as dailyGoalSpin
+                        SpinBox {
+                            id: weeklyGoalSpin
+                            from: 1
+                            to: 200
+                            // F-6.96 — KeyNavigation chain: Tab wraps back to dailyGoalSpin
+                            KeyNavigation.tab: dailyGoalSpin
+                            Component.onCompleted: value = settingsViewModel.weeklyGoal
+                            onValueModified: settingsViewModel.updateSetting("weeklyGoal", value)
+                            Connections {
+                                target: settingsViewModel
+                                function onWeeklyGoalChanged() {
+                                    if (weeklyGoalSpin.value !== settingsViewModel.weeklyGoal)
+                                        weeklyGoalSpin.value = settingsViewModel.weeklyGoal
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Item { Layout.preferredHeight: 40 }
+        }
+    }
+}

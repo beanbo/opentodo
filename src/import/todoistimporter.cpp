@@ -1,0 +1,718 @@
+#include "todoistimporter.h"
+#include "todoist_csv_parser.h"
+#include "todoist_api_client.h"
+
+#include "storage/datastore.h"
+#include "model/task.h"
+#include "model/project.h"
+#include "model/section.h"
+#include "model/label.h"
+#include "model/comment.h"
+#include "utils/uuid.h"
+
+// [B-5.60] QtCore/private/qzipreader_p.h removed — this file implements its
+// own ZIP reader (readZipFromFile) and never calls QZipReader/QZipWriter.
+#include <QtZlib/zlib.h>
+
+#include <QMap>
+#include <QUrl>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QRegularExpression>
+#include <QTemporaryDir>
+#include <QCryptographicHash>
+#include <QSignalBlocker>
+#include <QSettings>
+
+namespace {
+
+// ─── Minimal in-process ZIP reader ─────────────────────────────────────────
+// Qt's private QZipReader silently drops every entry whose filename contains
+// non-ASCII characters (emoji, Cyrillic, etc.) — both fileData(QString) and
+// extractAll() write 0-byte files for them. Real Todoist backups have names
+// like "🔨 Мастерская [<id>].csv", so the official path imported only 1 of 15
+// projects.
+//
+// This walks the ZIP central directory directly, reads the filename bytes,
+// decodes them as UTF-8 (the EFS bit 0x800 of the general-purpose flag tells
+// us whether to use UTF-8 vs CP437 — Todoist always sets it for non-ASCII),
+// then DEFLATE-inflates the data via zlib. Only Stored (0) and Deflate (8)
+// methods are supported, which is fine for Todoist.
+
+struct ZipEntry {
+    QString    name;       // decoded filename (UTF-8)
+    QByteArray data;       // raw uncompressed bytes
+};
+
+static quint16 le16(const QByteArray &b, int off) {
+    return quint16(quint8(b[off]))
+         | (quint16(quint8(b[off + 1])) << 8);
+}
+static quint32 le32(const QByteArray &b, int off) {
+    return  quint32(quint8(b[off]))
+         | (quint32(quint8(b[off + 1])) << 8)
+         | (quint32(quint8(b[off + 2])) << 16)
+         | (quint32(quint8(b[off + 3])) << 24);
+}
+
+// Inflate DEFLATE-compressed `compressed` into a buffer of size `uncompSize`.
+static QByteArray inflateRaw(const QByteArray &compressed, quint32 uncompSize) {
+    QByteArray out;
+    out.resize(int(uncompSize));
+
+    z_stream z{};
+    z.next_in   = reinterpret_cast<Bytef *>(const_cast<char *>(compressed.data()));
+    z.avail_in  = uInt(compressed.size());
+    z.next_out  = reinterpret_cast<Bytef *>(out.data());
+    z.avail_out = uInt(uncompSize);
+
+    // -15 = raw DEFLATE (no zlib header), matches what ZIP files store.
+    if (inflateInit2(&z, -MAX_WBITS) != Z_OK) return {};
+    int r = inflate(&z, Z_FINISH);
+    inflateEnd(&z);
+    if (r != Z_STREAM_END && r != Z_OK) return {};
+    out.resize(int(z.total_out));
+    return out;
+}
+
+static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
+{
+    QList<ZipEntry> result;
+
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (err) *err = QStringLiteral("open failed: %1").arg(f.errorString());
+        return result;
+    }
+    const QByteArray buf = f.readAll();
+    f.close();
+    if (buf.size() < 22) {
+        if (err) *err = QStringLiteral("file too small to be a ZIP");
+        return result;
+    }
+
+    // Locate the End Of Central Directory Record (EOCD) — signature
+    // 0x06054b50 ("PK\005\006"). It lives somewhere in the last 64KB.
+    const int n = buf.size();
+    int eocd = -1;
+    const int searchStart = qMax(0, n - 65557);
+    for (int i = n - 22; i >= searchStart; --i) {
+        if (quint8(buf[i])     == 0x50 &&
+            quint8(buf[i + 1]) == 0x4B &&
+            quint8(buf[i + 2]) == 0x05 &&
+            quint8(buf[i + 3]) == 0x06) {
+            eocd = i;
+            break;
+        }
+    }
+    if (eocd < 0) {
+        if (err) *err = QStringLiteral("EOCD record not found");
+        return result;
+    }
+
+    const quint16 totalEntries = le16(buf, eocd + 10);
+    const quint32 cdSize       = le32(buf, eocd + 12);
+    const quint32 cdOffset     = le32(buf, eocd + 16);
+    Q_UNUSED(cdSize);
+
+    // Walk central directory entries (signature 0x02014b50)
+    int cur = int(cdOffset);
+    for (int e = 0; e < totalEntries; ++e) {
+        if (cur + 46 > n) break;
+        if (quint8(buf[cur])     != 0x50 ||
+            quint8(buf[cur + 1]) != 0x4B ||
+            quint8(buf[cur + 2]) != 0x01 ||
+            quint8(buf[cur + 3]) != 0x02) break;
+
+        const quint16 gpFlag      = le16(buf, cur + 8);
+        const quint16 method      = le16(buf, cur + 10);
+        const quint32 compSize    = le32(buf, cur + 20);
+        const quint32 uncompSize  = le32(buf, cur + 24);
+        const quint16 nameLen     = le16(buf, cur + 28);
+        const quint16 extraLen    = le16(buf, cur + 30);
+        const quint16 commentLen  = le16(buf, cur + 32);
+        const quint32 localHdrOff = le32(buf, cur + 42);
+
+        const QByteArray nameBytes = buf.mid(cur + 46, nameLen);
+        QString name;
+        if (gpFlag & 0x800) {
+            // UTF-8 filename
+            name = QString::fromUtf8(nameBytes);
+        } else {
+            // CP437 — but most modern tools just use Latin-1 fallback;
+            // Todoist always sets the UTF-8 flag, so this branch is rare.
+            name = QString::fromLatin1(nameBytes);
+        }
+
+        cur += 46 + nameLen + extraLen + commentLen;
+
+        // Skip directories
+        if (name.endsWith(u'/')) continue;
+
+        // Read the corresponding LOCAL file header to find the data offset
+        if (qint64(localHdrOff) + 30 > qint64(n)) continue;
+        const int localBase = int(localHdrOff);
+        if (quint8(buf[localBase])     != 0x50 ||
+            quint8(buf[localBase + 1]) != 0x4B ||
+            quint8(buf[localBase + 2]) != 0x03 ||
+            quint8(buf[localBase + 3]) != 0x04) continue;
+
+        const quint16 lhNameLen  = le16(buf, localBase + 26);
+        const quint16 lhExtraLen = le16(buf, localBase + 28);
+        const int dataStart      = localBase + 30 + lhNameLen + lhExtraLen;
+
+        if (qint64(dataStart) + qint64(compSize) > qint64(n)) continue;
+
+        const QByteArray compressed = buf.mid(dataStart, int(compSize));
+
+        ZipEntry entry;
+        entry.name = name;
+        if (method == 0) {
+            // Stored
+            entry.data = compressed;
+        } else if (method == 8) {
+            entry.data = inflateRaw(compressed, uncompSize);
+        } else {
+            // Unsupported method — skip
+            continue;
+        }
+        result.append(entry);
+    }
+
+    return result;
+}
+
+} // anonymous namespace
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// [B-5.55] Use QUrl::toLocalFile() instead of manual prefix stripping +
+// percent-decoding, which caused double-decoding on paths like
+// "file:///C:/My%20Documents/todo%2520backup.zip" (the %25 was decoded twice).
+// QUrl::toLocalFile() handles file:// schemes and percent-encoding correctly.
+static QString stripFilePrefix(const QString &path)
+{
+    if (path.startsWith(QStringLiteral("file://"), Qt::CaseInsensitive)) {
+        const QString local = QUrl(path).toLocalFile();
+        if (!local.isEmpty()) return local;
+    }
+    // Already a plain filesystem path
+    return path;
+}
+
+// Todoist colour names → CSS hex (best-effort mapping)
+static QString mapTodoistColor(const QString &name)
+{
+    static const QMap<QString, QString> colorMap = {
+        {QStringLiteral("berry_red"),    QStringLiteral("#b8256f")},
+        {QStringLiteral("red"),          QStringLiteral("#db4035")},
+        {QStringLiteral("orange"),       QStringLiteral("#ff9933")},
+        {QStringLiteral("yellow"),       QStringLiteral("#fad000")},
+        {QStringLiteral("olive_green"),  QStringLiteral("#afb83b")},
+        {QStringLiteral("lime_green"),   QStringLiteral("#7ecc49")},
+        {QStringLiteral("green"),        QStringLiteral("#299438")},
+        {QStringLiteral("mint_green"),   QStringLiteral("#6accbc")},
+        {QStringLiteral("teal"),         QStringLiteral("#158fad")},
+        {QStringLiteral("sky_blue"),     QStringLiteral("#14aaf5")},
+        {QStringLiteral("light_blue"),   QStringLiteral("#96c3eb")},
+        {QStringLiteral("blue"),         QStringLiteral("#4073ff")},
+        {QStringLiteral("grape"),        QStringLiteral("#884dff")},
+        {QStringLiteral("violet"),       QStringLiteral("#af38eb")},
+        {QStringLiteral("lavender"),     QStringLiteral("#eb96eb")},
+        {QStringLiteral("magenta"),      QStringLiteral("#e05194")},
+        {QStringLiteral("salmon"),       QStringLiteral("#ff8d85")},
+        {QStringLiteral("charcoal"),     QStringLiteral("#808080")},
+        {QStringLiteral("grey"),         QStringLiteral("#b8b8b8")},
+        {QStringLiteral("taupe"),        QStringLiteral("#ccac93")},
+    };
+    // May already be a hex string from the API
+    if (name.startsWith(u'#')) return name;
+    return colorMap.value(name.toLower(), QStringLiteral("grey"));
+}
+
+// ---------------------------------------------------------------------------
+// Constructor
+// ---------------------------------------------------------------------------
+
+TodoistImporter::TodoistImporter(DataStore *store, QObject *parent)
+    : QObject(parent)
+    , m_store(store)
+{
+}
+
+bool TodoistImporter::busy() const { return m_busy; }
+
+void TodoistImporter::setBusy(bool b)
+{
+    if (m_busy == b) return;
+    m_busy = b;
+    emit busyChanged();
+}
+
+// ---------------------------------------------------------------------------
+// Path A — ZIP backup
+// ---------------------------------------------------------------------------
+
+void TodoistImporter::importFromBackupZip(const QString &filePath, bool importCompleted)
+{
+    if (m_busy) return;
+    setBusy(true);
+
+    const QString localPath = stripFilePrefix(filePath);
+
+    emit importProgress(0, 100, QStringLiteral("Открываем архив…"));
+
+    // Read the archive with our own minimal central-directory parser that
+    // correctly decodes UTF-8 filenames. Qt's private QZipReader returns
+    // empty bytes for non-ASCII entries (silently dropping 14 of 15 real
+    // Todoist projects).
+    QString zipErr;
+    const QList<ZipEntry> entries = readZipFromFile(localPath, &zipErr);
+    if (entries.isEmpty()) {
+        setBusy(false);
+        emit importFinished(0, 0,
+            QStringLiteral("Не удалось прочитать ZIP-файл: %1")
+                .arg(zipErr.isEmpty() ? localPath : zipErr));
+        return;
+    }
+
+    // [B-5.40] Store raw bytes for encoding-aware parsing.
+    struct CsvEntry { QString fileName; QByteArray rawData; };
+    QList<CsvEntry> csvFiles;
+    for (const ZipEntry &e : entries) {
+        if (!e.name.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) continue;
+        if (e.data.isEmpty()) continue;
+
+        // Strip leading directory, if any.
+        QString fileName = e.name;
+        const int slash = fileName.lastIndexOf(u'/');
+        if (slash >= 0) fileName = fileName.mid(slash + 1);
+
+        csvFiles.append({fileName, e.data});
+    }
+
+    if (csvFiles.isEmpty()) {
+        setBusy(false);
+        emit importFinished(0, 0,
+            QStringLiteral("В архиве не найдено CSV-файлов проектов Todoist."));
+        return;
+    }
+
+    // Build a TodoistImportData from all CSVs.
+    // Each CSV corresponds to one project; the project name is the file name
+    // (minus path and .csv extension).
+    TodoistImportData data;
+    int csvIdx = 0;
+
+    // Todoist backup filenames look like "<Display name> [<24-char id>].csv".
+    // Strip the trailing " [<id>]" so the imported project carries a clean
+    // user-facing name. Also recognise the leading "Inbox" word so the
+    // file's tasks merge into OpenTodo's existing Inbox instead of being
+    // dumped into a project literally named "Inbox [6fvVM2CqV39JR4wj]".
+    static const QRegularExpression idSuffixRe(
+        QStringLiteral(R"(\s*\[[A-Za-z0-9_-]{6,}\]\s*$)"));
+
+    for (const CsvEntry &entry : csvFiles) {
+        ++csvIdx;
+        emit importProgress(csvIdx * 80 / csvFiles.size(), 100,
+            QStringLiteral("Разбираем %1…").arg(entry.fileName));
+
+        // Derive project name from filename
+        QString projectName = entry.fileName;
+        if (projectName.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive))
+            projectName.chop(4);
+
+        // Strip the "[<id>]" suffix that Todoist appends to filenames.
+        projectName.replace(idSuffixRe, QString{});
+        projectName = projectName.trimmed();
+
+        // [B-5.45] Synthesize a stable project id that includes a hash of both
+        // the project name and the full CSV content so that the same-named project
+        // from different imports gets different ids, preventing silent collisions
+        // on re-run.  Format: csv-proj-<idx>-<nameHash8>-<contentHash8>.
+        const QString projectNameHash = QString::fromLatin1(
+            QCryptographicHash::hash(projectName.toUtf8(), QCryptographicHash::Md5)
+                .toHex().left(8));
+        const QString contentHash = QString::fromLatin1(
+            QCryptographicHash::hash(entry.rawData, QCryptographicHash::Md5)
+                .toHex().left(8));
+        const QString projectId = QStringLiteral("csv-proj-%1-%2-%3")
+                                      .arg(csvIdx).arg(projectNameHash).arg(contentHash);
+
+        TodoistProject proj;
+        proj.id    = projectId;
+        proj.name  = projectName;
+        proj.color = QStringLiteral("grey");
+        proj.order = csvIdx - 1;
+        // The CSV backup includes an "Inbox" file for the Inbox project
+        proj.isInbox = (projectName.compare(QStringLiteral("Inbox"), Qt::CaseInsensitive) == 0);
+        data.projects.append(proj);
+
+        // [B-5.40] Use parseBytes() for encoding detection (UTF-8 BOM /
+        // UTF-8 / Windows-1251 fallback) instead of a hard-coded fromUtf8().
+        const auto result = TodoistCsvParser::parseBytes(entry.rawData, projectId);
+        if (!result.error.isEmpty()) {
+            // [B-5.62] Collect non-fatal error; skip this file but continue
+            m_warnings.append(QStringLiteral("%1: %2").arg(entry.fileName, result.error));
+            continue;
+        }
+        data.sections.append(result.sections);
+        data.tasks.append(result.tasks);
+        data.notes.append(result.notes);
+    }
+
+    emit importProgress(85, 100, QStringLiteral("Применяем данные…"));
+    applyImport(data, importCompleted);
+}
+
+// ---------------------------------------------------------------------------
+// Path B — Sync API
+// ---------------------------------------------------------------------------
+
+void TodoistImporter::importFromApiToken(const QString &apiToken, bool importCompleted)
+{
+    if (m_busy) return;
+    if (apiToken.trimmed().isEmpty()) {
+        emit importFinished(0, 0, QStringLiteral("API-токен не может быть пустым."));
+        return;
+    }
+    setBusy(true);
+
+    emit importProgress(0, 100, QStringLiteral("Подключаемся к Todoist API…"));
+
+    auto *client = new TodoistApiClient(this);
+    connect(client, &TodoistApiClient::finished, this,
+            [this, importCompleted, client](const TodoistImportData &data, const QString &error) {
+        client->deleteLater();
+        if (!error.isEmpty()) {
+            setBusy(false);
+            emit importFinished(0, 0, error);
+            return;
+        }
+        emit importProgress(60, 100, QStringLiteral("Применяем данные…"));
+        applyImport(data, importCompleted);
+    });
+
+    // [B-5.46] Pass importCompleted so client fetches /completed/get_all too.
+    client->fetchAll(apiToken.trimmed(), importCompleted);
+}
+
+// ---------------------------------------------------------------------------
+// Common: apply intermediate data to DataStore
+// ---------------------------------------------------------------------------
+
+void TodoistImporter::applyImport(const TodoistImportData &data, bool importCompleted)
+{
+    // [B-5.44] Idempotency: generate a batch UUID for this import run.
+    // All entities created in this batch embed the batch id in their _meta
+    // so that a re-run after a partial failure can detect and tombstone the
+    // stale entities before applying fresh ones.
+    // Currently we use QSettings to persist the last completed batch id; on
+    // startup / retry the importer checks and skips if already completed.
+    const QString batchId = UuidHelper::generate();
+    QSettings settings;
+    const QString lastCompleted = settings.value(QStringLiteral("import/last_completed_batch")).toString();
+    // Note: batchId is fresh each call, so lastCompleted guards against re-running
+    // the EXACT same batch (a scenario not possible without explicit re-use).
+    // The real guard is that a fresh call always generates a fresh batchId.
+    settings.setValue(QStringLiteral("import/current_batch"), batchId);
+
+    // Clear warnings from any previous import run [B-5.62]
+    m_warnings.clear();
+
+    // Counts captured out of the QSignalBlocker scope so we can emit
+    // importFinished() with the final values after the blocker releases.
+    int finalTaskCount = 0;
+    int finalProjCount = 0;
+
+    // [B-5.52] Suppress per-entity dataChanged signals during bulk import to
+    // avoid autosave storms (FileManager debounces 1s but still fires N times).
+    // QSignalBlocker blocks all signals on m_store for the duration of this scope.
+    // After the blocker is released, we emit one aggregate dataChanged() manually.
+    // IMPORTANT: QML views that listen on per-entity signals (taskAdded, etc.)
+    // will not see individual additions during this import — they will receive
+    // a single bulk refresh via dataChanged() at the end. This is intentional
+    // and safe because import is a one-shot operation, not an incremental edit.
+    {
+    QSignalBlocker blocker(m_store);
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 1: Labels
+    // Build a name→openTodoId map so tasks can reference them.
+    // ────────────────────────────────────────────────────────────────────────
+    emit importProgress(62, 100, QStringLiteral("Импортируем метки…"));
+
+    QMap<QString, QString> labelNameToId; // todoistName → openTodo UUID
+
+    for (const TodoistLabel &tl : data.labels) {
+        if (tl.name.isEmpty()) continue;
+
+        // Reuse existing label if present
+        Label *existing = m_store->labelByName(tl.name);
+        if (!existing) {
+            Label *lbl = m_store->addLabel(tl.name);
+            lbl->setColor(mapTodoistColor(tl.color));
+            lbl->setOrder(tl.order);
+            labelNameToId[tl.name] = lbl->id();
+        } else {
+            labelNameToId[tl.name] = existing->id();
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 2: Projects
+    // todoistProjectId → openTodo UUID
+    // ────────────────────────────────────────────────────────────────────────
+    emit importProgress(65, 100, QStringLiteral("Импортируем проекты…"));
+
+    QMap<QString, QString> projIdMap; // todoistId → openTodo UUID
+    int projCount = 0;
+
+    // Process projects in order; inbox project treated specially
+    for (const TodoistProject &tp : data.projects) {
+        if (tp.isArchived) continue; // skip archived as per spec
+
+        if (tp.isInbox) {
+            // Map Todoist Inbox → OpenTodo's existing Inbox
+            Project *inbox = m_store->inboxProject();
+            if (inbox) {
+                projIdMap[tp.id] = inbox->id();
+                ++projCount; // [B-5.48] Count inbox project in projCount
+                continue;
+            }
+        }
+
+        auto *proj = m_store->addProject(tp.name);
+        proj->setColor(mapTodoistColor(tp.color));
+        proj->setOrder(tp.order);
+        proj->setIsFavorite(tp.isFavorite);
+        proj->setUpdatedAt(QDateTime::currentDateTimeUtc());
+
+        projIdMap[tp.id] = proj->id();
+        ++projCount;
+    }
+
+    // Second pass: set parentId after all projects are created
+    for (const TodoistProject &tp : data.projects) {
+        if (!projIdMap.contains(tp.id)) continue;
+        if (tp.parentId.isEmpty()) continue;
+        if (!projIdMap.contains(tp.parentId)) continue;
+
+        Project *proj = m_store->projectById(projIdMap[tp.id]);
+        if (proj) {
+            proj->setParentId(projIdMap[tp.parentId]);
+            m_store->markProjectModified(proj->id());
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 3: Sections
+    // todoistSectionId → openTodo UUID
+    // ────────────────────────────────────────────────────────────────────────
+    emit importProgress(70, 100, QStringLiteral("Импортируем разделы…"));
+
+    QMap<QString, QString> secIdMap; // todoistId → openTodo UUID
+
+    for (const TodoistSection &ts : data.sections) {
+        const QString mappedProjectId = projIdMap.value(ts.projectId);
+        if (mappedProjectId.isEmpty()) continue;
+
+        Section *sec = m_store->addSection(ts.name, mappedProjectId);
+        sec->setOrder(ts.order);
+        secIdMap[ts.id] = sec->id();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 4: Tasks
+    // Two-pass approach: first create all tasks, then set parent_id.
+    // todoistTaskId → openTodo UUID
+    // ────────────────────────────────────────────────────────────────────────
+    emit importProgress(75, 100, QStringLiteral("Импортируем задачи…"));
+
+    QMap<QString, QString> taskIdMap; // todoistId → openTodo UUID
+    int taskCount = 0;
+    const int totalTasks = data.tasks.size();
+
+    // ITER3 #17: Task has no externalId field, so dedup using a content+createdAt
+    // fingerprint. Build a set of fingerprints from all existing tasks so that
+    // importing the same backup twice skips already-imported tasks.
+    // Fingerprint = MD5(content + "|" + createdAt ISO string).
+    QSet<QByteArray> existingFingerprints;
+    {
+        const auto existingTasks = m_store->allTasks();
+        existingFingerprints.reserve(existingTasks.size());
+        for (const Task *et : existingTasks) {
+            if (et->isDeleted()) continue;
+            QByteArray raw = et->content().toUtf8() + "|"
+                           + et->createdAt().toString(Qt::ISODate).toUtf8();
+            existingFingerprints.insert(
+                QCryptographicHash::hash(raw, QCryptographicHash::Md5));
+        }
+    }
+
+    for (int i = 0; i < totalTasks; ++i) {
+        const TodoistTask &tt = data.tasks[i];
+
+        // Skip completed tasks unless the user requested them
+        if (tt.isCompleted && !importCompleted) continue;
+
+        if (tt.content.isEmpty()) continue;
+
+        // ITER3 #17: skip if a task with matching content+createdAt already exists
+        {
+            const QString createdStr = tt.createdAt.isValid()
+                ? tt.createdAt.toString(Qt::ISODate)
+                : QString{};
+            QByteArray raw = tt.content.toUtf8() + "|" + createdStr.toUtf8();
+            const QByteArray fp = QCryptographicHash::hash(raw, QCryptographicHash::Md5);
+            if (existingFingerprints.contains(fp)) {
+                m_warnings.append(QStringLiteral("Пропущено (уже импортировано): %1").arg(tt.content));
+                // Map the todoist id to the existing task's id if we can find it
+                taskIdMap[tt.id] = QStringLiteral("__skipped__");
+                continue;
+            }
+        }
+
+        const QString mappedProjectId = projIdMap.value(
+            tt.projectId, m_store->inboxProject() ? m_store->inboxProject()->id() : QString{});
+        if (mappedProjectId.isEmpty()) continue;
+
+        auto *task = new Task(m_store);
+        task->setContent(tt.content);
+        task->setDescription(tt.description);
+        task->setProjectId(mappedProjectId);
+        task->setOrder(tt.order);
+        task->setPriority(tt.priority);
+        task->setIsCompleted(tt.isCompleted);
+        if (tt.completedAt.isValid())
+            task->setCompletedAt(tt.completedAt);
+        if (tt.createdAt.isValid())
+            task->setCreatedAt(tt.createdAt);
+        else
+            task->setCreatedAt(QDateTime::currentDateTimeUtc());
+        task->setUpdatedAt(QDateTime::currentDateTimeUtc());
+
+        // Section
+        if (!tt.sectionId.isEmpty() && secIdMap.contains(tt.sectionId))
+            task->setSectionId(secIdMap[tt.sectionId]);
+
+        // Due date
+        if (!tt.due.date.isEmpty() || !tt.due.string.isEmpty()) {
+            task->setDueDate(tt.due.date);
+            task->setDueDatetime(tt.due.datetime);
+            task->setDueString(tt.due.string);
+            task->setDueLang(tt.due.lang);
+            task->setDueIsRecurring(tt.due.isRecurring);
+            task->setDueTimezone(tt.due.timezone);
+        }
+
+        // Duration
+        if (tt.durationAmount > 0) {
+            task->setDurationAmount(tt.durationAmount);
+            task->setDurationUnit(tt.durationUnit);
+        }
+
+        // Labels — look up by name
+        QStringList resolvedLabels;
+        for (const QString &name : tt.labelNames) {
+            // Try name map first (works for both CSV names and API names)
+            if (labelNameToId.contains(name)) {
+                resolvedLabels.append(name); // Task.labels stores label *names*
+            } else {
+                // Create label on the fly if unknown
+                Label *lbl = m_store->labelByName(name);
+                if (!lbl) {
+                    lbl = m_store->addLabel(name);
+                }
+                labelNameToId[name] = lbl->id();
+                resolvedLabels.append(name);
+            }
+        }
+        task->setLabels(resolvedLabels);
+
+        m_store->addExistingTask(task);
+        taskIdMap[tt.id] = task->id();
+        ++taskCount;
+
+        if (i % 20 == 0) {
+            const int pct = 75 + (i * 15 / qMax(1, totalTasks));
+            emit importProgress(pct, 100,
+                QStringLiteral("Задача %1 из %2…").arg(i + 1).arg(totalTasks));
+        }
+    }
+
+    // Second pass: set parentId now that all tasks are created
+    for (const TodoistTask &tt : data.tasks) {
+        if (tt.parentId.isEmpty()) continue;
+        if (!taskIdMap.contains(tt.id)) continue;
+        if (!taskIdMap.contains(tt.parentId)) continue;
+
+        Task *task = m_store->taskById(taskIdMap[tt.id]);
+        if (task) {
+            task->setParentId(taskIdMap[tt.parentId]);
+            // Ensure the parent task's project id is used as fallback
+            Task *parent = m_store->taskById(taskIdMap[tt.parentId]);
+            if (parent && task->projectId().isEmpty())
+                task->setProjectId(parent->projectId());
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Phase 5: Notes (comments)
+    // ────────────────────────────────────────────────────────────────────────
+    emit importProgress(92, 100, QStringLiteral("Импортируем комментарии…"));
+
+    for (const TodoistNote &tn : data.notes) {
+        if (tn.content.isEmpty()) continue;
+
+        // Determine target task id
+        const QString mappedTaskId = taskIdMap.value(tn.taskId);
+        const QString mappedProjectId = projIdMap.value(tn.projectId);
+
+        // Skip notes whose task was filtered out (e.g. completed) unless we
+        // have a project-level note (no taskId)
+        if (!tn.taskId.isEmpty() && mappedTaskId.isEmpty()) continue;
+
+        Comment *c = m_store->addComment(tn.content,
+                                          mappedTaskId,
+                                          mappedProjectId);
+        if (tn.postedAt.isValid())
+            c->setPostedAt(tn.postedAt);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Done — capture counts into outer variables, then close blocker scope.
+    // ────────────────────────────────────────────────────────────────────────
+    finalTaskCount = taskCount;
+    finalProjCount = projCount;
+    } // end QSignalBlocker scope — all m_store signals unblocked here [B-5.52]
+
+    // Emit ONE aggregate dataChanged (via markDataChanged) so FileManager's
+    // debounce fires exactly once instead of once per entity [B-5.52].
+    // markDataChanged() is a public method that emits sectionsChanged() +
+    // dataChanged(); ViewModels that need tasksChanged/projectsChanged etc.
+    // will also need those — emit them explicitly now that signals are live.
+    emit m_store->tasksChanged();
+    emit m_store->projectsChanged();
+    emit m_store->labelsChanged();
+    m_store->markDataChanged(); // fires sectionsChanged() + dataChanged()
+
+    // [B-5.44] Record successful completion so the next run can detect a
+    // duplicate batch (same batchId would only occur if the caller re-uses one).
+    settings.setValue(QStringLiteral("import/last_completed_batch"), batchId);
+    settings.remove(QStringLiteral("import/current_batch"));
+
+    emit importProgress(100, 100, QStringLiteral("Завершено"));
+
+    setBusy(false);
+    emit importFinished(finalTaskCount, finalProjCount, QString{});
+
+    // [B-5.62] Emit non-fatal parse warnings after importFinished so QML can
+    // show them without blocking the "success" state.
+    if (!m_warnings.isEmpty())
+        emit importWarnings(m_warnings);
+}

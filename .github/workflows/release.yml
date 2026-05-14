@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
+          host: windows
+          target: desktop
+          arch: win64_mingw
+          tools: 'tools_mingw1310 tools_cmake tools_ninja'
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build
+
+      - name: Deploy with windeployqt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/OpenTodo
+          Copy-Item build/OpenTodo.exe dist/OpenTodo/
+          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          & "$env:Qt6_DIR\bin\windeployqt.exe" --qmldir qml --no-translations dist/OpenTodo/OpenTodo.exe
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/OpenTodo/* -DestinationPath OpenTodo-${{ github.ref_name }}-windows-x64.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenTodo-*.zip
+          generate_release_notes: true

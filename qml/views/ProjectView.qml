@@ -1,0 +1,1503 @@
+import QtQuick
+import QtQuick.Controls.Material
+import QtQuick.Layouts
+import OpenTodoUI
+
+// Rectangle (not Item) — same Qt strict QML rule as Board/Calendar: `color`
+// on a plain Item makes the whole type unavailable.
+Rectangle {
+    id: root
+    anchors.fill: parent
+
+    // ── Design constants ──────────────────────────────────────────────────────
+    readonly property color todoistRed:     ThemeManager.accentColor
+    readonly property bool  isDarkTheme:    ThemeManager.isDark
+    readonly property color bgColor:        ThemeManager.backgroundColor
+    readonly property color contentColor:   ThemeManager.surfaceColor
+    readonly property color borderColor:    ThemeManager.borderColor
+    readonly property color textPrimary:    ThemeManager.textColor
+    readonly property color textSecondary:  ThemeManager.secondaryTextColor
+
+    // ── View properties ───────────────────────────────────────────────────────
+    property string projectId:  sidebarViewModel.currentItemId
+    property var    project:    projectViewModel.projectById(projectId)
+    property string viewStyle:  project ? project.viewStyle : "list"
+
+    color: bgColor
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    Component.onCompleted: {
+        taskViewModel.filterMode       = TaskViewModel.Project
+        taskViewModel.currentProjectId = projectId
+    }
+    onProjectIdChanged: {
+        taskViewModel.currentProjectId = projectId
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+    function setView(style) {
+        if (project) projectViewModel.setViewStyle(projectId, style)
+    }
+
+    // ── Weekly goal helpers ───────────────────────────────────────────────────
+    function _completedThisWeek() {
+        if (!project || !projectId) return 0
+        const now    = new Date()
+        const day    = now.getDay()           // 0=Sun..6=Sat
+        const dayMo  = (day + 6) % 7         // 0=Mon..6=Sun
+        const monday = new Date(now)
+        monday.setDate(now.getDate() - dayMo)
+        monday.setHours(0, 0, 0, 0)
+        const isoMonday = monday.toISOString().substring(0, 10)
+
+        const tasks = dataStore.tasksForProject(projectId)
+        let done = 0
+        for (let i = 0; i < tasks.length; i++) {
+            const t = tasks[i]
+            if (t && t.isCompleted && t.completedAt) {
+                const completedDate = String(t.completedAt).substring(0, 10)
+                if (completedDate >= isoMonday) done++
+            }
+        }
+        return done
+    }
+
+    // Incremented on every tasksChanged signal so dependent bindings re-evaluate
+    property int _kick: 0
+    Connections {
+        target: dataStore
+        function onTasksChanged() { root._kick = (root._kick + 1) % 1000 }
+    }
+
+    // ── Layout ────────────────────────────────────────────────────────────────
+    // Right-pane editor width — animated so the main column shrinks/grows
+    // smoothly when a task is opened/closed.
+    readonly property int taskEditorPaneWidth: 400
+    readonly property int _editorPaneCurrentWidth:
+        taskEditorLoader.active ? taskEditorPaneWidth : 0
+
+    // B-6.42 — section Menu declared once at view root, opened with popup(sectionId).
+    // This prevents stale menu state when ListView recycles delegates.
+    property string _activeSectionId:   ""
+    property string _activeSectionName: ""
+
+    Menu {
+        id: globalSectionMenu
+
+        MenuItem {
+            text: "Переименовать раздел…"
+            onTriggered: {
+                renameSectionDialog.sectionId   = root._activeSectionId
+                renameSectionDialog.currentName = root._activeSectionName
+                renameSectionDialog.open()
+            }
+        }
+        MenuItem {
+            text: "Добавить раздел ниже…"
+            onTriggered: addSectionDialog.open()
+        }
+        MenuSeparator {}
+        MenuItem {
+            text: "Удалить раздел"
+            Material.foreground: root.todoistRed
+            onTriggered: {
+                deleteSectionDialog.sectionId   = root._activeSectionId
+                deleteSectionDialog.sectionName = root._activeSectionName
+                deleteSectionDialog.open()
+            }
+        }
+    }
+
+    ColumnLayout {
+        anchors.left:   parent.left
+        anchors.top:    parent.top
+        anchors.bottom: parent.bottom
+        anchors.right:  parent.right
+        anchors.rightMargin: root._editorPaneCurrentWidth
+        spacing: 0
+
+        Behavior on anchors.rightMargin {
+            NumberAnimation { duration: Duration.normal; easing.type: Easing.InOutQuad }
+        }
+
+        // ── Header ────────────────────────────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            height: 56
+            color: contentColor
+
+            RowLayout {
+                anchors.fill:        parent
+                anchors.leftMargin:  Spacing.md
+                anchors.rightMargin: Spacing.sm
+                spacing: Spacing.sm
+
+                // Project icon: emoji if set, otherwise color dot.
+                Item {
+                    width: 24
+                    height: 24
+                    Layout.alignment: Qt.AlignVCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        visible: project && project.icon !== ""
+                        text: project ? project.icon : ""
+                        font.pixelSize: 18
+                    }
+                    Rectangle {
+                        anchors.centerIn: parent
+                        visible: !project || project.icon === ""
+                        width: 10
+                        height: 10
+                        radius: 5
+                        color: project ? project.color : "#808080"
+                    }
+                }
+
+                // Project name
+                Label {
+                    text:            project ? project.name : ""
+                    font.pixelSize:  FontSize.h2
+                    font.bold:       true
+                    color:           textPrimary
+                    elide:           Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                // ── Weekly goal progress pill ─────────────────────────────────
+                Rectangle {
+                    visible: project && project.weeklyGoal > 0
+                    Layout.preferredHeight: 26
+                    Layout.preferredWidth: 120
+                    Layout.alignment: Qt.AlignVCenter
+                    radius: 13
+                    color: Qt.rgba(ThemeManager.textColor.r,
+                                   ThemeManager.textColor.g,
+                                   ThemeManager.textColor.b, 0.08)
+
+                    readonly property int _completedNow: { root._kick; return root._completedThisWeek() }
+                    readonly property bool _achieved: _completedNow >= (project ? project.weeklyGoal : 1)
+
+                    // Fill bar
+                    Rectangle {
+                        anchors.left:    parent.left
+                        anchors.top:     parent.top
+                        anchors.bottom:  parent.bottom
+                        anchors.margins: 2
+                        width: project && project.weeklyGoal > 0
+                            ? Math.min(parent.width - 4,
+                                       (parent.width - 4) * parent._completedNow / project.weeklyGoal)
+                            : 0
+                        radius: parent.radius - 2
+                        color: parent._achieved ? "#2e8b57" : ThemeManager.accentColor
+                        Behavior on width { NumberAnimation { duration: 300 } }
+                    }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: parent._completedNow + "/" + (project ? project.weeklyGoal : 0) + " за неделю"
+                        font.pixelSize: FontSize.caption
+                        color: parent._completedNow > 0 ? "#ffffff" : ThemeManager.textColor
+                        z: 1
+                    }
+
+                    ToolTip.visible: goalHover.containsMouse
+                    ToolTip.text: parent._achieved
+                        ? "Цель на эту неделю выполнена!"
+                        : "Осталось: " + ((project ? project.weeklyGoal : 0) - parent._completedNow)
+
+                    MouseArea {
+                        id: goalHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+                }
+
+                // View-style toggles — font.pixelSize matches surrounding
+                // topbar icons (search/sync/hide-completed at 16px) so the
+                // glyphs read consistently with their neighbours.
+                ToolButton {
+                    text:    "≡"
+                    font.pixelSize: 16
+                    checked: viewStyle === "list"
+                    onClicked: root.setView("list")
+                    ToolTip.text: "Список"
+                    ToolTip.visible: hovered
+                    Material.foreground: checked ? todoistRed : textSecondary
+                }
+                ToolButton {
+                    // Iteration 3 of the board-icon glyph:
+                    //   v1: ⊞ (U+229E "squared plus") — too thin, looked
+                    //       like a cross, user reported "плохо виден".
+                    //   v2: ▥ (U+25A5 "square with vertical fill") — at the
+                    //       16px tool-button size the stripes collapsed into
+                    //       a solid filled square; user reported "сам по
+                    //       себе плохо читаемый".
+                    //   v3 (current): 🗂 (U+1F5C2 "card index dividers")
+                    //       emoji. Renders as a colour glyph (tabbed cards)
+                    //       on Windows / macOS / Linux Noto / Android — same
+                    //       rendering pipeline as the calendar 📅 next to
+                    //       it. Visually unmistakable as "columns / board".
+                    text:    "🗂"
+                    font.pixelSize: 16
+                    checked: viewStyle === "board"
+                    onClicked: root.setView("board")
+                    ToolTip.text: "Доска"
+                    ToolTip.visible: hovered
+                    Material.foreground: checked ? todoistRed : textSecondary
+                }
+                ToolButton {
+                    text:    "📅"
+                    font.pixelSize: 16
+                    checked: viewStyle === "calendar"
+                    onClicked: root.setView("calendar")
+                    ToolTip.text: "Календарь"
+                    ToolTip.visible: hovered
+                    Material.foreground: checked ? todoistRed : textSecondary
+                }
+
+                // Separator
+                Rectangle {
+                    width:  1
+                    height: 20
+                    color:  borderColor
+                }
+
+                // Add-section button (visible only in list view)
+                ToolButton {
+                    id:      addSectionBtn
+                    text:    "＋ Раздел"
+                    font.pixelSize: FontSize.body
+                    visible: viewStyle === "list"
+                    onClicked: addSectionDialog.open()
+                    Material.foreground: todoistRed
+
+                    ToolTip.text: "Добавить раздел в проект"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                }
+
+                // More-options menu button
+                ToolButton {
+                    id:      moreBtn
+                    text:    "⋯"
+                    font.pixelSize: FontSize.title
+                    onClicked: projectMenu.open()
+                    Material.foreground: textSecondary
+                }
+            }
+
+            // Bottom border
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left:   parent.left
+                anchors.right:  parent.right
+                height: 1
+                color:  borderColor
+            }
+
+            // ── Project context menu ─────────────────────────────────────────
+            Menu {
+                id: projectMenu
+                y: moreBtn.height
+
+                MenuItem {
+                    text: "Редактировать проект"
+                    onTriggered: editDialog.open()
+                }
+                MenuItem {
+                    text: "Добавить раздел"
+                    onTriggered: addSectionDialog.open()
+                }
+                MenuItem {
+                    text: (project && project.isFavorite)
+                          ? "Убрать из избранного"
+                          : "В избранное"
+                    onTriggered: projectViewModel.setFavorite(projectId,
+                                     !(project && project.isFavorite))
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Архивировать проект"
+                    onTriggered: projectViewModel.archiveProject(projectId)
+                }
+                MenuItem {
+                    text: "Дублировать как шаблон"
+                    enabled: projectId !== ""
+                    onTriggered: {
+                        // Wave 3 (F-6.39): copies all non-deleted tasks from
+                        // the current project into a new "Шаблон: <name>" project.
+                        // C++ side returns the new project id; navigate via
+                        // SidebarVM.navigateTo so taskViewModel updates too.
+                        const newId = taskViewModel.duplicateProjectAsTemplate(projectId)
+                        if (newId && newId !== "")
+                            sidebarViewModel.navigateTo("project", newId)
+                    }
+                }
+                MenuItem {
+                    text: "Экспорт проекта (JSON)"
+                    enabled: projectId !== ""
+                    onTriggered: {
+                        const path = taskExporter.exportProjectToJson(projectId, "")
+                        const w = root.Window.window
+                        if (w && typeof w.showToast === "function") {
+                            if (path && path !== "") w.showToast("Экспортировано в " + path, "success")
+                            else                     w.showToast("Не удалось экспортировать", "error")
+                        }
+                    }
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Удалить все завершённые"
+                    enabled: projectId !== ""
+                    onTriggered: removeCompletedConfirm.open()
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Удалить проект"
+                    Material.foreground: todoistRed
+                    onTriggered: deleteConfirmDialog.open()
+                }
+            }
+        }
+
+        // ── Notes card — visible only when the project has notes ─────────────
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: notesCardCol.implicitHeight + Spacing.md * 2
+            Layout.leftMargin: Spacing.md
+            Layout.rightMargin: Spacing.md
+            Layout.topMargin: Spacing.sm
+            visible: project && project.notes !== ""
+            color: ThemeManager.surfaceColor
+            border.color: ThemeManager.borderColor
+            border.width: 1
+            radius: Radius.md
+
+            property bool _expanded: false
+
+            ColumnLayout {
+                id: notesCardCol
+                anchors.fill: parent
+                anchors.margins: Spacing.md
+                spacing: Spacing.xs
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Label {
+                        text: "📝 Заметки"
+                        font.pixelSize: FontSize.body
+                        font.bold: true
+                        color: ThemeManager.textColor
+                    }
+                    Item { Layout.fillWidth: true }
+                    ToolButton {
+                        text: notesCardCol.parent._expanded ? "▾" : "▸"
+                        flat: true
+                        onClicked: notesCardCol.parent._expanded = !notesCardCol.parent._expanded
+                    }
+                }
+
+                // Full markdown text — always shown when notes are short,
+                // or when the user has expanded the card.
+                Text {
+                    visible: notesCardCol.parent._expanded || (project && project.notes.length < 200)
+                    text: project ? project.notes : ""
+                    textFormat: Text.MarkdownText
+                    wrapMode: Text.WordWrap
+                    color: ThemeManager.textColor
+                    linkColor: ThemeManager.accentColor
+                    onLinkActivated: function(url) { Qt.openUrlExternally(url) }
+                    Layout.fillWidth: true
+                }
+
+                // Collapsed preview — first 200 chars, clickable to expand.
+                Text {
+                    visible: !notesCardCol.parent._expanded && (project && project.notes.length >= 200)
+                    text: project ? project.notes.substring(0, 197) + "…" : ""
+                    wrapMode: Text.WordWrap
+                    color: ThemeManager.secondaryTextColor
+                    font.pixelSize: FontSize.caption
+                    Layout.fillWidth: true
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: notesCardCol.parent._expanded = true
+                    }
+                }
+            }
+        }
+
+        // ── Content area — switches between list / board / calendar ──────────
+        Loader {
+            Layout.fillWidth:  true
+            Layout.fillHeight: true
+            sourceComponent: {
+                if (viewStyle === "board")    return boardComponent
+                if (viewStyle === "calendar") return calendarComponent
+                return listComponent
+            }
+        }
+    }
+
+    // ── List component ────────────────────────────────────────────────────────
+    Component {
+        id: listComponent
+
+        Item {
+            anchors.fill: parent
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 0
+
+                // Quick-add bar
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 48
+                    color: contentColor
+
+                    RowLayout {
+                        anchors.fill:        parent
+                        anchors.leftMargin:  Spacing.md
+                        anchors.rightMargin: Spacing.md
+                        spacing: Spacing.sm
+
+                        Rectangle {
+                            width: 18; height: 18; radius: 9
+                            border.color: todoistRed; border.width: 1.5
+                            color: "transparent"
+                        }
+
+                        TextField {
+                            id:               quickAddField
+                            Layout.fillWidth: true
+                            placeholderText:  "Добавить задачу…"
+                            background:       Item {}
+                            color:            textPrimary
+                            font.pixelSize:   FontSize.body
+                            onAccepted: {
+                                if (text.trim() !== "") {
+                                    // B-6.41 — addTask returns QString; return value not needed here
+                                    taskViewModel.addTask(text.trim(),
+                                                          root.projectId, 4, "", [])
+                                    text = ""
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.left:   parent.left
+                        anchors.right:  parent.right
+                        height: 1
+                        color:  borderColor
+                    }
+                }
+
+                // Task list with section grouping (wrapped for empty state)
+                Item {
+                    Layout.fillWidth:  true
+                    Layout.fillHeight: true
+
+                    ListView {
+                        id: taskListView
+                        anchors.fill: parent
+                        visible: taskViewModel.count > 0
+                        model:  taskViewModel
+                        clip:   true
+                        spacing: 0
+
+                        // Use sectionGroupKey instead of sectionId so the empty-section
+                        // case routes through "__none__" — Qt's ListView skips section
+                        // delegate creation when every visible item shares an empty
+                        // section value (verified in tst_listview_section.qml).
+                        section.property: "sectionGroupKey"
+                        section.criteria: ViewSection.FullString
+                        section.labelPositioning: ViewSection.InlineLabels
+                        section.delegate: Rectangle {
+                            id: sectionHeaderRect
+                            required property string section
+                            // Translate the sentinel back to "" so downstream code
+                            // (drop targets, "+ task" buttons) keeps working with
+                            // canonical sectionId semantics.
+                            readonly property string sectionId:
+                                section === "__none__" ? "" : section
+
+                            width:  ListView.view.width
+                            implicitWidth: width
+                            height: 36
+                            implicitHeight: height
+                            color:  sectionDrop.containsDrag
+                                    ? Qt.rgba(root.todoistRed.r,
+                                              root.todoistRed.g,
+                                              root.todoistRed.b, 0.18)
+                                    : (root.isDarkTheme ? "#222" : "#f5f5f5")
+
+                            property string sectionName: {
+                                if (sectionId === "") return "(Без раздела)"
+                                var s = dataStore.sectionById(sectionId)
+                                return s ? s.name : sectionId
+                            }
+
+                            RowLayout {
+                                anchors.fill:        parent
+                                anchors.leftMargin:  Spacing.md
+                                anchors.rightMargin: Spacing.sm
+                                spacing: 6
+
+                                Text {
+                                    text:           sectionHeaderRect.sectionName
+                                    font.pixelSize: FontSize.small
+                                    font.bold:      true
+                                    color:          root.textSecondary
+                                    elide:          Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+
+                                ToolButton {
+                                    text:           "+"
+                                    font.pixelSize: FontSize.subtitle
+                                    Material.foreground: root.textSecondary
+                                    ToolTip.text: "Добавить задачу в раздел"
+                                    ToolTip.visible: hovered
+                                    onClicked: {
+                                        addTaskToSectionDialog.sectionId = sectionHeaderRect.sectionId
+                                        addTaskToSectionDialog.open()
+                                    }
+                                }
+
+                                // B-6.42 — ToolButton stores section context in root properties,
+                                // then opens the single globalSectionMenu declared at root.
+                                // This avoids the recycled-delegate / stale-Menu-state bug.
+                                ToolButton {
+                                    text:           "⋯"
+                                    font.pixelSize: FontSize.subtitle
+                                    visible:        sectionHeaderRect.sectionId !== ""
+                                    Material.foreground: root.textSecondary
+                                    onClicked: {
+                                        root._activeSectionId   = sectionHeaderRect.sectionId
+                                        root._activeSectionName = sectionHeaderRect.sectionName
+                                        globalSectionMenu.popup()
+                                    }
+                                }
+                            }
+
+                            // Drop zone — drag a task onto a section header to
+                            // move it into that section.
+                            DropArea {
+                                id: sectionDrop
+                                anchors.fill: parent
+                                keys: ["application/x-opentodo-task"]
+                                onDropped: function(drop) {
+                                    const tid = drop.getDataAsString("application/x-opentodo-task")
+                                    if (tid) taskViewModel.moveTask(tid, root.projectId,
+                                                                    sectionHeaderRect.sectionId)
+                                    drop.accept(Qt.MoveAction)
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                anchors.left:   parent.left
+                                anchors.right:  parent.right
+                                height: 1
+                                color:  root.borderColor
+                            }
+                        }
+
+                        // Delegate uses the shared TaskItem.qml so behaviour
+                        // matches Inbox/Today (priority circle click toggles complete,
+                        // row click opens the right-pane editor, etc.).
+                        delegate: Item {
+                            id: delegateRoot
+                            width:  taskListView.width
+                            height: projectTaskItem.implicitHeight
+
+                            required property int    index
+                            required property string id
+                            required property string content
+                            required property string description
+                            required property string projectId
+                            required property string sectionId
+                            required property string parentId
+                            required property int    order
+                            required property int    priority
+                            required property var    labels
+                            required property bool   isCompleted
+                            required property string completedAt
+                            required property string dueDate
+                            required property string dueString
+                            required property bool   isRecurring
+                            required property string deadline
+                            required property int    durationAmount
+                            required property string durationUnit
+                            required property int    dayOrder
+                            required property string color
+
+                            TaskItem {
+                                id: projectTaskItem
+                                width: parent.width
+
+                                index:          delegateRoot.index
+                                content:        delegateRoot.content
+                                description:    delegateRoot.description
+                                projectId:      delegateRoot.projectId
+                                sectionId:      delegateRoot.sectionId
+                                parentId:       delegateRoot.parentId
+                                order:          delegateRoot.order
+                                priority:       delegateRoot.priority
+                                labels:         delegateRoot.labels
+                                isCompleted:    delegateRoot.isCompleted
+                                completedAt:    delegateRoot.completedAt
+                                dueDate:        delegateRoot.dueDate
+                                dueString:      delegateRoot.dueString
+                                isRecurring:    delegateRoot.isRecurring
+                                deadline:       delegateRoot.deadline
+                                durationAmount: delegateRoot.durationAmount
+                                durationUnit:   delegateRoot.durationUnit
+                                dayOrder:       delegateRoot.dayOrder
+                                color:          delegateRoot.color
+
+                                onTaskClicked: function(taskId) {
+                                    const t = dataStore.taskById(taskId)
+                                    if (t) taskViewModel.selectedTask = t
+                                }
+                            }
+
+                            // `id` collides with QML's id-attribute syntax inside
+                            // an object initialiser, so we bind it via Binding{}
+                            // as a sibling (matches DesktopLayout's pattern).
+                            Binding {
+                                target: projectTaskItem
+                                property: "id"
+                                value: delegateRoot.id
+                            }
+
+                            // Bug 9 fix: per-row drop zones for in-list reorder
+                            // and Todoist-style "drop on bottom half → make it a
+                            // subtask" gesture. Mirrors the wiring in
+                            // DesktopLayout.qml so behaviour is identical across
+                            // the Inbox/Today/Upcoming and Project pages.
+                            //
+                            //   • top  ½ → reorder (drop ABOVE this row)
+                            //   • bottom ½ → make the dropped task a SUBTASK
+                            //                of this one
+                            DropArea {
+                                id: projectReorderDrop
+                                anchors.left:   parent.left
+                                anchors.right:  parent.right
+                                anchors.top:    parent.top
+                                height: parent.height / 2
+                                keys: ["application/x-opentodo-task"]
+
+                                onEntered: function(drag) {
+                                    const draggedId = drag.getDataAsString("application/x-opentodo-task")
+                                    projectInsertionLine.visible = (draggedId !== projectTaskItem.id)
+                                    projectSubtaskHighlight.visible = false
+                                }
+                                onExited: function() {
+                                    projectInsertionLine.visible = false
+                                }
+                                onDropped: function(drop) {
+                                    const draggedId = drop.getDataAsString("application/x-opentodo-task")
+                                    projectInsertionLine.visible = false
+                                    if (draggedId === projectTaskItem.id) {
+                                        drop.accept(Qt.MoveAction)
+                                        return
+                                    }
+                                    taskViewModel.moveTaskOrder(draggedId, projectTaskItem.index)
+                                    drop.accept(Qt.MoveAction)
+                                }
+                            }
+
+                            DropArea {
+                                id: projectSubtaskDrop
+                                anchors.left:   parent.left
+                                anchors.right:  parent.right
+                                anchors.bottom: parent.bottom
+                                height: parent.height / 2
+                                keys: ["application/x-opentodo-task"]
+
+                                onEntered: function(drag) {
+                                    const draggedId = drag.getDataAsString("application/x-opentodo-task")
+                                    projectSubtaskHighlight.visible = (draggedId !== projectTaskItem.id)
+                                    projectInsertionLine.visible = false
+                                }
+                                onExited: function() {
+                                    projectSubtaskHighlight.visible = false
+                                }
+                                onDropped: function(drop) {
+                                    const draggedId = drop.getDataAsString("application/x-opentodo-task")
+                                    projectSubtaskHighlight.visible = false
+                                    if (draggedId === projectTaskItem.id || !taskViewModel.convertToSubtask) {
+                                        drop.accept(Qt.MoveAction)
+                                        return
+                                    }
+                                    taskViewModel.convertToSubtask(draggedId, projectTaskItem.id)
+                                    drop.accept(Qt.MoveAction)
+                                }
+                            }
+
+                            // Visual indicators — thin accent line for reorder,
+                            // tinted overlay for subtask. Same look as the
+                            // DesktopLayout list so users recognise the gesture.
+                            Rectangle {
+                                id: projectInsertionLine
+                                anchors.top:    parent.top
+                                anchors.left:   parent.left
+                                anchors.right:  parent.right
+                                height: 2
+                                color: ThemeManager.accentColor
+                                visible: false
+                                z: 10
+                            }
+                            Rectangle {
+                                id: projectSubtaskHighlight
+                                anchors.fill: parent
+                                anchors.leftMargin: Spacing.md + 24
+                                color: Qt.rgba(ThemeManager.accentColor.r,
+                                               ThemeManager.accentColor.g,
+                                               ThemeManager.accentColor.b, 0.18)
+                                border.color: ThemeManager.accentColor
+                                border.width: 1
+                                radius: 4
+                                visible: false
+                                z: 9
+                            }
+                        }
+
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    }
+
+                    // Empty state
+                    EmptyState {
+                        anchors.fill: parent
+                        visible: taskViewModel.count === 0
+                        emoji: "📋"
+                        title: qsTr("Этот проект пуст")
+                        message: qsTr("Начни с одной маленькой задачи. Большие достижения складываются из маленьких шагов.")
+                        actionLabel: qsTr("Добавить первую задачу")
+                        onActionClicked: quickAddField.forceActiveFocus()
+                    }
+                }
+
+                // Add-section button
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 40
+                    color:  "transparent"
+
+                    RowLayout {
+                        anchors.fill:       parent
+                        anchors.leftMargin: Spacing.md
+                        spacing: 6
+
+                        Text {
+                            text:           "+"
+                            color:          root.todoistRed
+                            font.pixelSize: FontSize.subtitle
+                        }
+                        Text {
+                            text:           "Добавить раздел"
+                            color:          root.textSecondary
+                            font.pixelSize: FontSize.body
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    MouseArea {
+                        anchors.fill:  parent
+                        cursorShape:   Qt.PointingHandCursor
+                        onClicked:     addSectionDialog.open()
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Board component ───────────────────────────────────────────────────────
+    Component {
+        id: boardComponent
+        BoardView { projectId: root.projectId }
+    }
+
+    // ── Calendar component ────────────────────────────────────────────────────
+    Component {
+        id: calendarComponent
+        CalendarView {}
+    }
+
+    // ── Edit project dialog ───────────────────────────────────────────────────
+    Dialog {
+        id:      editDialog
+        title:   "Редактировать проект"
+        modal:   true
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string editName:        project ? project.name        : ""
+        property string editColor:       project ? project.color       : "#808080"
+        property string editDescription: project ? project.description : ""
+        property string editIcon:        project ? project.icon        : ""
+        property int    editWeeklyGoal:  project ? project.weeklyGoal  : 0
+        property string editNotes:       project ? project.notes       : ""
+        // Per-project default priority (1=P1, 2=P2, 3=P3, 4=P4/«no priority»).
+        // Stored in QSettings, NOT on the Project model — see ProjectViewModel.
+        property int    editDefaultPriority: 4
+        // Per-project default labels (list of label IDs) — also QSettings only.
+        property var    editDefaultLabels: []
+
+        onOpened: {
+            editName        = project ? project.name        : ""
+            editColor       = project ? project.color       : "#808080"
+            editDescription = project ? project.description : ""
+            editIcon        = project ? project.icon        : ""
+            editWeeklyGoal  = project ? project.weeklyGoal  : 0
+            editNotes       = project ? project.notes       : ""
+            editDefaultPriority = projectId !== ""
+                ? projectViewModel.defaultPriorityForProject(projectId)
+                : 4
+            editDefaultLabels = projectId !== ""
+                ? projectViewModel.defaultLabelsForProject(projectId)
+                : []
+            nameField.text        = editName
+            descriptionField.text = editDescription
+            iconField.text        = editIcon
+            weeklyGoalSpin.value  = editWeeklyGoal
+            notesField.text       = editNotes
+            // ComboBox layout: 0=«Без приоритета»(=P4), 1=P1, 2=P2, 3=P3.
+            defaultPriorityCombo.currentIndex = editDefaultPriority === 4
+                ? 0
+                : editDefaultPriority
+        }
+
+        onAccepted: {
+            if (project) {
+                projectViewModel.updateProject(projectId, "name",        nameField.text.trim())
+                projectViewModel.updateProject(projectId, "color",       editColor)
+                projectViewModel.updateProject(projectId, "description", editDialog.editDescription)
+                projectViewModel.updateProject(projectId, "icon",        editDialog.editIcon)
+                projectViewModel.updateProject(projectId, "weeklyGoal",  editDialog.editWeeklyGoal)
+                projectViewModel.updateProject(projectId, "notes",       editDialog.editNotes)
+                projectViewModel.setDefaultPriorityForProject(projectId, editDialog.editDefaultPriority)
+                projectViewModel.setDefaultLabelsForProject(projectId, editDialog.editDefaultLabels)
+            }
+        }
+
+        ColumnLayout {
+            spacing: 12
+            width: 320
+
+            Label { text: "Название проекта"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            TextField {
+                id:              nameField
+                Layout.fillWidth: true
+                placeholderText: "Название проекта"
+                color:           root.textPrimary
+            }
+
+            Label { text: "Цвет"; font.pixelSize: FontSize.small; color: root.textSecondary }
+
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+                Repeater {
+                    model: ["#db4c3f","#ff8c00","#fad000","#afb83b","#7ecc49",
+                            "#299438","#6accbc","#158fad","#14aaf5","#96c3eb",
+                            "#4073ff","#884dff","#af38eb","#eb96eb","#e05194",
+                            "#ff8d85","#808080","#b8b8b8"]
+                    delegate: Rectangle {
+                        required property string modelData
+                        width: 24; height: 24; radius: 12
+                        color: modelData
+                        border.color: editDialog.editColor === modelData
+                                      ? root.textPrimary : "transparent"
+                        border.width: 2
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape:  Qt.PointingHandCursor
+                            onClicked:    editDialog.editColor = modelData
+                        }
+                    }
+                }
+            }
+
+            Label {
+                text: "Иконка проекта"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Spacing.sm
+
+                TextField {
+                    id: iconField
+                    Layout.preferredWidth: 60
+                    text: editDialog.editIcon
+                    placeholderText: "🐢"
+                    font.pixelSize: 22
+                    horizontalAlignment: Text.AlignHCenter
+                    maximumLength: 8
+                    background: Rectangle {
+                        color: ThemeManager.surfaceColor
+                        border.color: ThemeManager.borderColor
+                        border.width: 1
+                        radius: Radius.sm
+                    }
+                    onTextChanged: editDialog.editIcon = text
+                }
+
+                RowLayout {
+                    spacing: 2
+                    Layout.fillWidth: true
+                    Repeater {
+                        model: ["🐢","🐱","🏡","🍅","💼","🎯","💡","📚","🚀","🎨","🛒","🏃"]
+                        delegate: ToolButton {
+                            required property string modelData
+                            text: modelData
+                            font.pixelSize: 20
+                            flat: true
+                            onClicked: {
+                                iconField.text = modelData
+                                editDialog.editIcon = modelData
+                            }
+                        }
+                    }
+                }
+
+                ToolButton {
+                    text: "✕"
+                    flat: true
+                    ToolTip.text: "Убрать иконку"
+                    ToolTip.visible: hovered
+                    onClicked: {
+                        iconField.text = ""
+                        editDialog.editIcon = ""
+                    }
+                }
+            }
+
+            Label {
+                text: "Описание"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 80
+
+                TextArea {
+                    id: descriptionField
+                    text: editDialog.editDescription
+                    placeholderText: "Описание проекта (необязательно)"
+                    wrapMode: Text.WordWrap
+                    color: root.textPrimary
+                    background: Rectangle {
+                        color: ThemeManager.surfaceColor
+                        border.color: ThemeManager.borderColor
+                        border.width: 1
+                        radius: Radius.sm
+                    }
+                    onTextChanged: {
+                        if (text.length > 500) text = text.substring(0, 500)
+                        editDialog.editDescription = text
+                    }
+                }
+            }
+
+            // ── Notes ────────────────────────────────────────────────────────
+            Label {
+                text: "Заметки"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 160
+
+                TextArea {
+                    id: notesField
+                    text: editDialog.editNotes
+                    placeholderText: "Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)"
+                    wrapMode: Text.WordWrap
+                    color: root.textPrimary
+                    background: Rectangle {
+                        color: ThemeManager.surfaceColor
+                        border.color: ThemeManager.borderColor
+                        border.width: 1
+                        radius: Radius.sm
+                    }
+                    onTextChanged: {
+                        if (text.length > 5000) text = text.substring(0, 5000)
+                        editDialog.editNotes = text
+                    }
+                }
+            }
+
+            // ── Weekly goal ───────────────────────────────────────────────────
+            Label {
+                text: "Цель на неделю (задач)"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Spacing.sm
+
+                SpinBox {
+                    id: weeklyGoalSpin
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    value: editDialog.editWeeklyGoal
+                    editable: true
+                    Layout.preferredWidth: 100
+                    onValueModified: editDialog.editWeeklyGoal = value
+                }
+                Label {
+                    text: weeklyGoalSpin.value === 0
+                        ? "Без цели"
+                        : weeklyGoalSpin.value + " задач в неделю"
+                    color: root.textSecondary
+                    font.pixelSize: FontSize.small
+                    Layout.fillWidth: true
+                }
+            }
+
+            // ── Default priority for new tasks ───────────────────────────────
+            Label {
+                text: "Приоритет по умолчанию"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            ComboBox {
+                id: defaultPriorityCombo
+                Layout.fillWidth: true
+                font.pixelSize: FontSize.body
+
+                // Index → priority mapping:
+                //   0 → 4 (без приоритета)
+                //   1 → 1 (P1)
+                //   2 → 2 (P2)
+                //   3 → 3 (P3)
+                model: ["Без приоритета", "P1 — Срочный", "P2 — Высокий", "P3 — Средний"]
+
+                onActivated: {
+                    editDialog.editDefaultPriority = currentIndex === 0 ? 4 : currentIndex
+                }
+
+                background: Rectangle {
+                    color: ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
+                    border.width: 1
+                    radius: Radius.sm
+                }
+            }
+
+            // ── Default labels for new tasks ─────────────────────────────────
+            Label {
+                text: "Метки по умолчанию для новых задач"
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+
+            // Empty-state hint when there are no labels at all in the system.
+            Label {
+                visible: dataStore.allLabels().length === 0
+                text: "В системе пока нет меток. Создай метки в разделе «Метки», чтобы выбирать их здесь."
+                font.pixelSize: FontSize.caption
+                color: root.textSecondary
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            // Wrapping flow of label checkboxes — one per available label.
+            Flow {
+                id: defaultLabelsFlow
+                visible: dataStore.allLabels().length > 0
+                Layout.fillWidth: true
+                spacing: Spacing.xs
+
+                Repeater {
+                    // Re-evaluated every time the dialog opens because
+                    // editDefaultLabels resets in onOpened.
+                    model: dataStore.allLabels()
+
+                    delegate: Rectangle {
+                        id: labelChip
+                        required property var modelData
+
+                        readonly property string labelId:    modelData ? modelData.id    : ""
+                        readonly property string labelName:  modelData ? modelData.name  : ""
+                        readonly property string labelColor: modelData ? modelData.color : "#808080"
+                        readonly property bool   isChecked:
+                            editDialog.editDefaultLabels.indexOf(labelId) !== -1
+
+                        height: 28
+                        // Width hugs the inner row contents.
+                        width:  chipRow.implicitWidth + Spacing.sm * 2
+                        radius: 14
+                        color:  isChecked
+                            ? Qt.rgba(ThemeManager.accentColor.r,
+                                      ThemeManager.accentColor.g,
+                                      ThemeManager.accentColor.b, 0.18)
+                            : ThemeManager.surfaceColor
+                        border.color: isChecked ? ThemeManager.accentColor : ThemeManager.borderColor
+                        border.width: 1
+
+                        RowLayout {
+                            id: chipRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left:           parent.left
+                            anchors.leftMargin:     Spacing.sm
+                            anchors.rightMargin:    Spacing.sm
+                            spacing: 6
+
+                            // Color dot
+                            Rectangle {
+                                width: 10
+                                height: 10
+                                radius: 5
+                                color: labelChip.labelColor
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            Text {
+                                text: labelChip.labelName
+                                color: ThemeManager.textColor
+                                font.pixelSize: FontSize.small
+                                Layout.alignment: Qt.AlignVCenter
+                                Layout.rightMargin: Spacing.sm
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                // Toggle membership in the editDefaultLabels array.
+                                // Reassign as a fresh array so QML notifies bindings.
+                                var copy = editDialog.editDefaultLabels.slice()
+                                var idx = copy.indexOf(labelChip.labelId)
+                                if (idx === -1) copy.push(labelChip.labelId)
+                                else            copy.splice(idx, 1)
+                                editDialog.editDefaultLabels = copy
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Delete confirmation dialog ────────────────────────────────────────────
+    Dialog {
+        id:      deleteConfirmDialog
+        title:   "Удалить проект?"
+        modal:   true
+        anchors.centerIn: Overlay.overlay
+        // Explicit width prevents the wrapping Label from creating an
+        // implicitWidth binding loop with the Dialog's auto-sizing.
+        width:           Math.min(380, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Yes | Dialog.No
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                text:           "Проект «%1» и все его задачи будут удалены без возможности восстановления."
+                                .arg(project ? project.name : "")
+                wrapMode:       Text.Wrap
+                Layout.fillWidth: true
+                font.pixelSize: FontSize.body
+                color:          root.textPrimary
+            }
+        }
+
+        onAccepted: projectViewModel.deleteProject(projectId)
+    }
+
+    // ── Remove completed tasks confirmation ───────────────────────────────────
+    Dialog {
+        id: removeCompletedConfirm
+        title: "Удалить все завершённые задачи?"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        contentItem: Label {
+            text: "Все задачи проекта со статусом «Выполнено» будут удалены. Действие необратимо."
+            wrapMode: Text.WordWrap
+            color: ThemeManager.textColor
+            width: 320
+            padding: Spacing.md
+        }
+
+        onAccepted: {
+            const n = projectViewModel.removeCompletedTasksInProject(projectId)
+            const w = root.Window.window
+            if (w && typeof w.showToast === "function") {
+                if (n > 0) w.showToast("Удалено " + n + " " + removeCompletedConfirm._wordForm(n), "success")
+                else       w.showToast("Завершённых задач не найдено", "info")
+            }
+        }
+
+        function _wordForm(n) {
+            const m100 = n % 100
+            const m10  = n % 10
+            if (m100 >= 11 && m100 <= 14) return "задач"
+            if (m10 === 1)                return "задача"
+            if (m10 >= 2 && m10 <= 4)    return "задачи"
+            return "задач"
+        }
+    }
+
+    // ── Add section dialog ────────────────────────────────────────────────────
+    Dialog {
+        id:      addSectionDialog
+        title:   "Добавить раздел"
+        modal:   true
+        anchors.centerIn: Overlay.overlay
+        // Explicit width so the inner ColumnLayout's content (TextField) doesn't
+        // overflow the Dialog frame. Material Dialog otherwise computes width
+        // from contentItem.implicitWidth which is too small for the placeholder.
+        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // ITER1 #40: clear text and focus the field when the dialog opens
+        onOpened: {
+            sectionNameField.text = ""
+            sectionNameField.forceActiveFocus()
+        }
+        onAccepted: {
+            var name = sectionNameField.text.trim()
+            if (name !== "")
+                dataStore.addSection(name, root.projectId)
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                text: "Название раздела"
+                Layout.fillWidth: true
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+            }
+            TextField {
+                id:              sectionNameField
+                Layout.fillWidth: true
+                placeholderText: "Название раздела"
+                color:           root.textPrimary
+            }
+        }
+    }
+
+    // ── Rename section dialog ─────────────────────────────────────────────────
+    Dialog {
+        id: renameSectionDialog
+        property string sectionId:  ""
+        property string currentName: ""
+        title: "Переименовать раздел"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        onOpened: renameSectionField.text = currentName
+        onAccepted: {
+            const n = renameSectionField.text.trim()
+            if (n !== "" && sectionId !== "")
+                dataStore.renameSection(sectionId, n)
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                text: "Новое название"
+                Layout.fillWidth: true
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+            }
+            TextField {
+                id: renameSectionField
+                Layout.fillWidth: true
+                color: root.textPrimary
+            }
+        }
+    }
+
+    // ── Delete section confirmation ──────────────────────────────────────────
+    Dialog {
+        id: deleteSectionDialog
+        property string sectionId:   ""
+        property string sectionName: ""
+        title: "Удалить раздел"
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Yes | Dialog.No
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                text: "Удалить раздел «" + deleteSectionDialog.sectionName +
+                      "»? Задачи останутся в проекте без раздела."
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                color: root.textPrimary
+            }
+        }
+
+        onAccepted: {
+            if (deleteSectionDialog.sectionId !== "")
+                dataStore.removeSection(deleteSectionDialog.sectionId)
+        }
+    }
+
+    // ── Add task to specific section dialog ───────────────────────────────────
+    Dialog {
+        id:      addTaskToSectionDialog
+        title:   "Добавить задачу"
+        modal:   true
+        anchors.centerIn: Overlay.overlay
+        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        property string sectionId: ""
+
+        // ITER1 #40: clear text and focus the field when the dialog opens
+        onOpened: {
+            taskContentField.text = ""
+            taskContentField.forceActiveFocus()
+        }
+        onAccepted: {
+            var t = taskContentField.text.trim()
+            if (t !== "") {
+                // B-6.41 — addTask returns QString taskId (confirmed from taskviewmodel.h)
+                var taskId = taskViewModel.addTask(t, root.projectId, 4, "", [])
+                if (taskId && sectionId !== "")
+                    taskViewModel.moveTask(taskId, root.projectId, sectionId)
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Label {
+                text: "Название задачи"
+                Layout.fillWidth: true
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+            }
+            TextField {
+                id:              taskContentField
+                Layout.fillWidth: true
+                placeholderText: "Название задачи"
+                color:           root.textPrimary
+            }
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function _priorityColor(p) {
+        switch (p) {
+            case 1:  return ThemeManager.priorityP1Color
+            case 2:  return ThemeManager.priorityP2Color
+            case 3:  return ThemeManager.priorityP3Color
+            default: return ThemeManager.priorityP4Color
+        }
+    }
+
+    function _isOverdue(dateStr) {
+        if (!dateStr || dateStr === "") return false
+        var due   = new Date(dateStr)
+        var today = new Date()
+        today.setHours(0, 0, 0, 0)
+        return due < today
+    }
+
+    // ── Right-pane TaskEditor ────────────────────────────────────────────────
+    // Slides in from the right when a task is selected. Mirrors the
+    // DesktopLayout pattern so the project view has the same UX as Inbox/Today.
+    Rectangle {
+        id: taskEditorSeparator
+        anchors.top:    parent.top
+        anchors.bottom: parent.bottom
+        anchors.right:  taskEditorLoader.left
+        width:    1
+        color:    borderColor
+        visible:  taskEditorLoader.active
+    }
+
+    Loader {
+        id: taskEditorLoader
+        anchors.top:    parent.top
+        anchors.bottom: parent.bottom
+        anchors.right:  parent.right
+        width: root.taskEditorPaneWidth
+        active: taskViewModel.selectedTask !== null && taskViewModel.selectedTask !== undefined
+        visible: active
+        source: "../components/TaskEditor.qml"
+        onLoaded: {
+            if (item && taskViewModel.selectedTask)
+                item.task = taskViewModel.selectedTask
+        }
+        Connections {
+            target: taskEditorLoader.item
+            ignoreUnknownSignals: true
+            function onCloseRequested() {
+                taskViewModel.selectedTask = null
+            }
+        }
+        // Keep the editor's task in sync when selectedTask changes (clicking
+        // a different row while the editor is already open).
+        Connections {
+            target: taskViewModel
+            function onSelectedTaskChanged() {
+                if (taskEditorLoader.item && taskViewModel.selectedTask)
+                    taskEditorLoader.item.task = taskViewModel.selectedTask
+            }
+        }
+    }
+
+    // ── Weekly-goal celebration ──────────────────────────────────────────────
+    // Confetti burst + toast when the active project's weekly goal is reached.
+    // The signal fires from C++ ProjectViewModel::onTasksChanged() once per
+    // (projectId, ISO week); we play the overlay only when the celebration
+    // belongs to the project the user is currently viewing.
+    ConfettiOverlay {
+        id: projectConfetti
+        anchors.fill: parent
+        z: 1000
+    }
+
+    Connections {
+        target: projectViewModel
+        function onWeeklyGoalReached(projectId) {
+            if (projectId !== root.projectId) return
+            projectConfetti.celebrate()
+            const w = root.Window.window
+            if (w && typeof w.showToast === "function")
+                w.showToast("🎉 Цель проекта на неделю достигнута!", "success")
+        }
+    }
+}
