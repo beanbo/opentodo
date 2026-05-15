@@ -141,24 +141,24 @@ Item {
                     id: viewTitleLabel
                     text: {
                         switch (taskViewModel.filterMode) {
-                        case TaskViewModel.Inbox:     return "Входящие"
-                        case TaskViewModel.Today:     return "Сегодня"
-                        case TaskViewModel.Upcoming:  return "Предстоящие"
+                        case TaskViewModel.Inbox:     return qsTr("Входящие")
+                        case TaskViewModel.Today:     return qsTr("Сегодня")
+                        case TaskViewModel.Upcoming:  return qsTr("Предстоящие")
                         case TaskViewModel.Project: {
                             const p = projectViewModel
                                 ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
-                            return p ? p.name : "Проект"
+                            return p ? p.name : qsTr("Проект")
                         }
-                        case TaskViewModel.Board:     return "Доска"
-                        case TaskViewModel.Calendar:  return "Календарь"
-                        case TaskViewModel.Label:     return "Метка: " + (taskViewModel.currentFilter || "")
-                        case TaskViewModel.Filter:    return "Фильтр"
-                        case TaskViewModel.Completed: return "Завершённые"
-                        case TaskViewModel.Settings:  return "Настройки"
-                        case TaskViewModel.Productivity:  return "Продуктивность"
-                        case TaskViewModel.Notifications: return "Уведомления"
-                        case TaskViewModel.AI:        return "✨ Помощник"
-                        default:                      return "Задачи"
+                        case TaskViewModel.Board:     return qsTr("Доска")
+                        case TaskViewModel.Calendar:  return qsTr("Календарь")
+                        case TaskViewModel.Label:     return qsTr("Метка: %1").arg(taskViewModel.currentFilter || "")
+                        case TaskViewModel.Filter:    return qsTr("Фильтр")
+                        case TaskViewModel.Completed: return qsTr("Завершённые")
+                        case TaskViewModel.Settings:  return qsTr("Настройки")
+                        case TaskViewModel.Productivity:  return qsTr("Продуктивность")
+                        case TaskViewModel.Notifications: return qsTr("Уведомления")
+                        case TaskViewModel.AI:        return qsTr("✨ Помощник")
+                        default:                      return qsTr("Задачи")
                         }
                     }
                     font.pixelSize: FontSize.title
@@ -328,7 +328,7 @@ Item {
                 Label {
                     anchors.centerIn: parent
                     visible: taskListView.count === 0
-                    text: "Нет задач — наслаждайтесь днём!"
+                    text: qsTr("Нет задач — наслаждайтесь днём!")
                     color: textSecondary
                     font.pixelSize: FontSize.body
                 }
@@ -734,7 +734,7 @@ Item {
                     anchors.centerIn: parent
                     visible: searchResultsView.count === 0
                              && searchViewModel.searchQuery.length > 0
-                    text: "Ничего не найдено"
+                    text: qsTr("Ничего не найдено")
                     color: textSecondary
                     font.pixelSize: FontSize.body
                 }

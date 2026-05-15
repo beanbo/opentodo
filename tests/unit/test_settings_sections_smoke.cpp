@@ -12,8 +12,8 @@
 // a missing `Settings { category: ... }` block as a dedicated failed slot
 // rather than a vague Main.qml failure.
 //
-// FILES UNDER TEST (9 sections)
-// -----------------------------
+// FILES UNDER TEST (10 sections)
+// ------------------------------
 //   - SettingsSectionAbout.qml         needs settingsViewModel, fileManager,
 //                                      dataStore, notificationService,
 //                                      karmaViewModel, telemetry, crashLogger
@@ -29,6 +29,9 @@
 //   - SettingsSectionReminders.qml     needs settingsViewModel,
 //                                      notificationService, telemetry
 //   - SettingsSectionSidebar.qml       needs settingsViewModel, telemetry
+//   - SettingsSectionSupport.qml       donation page (BTC/ETH/TON/USDT);
+//                                      reads telemetry (typeof-guarded);
+//                                      otherwise self-contained
 //   - SettingsSectionSync.qml          needs syncViewModel, settingsViewModel,
 //                                      gdriveClient (guarded by `typeof`)
 //
@@ -52,7 +55,7 @@
 // context property we did not (or could not) register in the test scope, we
 // QSKIP that slot rather than failing — it is still useful information that
 // the section is NOT self-contained, recorded via qInfo() so the test log
-// captures the diagnosis. With the wiring below, all nine sections SHOULD
+// captures the diagnosis. With the wiring below, all ten sections SHOULD
 // load cleanly. A QSKIP would indicate a wiring change worth flagging.
 //
 // std::_Exit(0) in cleanupTestCase mirrors the same MinGW-on-Windows
@@ -490,6 +493,11 @@ private slots:
     void about_loads_without_error()
     {
         runSectionSmoke(QStringLiteral("About"), sectionUrl(QStringLiteral("About")));
+    }
+
+    void support_loads_without_error()
+    {
+        runSectionSmoke(QStringLiteral("Support"), sectionUrl(QStringLiteral("Support")));
     }
 
     void defer_loads_without_error()

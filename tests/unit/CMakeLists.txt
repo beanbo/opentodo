@@ -317,6 +317,21 @@ opentodo_add_unit_test(test_pomodoro_edges                Infra)
 opentodo_add_unit_test(test_dailyreview_dst               Infra)
 opentodo_add_unit_test(test_updatechecker_resilience      Infra)
 
+# Narrow-width DesktopLayout responsive-collapse pinning. Boots a
+# QQmlApplicationEngine, mounts DesktopLayout.qml inside a wrapper Item at
+# four representative widths (200 / 500 / 800 / 1200 px), and verifies the
+# sidebar collapses below the 800 px breakpoint while the hamburger button
+# remains reachable and the main content stays visible. Catches a future
+# regression of the "sidebar consumes the whole window" class.
+# Needs the OpenTodoUI plugin and the deployed Qt.labs.settings module on
+# the import path — same env shape as test_views_smoke / test_calendar_view_smoke.
+opentodo_add_unit_test(test_desktop_narrow_layout         App)
+target_link_libraries(test_desktop_narrow_layout PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_desktop_narrow_layout PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_desktop_narrow_layout>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Todoist import tests — needs fixture ZIP next to the binary.
 qt_add_executable(test_todoist_import test_todoist_import.cpp)
 target_link_libraries(test_todoist_import PRIVATE OpenTodoInfra Qt6::Test)

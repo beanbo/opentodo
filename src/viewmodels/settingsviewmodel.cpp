@@ -258,9 +258,14 @@ QStringList SettingsViewModel::availableThemes() const
 
 QStringList SettingsViewModel::availableLanguages() const
 {
+    // Order matches the i18n/ .ts files. Russian is the source language;
+    // English is the recommended default for non-Russian-speaking users.
     return {
-        QStringLiteral("en"),
         QStringLiteral("ru"),
+        QStringLiteral("en"),
+        QStringLiteral("de"),
+        QStringLiteral("uk"),
+        QStringLiteral("be"),
     };
 }
 

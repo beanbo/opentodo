@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QHash>
 #include <QLocale>
+#include <QSettings>
 #include <QTranslator>
 #include <QLibraryInfo>
 #include <QMetaEnum>
@@ -85,12 +86,41 @@ int main(int argc, char *argv[])
     app.setOrganizationDomain(QStringLiteral("opentodo.org"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
 
-    // Load Qt's bundled translations so standardButtons in dialogs (Cancel,
-    // OK, Yes, No, etc.) appear in the user's locale. With a static Qt build
-    // QLibraryInfo::TranslationsPath points to <exe>/translations rather than
-    // the Qt install dir, so we probe several candidate paths.
+    // Load translations. We have two layers:
+    //   1. Qt's own translations (qtbase_<lang>.qm) — fills in standardButtons
+    //      in dialogs ("Cancel", "OK", "Yes", "No", …).
+    //   2. OpenTodo's own translations (opentodo_<lang>.qm) — every UI string
+    //      we have wrapped in qsTr() / tr().
+    //
+    // The active locale is resolved as:
+    //   * settings/language if the user has explicitly picked one (one of
+    //     "ru", "en", "de", "uk", "be") — even before SettingsViewModel is
+    //     constructed, because QSettings is process-wide here.
+    //   * Otherwise QLocale::system() — but only the *language* part: a user
+    //     in en_US still gets en.qm, not en_US.qm (which we don't ship).
     {
-        const QLocale loc = QLocale::system();
+        // Read settings/language directly from QSettings. We cannot use the
+        // SettingsViewModel here — it isn't constructed yet, and we need the
+        // translators in place before any QML loads.
+        const QString cfgLang = []() -> QString {
+            QSettings s;
+            const QString v = s.value(QStringLiteral("language")).toString();
+            return v;
+        }();
+        const QStringList supported = {
+            QStringLiteral("ru"), QStringLiteral("en"),
+            QStringLiteral("de"), QStringLiteral("uk"),
+            QStringLiteral("be"),
+        };
+
+        QString lang = cfgLang;
+        if (lang.isEmpty() || !supported.contains(lang)) {
+            const QString sysLang = QLocale::system().name().section(QChar('_'), 0, 0);
+            lang = supported.contains(sysLang) ? sysLang : QStringLiteral("en");
+        }
+        const QLocale loc(lang);
+
+        // (1) Qt's bundled translations
         const QStringList trPaths = {
             QCoreApplication::applicationDirPath() + QStringLiteral("/translations"),
             QLibraryInfo::path(QLibraryInfo::TranslationsPath),
@@ -99,20 +129,35 @@ int main(int argc, char *argv[])
 #endif
         };
         QTranslator *qtTr = new QTranslator(&app);
-        bool loaded = false;
+        bool qtLoaded = false;
         for (const QString &path : trPaths) {
-            // Try qtbase_<lang> first (Qt 6 split-component name), then qt_<lang>.
             if (qtTr->load(loc, QStringLiteral("qtbase"), QStringLiteral("_"), path) ||
                 qtTr->load(loc, QStringLiteral("qt"),     QStringLiteral("_"), path)) {
-                loaded = true;
+                qtLoaded = true;
                 break;
             }
         }
-        if (loaded) {
+        if (qtLoaded) {
             app.installTranslator(qtTr);
         } else {
             qWarning("OpenTodo: failed to load Qt translations for locale %s; tried %s",
                      qPrintable(loc.name()), qPrintable(trPaths.join(QStringLiteral(", "))));
+        }
+
+        // (2) OpenTodo's own translations. The .qm files are embedded under
+        // the :/i18n/ resource prefix by qt_add_lrelease + qt_add_resources
+        // in CMakeLists.txt. Russian is the *source* language; loading
+        // opentodo_ru is therefore a no-op as far as message lookup goes,
+        // but we still install it to keep the active-translator state
+        // consistent (and to surface the .qm being missing as a hard error
+        // during development).
+        QTranslator *appTr = new QTranslator(&app);
+        const QString appQmRes = QStringLiteral(":/i18n/opentodo_%1.qm").arg(lang);
+        if (appTr->load(appQmRes)) {
+            app.installTranslator(appTr);
+        } else {
+            qWarning("OpenTodo: failed to load app translations from %s",
+                     qPrintable(appQmRes));
         }
     }
 

@@ -332,6 +332,7 @@ set(QML_FILES
     qml/views/TrashView.qml
     qml/components/settings/SettingsSectionDefer.qml
     qml/components/settings/SettingsSectionGeneral.qml
+    qml/components/settings/SettingsSectionLanguage.qml
     qml/components/settings/SettingsSectionAppearance.qml
     qml/components/settings/SettingsSectionProductivity.qml
     qml/components/settings/SettingsSectionReminders.qml
@@ -339,6 +340,7 @@ set(QML_FILES
     qml/components/settings/SettingsSectionSync.qml
     qml/components/settings/SettingsSectionBackup.qml
     qml/components/settings/SettingsSectionAbout.qml
+    qml/components/settings/SettingsSectionSupport.qml
     qml/views/ProductivityView.qml
     qml/views/NotificationsView.qml
     qml/views/AIView.qml
@@ -580,6 +582,46 @@ qt_add_resources(OpenTodo "templates"
         resources/templates/shopping_list.json
         resources/templates/dev_pipeline.json
 )
+
+# ── Application translations ─────────────────────────────────────────────────
+# Russian is the source language (literal Russian strings sit inside qsTr() in
+# QML and tr() in C++). The .ts files in i18n/ define translations into the
+# five supported locales: ru / en / de / uk / be. Each is compiled to a binary
+# .qm and embedded into the Qt resource system under prefix /i18n/, where
+# main.cpp loads it via QTranslator::load(":/i18n/opentodo_<lang>.qm").
+#
+# We deliberately use qt_add_lrelease() (compile-only) rather than
+# qt_add_translations() because the latter would try to run lupdate during the
+# normal CMake configure, which scans every C++/QML source file and would
+# clobber the hand-edited .ts files on every reconfigure. lupdate is meant to
+# be run manually by translators; here we only need .qm output.
+set(OPENTODO_TS_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/i18n/opentodo_ru.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/i18n/opentodo_en.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/i18n/opentodo_de.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/i18n/opentodo_uk.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/i18n/opentodo_be.ts
+)
+
+# Find lrelease — it's part of Qt6::LinguistTools.
+find_package(Qt6 OPTIONAL_COMPONENTS LinguistTools)
+if(TARGET Qt6::lrelease)
+    qt_add_lrelease(OpenTodo
+        TS_FILES ${OPENTODO_TS_FILES}
+        QM_FILES_OUTPUT_VARIABLE OPENTODO_QM_FILES
+    )
+    # Embed the compiled .qm files into the application resources so the
+    # runtime can load them via ":/i18n/opentodo_<lang>.qm" regardless of
+    # install layout (WASM / Android / static-deployed desktop builds).
+    qt_add_resources(OpenTodo "translations"
+        PREFIX "/i18n"
+        BASE   "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES  ${OPENTODO_QM_FILES}
+    )
+else()
+    message(WARNING "OpenTodo: Qt6::lrelease not found — translations will not be compiled. "
+                    "Install the Qt Linguist tools (qttools package) and reconfigure.")
+endif()
 
 # ── Install ──────────────────────────────────────────────────────────────────
 install(TARGETS OpenTodo

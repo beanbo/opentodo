@@ -28,7 +28,7 @@ Item {
             spacing: 16
 
             Label {
-                text: "Настройки"
+                text: qsTr("Настройки")
                 font.pixelSize: 28
                 font.bold: true
                 color: ThemeManager.textColor
@@ -38,6 +38,7 @@ Item {
             }
 
             SettingsSectionGeneral      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
+            SettingsSectionLanguage     { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionAppearance   { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionSync         { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionProductivity { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
@@ -46,6 +47,7 @@ Item {
             SettingsSectionSidebar      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionBackup       { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionAbout        { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
+            SettingsSectionSupport      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
 
             Item { Layout.preferredHeight: 40 }
         }

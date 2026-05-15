@@ -29,16 +29,16 @@ Rectangle {
     // Localised display name for a theme key
     function themeLabel(name) {
         switch (name) {
-        case "system":        return "Системная"
-        case "todoist_light": return "Светлая"
-        case "dark":          return "Тёмная"
-        case "kale":          return "Капуста"
-        case "blueberry":     return "Черника"
-        case "lavender":      return "Лаванда"
-        case "raspberry":     return "Малина"
-        case "graphite":      return "Графит"
-        case "sunflower":     return "Подсолнух"
-        case "highcontrast":  return "Высокая контрастность"
+        case "system":        return qsTr("Системная")
+        case "todoist_light": return qsTr("Светлая")
+        case "dark":          return qsTr("Тёмная")
+        case "kale":          return qsTr("Капуста")
+        case "blueberry":     return qsTr("Черника")
+        case "lavender":      return qsTr("Лаванда")
+        case "raspberry":     return qsTr("Малина")
+        case "graphite":      return qsTr("Графит")
+        case "sunflower":     return qsTr("Подсолнух")
+        case "highcontrast":  return qsTr("Высокая контрастность")
         default:              return name.charAt(0).toUpperCase() + name.slice(1)
         }
     }
@@ -61,7 +61,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Тема"
+                text: qsTr("Тема")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -241,7 +241,7 @@ Rectangle {
 
             // Section title
             Text {
-                text: "Свой цвет акцента"
+                text: qsTr("Свой цвет акцента")
                 font.pixelSize: 14
                 font.bold: true
                 color: ThemeManager.textColor
@@ -278,7 +278,7 @@ Rectangle {
 
                 Button {
                     id: applyAccentButton
-                    text: "Применить"
+                    text: qsTr("Применить")
                     Material.background: ThemeManager.accentColor
                     Material.foreground: ThemeManager.accentForeground
 
@@ -297,7 +297,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: "Сбросить"
+                    text: qsTr("Сбросить")
                     flat: true
                     Material.foreground: ThemeManager.textColor
                     onClicked: {
@@ -316,7 +316,7 @@ Rectangle {
                 spacing: 8
 
                 Text {
-                    text: "Быстрый выбор:"
+                    text: qsTr("Быстрый выбор:")
                     font.pixelSize: 12
                     color: ThemeManager.secondaryTextColor
                 }
@@ -358,7 +358,7 @@ Rectangle {
             Text {
                 id: customAccentError
                 visible: false
-                text: "Неверный формат: используйте #RRGGBB"
+                text: qsTr("Неверный формат: используйте #RRGGBB")
                 font.pixelSize: 12
                 color: ThemeManager.errorColor
             }
@@ -367,7 +367,7 @@ Rectangle {
             // "applied!" visual feedback channel via the flash animation.
             Text {
                 id: customAccentCaption
-                text: "Перекрывает цвет акцента темы"
+                text: qsTr("Перекрывает цвет акцента темы")
                 font.pixelSize: 12
                 color: ThemeManager.secondaryTextColor
 

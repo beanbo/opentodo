@@ -286,7 +286,7 @@ Rectangle {
                                 rightMargin: 6
                                 verticalCenter: parent.verticalCenter
                             }
-                            text: "Закреплённые"
+                            text: qsTr("Закреплённые")
                             font.pixelSize: FontSize.body
                             font.weight: Font.Medium
                             elide: Text.ElideRight
@@ -459,7 +459,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "📥"
-                label: "Входящие"
+                label: qsTr("Входящие")
                 count: settingsViewModel.showInboxCount ? sidebarViewModel.inboxCount : 0
                 showCount: settingsViewModel.showInboxCount && sidebarViewModel.inboxCount > 0
                 active: isActive("inbox")
@@ -480,7 +480,7 @@ Rectangle {
                     id: todaySidebarItem
                     width: parent.width
                     iconText: "📅"
-                    label: "Сегодня"
+                    label: qsTr("Сегодня")
                     count: settingsViewModel.showTodayCount ? sidebarViewModel.todayCount : 0
                     showCount: settingsViewModel.showTodayCount && sidebarViewModel.todayCount > 0
                     active: isActive("today")
@@ -526,7 +526,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "📆"
-                label: "Предстоящие"
+                label: qsTr("Предстоящие")
                 count: settingsViewModel.showUpcomingCount ? sidebarViewModel.upcomingCount : 0
                 showCount: settingsViewModel.showUpcomingCount && sidebarViewModel.upcomingCount > 0
                 active: isActive("upcoming")
@@ -548,7 +548,7 @@ Rectangle {
 
                     SectionHeader {
                         width: parent.width
-                        title: "Избранное"
+                        title: qsTr("Избранное")
                         isDarkTheme: sidebarContent.isDarkTheme
                     }
 
@@ -596,7 +596,7 @@ Rectangle {
 
             SectionHeader {
                 width: parent.width
-                title: "Проекты"
+                title: qsTr("Проекты")
                 isDarkTheme: sidebarContent.isDarkTheme
                 showAddButton: true
                 showArchiveToggle: true
@@ -999,18 +999,18 @@ Rectangle {
                             property string projectName: ""
 
                             MenuItem {
-                                text: "Открыть"
+                                text: qsTr("Открыть")
                                 onTriggered: sidebarViewModel.navigateToProject(projCtxMenu.projectId)
                             }
                             MenuItem {
-                                text: "Добавить раздел…"
+                                text: qsTr("Добавить раздел…")
                                 onTriggered: {
                                     addSectionFromMenuDialog.projectId = projCtxMenu.projectId
                                     addSectionFromMenuDialog.open()
                                 }
                             }
                             MenuItem {
-                                text: "Родительский проект…"
+                                text: qsTr("Родительский проект…")
                                 onTriggered: {
                                     parentPickerDialog.projectId   = projCtxMenu.projectId
                                     parentPickerDialog.projectName = projCtxMenu.projectName
@@ -1021,8 +1021,8 @@ Rectangle {
                             MenuItem {
                                 text: (projectViewModel.projectById(projCtxMenu.projectId)
                                        && projectViewModel.projectById(projCtxMenu.projectId).isFavorite)
-                                      ? "Убрать из избранного"
-                                      : "В избранное"
+                                      ? qsTr("Убрать из избранного")
+                                      : qsTr("В избранное")
                                 onTriggered: {
                                     const p = projectViewModel.projectById(projCtxMenu.projectId)
                                     projectViewModel.setFavorite(projCtxMenu.projectId,
@@ -1030,12 +1030,12 @@ Rectangle {
                                 }
                             }
                             MenuItem {
-                                text: "Архивировать"
+                                text: qsTr("Архивировать")
                                 onTriggered: projectViewModel.archiveProject(projCtxMenu.projectId)
                             }
                             MenuSeparator {}
                             MenuItem {
-                                text: "Удалить проект"
+                                text: qsTr("Удалить проект")
                                 onTriggered: {
                                     deleteProjectDialog.projectId   = projCtxMenu.projectId
                                     deleteProjectDialog.projectName = projCtxMenu.projectName
@@ -1209,7 +1209,7 @@ Rectangle {
 
                     SectionHeader {
                         width: parent.width
-                        title: "Архив"
+                        title: qsTr("Архив")
                         isDarkTheme: sidebarContent.isDarkTheme
                         showAddButton: false
                     }
@@ -1296,12 +1296,12 @@ Rectangle {
                                     property string projectName: ""
 
                                     MenuItem {
-                                        text: "Восстановить"
+                                        text: qsTr("Восстановить")
                                         onTriggered: projectViewModel.unarchiveProject(archivedCtxMenu.projectId)
                                     }
                                     MenuSeparator {}
                                     MenuItem {
-                                        text: "Удалить навсегда"
+                                        text: qsTr("Удалить навсегда")
                                         onTriggered: {
                                             deleteProjectDialog.projectId   = archivedCtxMenu.projectId
                                             deleteProjectDialog.projectName = archivedCtxMenu.projectName
@@ -1321,7 +1321,7 @@ Rectangle {
 
             SectionHeader {
                 width: parent.width
-                title: "Фильтры"
+                title: qsTr("Фильтры")
                 isDarkTheme: sidebarContent.isDarkTheme
                 showAddButton: true
                 onAddClicked: addFilterDialog.open()
@@ -1377,12 +1377,12 @@ Rectangle {
                         property int    filterOrder: 0
 
                         MenuItem {
-                            text: "Открыть"
+                            text: qsTr("Открыть")
                             onTriggered: sidebarViewModel.navigateToFilter(filterCtxMenu.filterId)
                         }
                         MenuSeparator {}
                         MenuItem {
-                            text: "Переименовать"
+                            text: qsTr("Переименовать")
                             onTriggered: {
                                 renameFilterDialog.filterId   = filterCtxMenu.filterId
                                 renameFilterDialog.filterName = filterCtxMenu.filterName
@@ -1390,7 +1390,7 @@ Rectangle {
                             }
                         }
                         MenuItem {
-                            text: "Изменить запрос"
+                            text: qsTr("Изменить запрос")
                             onTriggered: {
                                 editFilterQueryDialog.filterId    = filterCtxMenu.filterId
                                 editFilterQueryDialog.filterName  = filterCtxMenu.filterName
@@ -1401,20 +1401,20 @@ Rectangle {
                         }
                         MenuSeparator {}
                         MenuItem {
-                            text: "Переместить вверх"
+                            text: qsTr("Переместить вверх")
                             enabled: filterCtxMenu.filterIndex > 0
                             onTriggered: filterViewModel.reorderFilter(filterCtxMenu.filterId,
                                                                        filterCtxMenu.filterOrder - 1)
                         }
                         MenuItem {
-                            text: "Переместить вниз"
+                            text: qsTr("Переместить вниз")
                             enabled: filterCtxMenu.filterIndex < filterViewModel.count - 1
                             onTriggered: filterViewModel.reorderFilter(filterCtxMenu.filterId,
                                                                        filterCtxMenu.filterOrder + 1)
                         }
                         MenuSeparator {}
                         MenuItem {
-                            text: "Удалить фильтр"
+                            text: qsTr("Удалить фильтр")
                             onTriggered: {
                                 deleteFilterDialog.filterId   = filterCtxMenu.filterId
                                 deleteFilterDialog.filterName = filterCtxMenu.filterName
@@ -1431,7 +1431,7 @@ Rectangle {
 
             SectionHeader {
                 width: parent.width
-                title: "Метки"
+                title: qsTr("Метки")
                 isDarkTheme: sidebarContent.isDarkTheme
                 showAddButton: false
             }
@@ -1791,7 +1791,7 @@ Rectangle {
                 HoverHandler { id: streakHover }
                 ToolTip.visible: streakHover.hovered
                 ToolTip.delay: 500
-                ToolTip.text: "Серия дней с выполненными задачами"
+                ToolTip.text: qsTr("Серия дней с выполненными задачами")
             }
 
             // Bottom spacer
@@ -1805,7 +1805,7 @@ Rectangle {
 
     Dialog {
         id: addProjectDialog
-        title: "Добавить проект"
+        title: qsTr("Добавить проект")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -1835,12 +1835,12 @@ Rectangle {
                 id: newProjectName
                 Layout.fillWidth: true
                 Layout.preferredWidth: 280
-                placeholderText: "Название проекта"
+                placeholderText: qsTr("Название проекта")
                 focus: true
             }
 
             Text {
-                text: "Цвет"
+                text: qsTr("Цвет")
                 font.pixelSize: FontSize.small
                 color: ThemeManager.secondaryTextColor
             }
@@ -1880,7 +1880,7 @@ Rectangle {
 
     Dialog {
         id: addFilterDialog
-        title: "Добавить фильтр"
+        title: qsTr("Добавить фильтр")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -1915,13 +1915,13 @@ Rectangle {
                 id: newFilterName
                 Layout.fillWidth: true
                 Layout.preferredWidth: 320
-                placeholderText: "Название фильтра"
+                placeholderText: qsTr("Название фильтра")
                 focus: true
                 onTextChanged: addFilterDialog._refreshOkState()
             }
 
             Text {
-                text: "Запрос фильтра"
+                text: qsTr("Запрос фильтра")
                 font.pixelSize: FontSize.small
                 color: ThemeManager.secondaryTextColor
             }
@@ -1942,7 +1942,7 @@ Rectangle {
         id: deleteProjectDialog
         property string projectId:   ""
         property string projectName: ""
-        title: "Удалить проект"
+        title: qsTr("Удалить проект")
         modal: true
         anchors.centerIn: Overlay.overlay
         // Explicit width: avoids implicitWidth binding loop with the wrapping Label.
@@ -1953,8 +1953,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Удалить проект «" + deleteProjectDialog.projectName +
-                      "» вместе со всеми задачами и разделами? Действие необратимо."
+                text: qsTr("Удалить проект «%1» вместе со всеми задачами и разделами? Действие необратимо.").arg(deleteProjectDialog.projectName)
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
@@ -1970,7 +1969,7 @@ Rectangle {
     Dialog {
         id: addSectionFromMenuDialog
         property string projectId: ""
-        title: "Добавить раздел"
+        title: qsTr("Добавить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(360, Overlay.overlay.width - Spacing.xl)
@@ -1987,7 +1986,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Название раздела"
+                text: qsTr("Название раздела")
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: 13
                 Layout.fillWidth: true
@@ -1995,7 +1994,7 @@ Rectangle {
             TextField {
                 id: newSectionName
                 Layout.fillWidth: true
-                placeholderText: "Например: В работе"
+                placeholderText: qsTr("Например: В работе")
                 color: ThemeManager.textColor
             }
         }
@@ -2005,7 +2004,7 @@ Rectangle {
         id: parentPickerDialog
         property string projectId:   ""
         property string projectName: ""
-        title: "Родительский проект"
+        title: qsTr("Родительский проект")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(380, Overlay.overlay.width - Spacing.xl)
@@ -2024,8 +2023,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 12
             Label {
-                text: "Сделать «" + parentPickerDialog.projectName +
-                      "» подпроектом:"
+                text: qsTr("Сделать «%1» подпроектом:").arg(parentPickerDialog.projectName)
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
@@ -2037,7 +2035,7 @@ Rectangle {
                 valueRole: "id"
 
                 function _rebuild() {
-                    const items = [{ id: "", name: "(нет — корневой)" }]
+                    const items = [{ id: "", name: qsTr("(нет — корневой)") }]
                     if (typeof projectViewModel !== "undefined" && typeof dataStore !== "undefined") {
                         const allProjs = dataStore.allProjects()
                         for (let i = 0; i < allProjs.length; ++i) {
@@ -2073,7 +2071,7 @@ Rectangle {
         id: renameFilterDialog
         property string filterId:   ""
         property string filterName: ""
-        title: "Переименовать фильтр"
+        title: qsTr("Переименовать фильтр")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -2099,14 +2097,14 @@ Rectangle {
             spacing: 8
             width: 280
             Label {
-                text: "Новое название"
+                text: qsTr("Новое название")
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: 13
             }
             TextField {
                 id: renameFilterField
                 Layout.fillWidth: true
-                placeholderText: "Название фильтра"
+                placeholderText: qsTr("Название фильтра")
                 color: ThemeManager.textColor
                 onTextChanged: renameFilterDialog._refreshOkState()
             }
@@ -2118,7 +2116,7 @@ Rectangle {
         property string filterId:     ""
         property string filterName:   ""
         property string initialQuery: ""
-        title: "Изменить запрос фильтра"
+        title: qsTr("Изменить запрос фильтра")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -2138,7 +2136,7 @@ Rectangle {
             width: 360
 
             Label {
-                text: "Фильтр: " + editFilterQueryDialog.filterName
+                text: qsTr("Фильтр: %1").arg(editFilterQueryDialog.filterName)
                 font.pixelSize: 13
                 font.weight: Font.Medium
                 color: ThemeManager.textColor
@@ -2147,7 +2145,7 @@ Rectangle {
             }
 
             Text {
-                text: "Запрос"
+                text: qsTr("Запрос")
                 font.pixelSize: FontSize.small
                 color: ThemeManager.secondaryTextColor
             }
@@ -2164,13 +2162,13 @@ Rectangle {
         id: deleteFilterDialog
         property string filterId:   ""
         property string filterName: ""
-        title: "Удалить фильтр"
+        title: qsTr("Удалить фильтр")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Yes | Dialog.No
 
         Label {
-            text: "Удалить фильтр «" + deleteFilterDialog.filterName + "»? Действие необратимо."
+            text: qsTr("Удалить фильтр «%1»? Действие необратимо.").arg(deleteFilterDialog.filterName)
             wrapMode: Text.Wrap
             width: 300
             color: ThemeManager.textColor

@@ -33,7 +33,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Общие"
+                text: qsTr("Общие")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -85,7 +85,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Язык"
+                    text: qsTr("Язык")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -93,6 +93,20 @@ Rectangle {
 
                 ComboBox {
                     id: languageCombo
+                    // displayRole-style mapping: backend uses ["en","ru","de","uk","be"];
+                    // we render their human-friendly names so users see "English"
+                    // not just "en". The selection itself is keyed by the language
+                    // code, so QTranslator can resolve opentodo_<code>.qm.
+                    function _langDisplayName(code) {
+                        switch (code) {
+                            case "ru": return qsTr("Русский")
+                            case "en": return qsTr("English")
+                            case "de": return qsTr("Deutsch")
+                            case "uk": return qsTr("Українська")
+                            case "be": return qsTr("Беларуская")
+                            default:   return code
+                        }
+                    }
                     model: settingsViewModel.availableLanguages()
                     implicitWidth: 160
                     currentIndex: {
@@ -108,9 +122,20 @@ Rectangle {
                             telemetry.trackEvent("settings_language_changed", { "lang": currentText })
                     }
 
+                    delegate: ItemDelegate {
+                        required property var modelData
+                        width: parent ? parent.width : 0
+                        contentItem: Text {
+                            text: languageCombo._langDisplayName(modelData)
+                            font.pixelSize: 13
+                            color: ThemeManager.textColor
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
                     contentItem: Text {
                         leftPadding: 10
-                        text: languageCombo.displayText
+                        text: languageCombo._langDisplayName(languageCombo.displayText)
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                         verticalAlignment: Text.AlignVCenter
@@ -168,14 +193,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Формат даты"
+                        text: qsTr("Формат даты")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Используется во всех частях приложения"
+                        text: qsTr("Используется во всех частях приложения")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -192,9 +217,9 @@ Rectangle {
                     valueRole: "id"
 
                     model: [
-                        { label: "ДД.ММ.ГГГГ (31.12.2026)", id: "dd.MM.yyyy" },
-                        { label: "ГГГГ-ММ-ДД (2026-12-31)", id: "yyyy-MM-dd" },
-                        { label: "ММ/ДД/ГГГГ (12/31/2026)", id: "MM/dd/yyyy" }
+                        { label: qsTr("ДД.ММ.ГГГГ (31.12.2026)"), id: "dd.MM.yyyy" },
+                        { label: qsTr("ГГГГ-ММ-ДД (2026-12-31)"), id: "yyyy-MM-dd" },
+                        { label: qsTr("ММ/ДД/ГГГГ (12/31/2026)"), id: "MM/dd/yyyy" }
                     ]
 
                     currentIndex: {
@@ -251,7 +276,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Формат времени"
+                    text: qsTr("Формат времени")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -261,7 +286,7 @@ Rectangle {
                     spacing: 16
 
                     RadioButton {
-                        text: "12-часовой"
+                        text: qsTr("12-часовой")
                         checked: settingsViewModel.timeFormat === 12
                         onClicked: settingsViewModel.updateSetting("timeFormat", 12)
                         contentItem: Text {
@@ -274,7 +299,7 @@ Rectangle {
                     }
 
                     RadioButton {
-                        text: "24-часовой"
+                        text: qsTr("24-часовой")
                         checked: settingsViewModel.timeFormat === 24
                         onClicked: settingsViewModel.updateSetting("timeFormat", 24)
                         contentItem: Text {
@@ -312,7 +337,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Начало недели"
+                    text: qsTr("Начало недели")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -320,7 +345,7 @@ Rectangle {
 
                 ComboBox {
                     id: weekStartCombo
-                    model: ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+                    model: [qsTr("Понедельник"), qsTr("Вторник"), qsTr("Среда"), qsTr("Четверг"), qsTr("Пятница"), qsTr("Суббота"), qsTr("Воскресенье")]
                     implicitWidth: 160
                     currentIndex: settingsViewModel.weekStart
                     onActivated: settingsViewModel.updateSetting("weekStart", currentIndex)
@@ -365,7 +390,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Стартовая страница"
+                    text: qsTr("Стартовая страница")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -374,7 +399,7 @@ Rectangle {
                 ComboBox {
                     id: startPageCombo
                     property var pageKeys: ["Inbox", "Today", "Upcoming"]
-                    model: ["Входящие", "Сегодня", "Предстоящие"]
+                    model: [qsTr("Входящие"), qsTr("Сегодня"), qsTr("Предстоящие")]
                     implicitWidth: 160
                     currentIndex: {
                         for (var i = 0; i < pageKeys.length; i++) {
@@ -430,7 +455,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "День, считающийся следующей неделей"
+                    text: qsTr("День, считающийся следующей неделей")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -438,7 +463,7 @@ Rectangle {
 
                 ComboBox {
                     id: nextWeekDayCombo
-                    model: ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+                    model: [qsTr("Понедельник"), qsTr("Вторник"), qsTr("Среда"), qsTr("Четверг"), qsTr("Пятница"), qsTr("Суббота"), qsTr("Воскресенье")]
                     implicitWidth: 160
                     // nextWeekDay is 1-based (1=Mon, 7=Sun); convert to 0-based index
                     currentIndex: Math.max(0, settingsViewModel.nextWeekDay - 1)
@@ -492,14 +517,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Авто-архивирование старых проектов"
+                        text: qsTr("Авто-архивирование старых проектов")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Архивировать проекты, в которых все задачи выполнены и нет активности более N дней. 0 = выключено."
+                        text: qsTr("Архивировать проекты, в которых все задачи выполнены и нет активности более N дней. 0 = выключено.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -551,14 +576,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Ежедневный итог в 18:00"
+                        text: qsTr("Ежедневный итог в 18:00")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Уведомление в 18:00 о незавершённых задачах текущего дня."
+                        text: qsTr("Уведомление в 18:00 о незавершённых задачах текущего дня.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -606,14 +631,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Сортировка задач по умолчанию"
+                        text: qsTr("Сортировка задач по умолчанию")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Применяется ко всем спискам, кроме календаря и доски."
+                        text: qsTr("Применяется ко всем спискам, кроме календаря и доски.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -630,11 +655,11 @@ Rectangle {
                     valueRole: "id"
 
                     model: [
-                        { label: "Порядок (по умолчанию)",    id: "order"         },
-                        { label: "По дате — старые сверху",   id: "createdAt"     },
-                        { label: "По дате — новые сверху",    id: "createdAtDesc" },
-                        { label: "По приоритету",              id: "priority"      },
-                        { label: "По сроку",                   id: "date"          }
+                        { label: qsTr("Порядок (по умолчанию)"),    id: "order"         },
+                        { label: qsTr("По дате — старые сверху"),   id: "createdAt"     },
+                        { label: qsTr("По дате — новые сверху"),    id: "createdAtDesc" },
+                        { label: qsTr("По приоритету"),              id: "priority"      },
+                        { label: qsTr("По сроку"),                   id: "date"          }
                     ]
 
                     currentIndex: {
@@ -697,14 +722,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Обратный порядок сортировки"
+                        text: qsTr("Обратный порядок сортировки")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Переворачивает текущий порядок задач"
+                        text: qsTr("Переворачивает текущий порядок задач")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -748,14 +773,14 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Плотность задач"
+                        text: qsTr("Плотность задач")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Компактный режим уменьшает высоту строк."
+                        text: qsTr("Компактный режим уменьшает высоту строк.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -768,7 +793,7 @@ Rectangle {
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
 
                     ToolButton {
-                        text: "Удобный"
+                        text: qsTr("Удобный")
                         checked: !settingsViewModel.compactDensity
                         onClicked: {
                             settingsViewModel.compactDensity = false
@@ -779,7 +804,7 @@ Rectangle {
                     }
 
                     ToolButton {
-                        text: "Компактный"
+                        text: qsTr("Компактный")
                         checked: settingsViewModel.compactDensity
                         onClicked: {
                             settingsViewModel.compactDensity = true

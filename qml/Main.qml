@@ -114,8 +114,11 @@ ApplicationWindow {
     width: Qt.platform.os === "android" ? Screen.width : 1280
     height: Qt.platform.os === "android" ? Screen.height : 800
 
-    minimumWidth: Qt.platform.os === "android" ? 0 : 1024
-    minimumHeight: Qt.platform.os === "android" ? 0 : 768
+    // Window min size: 200 px wide so the responsive DesktopLayout can collapse
+    // its sidebar entirely and degrade gracefully. The ≥ 800 / 500-799 / < 500
+    // breakpoints in DesktopLayout.qml handle the visual reflow.
+    minimumWidth: Qt.platform.os === "android" ? 0 : 200
+    minimumHeight: Qt.platform.os === "android" ? 0 : 320
 
     Material.theme: ThemeManager.isDark ? Material.Dark : Material.Light
     Material.accent: ThemeManager.accentColor

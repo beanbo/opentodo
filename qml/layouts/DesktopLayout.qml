@@ -24,10 +24,27 @@ Item {
     readonly property int taskEditorWidth:   400
     readonly property int animationDuration: Duration.normal
 
-    // Below this width the sidebar collapses into an overlay drawer so the
-    // task list isn't squashed. Triggered automatically on resize.
-    readonly property int narrowBreakpoint: 760
-    readonly property bool isNarrow: width > 0 && width < narrowBreakpoint
+    // ── Responsive breakpoints ───────────────────────────────────────────────
+    //   ≥ 800 px            full layout — inline sidebar, full top bar
+    //   500 ≤ w < 800 px    "compact" — inline sidebar hidden; hamburger opens
+    //                       sidebar as overlay drawer; top bar drops the
+    //                       expand/collapse buttons & the today-goal pill but
+    //                       keeps search + sync indicator.
+    //   < 500 px            "ultra-compact" — same overlay drawer; top bar
+    //                       drops the search bar (search reachable via Ctrl+F
+    //                       palette path) and the sync indicator label so only
+    //                       hamburger + view title remain. Window minimumWidth
+    //                       in Main.qml allows down to 200 px.
+    //
+    // We keep `isNarrow` as the alias the existing drawer-overlay code uses:
+    // ANY width below 800 px should trigger the overlay-sidebar codepath.
+    readonly property int  narrowBreakpoint:      800
+    readonly property int  ultraCompactBreakpoint: 500
+    readonly property bool _narrowUltraCompact:   width > 0 && width < ultraCompactBreakpoint
+    readonly property bool _narrowCompact:        width >= ultraCompactBreakpoint && width < narrowBreakpoint
+    // Backwards-compatible alias used by the overlay-drawer code below; covers
+    // both compact bands (anything < 800 px).
+    readonly property bool isNarrow:              width > 0 && width < narrowBreakpoint
 
     // ITER2 #8: track whether the last sidebar close was auto-triggered by
     // entering narrow mode. Only restore on exit if WE closed it — not if the
@@ -272,12 +289,15 @@ Item {
         // ── Sidebar (inline, only used in wide mode) ─────────────────────────
         Item {
             id: sidebarContainer
+            objectName: "sidebarContainer"
             Layout.fillHeight: true
-            // Hidden in narrow mode — narrow mode uses the overlay drawer.
-            // Также полностью скрывается в режиме фокуса (F11).
-            visible: !root._focusMode
+            // Hidden in narrow mode (BOTH compact bands) — narrow mode uses the
+            // overlay drawer. Также полностью скрывается в режиме фокуса (F11).
+            // visible is bound to (preferredWidth > 0) so the test that probes
+            // the visible flag at width 200 / 500 / 800 sees the correct value.
             Layout.preferredWidth: (root._focusMode || root.isNarrow || !sidebarViewModel.sidebarVisible)
                                    ? 0 : sidebarWidth
+            visible: !root._focusMode && Layout.preferredWidth > 0
             clip: true
 
             Behavior on Layout.preferredWidth {
@@ -317,6 +337,7 @@ Item {
         // ── Main content area ─────────────────────────────────────────────────
         Item {
             id: mainContent
+            objectName: "mainContent"
             Layout.fillWidth: true
             Layout.fillHeight: true
 
@@ -327,6 +348,7 @@ Item {
                 // ── Top bar ───────────────────────────────────────────────────
                 Rectangle {
                     id: topBar
+                    objectName: "topBar"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 56
                     color: contentColor
@@ -353,6 +375,7 @@ Item {
                         // Hamburger / sidebar toggle
                         ToolButton {
                             id: sidebarToggleButton
+                            objectName: "sidebarToggleButton"
                             text: "☰"  // hamburger glyph; avoids depending on a missing svg resource
                             font.pixelSize: FontSize.title
                             onClicked: sidebarViewModel.toggleSidebar()
@@ -360,12 +383,16 @@ Item {
 
                             // ITER2 #23: icon-only button — provide accessible role + name.
                             Accessible.role: Accessible.Button
-                            Accessible.name: "Меню"
+                            Accessible.name: qsTr("Меню")
 
                             ToolTip.visible: hovered
-                            ToolTip.text: sidebarViewModel.sidebarVisible
-                                          ? qsTr("Hide sidebar")
-                                          : qsTr("Show sidebar")
+                            // In narrow modes (compact + ultra-compact) the hamburger opens the
+                            // overlay drawer; in wide mode it toggles the inline sidebar.
+                            ToolTip.text: root.isNarrow
+                                          ? qsTr("Открыть боковую панель")
+                                          : (sidebarViewModel.sidebarVisible
+                                             ? qsTr("Скрыть боковую панель")
+                                             : qsTr("Показать боковую панель"))
                         }
 
                         // Current view title — derived from the active filter mode.
@@ -373,26 +400,26 @@ Item {
                             id: viewTitleLabel
                             text: {
                                 switch (taskViewModel.filterMode) {
-                                case TaskViewModel.Inbox:     return "Входящие"
-                                case TaskViewModel.Today:     return "Сегодня"
-                                case TaskViewModel.Upcoming:  return "Предстоящие"
+                                case TaskViewModel.Inbox:     return qsTr("Входящие")
+                                case TaskViewModel.Today:     return qsTr("Сегодня")
+                                case TaskViewModel.Upcoming:  return qsTr("Предстоящие")
                                 case TaskViewModel.Project: {
                                     const p = projectViewModel ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
-                                    return p ? p.name : "Проект"
+                                    return p ? p.name : qsTr("Проект")
                                 }
                                 // ITER1 #25: resolve internal label name to display name via dataStore
                                 case TaskViewModel.Label: {
                                     const lbl = dataStore.labelByName(taskViewModel.currentFilter)
-                                    return "Метка: " + (lbl ? lbl.name : (taskViewModel.currentFilter || ""))
+                                    return qsTr("Метка: %1").arg(lbl ? lbl.name : (taskViewModel.currentFilter || ""))
                                 }
-                                case TaskViewModel.Filter:        return "Фильтр"
-                                case TaskViewModel.Completed:     return "Завершённые"
-                                case TaskViewModel.Settings:      return "Настройки"
-                                case TaskViewModel.Productivity:  return "Продуктивность"
-                                case TaskViewModel.Notifications: return "Уведомления"
-                                case TaskViewModel.AI:            return "✨ Помощник"
-                                case TaskViewModel.Trash:         return "🗑 Корзина"
-                                default:                          return "Задачи"
+                                case TaskViewModel.Filter:        return qsTr("Фильтр")
+                                case TaskViewModel.Completed:     return qsTr("Завершённые")
+                                case TaskViewModel.Settings:      return qsTr("Настройки")
+                                case TaskViewModel.Productivity:  return qsTr("Продуктивность")
+                                case TaskViewModel.Notifications: return qsTr("Уведомления")
+                                case TaskViewModel.AI:            return qsTr("✨ Помощник")
+                                case TaskViewModel.Trash:         return qsTr("🗑 Корзина")
+                                default:                          return qsTr("Задачи")
                                 }
                             }
                             font.pixelSize: FontSize.title
@@ -404,9 +431,13 @@ Item {
                         }
 
                         // ── Today goal progress pill ──────────────────────────
+                        // Hidden in any narrow band — the pill needs ~110 px and
+                        // would crowd out the view title at sub-800 widths.
                         Rectangle {
                             id: todayGoalIndicator
-                            visible: settingsViewModel.dailyGoal > 0 && !root.isFullPageView
+                            visible: settingsViewModel.dailyGoal > 0
+                                     && !root.isFullPageView
+                                     && !root.isNarrow
                             Layout.preferredWidth: 110
                             Layout.preferredHeight: 24
                             Layout.alignment: Qt.AlignVCenter
@@ -456,23 +487,25 @@ Item {
                             ToolTip.visible: tdgHover.hovered
                             ToolTip.delay: 500
                             ToolTip.text: parent._achieved
-                                ? "Дневная цель выполнена! 🎉"
-                                : "До дневной цели осталось: " + (parent._goal - parent._completedToday)
+                                ? qsTr("Дневная цель выполнена! 🎉")
+                                : qsTr("До дневной цели осталось: %1").arg(parent._goal - parent._completedToday)
                         }
 
-                        // Search bar
+                        // Search bar — shrinks at narrow widths, hidden in ultra-compact.
+                        // The search palette (Ctrl+F / Ctrl+K) remains reachable.
                         Loader {
                             id: searchBarLoader
                             source: "../components/SearchBar.qml"
-                            Layout.preferredWidth: 220
-                            Layout.minimumWidth: 120
+                            visible: !root._narrowUltraCompact
+                            Layout.preferredWidth: root._narrowCompact ? 140 : 220
+                            Layout.minimumWidth: root._narrowCompact ? 100 : 120
                             Layout.preferredHeight: 32
                         }
 
-                        // Hide-completed toggle — not shown in full-page views
+                        // Hide-completed toggle — not shown in full-page views or compact modes
                         ToolButton {
                             id: hideCompletedBtn
-                            visible: !root.isFullPageView
+                            visible: !root.isFullPageView && !root.isNarrow
                             text: taskViewModel.showCompleted ? "👁" : "🙈"
                             flat: true
                             font.pixelSize: 16
@@ -500,7 +533,7 @@ Item {
                         }
                         ToolButton {
                             id: expandAllBtn
-                            visible: !root.isFullPageView
+                            visible: !root.isFullPageView && !root.isNarrow
                             text: "📂"
                             flat: true
                             font.pixelSize: 16
@@ -515,7 +548,7 @@ Item {
                         }
                         ToolButton {
                             id: collapseAllBtn
-                            visible: !root.isFullPageView
+                            visible: !root.isFullPageView && !root.isNarrow
                             text: "📁"
                             flat: true
                             font.pixelSize: 16
@@ -534,11 +567,15 @@ Item {
                         // 16 icon + 6 spacing + 16 padding ≈ 148 px). Capping at
                         // 110 made the content overflow the layout cell and
                         // collide with the right window edge.
+                        // Hidden entirely in ultra-compact mode (< 500 px) to make
+                        // room for the title; the user can still see sync status
+                        // via the global toast/error banner.
                         Loader {
                             id: syncIndicatorLoader
                             source: "../components/SyncIndicator.qml"
-                            Layout.preferredWidth: 160
-                            Layout.maximumWidth: 160
+                            visible: !root._narrowUltraCompact
+                            Layout.preferredWidth: root._narrowCompact ? 100 : 160
+                            Layout.maximumWidth: root._narrowCompact ? 100 : 160
                             Layout.preferredHeight: 32
                             Layout.rightMargin: Spacing.sm
                         }
@@ -2104,8 +2141,11 @@ Item {
     // When the window is narrower than the breakpoint, the inline sidebar
     // disappears. Tapping the hamburger reveals THIS overlay drawer that
     // covers the main content from the left edge. Tap outside to dismiss.
+    // Width inside the panel is clamped so a 200 px window still shows
+    // ~144 px of sidebar (parent.width - 56), enough for project rows.
     Item {
         id: drawerOverlay
+        objectName: "drawerOverlay"
         anchors.fill: parent
         z: 50
         visible: root.isNarrow && sidebarViewModel.sidebarVisible
@@ -2123,9 +2163,13 @@ Item {
         // Sliding sidebar panel.
         Rectangle {
             id: drawerPanel
+            objectName: "drawerPanel"
             anchors.top:    parent.top
             anchors.bottom: parent.bottom
-            width: Math.max(160, Math.min(sidebarWidth, parent.width - 56))  // B-6.20: floor at 160 to prevent underflow
+            // Floor lowered to 140 so the drawer still fits inside a 200 px window
+            // while leaving a tappable strip (~40 px) of dim background to dismiss.
+            // B-6.20: floor at a sensible minimum to prevent underflow.
+            width: Math.max(140, Math.min(sidebarWidth, parent.width - 40))
             color: contentColor
 
             Loader {
