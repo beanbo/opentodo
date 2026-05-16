@@ -334,6 +334,13 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parse(const QString &csv,
     int taskOrder   = 0;
     int sectionOrder = 0;
 
+    // Q3.08-A: track the currently-open section so subsequent task rows can
+    // adopt its id. Todoist CSV uses a TYPE=section row as a header that
+    // applies to all following TYPE=task rows in the same project until the
+    // next section row. The parser previously emitted the section entity but
+    // never wired task.sectionId, leaving tasks section-less in DataStore.
+    QString currentSectionId;
+
     for (int row = 1; row < rows.size(); ++row) {
         const QStringList &fields = rows[row];
         if (fields.isEmpty()) continue;
@@ -348,6 +355,9 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parse(const QString &csv,
             sec.order     = sectionOrder++;
             result.sections.append(sec);
 
+            // Q3.08-A: this section is now the "open" one for following tasks.
+            currentSectionId = sec.id;
+
         } else if (type == QStringLiteral("task")) {
             TodoistTask task;
             // CSV has no id column; generate a stable id from row number
@@ -355,6 +365,14 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parse(const QString &csv,
             task.content     = safeField(fields, COL_CONTENT);
             task.description = safeField(fields, COL_DESCRIPTION);
             task.projectId   = projectId;
+
+            // Q3.08-A: adopt the most recently opened section in this project.
+            // Within a single CSV every row carries the same projectId (set by
+            // the caller), so the project-match guard is automatically met;
+            // the empty-check is what disambiguates "tasks above the first
+            // SECTION row" (sectionId stays "") from "tasks under a section".
+            if (!currentSectionId.isEmpty())
+                task.sectionId = currentSectionId;
 
             // F-Q2.24-C #3: detect Todoist's null sentinel (PRIORITY=0) and
             // count it. The collapse to internal Normal happens inside

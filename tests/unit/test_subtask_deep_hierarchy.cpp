@@ -340,16 +340,20 @@ private slots:
     // 4. move_subtree_across_projects_keeps_parent_link_but_changes_project
     // -----------------------------------------------------------------------
     //
-    // A in P1, B is A's subtask (also in P1). vm.moveTask(A, P2) moves
-    // A to P2 but does NOT cascade to B — B stays in P1 with its
-    // parent_id still pointing at A. The result is a parent in P2 and
-    // a child in P1, which Todoist-style UIs treat as "orphaned across
-    // projects" because the project-filtered view of P1 still shows B
-    // under no visible parent, and the project-filtered view of P2
-    // shows A as childless.
+    // Q3.08-C fix: moveTask now cascades the new projectId across the
+    // entire descendant tree when the destination project differs from
+    // the source. Sections (which are project-scoped) are cleared on
+    // every cascaded subtask. The parent_id graph is preserved — only
+    // projectId/sectionId change.
     //
-    // This is a known gap — pin it. A future fix would cascade
-    // projectId across the entire descendant tree in moveTask.
+    // Original gap: A in P1, B subtask of A in P1, moveTask(A, P2)
+    // kept B in P1 with its parent pointing at A. tasksForProject(P1)
+    // filtered B out (non-empty parentId), and tasksForProject(P2)
+    // never saw it (still tagged P1) — B was invisible in both views.
+    //
+    // Post-fix expectation: A.projectId == P2 AND B.projectId == P2.
+    // The parent link is intact. B is now visible in P2's project view
+    // when expanded under A.
     // -----------------------------------------------------------------------
     void move_subtree_across_projects_keeps_parent_link_but_changes_project()
     {
@@ -371,50 +375,130 @@ private slots:
         // A: project changed to P2.
         QCOMPARE(aTask->projectId(), f->projP2Id);
 
-        // B: project did NOT cascade. Pin current behaviour.
-        QCOMPARE(bTask->projectId(), f->projP1Id);
+        // B: project NOW cascades to P2 (Q3.08-C fix).
+        QCOMPARE(bTask->projectId(), f->projP2Id);
 
         // The parent link survives the cross-project move.
         QCOMPARE(bTask->parentId(), aId);
 
-        // subtasks(A) is still {B} — the relationship is preserved
-        // even though the two now live in different projects.
+        // subtasks(A) is still {B} — the relationship is preserved.
         const auto subsOfA = f->store->subtasks(aId);
         QCOMPARE(subsOfA.size(), 1);
         QCOMPARE(subsOfA.first()->id(), bId);
 
-        // tasksForProject() filters out subtasks (parentId().isEmpty()
-        // check in DataStore::tasksForProject), so the visible project-view
-        // contents look like this AFTER the cross-project move:
-        //   * P2's visible list contains A (top-level after move).
-        //   * P1's visible list is EMPTY — B is in P1 but has a non-empty
-        //     parentId, so the project view never surfaces it. The orphan
-        //     subtask becomes invisible in the project sidebar.
+        // P2's visible top-level list contains A; B is filtered out
+        // (non-empty parentId), as expected for a subtask.
         const auto p2Tasks = f->store->tasksForProject(f->projP2Id);
         QSet<QString> p2Ids;
         for (const Task *t : p2Tasks) p2Ids.insert(t->id());
         QVERIFY(p2Ids.contains(aId));
         QVERIFY(!p2Ids.contains(bId));
 
+        // P1 is now empty — A and its subtree migrated to P2.
         const auto p1Tasks = f->store->tasksForProject(f->projP1Id);
         QSet<QString> p1Ids;
         for (const Task *t : p1Tasks) p1Ids.insert(t->id());
-        // B is NOT in tasksForProject(P1) — even though its raw projectId
-        // is still P1, the subtask filter (parentId().isEmpty()) excludes
-        // it. A is also NOT in P1 (its projectId moved to P2).
         QVERIFY(!p1Ids.contains(aId));
         QVERIFY(!p1Ids.contains(bId));
-        // raw allTasks() still contains B, so the data is recoverable.
-        bool foundBInAllTasks = false;
-        for (const Task *t : f->store->allTasks())
-            if (t->id() == bId) { foundBInAllTasks = true; break; }
-        QVERIFY(foundBInAllTasks);
 
-        qInfo("moveTask does NOT cascade projectId to subtasks — child B "
-              "stayed in P1 even though parent A moved to P2. Combined "
-              "with the parentId-non-empty filter in tasksForProject(), "
-              "B becomes invisible in P1's project view. Pin this as a "
-              "known gap; Todoist parity would cascade projectId on move.");
+        qInfo("moveTask cascades projectId across the descendant subtree "
+              "(Q3.08-C). Cross-project moves no longer leave subtasks "
+              "orphaned with the old projectId.");
+
+        delete f;
+    }
+
+    // -----------------------------------------------------------------------
+    // 4b. move_deep_subtree_across_projects_cascades_to_grandchildren
+    // -----------------------------------------------------------------------
+    //
+    // Deep-cascade variant: A -> B -> C -> D (four-level chain in P1).
+    // moveTask(A, P2) must rewrite projectId on every node in the
+    // subtree, not only the direct child. Sections are cleared.
+    // -----------------------------------------------------------------------
+    void move_deep_subtree_across_projects_cascades_to_grandchildren()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        const QString aId = addTask(f->store, QStringLiteral("A"), f->projP1Id);
+        const QString bId = addTask(f->store, QStringLiteral("B"), f->projP1Id);
+        const QString cId = addTask(f->store, QStringLiteral("C"), f->projP1Id);
+        const QString dId = addTask(f->store, QStringLiteral("D"), f->projP1Id);
+
+        // A -> B -> C -> D  (depth-3 chain rooted at A)
+        setTaskParent(f->store, bId, aId);
+        setTaskParent(f->store, cId, bId);
+        setTaskParent(f->store, dId, cId);
+
+        // Give the middle nodes a section assignment so we can verify
+        // sections are cleared by the cross-project cascade.
+        f->store->taskById(bId)->setSectionId(QStringLiteral("sec-on-p1"));
+        f->store->taskById(cId)->setSectionId(QStringLiteral("sec-on-p1"));
+
+        QVERIFY(vm.moveTask(aId, f->projP2Id, QString()));
+
+        // Every node in the subtree now lives in P2.
+        QCOMPARE(f->store->taskById(aId)->projectId(), f->projP2Id);
+        QCOMPARE(f->store->taskById(bId)->projectId(), f->projP2Id);
+        QCOMPARE(f->store->taskById(cId)->projectId(), f->projP2Id);
+        QCOMPARE(f->store->taskById(dId)->projectId(), f->projP2Id);
+
+        // Parent links unchanged — the tree shape is preserved.
+        QCOMPARE(f->store->taskById(bId)->parentId(), aId);
+        QCOMPARE(f->store->taskById(cId)->parentId(), bId);
+        QCOMPARE(f->store->taskById(dId)->parentId(), cId);
+
+        // Sections cleared on cascaded subtasks (sections are project-scoped).
+        QVERIFY(f->store->taskById(aId)->sectionId().isEmpty());
+        QVERIFY(f->store->taskById(bId)->sectionId().isEmpty());
+        QVERIFY(f->store->taskById(cId)->sectionId().isEmpty());
+        QVERIFY(f->store->taskById(dId)->sectionId().isEmpty());
+
+        qInfo("Deep subtree cascade verified (Q3.08-C): grandchildren and "
+              "great-grandchildren all migrate with the moved root.");
+
+        delete f;
+    }
+
+    // -----------------------------------------------------------------------
+    // 4c. move_with_cycle_in_subtree_does_not_infinite_loop
+    // -----------------------------------------------------------------------
+    //
+    // The data layer does not enforce acyclicity on parent_id at write
+    // time — a careless caller or a sync convergence corner could leave
+    // a cycle in the graph. Pin that moveTask's cascade terminates even
+    // when the descendant scan would otherwise loop forever.
+    //
+    // Setup: A -> B in P1, and a back-edge B -> A also written so B's
+    // descendant scan from A would walk A -> B -> A -> B -> ...
+    // moveTask must complete (bounded by MAX_DEPTH=100 plus a visited
+    // set) and the test must terminate inside the test-runner's timeout.
+    // -----------------------------------------------------------------------
+    void move_with_cycle_in_subtree_does_not_infinite_loop()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        const QString aId = addTask(f->store, QStringLiteral("A"), f->projP1Id);
+        const QString bId = addTask(f->store, QStringLiteral("B"), f->projP1Id);
+
+        // A -> B (regular)
+        setTaskParent(f->store, bId, aId);
+        // B -> A (back-edge — would close a cycle A <-> B)
+        setTaskParent(f->store, aId, bId);
+
+        // moveTask must terminate. The visited-set in the cascade
+        // guarantees each node is processed at most once even though
+        // the parent_id graph contains a cycle.
+        QVERIFY(vm.moveTask(aId, f->projP2Id, QString()));
+
+        // Both nodes migrated to P2 (cascade visited each exactly once).
+        QCOMPARE(f->store->taskById(aId)->projectId(), f->projP2Id);
+        QCOMPARE(f->store->taskById(bId)->projectId(), f->projP2Id);
+
+        qInfo("Cascade is cycle-safe (visited set + MAX_DEPTH=100 bound). "
+              "moveTask terminates even with a pre-existing parent_id cycle.");
 
         delete f;
     }

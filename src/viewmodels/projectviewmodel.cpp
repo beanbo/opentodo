@@ -105,6 +105,27 @@ bool ProjectViewModel::updateProject(const QString &id, const QString &field, co
     Project *p = m_store->projectById(id);
     if (!p) return false;
 
+    // Inbox immutability guard. DataStore::removeProject already short-circuits
+    // on isInbox(), but the update path was asymmetric — name and parentId
+    // could be silently overwritten via QML or callers calling updateProject
+    // directly, which would either rename the Inbox or reparent it under an
+    // arbitrary project. Both break the long-standing UX contract that "Inbox
+    // is the always-present, always-named, always-top-level root". Color,
+    // icon, isFavorite and order remain legitimately user-customisable on
+    // the Inbox row, so the guard is intentionally narrow.
+    if (p->isInbox()) {
+        if (field == QStringLiteral("name")) {
+            qWarning("ProjectViewModel::updateProject: Inbox cannot be renamed "
+                     "(attempted new name '%s')", qUtf8Printable(value.toString()));
+            return false;
+        }
+        if (field == QStringLiteral("parentId")) {
+            qWarning("ProjectViewModel::updateProject: Inbox cannot be reparented "
+                     "(attempted parentId '%s')", qUtf8Printable(value.toString()));
+            return false;
+        }
+    }
+
     if (field == QStringLiteral("name")) p->setName(value.toString());
     else if (field == QStringLiteral("color")) p->setColor(value.toString());
     else if (field == QStringLiteral("description")) p->setDescription(value.toString());

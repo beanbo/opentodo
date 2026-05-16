@@ -17,10 +17,11 @@
 // paid-tier Todoist usage (or rarely-exercised data shapes):
 //
 //   1. section_column_creates_section_inside_project   — TYPE=section row
-//      followed by a TYPE=task row produces a Section AND a Task, but pins
-//      the documented gap: the CSV parser does not wire task.sectionId from
-//      a preceding section row (the parser only emits sections; tasks remain
-//      section-less). Pinned as a current-behaviour assertion plus qInfo.
+//      followed by a TYPE=task row produces a Section AND a Task, AND
+//      (post Q3.08-A) the task's sectionId is wired to the OpenTodo UUID of
+//      the preceding section. Two extra slots bench the routing:
+//        1b. multiple_sections_in_same_project_route_tasks_correctly
+//        1c. task_above_first_section_row_has_empty_section_id
 //
 //   2. comment_rows_become_task_comments               — TYPE=note row after
 //      a TYPE=task row produces a Comment attached to the preceding task in
@@ -278,14 +279,16 @@ private slots:
         s.remove(QStringLiteral("import/current_batch"));
     }
 
-    // ── 1. Section row creates Section inside project ────────────────────────
+    // ── 1. Section row creates Section inside project AND wires tasks to it ──
     //
     // Todoist CSV does NOT have a SECTION column; it uses a separate TYPE=section
     // row that applies to all following TYPE=task rows until the next section.
-    // The parser emits a TodoistSection per row. We pin TWO things here:
+    // The parser emits a TodoistSection per row AND (post Q3.08-A) stamps the
+    // currently-open section onto every task row that follows it within the
+    // same project. We pin TWO things here:
     //   (a) the Section entity is created and attached to the imported project,
-    //   (b) the documented gap that the CSV parser does NOT also stamp the
-    //       following task with sectionId — the task lands section-less.
+    //   (b) the Q3.08-A fix: both tasks land with sectionId pointing at the
+    //       OpenTodo UUID of the "Planning" section.
     void section_column_creates_section_inside_project()
     {
         QTemporaryDir tmp;
@@ -326,25 +329,152 @@ private slots:
         QCOMPARE(secs.size(), 1);
         QCOMPARE(secs[0]->name(), QStringLiteral("Planning"));
 
-        // GAP: the parser sets up TodoistSection but never wires section_id
-        // onto the subsequent task. Both tasks land with empty sectionId.
-        int sectionedTasks = 0;
+        const QString planningId = secs[0]->id();
+
+        // Q3.08-A FIX: both tasks land with sectionId = the Planning section's
+        // OpenTodo UUID (not the parser-synthesized row-number id; the
+        // importer maps via secIdMap).
+        int sectionedTasks   = 0;
         int sectionlessTasks = 0;
         for (auto *t : ds->allTasks()) {
             if (t->content() == QStringLiteral("Write spec")
              || t->content() == QStringLiteral("Review spec"))
             {
-                if (t->sectionId().isEmpty()) ++sectionlessTasks;
-                else                          ++sectionedTasks;
+                if (t->sectionId() == planningId) ++sectionedTasks;
+                else if (t->sectionId().isEmpty()) ++sectionlessTasks;
             }
         }
-        QCOMPARE(sectionlessTasks, 2);
-        QCOMPARE(sectionedTasks, 0);
-        qInfo() << "GAP: TodoistCsvParser emits sections but never wires "
-                   "task.sectionId from a preceding TYPE=section row. Tasks "
-                   "imported under a section land section-less in DataStore. "
-                   "Fix would track 'currentSectionId' in the parse loop and "
-                   "set task.sectionId = synthesized section id.";
+        QCOMPARE(sectionedTasks, 2);
+        QCOMPARE(sectionlessTasks, 0);
+    }
+
+    // ── 1b. Three sections in one project route tasks correctly ──────────────
+    //
+    // Q3.08-A regression bench: A/B/C sections with 2 tasks each. Every task
+    // must land in the section it was filed under — no cross-contamination.
+    void multiple_sections_in_same_project_route_tasks_correctly()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        const QByteArray csv = (kHeader
+            + QStringLiteral("section,Section A,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,A1,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,A2,,1,1,,,,en,,,\n")
+            + QStringLiteral("section,Section B,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,B1,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,B2,,1,1,,,,en,,,\n")
+            + QStringLiteral("section,Section C,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,C1,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,C2,,1,1,,,,en,,,\n")
+            ).toUtf8();
+        const QString path = writeZipTo(tmp,
+            QStringLiteral("multisec.zip"),
+            { { QStringLiteral("Roadmap [hhhhhhhhhhhh].csv"), csv, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(new TodoistImporter(ds.data(), this));
+
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+        imp->importFromBackupZip(path, false);
+
+        QCOMPARE(finished.size(), 1);
+        QVERIFY2(finished[0][2].toString().isEmpty(),
+                 qPrintable(finished[0][2].toString()));
+        QCOMPARE(finished[0][0].toInt(), 6); // 6 tasks
+
+        Project *roadmap = nullptr;
+        for (auto *p : ds->allProjects()) {
+            if (p->name() == QStringLiteral("Roadmap")) { roadmap = p; break; }
+        }
+        QVERIFY(roadmap);
+
+        const auto secs = ds->sectionsForProject(roadmap->id());
+        QCOMPARE(secs.size(), 3);
+
+        // Build a name → id map for assertions.
+        QMap<QString, QString> secByName;
+        for (auto *s : secs) secByName.insert(s->name(), s->id());
+        QVERIFY(secByName.contains(QStringLiteral("Section A")));
+        QVERIFY(secByName.contains(QStringLiteral("Section B")));
+        QVERIFY(secByName.contains(QStringLiteral("Section C")));
+
+        // Each task must reference the section it was filed under.
+        QMap<QString, QString> expectedSectionOf{
+            { QStringLiteral("A1"), secByName[QStringLiteral("Section A")] },
+            { QStringLiteral("A2"), secByName[QStringLiteral("Section A")] },
+            { QStringLiteral("B1"), secByName[QStringLiteral("Section B")] },
+            { QStringLiteral("B2"), secByName[QStringLiteral("Section B")] },
+            { QStringLiteral("C1"), secByName[QStringLiteral("Section C")] },
+            { QStringLiteral("C2"), secByName[QStringLiteral("Section C")] },
+        };
+
+        int matched = 0;
+        for (auto *t : ds->allTasks()) {
+            const auto it = expectedSectionOf.constFind(t->content());
+            if (it == expectedSectionOf.constEnd()) continue;
+            QCOMPARE(t->sectionId(), it.value());
+            ++matched;
+        }
+        QCOMPARE(matched, 6);
+    }
+
+    // ── 1c. Task above the first SECTION row keeps empty section_id ──────────
+    //
+    // Q3.08-A boundary: tasks that appear before any TYPE=section row in a
+    // CSV must NOT be retroactively pulled into a later section. They stay
+    // section-less.
+    void task_above_first_section_row_has_empty_section_id()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        const QByteArray csv = (kHeader
+            + QStringLiteral("task,Orphan up top,,1,1,,,,en,,,\n")
+            + QStringLiteral("section,Later,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,In section,,1,1,,,,en,,,\n")
+            ).toUtf8();
+        const QString path = writeZipTo(tmp,
+            QStringLiteral("orphan.zip"),
+            { { QStringLiteral("Mixed [iiiiiiiiiiii].csv"), csv, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(new TodoistImporter(ds.data(), this));
+
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+        imp->importFromBackupZip(path, false);
+
+        QCOMPARE(finished.size(), 1);
+        QVERIFY2(finished[0][2].toString().isEmpty(),
+                 qPrintable(finished[0][2].toString()));
+        QCOMPARE(finished[0][0].toInt(), 2);
+
+        Project *mixed = nullptr;
+        for (auto *p : ds->allProjects()) {
+            if (p->name() == QStringLiteral("Mixed")) { mixed = p; break; }
+        }
+        QVERIFY(mixed);
+
+        const auto secs = ds->sectionsForProject(mixed->id());
+        QCOMPARE(secs.size(), 1);
+        const QString laterId = secs[0]->id();
+
+        Task *orphan  = nullptr;
+        Task *inSec   = nullptr;
+        for (auto *t : ds->allTasks()) {
+            if (t->content() == QStringLiteral("Orphan up top")) orphan = t;
+            if (t->content() == QStringLiteral("In section"))    inSec  = t;
+        }
+        QVERIFY(orphan);
+        QVERIFY(inSec);
+
+        // The orphan task (above the SECTION row) keeps empty sectionId.
+        QVERIFY2(orphan->sectionId().isEmpty(),
+                 qPrintable(QStringLiteral(
+                     "Task above any SECTION row was incorrectly wired into "
+                     "section id %1").arg(orphan->sectionId())));
+        // The task after the SECTION row gets wired to "Later".
+        QCOMPARE(inSec->sectionId(), laterId);
     }
 
     // ── 2. note row becomes a Comment attached to the preceding task ─────────

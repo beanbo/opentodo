@@ -473,19 +473,64 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
     Task *task = m_store->taskById(id);
     if (!task) return false;
 
+    const QString oldProject = task->projectId();
+    const QString oldSection = task->sectionId();
+    const bool crossProject  = (projectId != oldProject);
+
     if (m_undoStack) {
-        const QString oldProject = task->projectId();
-        const QString oldSection = task->sectionId();
         m_undoStack->push(QStringLiteral("Задача перемещена"), [this, id, oldProject, oldSection]() {
             moveTask(id, oldProject, oldSection);
         });
     }
 
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     task->setProjectId(projectId);
     task->setSectionId(sectionId);
-    task->setUpdatedAt(QDateTime::currentDateTimeUtc());
+    task->setUpdatedAt(now);
     m_store->markTaskModified(id);
     emit taskChanged(id);
+
+    // Q3.08-C: when moving across projects, cascade the new projectId across
+    // the entire descendant subtree so subtasks don't become orphans (their
+    // parent link still pointed at the moved task, but they kept the OLD
+    // projectId — invisible in both project views).
+    //
+    // Sections belong to a single project, so a cross-project move clears
+    // sectionId on every cascaded subtask.
+    //
+    // BFS, bounded by MAX_DEPTH=100 with a visited-set to defend against
+    // pre-existing cycles in the parent_id graph (the data layer never
+    // enforces acyclicity at write time).
+    if (crossProject) {
+        constexpr int MAX_DEPTH = 100;
+        QSet<QString> visited;
+        visited.insert(id);
+        QStringList frontier{id};
+        int depth = 0;
+        while (!frontier.isEmpty() && depth < MAX_DEPTH) {
+            QStringList nextFrontier;
+            for (const QString &parentId : frontier) {
+                const auto kids = m_store->subtasks(parentId);
+                for (Task *child : kids) {
+                    if (!child) continue;
+                    const QString cid = child->id();
+                    if (visited.contains(cid)) continue;
+                    visited.insert(cid);
+
+                    child->setProjectId(projectId);
+                    child->setSectionId(QString());
+                    child->setUpdatedAt(now);
+                    m_store->markTaskModified(cid);
+                    emit taskChanged(cid);
+
+                    nextFrontier.append(cid);
+                }
+            }
+            frontier = nextFrontier;
+            ++depth;
+        }
+    }
+
     return true;
 }
 

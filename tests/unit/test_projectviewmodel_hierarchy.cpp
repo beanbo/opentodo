@@ -33,17 +33,14 @@ static DataStore *makeStore(QObject *parent = nullptr)
 // `defaults` and `crud` suites do not cover:
 //   * Cycle prevention when moving a parent under one of its descendants
 //   * Archive: parent-only, no cascade to children
-//   * Inbox immutability (rename / setParentId / softDelete) — pin which
-//     are silently allowed and which are rejected
+//   * Inbox immutability — Q3.08-B fix asserts that rename + setParentId
+//     are rejected; delete is rejected at DataStore layer; color + icon
+//     remain user-customisable (narrow guard).
 //   * Color / icon Q_PROPERTY NOTIFY signal emission
 //   * Reorder semantics across parents (single flat counter is shared)
 //   * Move-to-root via parentId=""
 //   * Two rapid successive setName mutations (no debounce, last wins)
 //   * Reorder tie-break when two siblings share the same `order` value
-//
-// All slots PIN current behaviour with QCOMPARE + qInfo. No production
-// code changes — qInfo() flags surfaced gaps so a future fix produces a
-// visible test signal.
 // ---------------------------------------------------------------------------
 class TestProjectViewModelHierarchy : public QObject
 {
@@ -148,8 +145,10 @@ private slots:
     }
 
     // -----------------------------------------------------------------------
-    // 3) Inbox rename — pin current behaviour. updateProject does not guard
-    //    on isInbox(), so the rename is currently SILENTLY ACCEPTED.
+    // 3) Inbox rename — Q3.08-B fix. ProjectViewModel::updateProject now
+    //    short-circuits with `false` when the targeted project is the Inbox
+    //    and the field is `name`. The Inbox keeps its original name, no
+    //    projectChanged emission, no setUpdatedAt bump.
     // -----------------------------------------------------------------------
     void inbox_rename_is_rejected_or_silently_no_op()
     {
@@ -160,33 +159,40 @@ private slots:
         QVERIFY(inbox);
         const QString inboxId = inbox->id();
         const QString originalName = inbox->name();
+        const QDateTime updatedAtBefore = inbox->updatedAt();
 
         QSignalSpy changedSpy(&vm, &ProjectViewModel::projectChanged);
+        QSignalSpy nameSpy(inbox, &Project::nameChanged);
 
         const bool ok = vm.updateProject(inboxId, QStringLiteral("name"),
                                          QStringLiteral("Renamed"));
 
-        // PIN current behaviour: rename succeeds, no Inbox guard.
-        QCOMPARE(ok, true);
-        QCOMPARE(inbox->name(), QStringLiteral("Renamed"));
-        QCOMPARE(changedSpy.count(), 1);
-        QCOMPARE(changedSpy.takeFirst().at(0).toString(), inboxId);
+        // ASSERT FIX: updateProject returns false and the Inbox name is unchanged.
+        QCOMPARE(ok, false);
+        QCOMPARE(inbox->name(), originalName);
+        QCOMPARE(changedSpy.count(), 0);
+        QCOMPARE(nameSpy.count(), 0);
 
-        // Inbox flag itself stays sticky regardless of the name change.
+        // updatedAt also untouched — the guard runs before the setUpdatedAt
+        // call, so the field is not silently bumped.
+        QCOMPARE(inbox->updatedAt(), updatedAtBefore);
+
+        // Inbox flag itself remains sticky.
         QVERIFY(inbox->isInbox());
 
-        qInfo("SURFACED GAP: ProjectViewModel::updateProject does NOT reject a "
-              "rename of the Inbox project (no isInbox() guard in name path). "
-              "Original name was '%s', renamed to 'Renamed' without complaint. "
-              "deleteProject DOES guard inbox via DataStore::removeProject "
-              "(asymmetric).", qUtf8Printable(originalName));
+        qInfo("FIX (Q3.08-B): ProjectViewModel::updateProject now rejects a "
+              "rename of the Inbox project. Original name '%s' preserved; "
+              "no projectChanged / nameChanged emission. Symmetry with "
+              "DataStore::removeProject's inbox short-circuit.",
+              qUtf8Printable(originalName));
 
         delete store;
     }
 
     // -----------------------------------------------------------------------
-    // 4) Inbox setParentId — pin current behaviour. Same path as 3): no
-    //    isInbox() guard, the parent assignment goes through.
+    // 4) Inbox setParentId — Q3.08-B fix. Mirror of (3) for the parentId
+    //    field. Guard runs before the cycle-detection loop, so even a valid
+    //    candidate parent gets rejected when the target is Inbox.
     // -----------------------------------------------------------------------
     void inbox_setParentId_is_rejected_or_silently_no_op()
     {
@@ -197,20 +203,99 @@ private slots:
         QVERIFY(inbox);
         const QString inboxId = inbox->id();
         QVERIFY(inbox->parentId().isEmpty()); // sanity
+        const QDateTime updatedAtBefore = inbox->updatedAt();
 
         const QString other = vm.addProject(QStringLiteral("Other"));
 
+        QSignalSpy changedSpy(&vm, &ProjectViewModel::projectChanged);
+        QSignalSpy parentSpy(inbox, &Project::parentIdChanged);
+
         const bool ok = vm.updateProject(inboxId, QStringLiteral("parentId"), other);
 
-        // PIN: accepted today — Inbox becomes a child of "Other".
-        QCOMPARE(ok, true);
-        QCOMPARE(inbox->parentId(), other);
-        QVERIFY(inbox->isInbox()); // still flagged as inbox
+        // ASSERT FIX: rejected — Inbox stays parentless.
+        QCOMPARE(ok, false);
+        QVERIFY(inbox->parentId().isEmpty());
+        QCOMPARE(changedSpy.count(), 0);
+        QCOMPARE(parentSpy.count(), 0);
+        QCOMPARE(inbox->updatedAt(), updatedAtBefore);
+        QVERIFY(inbox->isInbox());
 
-        qInfo("SURFACED GAP: ProjectViewModel::updateProject does NOT reject a "
-              "parentId reassignment on the Inbox project. Cycle-detection still "
-              "runs (so Inbox can't be parented under itself transitively) but "
-              "the Inbox-immutability invariant is not enforced.");
+        qInfo("FIX (Q3.08-B): ProjectViewModel::updateProject now rejects a "
+              "parentId reassignment on the Inbox project. The Inbox-"
+              "immutability invariant (name + parentId locked) is enforced "
+              "at the ViewModel layer.");
+
+        delete store;
+    }
+
+    // -----------------------------------------------------------------------
+    // 4a) Inbox color change — pin that the immutability guard is narrow.
+    //     Color is legitimate user customisation (palette pick) and must
+    //     still go through. The guard above only blocks name + parentId.
+    // -----------------------------------------------------------------------
+    void inbox_color_change_is_allowed()
+    {
+        DataStore *store = makeStore();
+        ProjectViewModel vm(store);
+
+        Project *inbox = store->inboxProject();
+        QVERIFY(inbox);
+        const QString inboxId = inbox->id();
+        const QString originalColor = inbox->color();
+
+        QSignalSpy colorSpy(inbox, &Project::colorChanged);
+        QSignalSpy changedSpy(&vm, &ProjectViewModel::projectChanged);
+
+        const bool ok = vm.updateProject(inboxId, QStringLiteral("color"),
+                                         QStringLiteral("berry_red"));
+
+        // Color update goes through — Inbox guard is narrow (name + parentId).
+        QCOMPARE(ok, true);
+        QCOMPARE(inbox->color(), QStringLiteral("berry_red"));
+        QVERIFY(inbox->color() != originalColor);
+        QCOMPARE(colorSpy.count(), 1);
+        QCOMPARE(changedSpy.count(), 1);
+        QCOMPARE(changedSpy.takeFirst().at(0).toString(), inboxId);
+
+        // Inbox flag still sticky.
+        QVERIFY(inbox->isInbox());
+
+        qInfo("PIN: Inbox color is legitimately user-customisable. The "
+              "immutability guard is intentionally narrow — only name and "
+              "parentId are locked; color/icon/isFavorite/order remain "
+              "writeable so the user can theme the Inbox row.");
+
+        delete store;
+    }
+
+    // -----------------------------------------------------------------------
+    // 4b) Inbox icon change — same as (4a) for the icon field. Pins that
+    //     the guard does not over-reach and block icon customisation.
+    // -----------------------------------------------------------------------
+    void inbox_icon_change_is_allowed()
+    {
+        DataStore *store = makeStore();
+        ProjectViewModel vm(store);
+
+        Project *inbox = store->inboxProject();
+        QVERIFY(inbox);
+        const QString inboxId = inbox->id();
+
+        QSignalSpy iconSpy(inbox, &Project::iconChanged);
+        QSignalSpy changedSpy(&vm, &ProjectViewModel::projectChanged);
+
+        const bool ok = vm.updateProject(inboxId, QStringLiteral("icon"),
+                                         QStringLiteral("I"));
+
+        QCOMPARE(ok, true);
+        QCOMPARE(inbox->icon(), QStringLiteral("I"));
+        QCOMPARE(iconSpy.count(), 1);
+        QCOMPARE(changedSpy.count(), 1);
+        QCOMPARE(changedSpy.takeFirst().at(0).toString(), inboxId);
+        QVERIFY(inbox->isInbox());
+
+        qInfo("PIN: Inbox icon write is allowed — guard is narrow to "
+              "name/parentId. Mirrors 4a for the icon field.");
 
         delete store;
     }
