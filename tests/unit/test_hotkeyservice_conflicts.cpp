@@ -168,8 +168,10 @@ private slots:
                  "setShortcut should accept Ctrl+Alt+F19 as a parseable combo");
 
         QSignalSpy failSpy(&svc, &HotkeyService::registrationFailed);
-        QTest::ignoreMessage(QtWarningMsg,
-            QRegularExpression(QStringLiteral("\\[HotkeyService\\] RegisterHotKey failed.*")));
+        // Q3.07-followup: ERROR_HOTKEY_ALREADY_REGISTERED logs at info level
+        // now, not warning. Multi-instance dev is a normal flow.
+        QTest::ignoreMessage(QtInfoMsg,
+            QRegularExpression(QStringLiteral("\\[HotkeyService\\].*taken by another app.*")));
 
         const bool ok = svc.registerQuickAdd();
         QCOMPARE(ok, false);

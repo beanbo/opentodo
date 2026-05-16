@@ -140,8 +140,15 @@ int main(int argc, char *argv[])
         if (qtLoaded) {
             app.installTranslator(qtTr);
         } else {
-            qWarning("OpenTodo: failed to load Qt translations for locale %s; tried %s",
-                     qPrintable(loc.name()), qPrintable(trPaths.join(QStringLiteral(", "))));
+            // Demoted from qWarning to qInfo (Q3.07-followup): Qt does not
+            // bundle qtbase_be.qm for Belarusian (and historically also
+            // missing for some Ukrainian builds). Our own opentodo_<lang>.qm
+            // still loads via the resource prefix below, so this only means
+            // standard-dialog button labels (OK/Cancel/...) fall back to
+            // English. Not an error worth a warning-level log line.
+            qInfo("OpenTodo: Qt standard translations not bundled for locale %s; using English fallback for built-in dialogs",
+                  qPrintable(loc.name()));
+            delete qtTr;
         }
 
         // (2) OpenTodo's own translations. The .qm files are embedded under

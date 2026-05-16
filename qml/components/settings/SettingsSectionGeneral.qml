@@ -72,93 +72,12 @@ Rectangle {
         width: parent.width
         spacing: 0
 
-        // Language
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 52
-            color: "transparent"
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                spacing: 16
-
-                Text {
-                    text: qsTr("Язык")
-                    font.pixelSize: 14
-                    color: ThemeManager.textColor
-                    Layout.fillWidth: true
-                }
-
-                ComboBox {
-                    id: languageCombo
-                    // displayRole-style mapping: backend uses ["en","ru","de","uk","be"];
-                    // we render their human-friendly names so users see "English"
-                    // not just "en". The selection itself is keyed by the language
-                    // code, so QTranslator can resolve opentodo_<code>.qm.
-                    function _langDisplayName(code) {
-                        switch (code) {
-                            case "ru": return qsTr("Русский")
-                            case "en": return qsTr("English")
-                            case "de": return qsTr("Deutsch")
-                            case "uk": return qsTr("Українська")
-                            case "be": return qsTr("Беларуская")
-                            default:   return code
-                        }
-                    }
-                    model: settingsViewModel.availableLanguages()
-                    implicitWidth: 160
-                    currentIndex: {
-                        var langs = settingsViewModel.availableLanguages()
-                        for (var i = 0; i < langs.length; i++) {
-                            if (langs[i] === settingsViewModel.language) return i
-                        }
-                        return 0
-                    }
-                    onActivated: {
-                        settingsViewModel.updateSetting("language", currentText)
-                        if (typeof telemetry !== "undefined" && telemetry.enabled)
-                            telemetry.trackEvent("settings_language_changed", { "lang": currentText })
-                    }
-
-                    delegate: ItemDelegate {
-                        required property var modelData
-                        width: parent ? parent.width : 0
-                        contentItem: Text {
-                            text: languageCombo._langDisplayName(modelData)
-                            font.pixelSize: 13
-                            color: ThemeManager.textColor
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: languageCombo._langDisplayName(languageCombo.displayText)
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
-                    }
-                }
-            }
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                height: 1
-                color: ThemeManager.borderColor
-            }
-        }
+        // Language picker was here. Removed (Q3.07-followup): it duplicated
+        // the dedicated "Язык интерфейса" section below — two surfaces that
+        // wrote to the same settings/language key and visually competed. The
+        // dedicated section also owns the "Перезапустить" button next to the
+        // restart-required hint, which is the primary affordance for applying
+        // a language change.
 
         // Date format — persisted via Qt.labs.settings (category "general",
         // key "dateFormat"). DateFormatter.qml singleton reads from the same

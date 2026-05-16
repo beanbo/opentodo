@@ -13,7 +13,8 @@ Q_LOGGING_CATEGORY(lcMerger, "opentodo.merger")
 // Defence-in-depth skew budget for the per-field comparison.
 // Mirrors HLC::update's kMaxClockSkewMs (1 hour). Any field-meta HLC whose
 // physMs exceeds local wall-clock by > this budget is demoted (replaced with
-// a clamped placeholder for comparison only — the on-disk ts is preserved).
+// a clamped placeholder for comparison only — the on-disk ts in entity["_meta"]
+// is preserved unchanged so forward sync to peers still sees the true HLC).
 // See HybridLogicalClock::isWithinAcceptableSkew for rationale.
 // ---------------------------------------------------------------------------
 static constexpr qint64 kMergerMaxSkewMs = 60LL * 60LL * 1000LL;  // 1 hour

@@ -290,10 +290,12 @@ private slots:
         QSignalSpy failSpy(&svc, &HotkeyService::registrationFailed);
         QSignalSpy regSpy(&svc, &HotkeyService::registeredChanged);
 
-        // The production code emits qWarning() on failure; suppress the
-        // expected log line so the test output isn't noisy.
-        QTest::ignoreMessage(QtWarningMsg,
-            QRegularExpression(QStringLiteral("\\[HotkeyService\\] RegisterHotKey failed.*")));
+        // The production code emits qInfo() for ERROR_HOTKEY_ALREADY_REGISTERED
+        // (Q3.07-followup: demoted from qWarning since multi-instance dev is
+        // a normal flow that shouldn't produce warning-level noise). Suppress
+        // the expected log line so the test output isn't noisy.
+        QTest::ignoreMessage(QtInfoMsg,
+            QRegularExpression(QStringLiteral("\\[HotkeyService\\].*taken by another app.*")));
 
         const bool ok = svc.registerQuickAdd();
         QCOMPARE(ok, false);

@@ -114,12 +114,21 @@ Item {
             border.width: 1
         }
 
-        Label {
-            width: parent.width
-            text: qsTr("Окончательно удалить все задачи из корзины? Действие нельзя отменить.")
-            wrapMode: Text.WordWrap
-            font.pixelSize: FontSize.body
-            color: root.textPrimary
+        // Wrap the Label inside a ColumnLayout (instead of a bare child with
+        // `width: parent.width`). The bare-child form caused the
+        // Material/Dialog implicitHeight binding loop: Dialog.width depends
+        // on Overlay.overlay.width (responsive), and Label.width=parent.width
+        // forced wrapMode to re-evaluate implicitHeight before Dialog had
+        // finished its own layout pass. ColumnLayout decouples the two.
+        contentItem: ColumnLayout {
+            spacing: 0
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Окончательно удалить все задачи из корзины? Действие нельзя отменить.")
+                wrapMode: Text.WordWrap
+                font.pixelSize: FontSize.body
+                color: root.textPrimary
+            }
         }
 
         footer: DialogButtonBox {
@@ -158,12 +167,15 @@ Item {
             border.width: 1
         }
 
-        Label {
-            width: parent.width
-            text: qsTr("Окончательно удалить «%1»? Действие нельзя отменить.").arg(deleteOneDialog.taskTitle)
-            wrapMode: Text.WordWrap
-            font.pixelSize: FontSize.body
-            color: root.textPrimary
+        contentItem: ColumnLayout {
+            spacing: 0
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Окончательно удалить «%1»? Действие нельзя отменить.").arg(deleteOneDialog.taskTitle)
+                wrapMode: Text.WordWrap
+                font.pixelSize: FontSize.body
+                color: root.textPrimary
+            }
         }
 
         footer: DialogButtonBox {

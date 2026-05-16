@@ -547,7 +547,7 @@ Rectangle {
                 contentItem: Text {
                     leftPadding: 4
                     text: {
-                        if (!root.selectedProjectId) return "📁 Проект"
+                        if (!root.selectedProjectId) return qsTr("📁 Проект")
                         var p = (typeof projectViewModel !== "undefined")
                                 ? projectViewModel.projectById(root.selectedProjectId)
                                 : null

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtCore
 import OpenTodoUI
 
 Rectangle {
@@ -26,7 +27,13 @@ Rectangle {
         fileMode: FileDialog.SaveFile
         nameFilters: [qsTr("JSON-файлы (*.json)"), qsTr("Все файлы (*)")]
         defaultSuffix: "json"
-        currentFile: "opentodo-backup.json"
+        // Default to the user's Documents folder. The bare filename
+        // "opentodo-backup.json" used to be in `currentFile`, which Qt 6's
+        // FileDialog interpreted as a path relative to nothing and rejected
+        // with "Cannot set as a selected file because it doesn't exist" on
+        // every reopen. Splitting into folder+name avoids that warning.
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        selectedFile: currentFolder + "/opentodo-backup.json"
 
         onAccepted: {
             // B-7.68: use the FileManager.exportTo Q_INVOKABLE which writes

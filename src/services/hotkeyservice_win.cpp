@@ -214,9 +214,20 @@ bool HotkeyService::registerQuickAdd()
         m_registered = true;
         emit registeredChanged();
     } else {
-        const QString reason = win32ErrorText(GetLastError());
-        qWarning() << "[HotkeyService] RegisterHotKey failed for"
-                   << m_shortcut << ":" << reason;
+        const DWORD err = GetLastError();
+        const QString reason = win32ErrorText(err);
+        // ERROR_HOTKEY_ALREADY_REGISTERED (1409 / 0x581) is the common case
+        // when another OpenTodo instance is running OR another app grabbed
+        // the same combo. Demote to qInfo so the log isn't noisy during
+        // multi-instance development; other errors stay qWarning.
+        if (err == 1409 /* ERROR_HOTKEY_ALREADY_REGISTERED */) {
+            qInfo() << "[HotkeyService]" << m_shortcut
+                    << "is taken by another app or another instance — skipping registration ("
+                    << reason << ")";
+        } else {
+            qWarning() << "[HotkeyService] RegisterHotKey failed for"
+                       << m_shortcut << ":" << reason;
+        }
         emit registrationFailed(m_shortcut, reason);
     }
     return m_registered;
