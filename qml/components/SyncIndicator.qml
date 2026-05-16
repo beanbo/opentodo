@@ -11,16 +11,52 @@ Rectangle {
     // ── Notification permission request — runs once per install ──────────────
     // Persistent gate via SettingsViewModel.notificationPermissionAsked Q_PROPERTY
     // so we don't prompt again across restarts.
+    //
+    // Q-Android-Audit #2.1: previously the flag was set synchronously right
+    // after `requestPermission()`. Because Android's POST_NOTIFICATIONS dialog
+    // is async, the persistent flag flipped BEFORE the user had answered;
+    // re-prompting after a denial was impossible without a manual reset.
+    // Fix:
+    //   * If no permission is needed (hasPermission() already true) just flip
+    //     the flag — there's nothing pending. Covers Windows / WASM / Linux
+    //     stub and Android < 13.
+    //   * If a permission IS needed, only call requestPermission() and wait
+    //     for the permissionRequestCompleted signal handler below to flip the
+    //     flag once the OS dialog has resolved.
     Component.onCompleted: {
         if (typeof settingsViewModel === "undefined" || !settingsViewModel)
             return
         if (settingsViewModel.notificationPermissionAsked)
             return
-        if (typeof notificationService !== "undefined" && notificationService) {
-            if (!notificationService.hasPermission())
-                notificationService.requestPermission()
+        if (typeof notificationService === "undefined" || !notificationService) {
+            // No service at all (some embedded WASM builds) — treat as asked
+            // so we don't loop on next launch.
+            settingsViewModel.notificationPermissionAsked = true
+            return
         }
-        settingsViewModel.notificationPermissionAsked = true
+        if (notificationService.hasPermission()) {
+            // Already granted (or platform doesn't require a runtime grant) —
+            // safe to mark as asked immediately.
+            settingsViewModel.notificationPermissionAsked = true
+            return
+        }
+        // Permission is needed — fire the OS dialog and wait for the callback
+        // below to flip the flag.
+        notificationService.requestPermission()
+    }
+
+    // Q-Android-Audit #2.1: fired from the C++ side once the OS has actually
+    // returned from the runtime permission dialog (or immediately on
+    // platforms where requestPermission is a no-op fallback). This is the
+    // ONE place that flips notificationPermissionAsked so we don't mark the
+    // user as "asked" before they had a chance to answer.
+    Connections {
+        target: typeof notificationService !== "undefined" ? notificationService : null
+        function onPermissionRequestCompleted(granted) {
+            if (typeof settingsViewModel === "undefined" || !settingsViewModel)
+                return
+            settingsViewModel.notificationPermissionAsked = true
+        }
     }
 
     implicitHeight: 32

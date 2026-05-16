@@ -32,8 +32,16 @@
         android:hardwareAccelerated="true"
         android:allowBackup="true">
 
+        <!--
+            Q-Android-Audit #2.1: launcher activity is now our own subclass of
+            QtActivity (android/src/org/opentodo/MainActivity.java) so we can
+            override onRequestPermissionsResult and forward the
+            POST_NOTIFICATIONS grant/deny back to NotificationHelper. The stock
+            QtActivity does not route the result anywhere Java code can see,
+            which left the permission request silently broken on API 33+.
+        -->
         <activity
-            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:name="org.opentodo.MainActivity"
             android:configChanges="orientation|screenSize|uiMode|screenLayout|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:launchMode="singleTask"
             android:exported="true"

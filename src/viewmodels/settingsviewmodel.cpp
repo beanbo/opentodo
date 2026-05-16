@@ -3,6 +3,7 @@
 #include "utils/settingskeys.h"
 
 #include <QHash>
+#include <QSettings>
 
 SettingsViewModel::SettingsViewModel(DataStore *store, QObject *parent)
     : QObject(parent)
@@ -72,7 +73,19 @@ int SettingsViewModel::autoReminderOffset() const { return setting(QLatin1String
 void SettingsViewModel::setAutoReminderOffset(int minutes) { set(QLatin1String(SettingsKeys::AutoReminderOffset), minutes); emit autoReminderOffsetChanged(); }
 
 QString SettingsViewModel::language() const { return setting(QLatin1String(SettingsKeys::Language)).toString(); }
-void SettingsViewModel::setLanguage(const QString &lang) { set(QLatin1String(SettingsKeys::Language), lang); emit languageChanged(); }
+void SettingsViewModel::setLanguage(const QString &lang) {
+    set(QLatin1String(SettingsKeys::Language), lang);
+    // Also mirror to QSettings so main.cpp can read the language BEFORE
+    // DataStore loads on next launch — the QTranslator must be installed
+    // before any QML loads, but state.json is parsed later in the boot
+    // sequence. Mirroring lets main.cpp::main() do a simple QSettings read
+    // at startup and avoids parsing state.json twice.
+    {
+        QSettings s;
+        s.setValue(QLatin1String(SettingsKeys::Language), lang);
+    }
+    emit languageChanged();
+}
 
 // --- Auto-archive / daily review ---
 

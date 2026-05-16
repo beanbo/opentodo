@@ -310,10 +310,32 @@ void ProjectViewModel::setDefaultLabelsForProject(const QString &projectId, cons
 
 QVariantList ProjectViewModel::childProjects(const QString &parentId) const
 {
+    // Return QVariantMap entries (NOT QVariant::fromValue(Project*)) — Qt 6.11
+    // does NOT auto-convert a QVariantList containing QObject*-bearing
+    // QVariants into a usable JS array in QML: `.length` is undefined and
+    // `for (let i = 0; i < arr.length; ++i)` runs zero iterations. The
+    // SidebarContent `hasChildren` and the project-tree `rebuild()` both
+    // iterate this list — with the broken shape, every parent project
+    // looked childless and the chevron stayed hidden, leaving the user
+    // with no way to expand sub-projects.
+    //
+    // QVariantMap entries are reliably converted: each map's keys become
+    // JS object properties and `.length` of the surrounding array works.
+    // Mirrors the fix pattern used for TaskViewModel::subtasksOf().
     QVariantList result;
     for (auto *p : m_projects) {
-        if (p->parentId() == parentId)
-            result.append(QVariant::fromValue(p));
+        if (!p || p->parentId() != parentId) continue;
+        QVariantMap map;
+        map[QStringLiteral("id")]         = p->id();
+        map[QStringLiteral("name")]       = p->name();
+        map[QStringLiteral("color")]      = p->color();
+        map[QStringLiteral("icon")]       = p->icon();
+        map[QStringLiteral("parentId")]   = p->parentId();
+        map[QStringLiteral("isArchived")] = p->isArchived();
+        map[QStringLiteral("isInbox")]    = p->isInbox();
+        map[QStringLiteral("isFavorite")] = p->isFavorite();
+        map[QStringLiteral("order")]      = p->order();
+        result.append(map);
     }
     return result;
 }

@@ -21,6 +21,53 @@ Item {
     readonly property int animationDuration: Duration.slow
     readonly property int fabSize:           56
 
+    // Q-Android-Audit #1.1: mirror DesktopLayout's full-page predicate so the
+    // body Loader can swap to Settings / Productivity / Notifications / AI /
+    // Board / Calendar / Trash views when the sidebar navigates there. Without
+    // this, tapping those entries only updated the top-bar title — the screen
+    // kept showing the inbox task list.
+    readonly property bool isFullPageView:
+        taskViewModel.filterMode === TaskViewModel.Settings
+        || taskViewModel.filterMode === TaskViewModel.Productivity
+        || taskViewModel.filterMode === TaskViewModel.Notifications
+        || taskViewModel.filterMode === TaskViewModel.AI
+        || taskViewModel.filterMode === TaskViewModel.Board
+        || taskViewModel.filterMode === TaskViewModel.Calendar
+        || taskViewModel.filterMode === TaskViewModel.Trash
+
+    // Q-Android-Audit #1.2: back-button consumption ladder, called from
+    // ApplicationWindow.onClosing in Main.qml. Returns true when the back press
+    // was handled by app-level navigation (close editor stack → close search →
+    // close drawer → navigate home); returns false only when the app is in its
+    // ground state and the close should be accepted (app exit).
+    function handleBack() {
+        // 1) Full-screen task editor open
+        if (taskEditorStack.depth > 0) {
+            taskEditorStack.pop()
+            return true
+        }
+        // 2) Search overlay open
+        if (searchOverlay.opened) {
+            searchOverlay.close()
+            return true
+        }
+        // 3) Sidebar drawer open
+        if (sidebarDrawer.opened) {
+            sidebarDrawer.close()
+            return true
+        }
+        // 4) Not on the home (Inbox) view — navigate home instead of exiting
+        if (taskViewModel.filterMode !== TaskViewModel.Inbox) {
+            if (typeof sidebarViewModel !== "undefined" && sidebarViewModel)
+                sidebarViewModel.navigateToInbox()
+            else
+                taskViewModel.filterMode = TaskViewModel.Inbox
+            return true
+        }
+        // 5) Already on home — let the OS close the app
+        return false
+    }
+
     anchors.fill: parent
 
     Rectangle {
@@ -63,6 +110,13 @@ Item {
             } else if (!sidebarViewModel.sidebarVisible && sidebarDrawer.opened) {
                 sidebarDrawer.close()
             }
+        }
+        // Q-Android-Audit #1.6: auto-close the drawer on navigation. Other
+        // mobile apps (Gmail, Todoist) dismiss their nav drawer when the user
+        // picks an entry; previously the drawer stayed open covering the body.
+        function onNavigationRequested(view, itemId) {
+            if (sidebarDrawer.opened)
+                sidebarDrawer.close()
         }
     }
 
@@ -158,6 +212,10 @@ Item {
                         case TaskViewModel.Productivity:  return qsTr("Продуктивность")
                         case TaskViewModel.Notifications: return qsTr("Уведомления")
                         case TaskViewModel.AI:        return qsTr("✨ Помощник")
+                        // Q-Android-Audit speculative-finding: Trash was missing
+                        // from the title switch; tapping "Корзина" showed
+                        // "Задачи" as the fallback title.
+                        case TaskViewModel.Trash:     return qsTr("Корзина")
                         default:                      return qsTr("Задачи")
                         }
                     }
@@ -201,14 +259,56 @@ Item {
             }
         }
 
+        // ── Full-page view Loader ─────────────────────────────────────────────
+        // Q-Android-Audit #1.1: mirrors DesktopLayout.qml's fullPageLoader so
+        // that Settings / Productivity / Notifications / AI / Board / Calendar
+        // / Trash actually render on mobile. The Loader's `active` gate keeps
+        // the inbox-task-list path zero-cost when no full-page view is selected.
+        Loader {
+            id: fullPageLoader
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            active: root.isFullPageView
+            visible: active
+            source: {
+                switch (taskViewModel.filterMode) {
+                case TaskViewModel.Settings:      return "../views/SettingsView.qml"
+                case TaskViewModel.Productivity:  return "../views/ProductivityView.qml"
+                case TaskViewModel.Notifications: return "../views/NotificationsView.qml"
+                case TaskViewModel.AI:            return "../views/AIView.qml"
+                case TaskViewModel.Board:         return "../views/BoardView.qml"
+                case TaskViewModel.Calendar:      return "../views/CalendarView.qml"
+                case TaskViewModel.Trash:         return "../views/TrashView.qml"
+                }
+                return ""
+            }
+
+            // Bridge for the existing notificationsViewItem connection in
+            // qml/layouts/MobileLayout.qml. When NotificationsView is the
+            // active full-page view, expose its instance so the Connections
+            // block can forward openTaskRequested to taskViewModel.
+            onLoaded: {
+                if (taskViewModel.filterMode === TaskViewModel.Notifications)
+                    root.notificationsViewItem = item
+                else
+                    root.notificationsViewItem = null
+            }
+            onActiveChanged: {
+                if (!active)
+                    root.notificationsViewItem = null
+            }
+        }
+
         // ── Quick-add bar ─────────────────────────────────────────────────────
         // ITER3 #14: mirror DesktopLayout — bind Layout.preferredHeight to the
         // QuickAdd component's actual height so expanded toolbar is not clipped.
+        // Q-Android-Audit #1.1: hide when a full-page view is active.
         Rectangle {
             id: quickAddBar
             Layout.fillWidth: true
             Layout.preferredHeight: quickAddLoader.item ? quickAddLoader.item.height : 48
             color: contentColor
+            visible: !root.isFullPageView
             z: 1
 
             Rectangle {
@@ -233,9 +333,15 @@ Item {
         }
 
         // ── Task list (fills remaining space) ─────────────────────────────────
+        // Q-Android-Audit #1.1: hidden when a full-page view is rendered above
+        // — fullPageLoader already takes the same row-Layout slot via
+        // Layout.fillHeight, so we simply zero this out.
         Item {
+            id: taskListContainer
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: !root.isFullPageView
+            Layout.preferredHeight: root.isFullPageView ? 0 : -1
+            visible: !root.isFullPageView
 
             ListView {
                 id: taskListView

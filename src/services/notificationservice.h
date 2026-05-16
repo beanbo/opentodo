@@ -37,6 +37,14 @@ signals:
     void permissionGranted();
     void permissionDenied();
 
+    // Q-Android-Audit #2.1: emitted exactly once after the OS returns from a
+    // permission prompt (regardless of grant / deny), so the QML layer can flip
+    // its "we've asked the user" persistent flag in a Connections handler
+    // rather than synchronously after calling requestPermission(). On
+    // platforms where requestPermission() is a no-op (Windows, stub) the
+    // signal still fires once with granted=true so the QML flow is uniform.
+    void permissionRequestCompleted(bool granted);
+
     // Fired when a platform implementation can't (or won't) show a real OS toast
     // and wants the QML layer to render an in-app banner instead. WASM is the
     // primary user — Web Notifications API needs HTTPS + service worker. Native

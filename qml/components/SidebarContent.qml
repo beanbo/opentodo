@@ -623,6 +623,20 @@ Rectangle {
                     function onProjectRemoved() { projectTreeColumnRepeater.rebuild() }
                 }
 
+                // Connections to sidebarContent — MUST be at Column scope, NOT
+                // inside Repeater {}. Connections placed inside a Repeater are
+                // treated as part of the delegate component template and never
+                // get instantiated as a singleton — so onExpandedToggled never
+                // fired and clicking the chevron toggled the property map but
+                // the row list never refreshed. Moving the Connections to the
+                // Column where the Repeater lives makes it a proper singleton
+                // sibling.
+                Connections {
+                    target: sidebarContent
+                    function onExpandedToggled()         { projectTreeColumnRepeater.rebuild() }
+                    function onExpandedProjectsChanged() { projectTreeColumnRepeater.rebuild() }
+                }
+
                 Repeater {
                     id: projectTreeColumnRepeater
 
@@ -663,13 +677,13 @@ Rectangle {
 
                     Component.onCompleted: rebuild()
 
-                    // Rebuild whenever expansion state changes (explicit signal —
-                    // see comment on sidebarContent.expandedToggled).
-                    Connections {
-                        target: sidebarContent
-                        function onExpandedToggled()       { projectTreeColumnRepeater.rebuild() }
-                        function onExpandedProjectsChanged() { projectTreeColumnRepeater.rebuild() }
-                    }
+                    // (The Connections that listens for sidebarContent's
+                    // expandedToggled signal was moved up one level to the
+                    // surrounding Column — Connections placed inside the
+                    // Repeater body were being treated as part of the
+                    // delegate template and were never instantiated as a
+                    // standalone singleton, so the chevron click toggled the
+                    // expansion property map but the row list never rebuilt.)
 
                     delegate: Item {
                         id: projTreeDelegate

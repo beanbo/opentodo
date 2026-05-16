@@ -190,14 +190,16 @@ private slots:
         const QVariantList children = pvm.childProjects(domId);
         QCOMPARE(children.size(), 3);
 
-        // Each entry is a wrapped Project* — verify by extracting and
-        // checking parentId.
+        // Each entry is a QVariantMap — Qt 6.11 doesn't auto-convert
+        // QObject*-in-QVariant inside a QVariantList into a usable JS array,
+        // so childProjects was changed to return maps. See
+        // test_childprojects_qml_shape for the shape contract.
         QSet<QString> childIds;
         for (const QVariant &v : children) {
-            Project *p = qvariant_cast<Project *>(v);
-            QVERIFY(p != nullptr);
-            QCOMPARE(p->parentId(), domId);
-            childIds.insert(p->id());
+            QVERIFY(v.metaType().id() == QMetaType::QVariantMap);
+            const QVariantMap m = v.toMap();
+            QCOMPARE(m.value(QStringLiteral("parentId")).toString(), domId);
+            childIds.insert(m.value(QStringLiteral("id")).toString());
         }
         QVERIFY(childIds.contains(kvartal->id()));
         QVERIFY(childIds.contains(pokupki->id()));
@@ -242,8 +244,8 @@ private slots:
         QCOMPARE(pvm.showArchived(), false);
         QVariantList kids = pvm.childProjects(dom->id());
         QCOMPARE(kids.size(), 1);
-        Project *only = qvariant_cast<Project *>(kids.at(0));
-        QVERIFY(only && only->id() == child1->id());
+        const QVariantMap onlyMap = kids.at(0).toMap();
+        QCOMPARE(onlyMap.value(QStringLiteral("id")).toString(), child1->id());
 
         // (b) showArchived=true — archived child reappears.
         pvm.setShowArchived(true);
@@ -287,14 +289,14 @@ private slots:
         // Re-evaluate 10× without any mutation in between.
         QStringList firstIds;
         for (const QVariant &v : first)
-            firstIds << qvariant_cast<Project *>(v)->id();
+            firstIds << v.toMap().value(QStringLiteral("id")).toString();
 
         for (int i = 0; i < 10; ++i) {
             const QVariantList again = pvm.childProjects(domId);
             QCOMPARE(again.size(), first.size());
             QStringList againIds;
             for (const QVariant &v : again)
-                againIds << qvariant_cast<Project *>(v)->id();
+                againIds << v.toMap().value(QStringLiteral("id")).toString();
             QCOMPARE(againIds, firstIds);
         }
     }

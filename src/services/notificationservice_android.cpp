@@ -36,6 +36,10 @@ Java_org_opentodo_NotificationHelper_onPermissionResult(JNIEnv *, jclass, jboole
             emit svc->permissionGranted();
         else
             emit svc->permissionDenied();
+        // Q-Android-Audit #2.1: single "we got an answer" signal so the QML
+        // layer can flip notificationPermissionAsked AFTER the OS has actually
+        // returned, instead of synchronously after requestPermission().
+        emit svc->permissionRequestCompleted(grantedBool);
     }, Qt::QueuedConnection);
 }
 

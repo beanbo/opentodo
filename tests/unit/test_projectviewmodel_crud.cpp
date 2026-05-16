@@ -642,12 +642,14 @@ private slots:
         QCOMPARE(kids.size(), 2);
 
         // Collect ids returned by childProjects, order is insertion-stable but
-        // we don't depend on it — assert membership.
+        // we don't depend on it — assert membership. childProjects returns
+        // QVariantMap entries (see test_childprojects_qml_shape) because Qt
+        // 6.11's QML engine can't iterate a QVariantList of QObject*-bearing
+        // QVariants reliably.
         QStringList childIds;
         for (const QVariant &v : kids) {
-            Project *p = qvariant_cast<Project *>(v);
-            QVERIFY(p);
-            childIds << p->id();
+            QVERIFY(v.metaType().id() == QMetaType::QVariantMap);
+            childIds << v.toMap().value(QStringLiteral("id")).toString();
         }
         QVERIFY(childIds.contains(c1));
         QVERIFY(childIds.contains(c2));

@@ -166,6 +166,26 @@ ApplicationWindow {
         source: Qt.platform.os === "android" ? "layouts/MobileLayout.qml" : "layouts/DesktopLayout.qml"
     }
 
+    // Q-Android-Audit #1.2: Android back-button handler. On desktop the window
+    // X-button still accepts the close (the audit only flagged Android), so we
+    // gate on the platform string. The ladder asks the MobileLayout to consume
+    // the press first (close editor / search / drawer / navigate home), and
+    // only lets the OS exit the app when nothing else handled it. Without this,
+    // Android's back gesture exits OpenTodo at every level of UI state.
+    onClosing: function(close) {
+        if (Qt.platform.os !== "android")
+            return
+        const layout = layoutLoader.item
+        if (layout && typeof layout.handleBack === "function") {
+            if (layout.handleBack()) {
+                close.accepted = false
+                return
+            }
+        }
+        // Reached only when the layout returned false (nothing to consume) — let
+        // the OS close the app normally.
+    }
+
     // ── Undo Snackbar ─────────────────────────────────────────────────────────
     Rectangle {
         id: undoSnackbar
