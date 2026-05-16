@@ -124,6 +124,18 @@ opentodo_add_unit_test(test_q_gadgets                     Infra)
 opentodo_add_unit_test(test_taskviewmodel_selection       App)
 opentodo_add_unit_test(test_hotkeyservice                 App)
 
+# Quality round 2.27: HotkeyService EDGE cases — pins behaviour not covered by
+# test_hotkeyservice (basic surface) or test_hotkeyservice_conflicts (rebind +
+# conflict probe). Seven slots: same-combo double-register idempotency,
+# runtime-rebind OS-level release of the old combo, weird-input rejection
+# (whitespace, embedded NUL, Win+J reserved), construction without a top-level
+# window (filter installs on QCoreApplication path), disable/re-enable toggle,
+# accepted modifier matrix (Ctrl/Alt/Shift/Meta/Win/Super aliases + no-mod
+# rejection + case-insensitivity), and shortcutChanged signal vocabulary +
+# idempotence. Uses QTEST_MAIN (QApplication) and an isolated QSettings
+# namespace so parallel ctest runs don't conflict with the existing suites.
+opentodo_add_unit_test(test_hotkeyservice_edges           App)
+
 # Quality round 2.11: post-_meta-fix verification — field-level CRDT for
 # all non-Task entity types, DataStore meta helpers + migration robustness,
 # subtask hierarchy edge cases (multi-level promote/demote + cycles).
@@ -509,6 +521,16 @@ opentodo_add_unit_test(test_board_dragdrop_edges          App)
 # real QApplication and would have caught the regression. Pins the
 # QApplication-not-QGuiApplication contract going forward.
 opentodo_add_unit_test(test_notification_service_smoke    App)
+
+# WindowsNotificationService behavioural edge-cases (Infra layer). Eight
+# slots pinning current behaviour for empty title/body, 10 KB body, 100
+# rapid notifications, hasPermission()/requestPermission() Windows contract
+# (no runtime grant prompt + queued completion signal fires exactly once),
+# zero-signal construction, and unicode + emoji round-trip via std::wstring.
+# Same QApplication-not-QGuiApplication harness as test_notification_service_smoke
+# (QSystemTrayIcon needs QApplication). Non-Windows builds compile to a
+# single QSKIP("Windows-only") slot — see #ifdef Q_OS_WIN guard at file scope.
+opentodo_add_unit_test(test_notificationservice_win_edges Infra)
 
 # Quality round 2.19: HotkeyService conflict detection + rebinding +
 # modifier-only rejection. New surface: setShortcut(QString) (live re-bind),

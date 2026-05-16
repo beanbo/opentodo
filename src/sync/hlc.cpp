@@ -195,6 +195,30 @@ QString HybridLogicalClock::update(const QString &localHlc,
 }
 
 // ---------------------------------------------------------------------------
+// Defence-in-depth skew check (used by Merger on incoming entities that
+// bypassed HLC::update at SyncEngine ingest — e.g. initial Drive bootstrap,
+// legacy local files, direct imports).
+// ---------------------------------------------------------------------------
+
+bool HybridLogicalClock::isWithinAcceptableSkew(const QString &hlcStr,
+                                                qint64 maxSkewMs)
+{
+    if (hlcStr.isEmpty()) return true;
+    const Components c = parse(hlcStr);
+    if (!c.valid) return true;  // malformed: leave it to compare()/parse() guards
+
+    const qint64 physNow = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    const qint64 skewBudget = (maxSkewMs > 0) ? maxSkewMs : 0;
+    // Reject if claimed physMs is more than budget ahead of wall clock.
+    // Use signed arithmetic to avoid wrap; physMs is bounded well under
+    // INT64_MAX for any realistic time, so the cast is safe.
+    if (static_cast<qint64>(c.physMs) > physNow + skewBudget) {
+        return false;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 

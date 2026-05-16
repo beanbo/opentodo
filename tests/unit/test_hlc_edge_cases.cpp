@@ -521,6 +521,66 @@ private slots:
         QCOMPARE(afterUpdate, local0);
     }
 
+    // =========================================================================
+    // isWithinAcceptableSkew() — defence-in-depth helper used by Merger
+    // =========================================================================
+
+    // ── Within budget → true ─────────────────────────────────────────────────
+    void isWithinAcceptableSkew_inBudget_true()
+    {
+        const quint64 wallNow = static_cast<quint64>(
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+        // 30 minutes ahead — well under 1 hour budget.
+        const QString s = makeHlc(wallNow + 30ull * 60ull * 1000ull, 0, kDevA);
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(s));
+    }
+
+    // ── Past timestamps are always acceptable (we only clamp forward skew) ──
+    void isWithinAcceptableSkew_past_alwaysTrue()
+    {
+        // Year-1970-ish.
+        const QString s = makeHlc(100ull, 0, kDevA);
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(s));
+    }
+
+    // ── Just over 1 hour ahead → false (boundary check) ──────────────────────
+    void isWithinAcceptableSkew_overBudget_false()
+    {
+        const quint64 wallNow = static_cast<quint64>(
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+        // 65 minutes ahead — just over the 60-min budget.
+        const quint64 farMs = wallNow + 65ull * 60ull * 1000ull;
+        const QString s = makeHlc(farMs, 0, kDevA);
+        QVERIFY(!HybridLogicalClock::isWithinAcceptableSkew(s));
+    }
+
+    // ── Year-2099 → false (extreme forward skew) ─────────────────────────────
+    void isWithinAcceptableSkew_year2099_false()
+    {
+        const QString s = makeHlc(4070000000000ull, 0, kDevA);
+        QVERIFY(!HybridLogicalClock::isWithinAcceptableSkew(s));
+    }
+
+    // ── Custom budget honoured ───────────────────────────────────────────────
+    void isWithinAcceptableSkew_customBudget()
+    {
+        const quint64 wallNow = static_cast<quint64>(
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+        // 5 minutes ahead. Default budget (1 hour) → accept. 1-min budget → reject.
+        const QString s = makeHlc(wallNow + 5ull * 60ull * 1000ull, 0, kDevA);
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(s));
+        QVERIFY(!HybridLogicalClock::isWithinAcceptableSkew(s, /*maxSkewMs=*/60'000));
+    }
+
+    // ── Malformed / empty → true (treated as not-out-of-range; other
+    //    layers handle malformed strings) ──────────────────────────────────────
+    void isWithinAcceptableSkew_malformed_returnsTrue()
+    {
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(QString()));
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(QStringLiteral("garbage")));
+        QVERIFY(HybridLogicalClock::isWithinAcceptableSkew(QStringLiteral("not-a-hlc")));
+    }
+
     // ── Forward skew followed by a "regular" remote → still monotone ─────────
     void clockSkew_forwardThenNormal_stillMonotone()
     {

@@ -9,6 +9,76 @@
 
 Q_LOGGING_CATEGORY(lcMerger, "opentodo.merger")
 
+// ---------------------------------------------------------------------------
+// Defence-in-depth skew budget for the per-field comparison.
+// Mirrors HLC::update's kMaxClockSkewMs (1 hour). Any field-meta HLC whose
+// physMs exceeds local wall-clock by > this budget is demoted (replaced with
+// a clamped placeholder for comparison only — the on-disk ts is preserved).
+// See HybridLogicalClock::isWithinAcceptableSkew for rationale.
+// ---------------------------------------------------------------------------
+static constexpr qint64 kMergerMaxSkewMs = 60LL * 60LL * 1000LL;  // 1 hour
+
+namespace {
+
+// Format an HLC string from raw components (mirrors HLC::format, kept local
+// because format() is private to hlc.cpp).
+QString formatClampedHlc(quint64 physMs, quint32 counter, const QString &deviceId)
+{
+    return QStringLiteral("%1:%2:%3")
+        .arg(physMs,  16, 16, QLatin1Char('0'))
+        .arg(counter,  8, 16, QLatin1Char('0'))
+        .arg(deviceId);
+}
+
+// Return a copy of `fieldMeta` whose "ts" has been clamped to local-wall-now
+// + kMergerMaxSkewMs IF the original ts is more than kMergerMaxSkewMs ahead
+// of local-wall-now. Otherwise returns `fieldMeta` unchanged.
+//
+// `wasClamped` is set to true when the meta was demoted (caller uses this to
+// emit a once-per-entity qCWarning).
+QJsonObject clampedForComparison(const QJsonObject &fieldMeta, bool &wasClamped)
+{
+    wasClamped = false;
+    if (fieldMeta.isEmpty()) return fieldMeta;
+
+    const QString ts = fieldMeta.value(QStringLiteral("ts")).toString();
+    if (HybridLogicalClock::isWithinAcceptableSkew(ts, kMergerMaxSkewMs)) {
+        return fieldMeta;
+    }
+
+    // Demote: rebuild meta with ts clamped to wall-clock-NOW (zero offset).
+    // Counter is zeroed so the clamped meta has minimal weight against any
+    // real concurrent edit at the same physMs from a legitimate peer.
+    //
+    // Why clamp to wall-now and not (wall-now + budget)?
+    //   The goal is "bad HLC writes LOSE to legitimate peers with normal
+    //   clocks". If we kept the clamped ts an hour ahead of wall-now, the
+    //   bad HLC would still beat every legitimate concurrent edit that
+    //   happened "right now" — defeating the defence. Clamping to wall-now
+    //   means a legit peer's edit (physMs == wall-now, counter > 0) or a
+    //   slightly later edit will out-rank the demoted bad HLC. Equal-physMs
+    //   ties fall through to counter/deviceId — fair behaviour for the
+    //   rare case the poisoned peer happens to share wall-now exactly.
+    //
+    // Why preserve deviceId?
+    //   The deviceId is used for the lexicographic tiebreak. Preserving it
+    //   keeps the comparison deterministic for the bad peer's other fields
+    //   on the same entity (so all of its fields lose or tie consistently
+    //   against a single legitimate peer, rather than thrashing).
+    const HybridLogicalClock::Components orig =
+        HybridLogicalClock::parse(ts);
+    const quint64 clampedPhys = static_cast<quint64>(
+        QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+
+    QJsonObject demoted = fieldMeta;
+    demoted[QStringLiteral("ts")] = formatClampedHlc(
+        clampedPhys, /*counter=*/0, orig.deviceId);
+    wasClamped = true;
+    return demoted;
+}
+
+} // anonymous namespace
+
 Merger::Merger(QObject *parent)
     : QObject(parent)
 {
@@ -178,6 +248,13 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
     // `merged`, so mergedMeta is only needed as the initial-state reference.
     // Remove the dead variable and rely solely on the inline setFieldMeta calls.
 
+    // Q3.05-C defence-in-depth: track whether any field on this entity was
+    // demoted due to far-future HLC, so we can log exactly once per entity
+    // (not per field — a misconfigured peer typically poisons all its
+    // fields, and we want one informative line per entity, not 20).
+    bool entityHadClampedField = false;
+    QString clampedDeviceId;
+
     const QStringList &orSetFlds = CrdtMeta::orSetFields();
 
     for (const QString &field : std::as_const(allFields)) {
@@ -247,6 +324,27 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
             const QJsonObject lFm = CrdtMeta::getFieldMeta(local, field);
             const QJsonObject rFm = CrdtMeta::getFieldMeta(remote, field);
 
+            // Q3.05-C defence-in-depth: clamp the per-field HLC used for
+            // COMPARISON purposes only — the on-disk ts (in lFm / rFm) is
+            // preserved when we copy meta back. This means a peer with a
+            // year-2099 BIOS clock still has its writes captured, but it
+            // no longer wins every field over a legitimate peer.
+            bool lClamped = false, rClamped = false;
+            const QJsonObject lFmCmp = clampedForComparison(lFm, lClamped);
+            const QJsonObject rFmCmp = clampedForComparison(rFm, rClamped);
+            if (rClamped) {
+                entityHadClampedField = true;
+                if (clampedDeviceId.isEmpty()) {
+                    clampedDeviceId = rFm.value(QStringLiteral("dev")).toString();
+                }
+            }
+            if (lClamped) {
+                entityHadClampedField = true;
+                if (clampedDeviceId.isEmpty()) {
+                    clampedDeviceId = lFm.value(QStringLiteral("dev")).toString();
+                }
+            }
+
             bool remoteWins = false;
             if (lFm.isEmpty() && rFm.isEmpty()) {
                 // No meta on either side: fall back to whole-entity LWW.
@@ -256,13 +354,19 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
                 if (localHasMeta) {
                     // local entity has _meta but not for this field — remote wins
                     // if it has meta (newer data model knows about this field).
-                    remoteWins = true;
+                    // Defence-in-depth: if remote ts is far-future, demote it —
+                    // a legacy local with sane updated_at should not lose to a
+                    // peer with a broken BIOS clock.
+                    remoteWins = !rClamped;
                 } else {
                     // Both sides: local is a legacy whole-entity, remote has CRDT.
                     // Compare remote HLC ts against local updated_at.
-                    const QString remoteTs = rFm[QStringLiteral("ts")].toString();
+                    // Use the clamped-for-comparison meta so a far-future
+                    // remote can't auto-win over a legacy local with a sane ts.
+                    const QString remoteTs = rFmCmp[QStringLiteral("ts")].toString();
                     const QString legacyTs = local.value(
                         QStringLiteral("updated_at")).toString();
+                    Q_UNUSED(legacyTs);
                     // Convert legacyTs to an HLC-comparable string (use "legacy" device).
                     // Since HLC physical part is ms-since-epoch and ISO timestamp
                     // can be parsed, we do a pragmatic: if remote HLC physMs >
@@ -279,9 +383,11 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
                 // Local has CRDT meta; remote is legacy.
                 if (remoteHasMeta) {
                     // remote entity has _meta but not for this field → local wins.
-                    remoteWins = false;
+                    // Unless the local meta is itself far-future — in that
+                    // case the legacy remote (with a sane updated_at) should win.
+                    remoteWins = lClamped;
                 } else {
-                    const QString localTs = lFm[QStringLiteral("ts")].toString();
+                    const QString localTs = lFmCmp[QStringLiteral("ts")].toString();
                     const qint64 remoteMs = remoteTime.isValid()
                         ? remoteTime.toMSecsSinceEpoch() : 0;
                     const HybridLogicalClock::Components lc =
@@ -291,13 +397,19 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
                         : !localIsNewer;
                 }
             } else {
-                // Both have CRDT meta.
-                remoteWins = CrdtMeta::compareFieldMeta(rFm, lFm) > 0;
+                // Both have CRDT meta. Use clamped-for-comparison versions
+                // so a far-future HLC on either side doesn't auto-win.
+                remoteWins = CrdtMeta::compareFieldMeta(rFmCmp, lFmCmp) > 0;
             }
 
             if (remoteWins) {
                 merged[field] = remote.value(field);
                 if (!rFm.isEmpty()) {
+                    // IMPORTANT: write back the ORIGINAL rFm (not rFmCmp) so
+                    // the on-disk ts is preserved. The clamp only applied to
+                    // the comparison decision; if a legitimate peer later
+                    // catches up to that physical time, the original ts is
+                    // still authoritative.
                     CrdtMeta::setFieldMeta(merged, field,
                                            rFm[QStringLiteral("ts")].toString(),
                                            rFm[QStringLiteral("dev")].toString());
@@ -306,6 +418,19 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
             }
             // else: local wins, value already in merged, local meta already in merged["_meta"].
         }
+    }
+
+    // Q3.05-C: log once per entity if any field was demoted. Logged under the
+    // merger category — admins triaging "why does device X always win
+    // conflicts" can enable opentodo.merger=true to see this line and grep
+    // for "clamped far-future HLC".
+    if (entityHadClampedField) {
+        const QString entityId = local.value(QStringLiteral("id")).toString();
+        qCWarning(lcMerger,
+                  "Merger: clamped far-future HLC on entity %s (peer device=%s); "
+                  "possible BIOS-clock misconfiguration or legacy state bypass of "
+                  "HLC::update — demoted for per-field comparison only, ts preserved",
+                  qPrintable(entityId), qPrintable(clampedDeviceId));
     }
 
     return merged;

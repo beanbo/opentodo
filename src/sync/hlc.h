@@ -70,6 +70,34 @@ public:
      */
     static Components parse(const QString &hlc);
 
+    /**
+     * @brief Defence-in-depth clamp check used by Merger.
+     *
+     * Returns true if `hlcStr`'s physical-time component is NOT more than
+     * `maxSkewMs` ahead of the current local wall clock. Returns false (i.e.
+     * "out of acceptable range") when `hlcStr` claims a physical time that
+     * is more than `maxSkewMs` ahead of `QDateTime::currentDateTimeUtc()`.
+     *
+     * A malformed / unparseable HLC string is treated as acceptable (returns
+     * true) — invalid strings are handled separately by compare()/parse() and
+     * sort to the bottom anyway; we don't want this helper to silently demote
+     * unrelated bad-string scenarios.
+     *
+     * Rationale: HybridLogicalClock::update() already rejects far-future
+     * remote HLCs at SyncEngine ingest. But Merger::mergeEntity() runs on
+     * raw JSON that may bypass update() (initial Drive bootstrap, legacy
+     * file migration, direct imports). This helper lets Merger demote
+     * obviously-bad HLCs without rejecting the commit / losing data.
+     *
+     * @param hlcStr     The candidate HLC string to test.
+     * @param maxSkewMs  Maximum tolerated forward skew (default 1 hour).
+     * @return true if hlcStr is within the acceptable skew window OR is
+     *         unparseable; false ONLY if hlcStr's physMs exceeds
+     *         wall-clock-now by more than maxSkewMs.
+     */
+    static bool isWithinAcceptableSkew(const QString &hlcStr,
+                                       qint64 maxSkewMs = 3600000);
+
     // Internal helpers (public so tests can reach them if needed)
     static QString loadLast();
 

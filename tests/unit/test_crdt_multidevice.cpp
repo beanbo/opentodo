@@ -473,16 +473,18 @@ private slots:
     // 6. Physical clock skew 60min+ on Dev A, normal clocks on B and C.
     //
     // The HLC::update() path REJECTS inbound HLCs whose physMs exceeds the
-    // local clock by more than 60 minutes (kMaxClockSkewMs). The MERGER,
-    // however, takes the HLC strings as-is — it does NOT call HLC::update,
-    // it just compares strings via CrdtMeta::compareFieldMeta /
-    // HybridLogicalClock::compare. So a far-future HLC in a merger input
-    // will WIN the per-field LWW comparison.
+    // local clock by more than 60 minutes (kMaxClockSkewMs). Q3.05-C added
+    // defence-in-depth to the MERGER: far-future per-field HLCs are now
+    // demoted (clamped to wall-now for comparison only) before LWW resolution.
     //
-    // Pin: the clamping lives in HLC::update (i.e. in SyncEngine when
-    // applying inbound commits). The MERGER trusts the strings. This is a
-    // documented gap — a malicious or BIOS-broken peer can poison the merge
-    // result if it bypasses HLC::update (e.g. on the initial bootstrap).
+    // Pin (post-Q3.05-C): A's +65min HLC is clamped before comparison, so the
+    // legitimate peer with a slightly newer real HLC (C, at +1s) wins the
+    // per-field LWW. A's data is NOT lost — its ts is preserved on disk —
+    // but the bad HLC no longer auto-wins.
+    //
+    // Defence-in-depth: HLC::update is the gate at SyncEngine ingest (rejects
+    // outright); Merger clamps the bypassed paths (initial Drive bootstrap,
+    // legacy pre-CRDT migration, direct file import).
     // ─────────────────────────────────────────────────────────────────────────
     void physical_clock_skew_60min_clamp_on_three_devices()
     {
@@ -495,7 +497,10 @@ private slots:
         const quint64 farMs   = nowMs + (60ULL * 60 * 1000) + (5ULL * 60 * 1000); // +65min
         const QString tsAhead = makeHlc(farMs, 0, kDevA);
         const QString tsB     = makeHlc(nowMs,         0, kDevB);
-        const QString tsC     = makeHlc(nowMs + 1000,  0, kDevC); // +1s (later than B)
+        // Use counter>0 on C so it strictly out-ranks the clamped (counter=0)
+        // bad HLC on A even in the corner case where A's clamp anchor lands
+        // on the same physMs as C's edit (rare but possible).
+        const QString tsC     = makeHlc(nowMs + 1000,  1, kDevC); // +1s, counter=1
 
         QJsonObject a = withFieldMeta(
             withField(makeEntity(id, baseTs), QStringLiteral("content"), QStringLiteral("A-skewed")),
@@ -507,7 +512,8 @@ private slots:
             withField(makeEntity(id, baseTs), QStringLiteral("content"), QStringLiteral("C-normal")),
             QStringLiteral("content"), tsC, kDevC);
 
-        // 6a. Direct merger (no HLC::update gate) — far-future A WINS.
+        // 6a. Direct merger — Q3.05-C clamps A's bad HLC. C wins (latest
+        // legitimate edit by physMs+counter).
         Merger m;
         const QJsonObject mergedRaw = mergeThree(m,
                                                  stateForOne(a),
@@ -516,16 +522,20 @@ private slots:
         const QJsonObject taskRaw   = findById(
             mergedRaw[QStringLiteral("tasks")].toArray(), id);
         QVERIFY(!taskRaw.isEmpty());
-        QCOMPARE(taskRaw[QStringLiteral("content")].toString(), QStringLiteral("A-skewed"));
-        qInfo("Merger trusts HLC strings as-is — no clamping in Merger::mergeEntity");
+        QCOMPARE(taskRaw[QStringLiteral("content")].toString(), QStringLiteral("C-normal"));
+        qInfo("Q3.05-C: Merger clamps far-future HLC — legitimate peer C wins, A's bad HLC demoted");
 
         // 6b. HLC::update() would have REJECTED A's HLC at SyncEngine ingest.
+        // This is the FIRST line of defence — SyncEngine routes inbound
+        // commits through HLC::update so the bad HLC never reaches Merger
+        // for the commit path. The clamp in Merger is the SECOND line, for
+        // bypass paths (Drive bootstrap, legacy file imports).
         const QString localBefore = makeHlc(nowMs - 1000, 0, kDevB);
         const QString afterReject = HybridLogicalClock::update(
             localBefore, tsAhead, kDevB);
         // The contract: rejected → local HLC returned UNCHANGED.
         QCOMPARE(afterReject, localBefore);
-        qInfo("HLC::update DOES reject far-future remote (>60min) — clamping lives there, not in Merger");
+        qInfo("HLC::update gates the commit path (rejects); Merger clamps bypass paths (demotes)");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -644,19 +654,23 @@ private slots:
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 9. HLC physMs claiming year 2099 — does Merger clamp or accept?
+    // 9. HLC physMs claiming year 2099 — Merger CLAMPS for comparison.
     //
     // The Merger uses HybridLogicalClock::compare (string compare on numeric
-    // hex). A "year 2099" HLC has physMs ≈ 4.1e12 vs current ≈ 1.8e12. The
-    // compare WILL say it's newer; the Merger will let it win the field.
+    // hex). A "year 2099" HLC has physMs ≈ 4.1e12 vs current ≈ 1.8e12.
     //
-    // Pin: NO clamping at Merger level. Year-2099 HLCs win every field
-    // comparison they participate in until real time catches up.
+    // Q3.05-C defence-in-depth: HybridLogicalClock::update() rejects
+    // far-future HLCs at SyncEngine ingest, but Merger::mergeEntity() runs
+    // on raw JSON that may BYPASS update() (initial Drive bootstrap, legacy
+    // state.json migrated from pre-CRDT format, direct file import). To
+    // close that gap, Merger now demotes any per-field HLC whose physMs is
+    // more than 60 minutes ahead of local wall clock to a synthesised
+    // clamped HLC anchored at wall-now (for comparison purposes only — the
+    // on-disk ts in _meta is preserved for forward-compat).
     //
-    // The defence-in-depth (HLC::update rejecting > 60min skew at SyncEngine
-    // ingest) is the gate that's supposed to prevent these from ever entering
-    // the merge. If a Merger call ever sees one anyway (e.g. legacy state.json
-    // produced before the clamp existed), it's accepted.
+    // Result: a year-2099 HLC no longer auto-wins against a legitimate peer
+    // with a normal clock. The legitimate peer's edit wins, but the
+    // poisoned peer's data is NOT lost — it's just outranked.
     // ─────────────────────────────────────────────────────────────────────────
     void commit_with_HLC_in_far_future_is_clamped_not_rejected()
     {
@@ -665,8 +679,11 @@ private slots:
         // Year 2099 in ms-since-epoch ≈ 4.07e12.
         const quint64 yr2099 = 4070000000000ULL;
         const QString tsFar  = makeHlc(yr2099, 0, kDevA);
+        // Use a counter > 0 on the legitimate side so it strictly out-ranks
+        // the clamped (counter=0) bad HLC even in the corner case where the
+        // legit edit lands exactly on the same physMs as the clamp anchor.
         const QString tsNow  = makeHlc(static_cast<quint64>(
-            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()), 0, kDevB);
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()), 1, kDevB);
 
         QJsonObject a = withFieldMeta(
             withField(makeEntity(id, baseTs),
@@ -684,13 +701,102 @@ private slots:
             merged[QStringLiteral("tasks")].toArray(), id);
 
         QVERIFY(!task.isEmpty());
-        // Pin: Merger ACCEPTS the year-2099 HLC and lets it win.
-        QCOMPARE(task[QStringLiteral("content")].toString(), QStringLiteral("Y2099-edit"));
+        // Q3.05-C: the legitimate peer's present-day edit must win — the
+        // year-2099 HLC is clamped before comparison and therefore LOSES to
+        // a normal-clock peer. This pins the fix.
+        QCOMPARE(task[QStringLiteral("content")].toString(),
+                 QStringLiteral("present-day-edit"));
 
+        // The winning field meta should be the legitimate peer's (B's) ts,
+        // not the year-2099 ts.
+        const QJsonObject fm = CrdtMeta::getFieldMeta(task, QStringLiteral("content"));
+        QCOMPARE(fm[QStringLiteral("ts")].toString(),         tsNow);
+        QCOMPARE(fm[QStringLiteral("dev")].toString(),        kDevB);
+
+        qInfo("Year-2099 HLC: CLAMPED by Merger — legitimate peer with normal clock wins");
+        qInfo("Defence-in-depth: HLC::update gates SyncEngine ingest, Merger clamps bypassed-paths (Drive bootstrap, legacy import)");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 9b. Mirror of slot 9 with role-reversal: bad HLC on the REMOTE side
+    // (rather than local) must also be demoted. This guards against a peer
+    // pushing a poisoned state to Drive that another device pulls in.
+    // ─────────────────────────────────────────────────────────────────────────
+    void commit_with_HLC_in_far_future_is_clamped_on_remote_too()
+    {
+        const QString id     = QStringLiteral("task-y2099-remote");
+        const QString baseTs = QStringLiteral("2026-05-01T00:00:00.000Z");
+        const quint64 yr2099 = 4070000000000ULL;
+        const QString tsFar  = makeHlc(yr2099, 0, kDevA);
+        const QString tsNow  = makeHlc(static_cast<quint64>(
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()), 1, kDevB);
+
+        // This time A (with bad HLC) is REMOTE and B (legit) is LOCAL.
+        QJsonObject local = withFieldMeta(
+            withField(makeEntity(id, baseTs),
+                      QStringLiteral("content"), QStringLiteral("present-day-edit")),
+            QStringLiteral("content"), tsNow, kDevB);
+
+        QJsonObject remote = withFieldMeta(
+            withField(makeEntity(id, baseTs),
+                      QStringLiteral("content"), QStringLiteral("Y2099-edit")),
+            QStringLiteral("content"), tsFar, kDevA);
+
+        Merger m;
+        const QJsonObject merged = m.mergeStates(stateForOne(local),
+                                                  stateForOne(remote));
+        const QJsonObject task   = findById(
+            merged[QStringLiteral("tasks")].toArray(), id);
+
+        QVERIFY(!task.isEmpty());
+        QCOMPARE(task[QStringLiteral("content")].toString(),
+                 QStringLiteral("present-day-edit"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 9c. Bad HLC is clamped, NOT rejected — the on-disk ts is preserved.
+    //
+    // When a bad HLC field actually beats a competing field (e.g. its real
+    // value is more recent than the legit peer's), it does win — but the
+    // clamp guarantees that win is decided by the clamped comparison, not
+    // by the year-2099 physMs. Once the win is decided, the original ts
+    // (year-2099) is written back to merged["_meta"] so forward sync still
+    // sees the true HLC of the edit. This is "demote, don't drop".
+    //
+    // Concretely: if only ONE side has the field at all (other side never
+    // saw it), the bad-HLC side's value survives because there's nothing
+    // to compete against — the clamp only matters when there's a competing
+    // field on the other side.
+    // ─────────────────────────────────────────────────────────────────────────
+    void clamped_bad_HLC_preserves_original_ts_when_no_competition()
+    {
+        const QString id     = QStringLiteral("task-y2099-uncontested");
+        const QString baseTs = QStringLiteral("2026-05-01T00:00:00.000Z");
+        const quint64 yr2099 = 4070000000000ULL;
+        const QString tsFar  = makeHlc(yr2099, 0, kDevA);
+
+        // Only A has a content edit. B is bare (never touched content).
+        QJsonObject a = withFieldMeta(
+            withField(makeEntity(id, baseTs),
+                      QStringLiteral("content"), QStringLiteral("Y2099-edit")),
+            QStringLiteral("content"), tsFar, kDevA);
+
+        QJsonObject b = makeEntity(id, baseTs);
+
+        Merger m;
+        const QJsonObject merged = m.mergeStates(stateForOne(a), stateForOne(b));
+        const QJsonObject task   = findById(
+            merged[QStringLiteral("tasks")].toArray(), id);
+
+        QVERIFY(!task.isEmpty());
+        // Uncontested: A's value survives (clamp only matters in head-to-head).
+        QCOMPARE(task[QStringLiteral("content")].toString(),
+                 QStringLiteral("Y2099-edit"));
+
+        // The original (unclamped) ts is preserved on disk so a future sync
+        // sees the true HLC of the edit.
         const QJsonObject fm = CrdtMeta::getFieldMeta(task, QStringLiteral("content"));
         QCOMPARE(fm[QStringLiteral("ts")].toString(), tsFar);
-        qInfo("Year-2099 HLC: ACCEPTED by Merger, not clamped or rejected");
-        qInfo("Defence-in-depth: HLC::update is the gate at SyncEngine ingest, not Merger");
     }
 };
 
