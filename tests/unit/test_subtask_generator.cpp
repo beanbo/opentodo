@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 
 #include "storage/datastore.h"
 #include "model/project.h"
@@ -35,7 +36,8 @@ private slots:
 
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SubtaskGen"));
         QCoreApplication::setApplicationName(QStringLiteral("test_subtask_generator"));
     }
 

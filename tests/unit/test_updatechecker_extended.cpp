@@ -30,6 +30,7 @@
 #include <QFile>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QString>
 #include <QTemporaryDir>
 #include <QUrl>
@@ -49,7 +50,8 @@ private slots:
     {
         // Throw-away QSettings scope so we never touch real user keys
         // (e.g. update/last_check, update/skipped_version, update/disabled).
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_UpdateCheckerExt"));
         QCoreApplication::setApplicationName(
             QStringLiteral("test_updatechecker_extended"));
 

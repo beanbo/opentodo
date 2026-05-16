@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QDateTime>
 
@@ -36,7 +37,8 @@ private slots:
     void initTestCase()
     {
         // Throw-away QSettings scope so tests don't pollute real user settings.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_ProjVMDefaults"));
         QCoreApplication::setApplicationName(QStringLiteral("test_projectviewmodel_defaults"));
     }
 

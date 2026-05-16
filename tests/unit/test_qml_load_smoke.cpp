@@ -246,7 +246,7 @@ private slots:
         // other tests that toggle setTestModeEnabled (test_filemanager*,
         // test_qml_warning_audit) so the FileManager state.json path does not
         // collide under `ctest -j`.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_QmlLoadSmoke"));
         QCoreApplication::setApplicationName(QStringLiteral("test_qml_load_smoke"));
 
         // Send all FileManager I/O into a per-test scratch directory so the

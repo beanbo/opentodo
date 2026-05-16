@@ -241,8 +241,8 @@ private slots:
         // directory + matching QSettings org/app so neither test pollutes
         // the user's real OpenTodo install.
         QStandardPaths::setTestModeEnabled(true);
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodo"));
-        QCoreApplication::setApplicationName(QStringLiteral("OpenTodo"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_QmlWarningAudit"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_qml_warning_audit"));
 
         g_previousHandler = qInstallMessageHandler(&captureMessageHandler);
     }

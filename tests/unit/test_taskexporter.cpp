@@ -57,7 +57,7 @@ private slots:
         // Per-test org/app keeps the test-mode AppDataLocation isolated from
         // other tests that toggle setTestModeEnabled (test_filemanager*, etc.)
         // so they don't race on shared paths under `ctest -j`.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_TaskExporter"));
         QCoreApplication::setApplicationName(QStringLiteral("test_taskexporter"));
         QStandardPaths::setTestModeEnabled(true);
     }

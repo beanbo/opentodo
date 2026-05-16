@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStandardPaths>
 #include <QDateTime>
 #include <QDate>
 #include <QTime>
@@ -125,7 +126,8 @@ private slots:
         // Use a throwaway QSettings scope so the test never touches the
         // user's real OpenTodo settings (in particular, SyncEngine reads
         // sync/device_id from QSettings).
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_NotifsVM"));
         QCoreApplication::setApplicationName(QStringLiteral("test_notificationsviewmodel"));
     }
 

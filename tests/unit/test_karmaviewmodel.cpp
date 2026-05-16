@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStandardPaths>
 #include <QDate>
 #include <QDateTime>
 #include <QVariantList>
@@ -103,7 +104,8 @@ private slots:
     {
         // Use a throwaway QSettings scope so the test never touches the
         // user's real OpenTodo settings.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_KarmaVM"));
         QCoreApplication::setApplicationName(QStringLiteral("test_karmaviewmodel"));
     }
 

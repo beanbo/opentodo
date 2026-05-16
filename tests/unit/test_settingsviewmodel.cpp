@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -42,7 +43,8 @@ private slots:
 
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SettingsVM"));
         QCoreApplication::setApplicationName(QStringLiteral("test_settingsviewmodel"));
     }
 

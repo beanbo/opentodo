@@ -101,8 +101,8 @@ private slots:
         // Unique QSettings org/app keeps parallel test binaries from racing
         // on the same registry/INI keys (per the task requirement).
         QVERIFY(m_settingsTmp.isValid());
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
-        QCoreApplication::setApplicationName(QStringLiteral("FileManagerErrorPaths"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_FileMgrErrPaths"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_filemanager_error_paths"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
                            m_settingsTmp.path());

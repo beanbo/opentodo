@@ -263,12 +263,10 @@ opentodo_add_unit_test(test_export_import_roundtrip       Infra)
 # (bare-CR-not-quoted, MD-drops-subtasks, MD-CRLF-stray-CR-in-description)
 # that are surfaced via assertions so a future fix produces a visible
 # test-suite signal.
-# DISABLED: the source file contains literal NUL bytes (intentional —
-# tests handling of NUL in task content) which prevents Qt's AUTOMOC
-# from scanning the file → moc symbols missing → link error. Re-enable
-# after the test is rewritten to use QChar(QChar::Null) at runtime
-# instead of literal NUL bytes in source.
-# opentodo_add_unit_test(test_taskexporter_robustness       Infra)
+# Source file is kept NUL-free: NUL bytes in test payloads are constructed
+# at runtime via QChar(QChar::Null) (see the withNul() helper in slot 2),
+# so AUTOMOC can scan the file and emit the required .moc.
+opentodo_add_unit_test(test_taskexporter_robustness       Infra)
 
 # Quality round 2.17-B: FilterParser adversarial / fuzz — 50-deep parens,
 # 1000-OR chains, NUL bytes, mixed Unicode, unmatched brackets, garbage

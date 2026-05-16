@@ -79,7 +79,7 @@ private slots:
     {
         // Per-test org/app so the test-mode AppDataLocation does not collide
         // with sibling FileManager-based tests when run under `ctest -j`.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_FileMgrBackups"));
         QCoreApplication::setApplicationName(QStringLiteral("test_filemanager_backups"));
         QStandardPaths::setTestModeEnabled(true);
     }

@@ -117,8 +117,8 @@ private slots:
         // throwaway location so the suite leaves no trace in HKCU / AppData.
         // Use a unique org/app pair so we don't clash with sibling tests.
         QVERIFY(m_tmp.isValid());
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
-        QCoreApplication::setApplicationName(QStringLiteral("SchemaDowngrade"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SchemaDowngrade"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_schema_downgrade"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_tmp.path());
     }

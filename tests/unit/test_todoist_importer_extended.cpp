@@ -15,6 +15,7 @@
 
 #include <QtTest>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QFile>
@@ -196,7 +197,8 @@ private slots:
     {
         // Use throw-away QSettings scope so the importer's batch tracking
         // doesn't pollute real settings.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_TodoistImpExt"));
         QCoreApplication::setApplicationName(
             QStringLiteral("test_todoist_importer_extended"));
     }

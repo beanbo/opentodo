@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QSettings>
+#include <QStandardPaths>
 
 #include "services/telemetry.h"
 
@@ -10,7 +11,8 @@ class TestTelemetry : public QObject
 private slots:
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_Telemetry"));
         QCoreApplication::setApplicationName(QStringLiteral("test_telemetry"));
     }
 

@@ -22,6 +22,7 @@
 #include <QtTest>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QStringList>
 
 #include "storage/datastore.h"
@@ -59,7 +60,8 @@ private slots:
     void initTestCase()
     {
         // Throw-away QSettings scope so we never touch the real ai/k.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SubtaskGenExt"));
         QCoreApplication::setApplicationName(
             QStringLiteral("test_subtaskgenerator_extended"));
 

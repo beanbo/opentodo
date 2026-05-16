@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QCoreApplication>
 #include <QSettings>
+#include <QStandardPaths>
 
 #include "services/updatechecker.h"
 
@@ -11,7 +12,8 @@ class TestUpdateChecker : public QObject
 private slots:
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_UpdateChecker"));
         QCoreApplication::setApplicationName(QStringLiteral("test_updatechecker"));
     }
 

@@ -149,8 +149,9 @@ private slots:
         // Redirect QSettings (used by HLC and DataStore::localDeviceId) into a
         // throwaway location so the suite leaves no trace in HKCU / AppData.
         QVERIFY(m_tmp.isValid());
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
-        QCoreApplication::setApplicationName(QStringLiteral("DataStoreMigration"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_DSMigration"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_datastore_migration"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_tmp.path());
     }

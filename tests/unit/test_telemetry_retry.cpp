@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QSignalSpy>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -101,7 +102,8 @@ private slots:
 
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_TelemetryRetry"));
         QCoreApplication::setApplicationName(QStringLiteral("test_telemetry_retry"));
         QCoreApplication::setApplicationVersion(QStringLiteral("0.0.0-test"));
     }

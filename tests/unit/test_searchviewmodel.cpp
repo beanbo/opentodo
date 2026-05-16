@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -140,7 +141,8 @@ private slots:
     // -----------------------------------------------------------------------
     void initTestCase()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SearchVM"));
         QCoreApplication::setApplicationName(QStringLiteral("test_searchviewmodel"));
     }
 

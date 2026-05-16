@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QSettings>
 #include <QCoreApplication>
+#include <QStandardPaths>
 #include <QDate>
 #include <QStringList>
 #include <QVariantList>
@@ -89,7 +90,8 @@ private slots:
     {
         // Use a dedicated QSettings scope so the test does not pollute the
         // user's real OpenTodo settings, and so each test reads a clean slate.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SidebarVM"));
         QCoreApplication::setApplicationName(QStringLiteral("test_sidebarviewmodel"));
     }
 

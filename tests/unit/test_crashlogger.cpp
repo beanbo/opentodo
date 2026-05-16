@@ -112,7 +112,7 @@ private slots:
         // other tests that toggle setTestModeEnabled (test_filemanager*,
         // test_taskexporter, test_qml_*) so the rotating error.log path
         // does not collide under `ctest -j`.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_CrashLogger"));
         QCoreApplication::setApplicationName(QStringLiteral("test_crashlogger"));
 
         // Sandbox QStandardPaths into a per-user test location so we never

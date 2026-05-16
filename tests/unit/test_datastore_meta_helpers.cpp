@@ -141,8 +141,9 @@ private slots:
     void initTestCase()
     {
         QVERIFY(m_tmp.isValid());
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
-        QCoreApplication::setApplicationName(QStringLiteral("DataStoreMetaHelpers"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_DSMetaHelpers"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_datastore_meta_helpers"));
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_tmp.path());
     }

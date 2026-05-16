@@ -209,7 +209,7 @@ class TestMetaDoubleWrapPin : public QObject
 private:
     static void configureSettings()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTests"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_MetaDoubleWrapPin"));
         QCoreApplication::setApplicationName(QStringLiteral("test_meta_double_wrap_pin"));
     }
 

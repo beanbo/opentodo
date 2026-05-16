@@ -13,6 +13,7 @@
 //   - Simulated remote-clock skew (forwards/backwards) via update()
 
 #include <QtTest>
+#include <QStandardPaths>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QSettings>
@@ -49,7 +50,8 @@ private slots:
     {
         // Use an isolated QSettings namespace so we don't trample real settings
         // and so our cleanup is local.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_HlcEdge"));
         QCoreApplication::setApplicationName(QStringLiteral("test_hlc_edge_cases"));
 
         // Clear any previously-persisted last_hlc so process-wide HLC state

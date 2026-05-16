@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QSettings>
+#include <QStandardPaths>
 
 #include "storage/datastore.h"
 #include "model/project.h"
@@ -25,7 +26,8 @@ private slots:
     {
         // Use a throw-away in-memory QSettings scope so tests don't pollute
         // real user settings on the machine running the test suite.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_AIAssistant"));
         QCoreApplication::setApplicationName(QStringLiteral("test_aiassistant"));
     }
 

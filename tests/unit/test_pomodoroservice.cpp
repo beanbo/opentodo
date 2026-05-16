@@ -3,6 +3,7 @@
 #include <QSettings>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QStandardPaths>
 
 #include "services/pomodoroservice.h"
 
@@ -42,7 +43,8 @@ private slots:
     void initTestCase()
     {
         // Use a dedicated org/app so the test never touches real OpenTodo settings.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_PomoSvc"));
         QCoreApplication::setApplicationName(QStringLiteral("test_pomodoroservice"));
     }
 

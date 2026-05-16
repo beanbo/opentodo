@@ -80,9 +80,9 @@ void wipePendingCommitsDir()
 // Returns nothing — the next QSettings() instance picks up the change.
 void useUniqueSettings(const QString &slotName)
 {
-    QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTests"));
+    QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SyncEngineState"));
     QCoreApplication::setApplicationName(
-        QStringLiteral("SyncEngineState_") + slotName);
+        QStringLiteral("test_syncengine_state_") + slotName);
     QSettings s;
     s.clear();
     s.sync();

@@ -3,6 +3,7 @@
 #include <QSettings>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QStandardPaths>
 #include <QDate>
 #include <QDateTime>
 #include <QTime>
@@ -109,7 +110,8 @@ private slots:
     void initTestCase()
     {
         // Dedicated org/app so the test never touches real OpenTodo settings.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_DailyReviewSvc"));
         QCoreApplication::setApplicationName(QStringLiteral("test_dailyreviewservice"));
     }
 

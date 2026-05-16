@@ -58,8 +58,8 @@ private slots:
         m_prevTestMode = QStandardPaths::isTestModeEnabled();
         QStandardPaths::setTestModeEnabled(true);
 
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTests"));
-        QCoreApplication::setApplicationName(QStringLiteral("SnapshotManagerTest"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SnapshotMgr"));
+        QCoreApplication::setApplicationName(QStringLiteral("test_snapshot_manager"));
 
         // Wipe any leftover Drive credentials that might be lurking in the
         // test-mode QSettings location (defensive — should already be empty).

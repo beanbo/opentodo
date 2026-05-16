@@ -34,7 +34,7 @@ private:
     // default registry hive on Windows. Must be called from initTestCase.
     static void configureSettings()
     {
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTests"));
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_SectionModel"));
         QCoreApplication::setApplicationName(QStringLiteral("test_section_model"));
     }
 

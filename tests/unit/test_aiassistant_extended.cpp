@@ -14,6 +14,7 @@
 #include <QtTest>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 
 #include "storage/datastore.h"
 #include "model/project.h"
@@ -27,7 +28,8 @@ private slots:
     void initTestCase()
     {
         // Use a throw-away QSettings scope so tests don't touch real user keys.
-        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest"));
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_AIExt"));
         QCoreApplication::setApplicationName(QStringLiteral("test_aiassistant_extended"));
 
         // Make sure we start from a clean slate every run.
