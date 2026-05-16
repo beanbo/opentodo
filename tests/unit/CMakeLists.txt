@@ -137,6 +137,14 @@ opentodo_add_unit_test(test_subtask_hierarchy_edge        App)
 opentodo_add_unit_test(test_syncengine_state              Infra)
 opentodo_add_unit_test(test_filemanager_error_paths       Infra)
 opentodo_add_unit_test(test_settingsviewmodel_reactivity  App)
+# i18n round (May 2026): coverage for canRestartApp() / restartApp() — the
+# Q_INVOKABLE pair backing the "Restart" button on the language-change toast
+# (SettingsSectionLanguage.qml). Six slots cover the desktop-true contract,
+# idempotence, Q_INVOKABLE meta-object visibility for both methods (so a
+# future drop of the macro can't silently break the QML caller), invocability
+# via QMetaObject without actually invoking (since real invocation spawns a
+# detached process), and distinct-meta-index sanity.
+opentodo_add_unit_test(test_settingsviewmodel_restart     App)
 opentodo_add_unit_test(test_calendar_view_smoke           App)
 target_link_libraries(test_calendar_view_smoke PRIVATE OpenTodoAppplugin)
 set_tests_properties(test_calendar_view_smoke PROPERTIES
@@ -390,6 +398,41 @@ opentodo_add_unit_test(test_applycommit_meta_preservation Infra)
 # loadPendingCommitsFromDisk accepts JSON missing required fields
 # (weak validation), push/pull not virtual (DI blocked).
 opentodo_add_unit_test(test_syncengine_resilience         Infra)
+
+# Quality round Q3.01-B: SyncEngine PULL-side corruption resilience.
+# Seven slots driving pull() through deliberately corrupted remote payloads
+# via DriveApi::setNetworkManagerForTesting + a file-scope MockNAM (same
+# pattern as test_syncengine_lifecycle / test_gdrive_resilience).
+#
+# Coverage:
+#   1. Corrupted state.json body (truncated JSON) — B-2.42 guard fires,
+#      status=Error, local data preserved.
+#   2. state.json valid but missing "tasks" key ({}) — same B-2.42 guard
+#      behaviour; documented as defensive but somewhat surprising for the
+#      legitimately-empty-remote case.
+#   3. 1 MB state.json round-trip succeeds (proxy for the 100 MB scenario);
+#      DOCUMENTED GAP: no upper bound enforced by DriveApi::downloadFile or
+#      SyncEngine — peer could push huge payload.
+#   4. One malformed commit file alongside a valid one — the bad commit is
+#      silently SKIPPED (syncengine.cpp:198-207 `if (!doc.isObject())
+#      continue`), good neighbour applied, pull reaches Synced. DOCUMENTED
+#      DATA-LOSS RISK: operations in the bad commit are now never applied.
+#   5. HEAD pointing at a commit absent from /log/ — pull does NOT abort;
+#      walks the empty log, applies state.json, stores dangling HEAD as
+#      m_headCommitId. DOCUMENTED GAP: no consistency check between HEAD
+#      and log contents.
+#   6. Commit with mixed valid + unknown operation types — applyCommit's
+#      else branch (syncengine.cpp:634-636) logs + skips the unknown op,
+#      valid op in the same commit is applied normally.
+#   7. Pull creating a 3-cycle parent_id chain (A→C→B→A via task_add +
+#      task_update) — applyCommit does NOT validate; cycle is allowed.
+#      Safety net: DataStore::subtasks is non-recursive, so reading the
+#      structure doesn't crash. DOCUMENTED GAP: any caller that walks
+#      ancestors transitively must defend against the cycle.
+#
+# Suite-level contract: NO production sync code modified. Assertions pin
+# current behaviour; flipping them when a fix lands is the regression-bench.
+opentodo_add_unit_test(test_syncengine_resilience_v2      Infra)
 
 # REGRESSION TEST for the "Не раскрывается родительский проект 'Дом'" bug
 # (user-reported 2026-05-12). Documents the QML-vs-C++ split: SidebarViewModel

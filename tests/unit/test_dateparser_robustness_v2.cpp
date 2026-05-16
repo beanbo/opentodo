@@ -18,23 +18,21 @@
 // Reference date: 2026-05-15 (Friday, dayOfWeek=5). Same convention as
 // every other DateParser test in this repo.
 //
-// Surface-bug summary (each line corresponds to one slot below where the
-// parser does NOT do what a casual user would expect):
+// Surface-bug summary (each line corresponds to one slot below). "FIXED"
+// entries assert the post-fix correct behaviour; the rest still pin the
+// parser's current (buggy) output for future fix sessions to flip.
 //   B1  ru "через 2 недели в понедельник" — date is +14 days, NOT snapped
 //       to next Monday (parser ignores the "в понедельник" tail).
-//   B2  ru "каждый второй вторник" — invalid; no support for "каждый
-//       <ordinal> <weekday>" (no INTERVAL=2;BYDAY=TU).
-//   B3  ru "по будням" — invalid; "по + dative plural" handler only knows
-//       weekday names (понедельникам, ...) not the noun "будням".
-//   B4  ru "в выходные" — invalid; "weekends" not recognised at all.
+//   B2  FIXED ru "каждый второй вторник" → INTERVAL=2;BYDAY=TU.
+//   B3  FIXED ru "по будням" → FREQ=WEEKLY;BYDAY=MO..FR.
+//   B4  FIXED ru "в выходные" → FREQ=WEEKLY;BYDAY=SA,SU.
 //   B5  ru "первого числа каждого месяца" — invalid; no monthly-anchored-
 //       to-day-1 handler.
 //   B6  ru "31 февраля" — current parser ACCEPTS this and silently bumps
 //       day to the last valid day of Feb (it doesn't via the date branch;
 //       actually returns invalid). Pinned.
-//   B7  ru "завтра в 25:00" — date is "завтра", datetime is empty (time
-//       silently dropped because hour > 23). The "valid" flag stays true
-//       — arguably the parser should reject the whole phrase.
+//   B7  FIXED ru "завтра в 25:00" — explicit out-of-range time now rejects
+//       the whole expression (valid=false).
 //   B9  ru "послезавтра в 9 утра" — datetime is parsed but the "утра"
 //       suffix is ignored; current behaviour is "9:00" (which happens to
 //       be correct for утра, but documenting the quirk: "9 вечера" would
@@ -42,18 +40,20 @@
 //   B10 ru "в субботу через 3 недели" — pinned as invalid; weekday handler
 //       runs first, "в субботу через 3 недели" doesn't match "в субботу"
 //       exactly so it falls through.
+//   COMMA FIXED ru "завтра, в 14:00" — comma-separator form now parses
+//       via [,;!?]→whitespace normalisation at the head of parseRussian.
 //   E1  en "in 2 weeks on monday" — only "in 2 weeks" matches, "on monday"
 //       is silently dropped.
-//   E2  en "every other tuesday" — silently produces FREQ=WEEKLY;BYDAY=TU
-//       (parser ignores the word "other" — INTERVAL=2 is dropped).
-//   E3  en "weekdays" — invalid; bare noun (not "every weekday").
-//   E4  en "weekends" — invalid.
+//   E2  FIXED en "every other tuesday" → INTERVAL=2;BYDAY=TU. The "other"
+//       prefix is now recognised by the every-handler.
+//   E3  FIXED en "weekdays" → FREQ=WEEKLY;BYDAY=MO..FR (bare-noun rule).
+//   E4  FIXED en "weekends" → FREQ=WEEKLY;BYDAY=SA,SU (bare-noun rule).
 //   E5  en "first day of each month" — invalid; no support for
 //       monthly-anchored-to-day-1.
 //   E6  en "feb 31" — clamped to Feb 28 (parser's tryDate() clamps invalid
 //       day to last day of month) — actually a feature, but worth pinning.
-//   E7  en "tomorrow at 25:00" — date is "tomorrow", datetime is empty
-//       (time silently dropped because hour > 23).
+//   E7  FIXED en "tomorrow at 25:00" — same fix as B7 (out-of-range time
+//       rejects the whole expression).
 //   E8  en "yesterday at noon" — "noon" is not a recognised time word; the
 //       parser only accepts numeric times. Date is "yesterday", datetime
 //       is empty.
@@ -118,54 +118,45 @@ private slots:
         QVERIFY(!r.valid);
     }
 
-    // B2: "каждый второй вторник" — "every other Tuesday" / fortnightly.
-    // Ideal: isRecurring=true, recurrenceRule="FREQ=WEEKLY;INTERVAL=2;BYDAY=TU".
-    // The "кажд(ый|ую|ое|ые) ..." handler matches the prefix, but the tail
-    // "второй вторник" doesn't match the "<weekday>" or "<N> <unit>"
-    // sub-patterns, so result.recurrenceRule stays empty → result.valid
-    // becomes false.
+    // B2 FIXED (Q3.02-E): "каждый второй вторник" — "every other Tuesday".
+    // The "кажд(ый|ую|ое|ые) ..." handler now recognises "втор(ой|ую|ое) <day>"
+    // as a fortnightly recurrence (FREQ=WEEKLY;INTERVAL=2;BYDAY=<DAY>).
     void ru_kazhdyy_vtoroy_vtornik()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("каждый второй вторник"), REF);
-        qInfo() << "BUG B2 'каждый второй вторник'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;INTERVAL=2;BYDAY=TU)";
-        QVERIFY(!r.valid);
-        QVERIFY(r.recurrenceRule.isEmpty());
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"));
     }
 
-    // B3: "по будням" — should be recurring Mon–Fri. The "по + dative"
-    // handler in rules_ru only knows weekday-plural forms (понедельникам,
-    // вторникам, ...); the noun "будням" is not in the table. Falls
-    // through to invalid.
+    // B3 FIXED (Q3.02-E): "по будням" → Mon-Fri recurrence.
+    // A dedicated handler recognises "по будням" / "в будни" / "будни" as
+    // a weekday recurrence — first occurrence is today if today is Mon-Fri,
+    // else the upcoming Monday. REF=Fri 2026-05-15 → first date = REF.
     void ru_po_budnyam()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("по будням"), REF);
-        qInfo() << "BUG B3 'по будням'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"));
+        QCOMPARE(r.date, QStringLiteral("2026-05-15"));
     }
 
-    // B4: "в выходные" — should be recurring Sat-Sun. No "weekends" rule
-    // exists in rules_ru at all. The weekday handler doesn't have a key
-    // "в выходные", and no other handler fires.
+    // B4 FIXED (Q3.02-E): "в выходные" → Sat-Sun recurrence.
+    // First occurrence is today if today is Sat/Sun, else the upcoming
+    // Saturday. REF=Fri 2026-05-15 → first date = Sat 2026-05-16.
     void ru_v_vyhodnye()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("в выходные"), REF);
-        qInfo() << "BUG B4 'в выходные'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;BYDAY=SA,SU)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule, QStringLiteral("FREQ=WEEKLY;BYDAY=SA,SU"));
+        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
     }
 
     // B5: "первого числа каждого месяца" — "first day of each month";
@@ -199,28 +190,18 @@ private slots:
         QVERIFY(r.date.isEmpty());
     }
 
-    // B7: "завтра в 25:00" — time clearly out of range. The simple-day
-    // branch matches "завтра", populates result.date = 2026-05-16, then
-    // calls tryParseTime("завтра в 25:00", ...). The time regex matches
-    // hour=25, but the range check `hour >= 0 && hour <= 23` rejects it
-    // and result.datetime stays empty. result.valid is already true from
-    // the "завтра" branch.
-    //
-    // Surface bug: arguably the whole phrase should be rejected (valid=
-    // false) since the user-supplied time is invalid, not silently
-    // dropped. Pinned as-is.
+    // B7 FIXED (Q3.02-E): "завтра в 25:00" — explicit time clause with
+    // out-of-range hour now rejects the whole expression. tryParseTime
+    // requires "at"/"в" before the digits, so when those markers are
+    // present and the time fails the 0-23/0-59 range check, valid=false
+    // and the result is fully cleared rather than silently dropping just
+    // the time portion.
     void ru_zavtra_v_25_invalid_time()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("завтра в 25:00"), REF);
-        qInfo() << "BUG B7 'завтра в 25:00' (invalid >24h time)"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "datetime=" << r.datetime
-                << "(ideal: valid=false — out-of-range time should reject)";
-        // Current parser keeps the date and silently drops the time.
-        QVERIFY(r.valid);
-        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
+        QVERIFY(!r.valid);
+        QVERIFY(r.date.isEmpty());
         QVERIFY(r.datetime.isEmpty());
     }
 
@@ -316,26 +297,19 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2026-05-16"));
     }
 
-    // "завтра, в 14:00" — comma between the day word and the time. The
-    // simple-day matcher matches by either exact equality OR startsWith(
-    // word + " "). "завтра," doesn't match either pattern (the next
-    // char is a comma, not a space), so the simple-day branch falls
-    // through. There's also no general comma stripping. Result: invalid.
-    //
-    // This is a surface bug — a comma-separated form is a natural way
-    // for a user to write the expression and should produce date=
-    // 2026-05-16 at 14:00.
+    // FIXED (Q3.02-E): "завтра, в 14:00" — comma between the day word and
+    // the time now parses correctly. The Russian rule head normalises
+    // [,;!?] → whitespace before matching, so "завтра, в 14:00" reduces
+    // to "завтра в 14:00" and runs through the simple-day + tryParseTime
+    // path as expected.
     void ru_zavtra_comma_v_14()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("завтра, в 14:00"), REF);
-        qInfo() << "BUG: 'завтра, в 14:00' (comma separator)"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "datetime=" << r.datetime
-                << "(ideal: valid=true, date=2026-05-16, datetime=2026-05-16T14:00)";
-        // Pin current (broken) behaviour.
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
+        QVERIFY2(r.datetime.startsWith(QStringLiteral("2026-05-16T14:00")),
+                 qPrintable(QStringLiteral("datetime = %1").arg(r.datetime)));
     }
 
     // ───────────────────────────────────────────────────────────────────────
@@ -359,55 +333,45 @@ private slots:
         QVERIFY(!r.valid);
     }
 
-    // E2: "every other tuesday" — fortnightly Tuesday. The "every "
-    // handler matches, then splits the tail "other tuesday" by spaces.
-    // "other" is not a known day token (skipped), "tuesday" maps to TU.
-    // Net: parser returns FREQ=WEEKLY;BYDAY=TU — silently losing the
-    // INTERVAL=2 that the user clearly meant. This is a more insidious
-    // surface bug than B2 / E1 because the user receives a valid result
-    // that doesn't match their intent.
+    // E2 FIXED (Q3.02-E): "every other tuesday" → INTERVAL=2 BYDAY=TU.
+    // The "every <stuff>" handler now detects the "other " prefix on the
+    // tail and emits FREQ=WEEKLY;INTERVAL=2;BYDAY=<DAY>. Also covers
+    // "every other day/week/month".
     void en_every_other_tuesday()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("every other tuesday"), REF);
-        qInfo() << "BUG E2 'every other tuesday'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;INTERVAL=2;BYDAY=TU — currently INTERVAL=2 silently dropped)";
-        // Pin the current (subtly wrong) behaviour: parser ignores "other"
-        // and produces a weekly Tuesday recurrence.
         QVERIFY(r.valid);
         QVERIFY(r.isRecurring);
-        QCOMPARE(r.recurrenceRule, QStringLiteral("FREQ=WEEKLY;BYDAY=TU"));
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU"));
     }
 
-    // E3: "weekdays" — bare noun, no "every" prefix. The "every weekday"
-    // form works, but the standalone noun doesn't match any rule.
+    // E3 FIXED (Q3.02-E): "weekdays" (bare noun) → Mon-Fri recurrence.
+    // First occurrence is today if today is Mon-Fri, else upcoming Monday.
+    // REF=Fri 2026-05-15 → first date = REF.
     void en_weekdays_bare()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("weekdays"), REF);
-        qInfo() << "BUG E3 'weekdays' (bare noun)"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"));
+        QCOMPARE(r.date, QStringLiteral("2026-05-15"));
     }
 
-    // E4: "weekends" — bare noun, no "every" prefix. No rule for
-    // weekends at all (not even "every weekend"). Invalid.
+    // E4 FIXED (Q3.02-E): "weekends" (bare noun) → Sat-Sun recurrence.
+    // First occurrence is today if today is Sat/Sun, else upcoming Saturday.
+    // REF=Fri 2026-05-15 → first date = Sat 2026-05-16.
     void en_weekends_bare()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("weekends"), REF);
-        qInfo() << "BUG E4 'weekends' (bare noun)"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=WEEKLY;BYDAY=SA,SU)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule, QStringLiteral("FREQ=WEEKLY;BYDAY=SA,SU"));
+        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
     }
 
     // E5: "first day of each month" — monthly recurrence anchored to the
@@ -445,21 +409,15 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2027-02-28"));
     }
 
-    // E7: "tomorrow at 25:00" — out-of-range time. Same shape as B7:
-    // the simple-day branch matches "tomorrow", populates date, then
-    // tryParseTime sees hour=25 and silently drops it. valid stays
-    // true.
+    // E7 FIXED (Q3.02-E): "tomorrow at 25:00" — same fix as B7. The
+    // explicit "at" clause with an out-of-range hour now rejects the
+    // whole expression instead of silently dropping just the time.
     void en_tomorrow_at_25_invalid_time()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("tomorrow at 25:00"), REF);
-        qInfo() << "BUG E7 'tomorrow at 25:00' (invalid >24h time)"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "datetime=" << r.datetime
-                << "(ideal: valid=false — out-of-range time should reject)";
-        QVERIFY(r.valid);
-        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
+        QVERIFY(!r.valid);
+        QVERIFY(r.date.isEmpty());
         QVERIFY(r.datetime.isEmpty());
     }
 

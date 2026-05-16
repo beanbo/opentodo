@@ -6,7 +6,33 @@
 DateParseResult DateParser::parseRussian(const QString &input, const QDate &reference)
 {
     DateParseResult result;
-    const QString lower = input.toLower().trimmed();
+    // Q3.02-D Bug 2 fix: normalise comma/semicolon/exclam/question separators
+    // to whitespace so that natural forms like "завтра, в 14:00" parse the
+    // same as "завтра в 14:00". The simple-day matcher and the time-tail
+    // strippers all key off whitespace between tokens — comma after the
+    // day word makes the token "завтра," and falls through.
+    //
+    // Perf guard (Q3.03-A follow-up): the QuickAddParser invokes us in an
+    // O(N²) prefix-and-suffix sweep over the input words, so this function
+    // runs ~2N times against ever-growing candidate strings. The regex was
+    // turning a 10 KB pathological input from 242 ms → 900 ms because the
+    // PCRE2 engine was being constructed-and-applied even when the candidate
+    // contained zero punctuation. Cheap pre-check first; the regex still runs
+    // unconditionally if any of `,;!?` appears.
+    QString normalised = input;
+    const bool hasPunct = std::any_of(
+        input.cbegin(), input.cend(),
+        [](QChar c) {
+            return c == QLatin1Char(',') || c == QLatin1Char(';')
+                || c == QLatin1Char('!') || c == QLatin1Char('?');
+        });
+    if (hasPunct) {
+        static const QRegularExpression punctRe(QStringLiteral("[,;!?]+"));
+        static const QRegularExpression wsRe(QStringLiteral("\\s+"));
+        normalised.replace(punctRe, QStringLiteral(" "));
+        normalised = normalised.trimmed().replace(wsRe, QStringLiteral(" "));
+    }
+    const QString lower = normalised.toLower();
 
     // --- Simple day references ---
     // Allow trailing time clauses like "завтра в 18:00" — tryParseTime() will
@@ -116,6 +142,55 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                 // Pass original input so tryParseTime can find the time clause.
                 return tryParseTime(input, result);
             }
+        }
+    }
+
+    // --- Q3.02-D Bug 3 fix: "по будням" / "в выходные" / "по выходным" ---
+    // These are bare-noun forms that don't map to a single weekday.
+    // "по будням"  / "в будни"     → Mon-Fri recurrence
+    // "в выходные" / "по выходным" → Sat-Sun recurrence
+    // Helper for picking the first matching weekday from the reference:
+    auto firstWeekdayOnOrAfter = [&](int targetDow) {
+        int currentDow = reference.dayOfWeek();
+        int daysAhead = targetDow - currentDow;
+        if (daysAhead < 0) daysAhead += 7;
+        return reference.addDays(daysAhead);
+    };
+    {
+        const bool weekdaysForm =
+            lower == QString::fromUtf8("по будням")
+         || lower == QString::fromUtf8("в будни")
+         || lower == QString::fromUtf8("будни");
+        const bool weekendsForm =
+            lower == QString::fromUtf8("в выходные")
+         || lower == QString::fromUtf8("по выходным")
+         || lower == QString::fromUtf8("выходные");
+
+        if (weekdaysForm) {
+            // First date: today if today is Mon-Fri, else next Monday.
+            const int dow = reference.dayOfWeek();
+            QDate firstDate = (dow >= 1 && dow <= 5)
+                ? reference
+                : firstWeekdayOnOrAfter(1); // Monday
+            result.isRecurring = true;
+            result.date = formatDate(firstDate);
+            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR");
+            result.humanString = QString::fromUtf8("По будням");
+            result.valid = true;
+            return tryParseTime(input, result);
+        }
+        if (weekendsForm) {
+            // First date: today if today is Sat-Sun, else upcoming Saturday.
+            const int dow = reference.dayOfWeek();
+            QDate firstDate = (dow == 6 || dow == 7)
+                ? reference
+                : firstWeekdayOnOrAfter(6); // Saturday
+            result.isRecurring = true;
+            result.date = formatDate(firstDate);
+            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=SA,SU");
+            result.humanString = QString::fromUtf8("По выходным");
+            result.valid = true;
+            return tryParseTime(input, result);
         }
     }
 
@@ -339,6 +414,23 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                     if (ruDayAbbrev.contains(what)) {
                         result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=%1").arg(ruDayAbbrev.value(what));
                         result.humanString = QString::fromUtf8("Каждый %1").arg(what);
+                    } else {
+                        // Q3.02-D Bug 4 (Russian): "каждый второй <weekday>" / "каждую вторую <weekday>"
+                        // → FREQ=WEEKLY;INTERVAL=2;BYDAY=<DAY>
+                        // The genitive/accusative forms of "второй" follow the gender of
+                        // the weekday: "второй понедельник/вторник/четверг", "вторую среду/
+                        // пятницу/субботу", "второе воскресенье".
+                        static const QRegularExpression vtoroyRe(
+                            QString::fromUtf8("^втор(?:ой|ую|ое)\\s+(\\S+)$"));
+                        const auto vm = vtoroyRe.match(what);
+                        if (vm.hasMatch()) {
+                            const QString dayWord = vm.captured(1);
+                            if (ruDayAbbrev.contains(dayWord)) {
+                                result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=%1")
+                                    .arg(ruDayAbbrev.value(dayWord));
+                                result.humanString = QString::fromUtf8("Каждый второй %1").arg(dayWord);
+                            }
+                        }
                     }
                 }
             }

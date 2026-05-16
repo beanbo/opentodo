@@ -104,6 +104,39 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
         return result;
     }
 
+    // --- Q3.02-D Bug 3 fix: bare nouns "weekdays" / "weekends" ---
+    // No "every" prefix needed — natural way for users to express Mon-Fri or
+    // Sat-Sun recurrence.
+    {
+        auto firstDayOnOrAfter = [&](int targetDow) {
+            int currentDow = reference.dayOfWeek();
+            int daysAhead = targetDow - currentDow;
+            if (daysAhead < 0) daysAhead += 7;
+            return reference.addDays(daysAhead);
+        };
+
+        if (lower == QStringLiteral("weekdays")) {
+            const int dow = reference.dayOfWeek();
+            QDate firstDate = (dow >= 1 && dow <= 5) ? reference : firstDayOnOrAfter(1);
+            result.isRecurring = true;
+            result.date = formatDate(firstDate);
+            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR");
+            result.humanString = QStringLiteral("Weekdays");
+            result.valid = true;
+            return tryParseTime(input, result);
+        }
+        if (lower == QStringLiteral("weekends")) {
+            const int dow = reference.dayOfWeek();
+            QDate firstDate = (dow == 6 || dow == 7) ? reference : firstDayOnOrAfter(6);
+            result.isRecurring = true;
+            result.date = formatDate(firstDate);
+            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=SA,SU");
+            result.humanString = QStringLiteral("Weekends");
+            result.valid = true;
+            return tryParseTime(input, result);
+        }
+    }
+
     // --- Recurring: "every day", "every weekday", "every <day>", "every N <unit>" ---
     {
         static const QRegularExpression everyRe(
@@ -150,7 +183,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                         result.recurrenceRule = QStringLiteral("FREQ=YEARLY;INTERVAL=%1").arg(interval);
                     result.humanString = QStringLiteral("Every %1 %2").arg(interval).arg(unit);
                 } else {
-                    // "every monday", "every mon/wed/fri"
+                    // "every monday", "every mon/wed/fri", "every other tuesday"
                     static const QMap<QString, QString> dayAbbrev = {
                         {QStringLiteral("monday"), QStringLiteral("MO")},
                         {QStringLiteral("mon"), QStringLiteral("MO")},
@@ -168,15 +201,41 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                         {QStringLiteral("sun"), QStringLiteral("SU")},
                     };
 
-                    QStringList parts = what.split(QRegularExpression(QStringLiteral("[/,\\s]+")));
+                    // Q3.02-D Bug 4 fix: detect "other" prefix → INTERVAL=2.
+                    // "every other tuesday" / "every other day" — fortnightly.
+                    QString remainder = what;
+                    bool everyOther = false;
+                    if (remainder.startsWith(QStringLiteral("other "))) {
+                        everyOther = true;
+                        remainder = remainder.mid(6).trimmed();
+                    }
+
+                    QStringList parts = remainder.split(QRegularExpression(QStringLiteral("[/,\\s]+")));
                     QStringList days;
                     for (const auto &p : parts) {
                         if (dayAbbrev.contains(p))
                             days.append(dayAbbrev.value(p));
                     }
                     if (!days.isEmpty()) {
-                        result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=%1").arg(days.join(QLatin1Char(',')));
-                        result.humanString = QStringLiteral("Every %1").arg(what);
+                        if (everyOther) {
+                            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=%1")
+                                .arg(days.join(QLatin1Char(',')));
+                            result.humanString = QStringLiteral("Every other %1").arg(remainder);
+                        } else {
+                            result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=%1").arg(days.join(QLatin1Char(',')));
+                            result.humanString = QStringLiteral("Every %1").arg(what);
+                        }
+                    } else if (everyOther && remainder == QStringLiteral("day")) {
+                        // "every other day" — biweekly... no, fortnightly daily. Actually
+                        // "every other day" means every 2 days.
+                        result.recurrenceRule = QStringLiteral("FREQ=DAILY;INTERVAL=2");
+                        result.humanString = QStringLiteral("Every other day");
+                    } else if (everyOther && remainder == QStringLiteral("week")) {
+                        result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;INTERVAL=2");
+                        result.humanString = QStringLiteral("Every other week");
+                    } else if (everyOther && remainder == QStringLiteral("month")) {
+                        result.recurrenceRule = QStringLiteral("FREQ=MONTHLY;INTERVAL=2");
+                        result.humanString = QStringLiteral("Every other month");
                     }
                 }
             }

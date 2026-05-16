@@ -162,9 +162,15 @@ DateParseResult DateParser::parse(const QString &input, const QString &lang)
 
 DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult result)
 {
-    // Look for time patterns: "at HH:MM", "at Ham", "at Hpm"
+    // Look for time patterns explicitly introduced by "at" or "в". A bare
+    // number tail (e.g. "tomorrow 5") is NOT considered a time here — the
+    // simple-day handler wouldn't have left it dangling unless the user
+    // meant something the parser doesn't understand. Requiring the "at"/"в"
+    // marker also lets us detect when the user clearly *intended* a time
+    // and that time happened to be out-of-range: in that case the whole
+    // expression is rejected (Q3.02-D B7/E7 fix).
     static const QRegularExpression timeRe(
-        QStringLiteral("(?:at\\s+|в\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|AM|PM)?"),
+        QStringLiteral("(?:at|в)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|AM|PM)?"),
         QRegularExpression::CaseInsensitiveOption);
 
     const auto match = timeRe.match(input);
@@ -173,14 +179,30 @@ DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult r
         int minute = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
         const QString ampm = match.captured(3).toLower();
 
+        // Validate raw HH:MM BEFORE AM/PM adjustment — "25:00" should be
+        // rejected regardless of any am/pm suffix.
+        const bool rawHourValid   = (hour >= 0 && hour <= 23);
+        const bool rawMinuteValid = (minute >= 0 && minute <= 59);
+
         if (ampm == QStringLiteral("pm") && hour < 12) hour += 12;
         else if (ampm == QStringLiteral("am") && hour == 12) hour = 0;
 
-        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+        if (rawHourValid && rawMinuteValid
+            && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
             QDate date = QDate::fromString(result.date, QStringLiteral("yyyy-MM-dd"));
             QTime time(hour, minute);
             QDateTime dt(date, time, QTimeZone::LocalTime);
             result.datetime = formatDateTime(dt);
+        } else {
+            // The user wrote an explicit "at HH:MM" / "в HH:MM" clause but
+            // the time is out of range. Reject the whole expression rather
+            // than silently dropping the time portion.
+            result.valid = false;
+            result.date.clear();
+            result.datetime.clear();
+            result.humanString.clear();
+            result.isRecurring = false;
+            result.recurrenceRule.clear();
         }
     }
 
