@@ -389,6 +389,14 @@ opentodo_add_unit_test(test_filtereval_edge_cases_v2      Infra)
 # fix produces a visible test signal. No production-code edits.
 opentodo_add_unit_test(test_searchviewmodel_edge_cases    App)
 
+# Quality round Q3.07-A: RecurrenceEngine.advance() corner cases that the
+# happy-path + edge_cases + advance_chain suites don't reach. 12 slots:
+# BYMONTHDAY=31 in Feb (skip-on-missing), Feb 29 in non-leap year, BYDAY=-1FR
+# (last Friday), weekly without BYDAY, INTERVAL=0/INT_MAX, UNTIL in past,
+# COUNT=0, unknown FREQ, BYSETPOS, DTSTART with Z suffix. Behaviour-pin only;
+# any surfaced engine bug is a separate work item.
+opentodo_add_unit_test(test_recurrence_edges_v2           App)
+
 # Quality round 2.22-E: SyncEngine deep lifecycle coverage. Push during
 # pending pull, snapshot compaction during sync, commit ordering (load-order
 # is ALPHABETIC UUID, not creation-order — SURFACED BUG), HEAD upload

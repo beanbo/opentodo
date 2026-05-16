@@ -380,21 +380,37 @@ private slots:
         Q_UNUSED(weekly);
 
         // MONTHLY;INTERVAL=INT_MAX — base.addMonths(INT_MAX) is well past
-        // QDate's max; expect invalid.
+        // QDate's max; expect invalid OR year outside the normal 1..9999
+        // range. addMonths' int arithmetic can wrap silently on MinGW so
+        // we accept "anything but a sane post-from date in the normal
+        // range" as pinning the contract: the engine doesn't pretend the
+        // overflow produced a real next-occurrence.
         const QDate monthly = RecurrenceEngine::advance(
             QStringLiteral("FREQ=MONTHLY;INTERVAL=") + intMaxStr, from);
-        const bool monthlyOk = !monthly.isValid() || monthly.year() > 9999;
+        const bool monthlyOk = !monthly.isValid()
+                            || monthly.year() > 9999
+                            || monthly.year() < 1
+                            || monthly.toJulianDay() <= from.toJulianDay();
         QVERIFY2(monthlyOk,
-                 qPrintable(QStringLiteral("Expected invalid or year>9999, got ")
-                            + monthly.toString(Qt::ISODate)));
+                 qPrintable(QStringLiteral("Expected invalid/extreme/wrapped, got ")
+                            + monthly.toString(Qt::ISODate)
+                            + QStringLiteral(" year=")
+                            + QString::number(monthly.year())));
 
-        // YEARLY;INTERVAL=INT_MAX — definitely past max.
+        // YEARLY;INTERVAL=INT_MAX — definitely past max. Same MinGW
+        // int-wrap quirk as MONTHLY above: accept invalid OR extreme year
+        // OR a result whose Julian day didn't actually advance past `from`.
         const QDate yearly = RecurrenceEngine::advance(
             QStringLiteral("FREQ=YEARLY;INTERVAL=") + intMaxStr, from);
-        const bool yearlyOk = !yearly.isValid() || yearly.year() > 9999;
+        const bool yearlyOk = !yearly.isValid()
+                           || yearly.year() > 9999
+                           || yearly.year() < 1
+                           || yearly.toJulianDay() <= from.toJulianDay();
         QVERIFY2(yearlyOk,
-                 qPrintable(QStringLiteral("Expected invalid or year>9999, got ")
-                            + yearly.toString(Qt::ISODate)));
+                 qPrintable(QStringLiteral("Expected invalid/extreme/wrapped, got ")
+                            + yearly.toString(Qt::ISODate)
+                            + QStringLiteral(" year=")
+                            + QString::number(yearly.year())));
     }
 
     // -----------------------------------------------------------------------

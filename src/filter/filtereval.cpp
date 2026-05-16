@@ -214,21 +214,33 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
     }
 
     case TokenType::CreatedBefore: {
-        const QDate createdDate = task->createdAt().date();
+        // Task::createdAt stores UTC (see task.cpp ctor — currentDateTimeUtc).
+        // Compare against the LOCAL date, otherwise the filter misclassifies
+        // tasks created near midnight (e.g. 23:30 Minsk → UTC 20:30 prior day,
+        // so `created today` would compare wrong-day to today's local date).
+        const QDate createdDate = task->createdAt().toLocalTime().date();
         // B-4.39/40 FIX: also route created date tokens through DateParser.
         const QDate beforeDate = resolveDateToken(token.text);
         return createdDate.isValid() && beforeDate.isValid() && createdDate < beforeDate;
     }
 
     case TokenType::CreatedAfter: {
-        const QDate createdDate = task->createdAt().date();
+        // Task::createdAt stores UTC (see task.cpp ctor — currentDateTimeUtc).
+        // Compare against the LOCAL date, otherwise the filter misclassifies
+        // tasks created near midnight (e.g. 23:30 Minsk → UTC 20:30 prior day,
+        // so `created today` would compare wrong-day to today's local date).
+        const QDate createdDate = task->createdAt().toLocalTime().date();
         // B-4.39/40 FIX: also route created date tokens through DateParser.
         const QDate afterDate = resolveDateToken(token.text);
         return createdDate.isValid() && afterDate.isValid() && createdDate > afterDate;
     }
 
     case TokenType::CreatedToday: {
-        const QDate createdDate = task->createdAt().date();
+        // Task::createdAt stores UTC (see task.cpp ctor — currentDateTimeUtc).
+        // Compare against the LOCAL date, otherwise the filter misclassifies
+        // tasks created near midnight (e.g. 23:30 Minsk → UTC 20:30 prior day,
+        // so `created today` would compare wrong-day to today's local date).
+        const QDate createdDate = task->createdAt().toLocalTime().date();
         return createdDate.isValid() && createdDate == today;
     }
 
@@ -236,7 +248,11 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
         // "This week" = ISO week containing today (Mon..Sun).
         // Qt: QDate::dayOfWeek() returns 1=Mon..7=Sun. Compute week start
         // (Monday) and end (Sunday) and check inclusive containment.
-        const QDate createdDate = task->createdAt().date();
+        // Task::createdAt stores UTC (see task.cpp ctor — currentDateTimeUtc).
+        // Compare against the LOCAL date, otherwise the filter misclassifies
+        // tasks created near midnight (e.g. 23:30 Minsk → UTC 20:30 prior day,
+        // so `created today` would compare wrong-day to today's local date).
+        const QDate createdDate = task->createdAt().toLocalTime().date();
         if (!createdDate.isValid()) return false;
         const int daysFromMonday = today.dayOfWeek() - 1; // 0..6
         const QDate weekStart = today.addDays(-daysFromMonday);
