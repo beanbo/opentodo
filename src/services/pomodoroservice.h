@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QDate>
 #include <QQmlEngine>
+#include <climits>
 
 class NotificationService;
 
@@ -23,9 +24,17 @@ public:
 
     int remainingSeconds() const { return m_remainingSeconds; }
     int cycleSeconds() const {
-        if (m_phase == QStringLiteral("shortBreak")) return m_shortBreakMinutes * 60;
-        if (m_phase == QStringLiteral("longBreak"))  return m_longBreakMinutes * 60;
-        return m_workMinutes * 60;
+        // Cast to qint64 before *60 so a future relaxation of the upper-bound
+        // clamp (or an unclamped path that slips through) can't silently
+        // overflow int. The result is clamped back to int range below — values
+        // outside [0, INT_MAX] indicate a corrupt/attacker-supplied setting
+        // and are coerced to 60 s (1 min) as a safe fallback.
+        qint64 totalSeconds = 0;
+        if (m_phase == QStringLiteral("shortBreak"))     totalSeconds = qint64(m_shortBreakMinutes) * 60;
+        else if (m_phase == QStringLiteral("longBreak")) totalSeconds = qint64(m_longBreakMinutes) * 60;
+        else                                              totalSeconds = qint64(m_workMinutes) * 60;
+        if (totalSeconds <= 0 || totalSeconds > INT_MAX) return 60;
+        return static_cast<int>(totalSeconds);
     }
     bool running() const { return m_running; }
     QString phase() const { return m_phase; }

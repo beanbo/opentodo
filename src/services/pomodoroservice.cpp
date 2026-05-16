@@ -1,6 +1,50 @@
 #include "pomodoroservice.h"
 #include "services/notificationservice.h"
 #include <QSettings>
+#include <QtGlobal>
+#include <climits>
+
+// Upper bound for any duration setting. A day's worth of minutes is the largest
+// value that makes sense for a productivity timer; anything beyond it is either
+// a typo, a corrupt QSettings value, or an attacker-supplied INT_MAX-style
+// payload. Multiplying this by 60 (seconds) and by 1000 (milliseconds) stays
+// well within signed 32-bit range, so cycleSeconds() / QTimer interval math
+// never overflows. See test_pomodoro_edges.cpp::int_max_minutes_*.
+constexpr int kMaxDurationMinutes = 24 * 60;     // 1 day
+// Same idea for the long-break cycle counter. 100 cycles is already 100 hours
+// of work — well beyond any realistic use case but still a safe int multiplier.
+constexpr int kMaxCyclesBeforeLongBreak = 100;
+constexpr int kMinCyclesBeforeLongBreak = 2;     // <2 would make every break long
+
+// Centralised clamp helpers — used by both load paths so corrupt values cannot
+// reach the multiplication sites. Out-of-band values are coerced silently;
+// the caller decides whether to emit a change signal.
+static inline int clampDurationMinutes(int v)
+{
+    if (v < 1) return 1;
+    if (v > kMaxDurationMinutes) return kMaxDurationMinutes;
+    return v;
+}
+
+static inline int clampCyclesBeforeLongBreak(int v)
+{
+    if (v < kMinCyclesBeforeLongBreak) return kMinCyclesBeforeLongBreak;
+    if (v > kMaxCyclesBeforeLongBreak) return kMaxCyclesBeforeLongBreak;
+    return v;
+}
+
+// Convert minutes (already clamped on the load path) to seconds with explicit
+// 64-bit widening before the multiplication. Defensive: even if a future
+// refactor introduces a new uncamped write path, this can't wrap to a negative
+// or near-zero value. Output is clamped to int range; the upper bound is far
+// above any realistic kMaxDurationMinutes * 60.
+static inline int minutesToSecondsSafe(int minutes)
+{
+    const qint64 secs = qint64(minutes) * 60;
+    if (secs <= 0) return 60;            // floor at 1 minute on degenerate input
+    if (secs > INT_MAX) return INT_MAX;  // would never happen with clamps in place
+    return static_cast<int>(secs);
+}
 
 PomodoroService::PomodoroService(NotificationService *notif, QObject *parent)
     : QObject(parent), m_notif(notif)
@@ -8,8 +52,10 @@ PomodoroService::PomodoroService(NotificationService *notif, QObject *parent)
     m_timer.setInterval(1000);
     connect(&m_timer, &QTimer::timeout, this, &PomodoroService::onTick);
     loadDurationsFromSettings();
-    // Initial idle remaining shows the configured work duration.
-    m_remainingSeconds = m_workMinutes * 60;
+    // Initial idle remaining shows the configured work duration. minutesToSecondsSafe
+    // widens to qint64 before multiplying — defence-in-depth against future
+    // refactors that might skip the clamp on the load path.
+    m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     loadCompletedToday();
 }
 
@@ -69,7 +115,7 @@ void PomodoroService::reset()
     m_workCyclesSinceLongBreak = 0;
     // Apply any pending duration changes now that we're idle.
     applyPendingDurationChanges();
-    m_remainingSeconds = m_workMinutes * 60;
+    m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     emit runningChanged();
     emit phaseChanged();
     emit remainingSecondsChanged();
@@ -82,13 +128,13 @@ void PomodoroService::enterPhase(const QString &phase)
 
     m_phase = phase;
     if (phase == QStringLiteral("work"))
-        m_remainingSeconds = m_workMinutes * 60;
+        m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     else if (phase == QStringLiteral("shortBreak"))
-        m_remainingSeconds = m_shortBreakMinutes * 60;
+        m_remainingSeconds = minutesToSecondsSafe(m_shortBreakMinutes);
     else if (phase == QStringLiteral("longBreak"))
-        m_remainingSeconds = m_longBreakMinutes * 60;
+        m_remainingSeconds = minutesToSecondsSafe(m_longBreakMinutes);
     else
-        m_remainingSeconds = m_workMinutes * 60;
+        m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     emit phaseChanged();
     emit remainingSecondsChanged();
 }
@@ -145,10 +191,15 @@ void PomodoroService::loadDurationsFromSettings()
     m_cyclesBeforeLongBreak = s.value(QStringLiteral("pomodoro/cyclesBeforeLongBreak"),  4).toInt();
 
     // Defensive clamps so a corrupt setting can't bring the app to its knees.
-    if (m_workMinutes           < 1)  m_workMinutes = 1;
-    if (m_shortBreakMinutes     < 1)  m_shortBreakMinutes = 1;
-    if (m_longBreakMinutes      < 1)  m_longBreakMinutes = 1;
-    if (m_cyclesBeforeLongBreak < 2)  m_cyclesBeforeLongBreak = 2;
+    // Lower bound: 1 min for durations (a 0-min timer would phase-transition
+    // every tick), >=2 cycles (else every break is a long break). Upper bound:
+    // kMaxDurationMinutes / kMaxCyclesBeforeLongBreak — see header at top of
+    // this file for why these limits prevent the int-overflow flagged by
+    // test_pomodoro_edges::int_max_minutes_is_clamped_no_overflow.
+    m_workMinutes           = clampDurationMinutes(m_workMinutes);
+    m_shortBreakMinutes     = clampDurationMinutes(m_shortBreakMinutes);
+    m_longBreakMinutes      = clampDurationMinutes(m_longBreakMinutes);
+    m_cyclesBeforeLongBreak = clampCyclesBeforeLongBreak(m_cyclesBeforeLongBreak);
 
     m_pendingWorkMinutes           = m_workMinutes;
     m_pendingShortBreakMinutes     = m_shortBreakMinutes;
@@ -165,10 +216,14 @@ void PomodoroService::reloadDurationsFromSettings()
     const int newLong  = s.value(QStringLiteral("pomodoro/longBreakMinutes"),      15).toInt();
     const int newCyc   = s.value(QStringLiteral("pomodoro/cyclesBeforeLongBreak"),  4).toInt();
 
-    m_pendingWorkMinutes           = newWork  >= 1 ? newWork  : 1;
-    m_pendingShortBreakMinutes     = newShort >= 1 ? newShort : 1;
-    m_pendingLongBreakMinutes      = newLong  >= 1 ? newLong  : 1;
-    m_pendingCyclesBeforeLongBreak = newCyc   >= 2 ? newCyc   : 2;
+    // Clamp both bounds — see loadDurationsFromSettings() for rationale.
+    // Out-of-band values from QSettings (corrupt file, mis-bound QML spinbox,
+    // attacker-supplied INT_MAX/INT_MIN) are silently coerced into the safe
+    // range before any tick / multiplication uses them.
+    m_pendingWorkMinutes           = clampDurationMinutes(newWork);
+    m_pendingShortBreakMinutes     = clampDurationMinutes(newShort);
+    m_pendingLongBreakMinutes      = clampDurationMinutes(newLong);
+    m_pendingCyclesBeforeLongBreak = clampCyclesBeforeLongBreak(newCyc);
     m_durationsDirty = true;
 
     // If no session is active (idle / not running), apply immediately so the
@@ -176,7 +231,7 @@ void PomodoroService::reloadDurationsFromSettings()
     if (m_phase == QStringLiteral("idle") || !m_running) {
         applyPendingDurationChanges();
         if (m_phase == QStringLiteral("idle")) {
-            m_remainingSeconds = m_workMinutes * 60;
+            m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
             emit remainingSecondsChanged();
             emit phaseChanged();
         }

@@ -51,6 +51,16 @@ public:
     // Emits prioritySuggested(p) on success or errorReceived(reason) on failure.
     Q_INVOKABLE void suggestPriority(const QString &title);
 
+    // S-Q2.20: Cancel API. Each method aborts the corresponding in-flight reply
+    // (if any) and clears the busy flag. The reply's finished() slot still
+    // runs but silently discards the response (no error toast, no result).
+    // Calling when nothing is in-flight is a safe no-op. The four cancels
+    // operate independently — cancelChat() does not affect description, etc.
+    Q_INVOKABLE void cancelChat();
+    Q_INVOKABLE void cancelDescription();
+    Q_INVOKABLE void cancelPriority();
+    Q_INVOKABLE void cancelAll();
+
     // Exposed for tests: extract a priority digit (1–4) from a raw response. Returns 4 on failure.
     static int parsePriorityResponse(const QString &raw);
 
@@ -61,6 +71,13 @@ public:
 
     // Exposed for tests: parse a raw Claude response into a QStringList.
     static QStringList parseSubtasksResponse(const QString &raw);
+
+    // S-Q2.20: Strip embedded <user_data>/</user_data> substrings from raw user
+    // input so a malicious payload cannot close the boundary tag and re-open
+    // the instruction context. Static + public so tests can exercise it
+    // independent of the network plumbing. The returned string is safe to
+    // splice between <user_data>…</user_data> delimiters.
+    static QString sanitizeForUserDataWrap(const QString &raw);
 
     // S-AISafety: Maximum length of user-supplied content (task name / description /
     // chat message) that we will send to the API in a single request. Above this we
@@ -92,6 +109,12 @@ signals:
     void descriptionGenerationFailed(const QString &reason);
     // Priority-specific signal
     void prioritySuggested(int priority);
+    // S-Q2.20: Soft "user aborted" notifications. Distinct from error signals
+    // so QML can react without showing an error toast.
+    void chatCanceled();
+    void subtaskCanceled();
+    void descriptionCanceled();
+    void priorityCanceled();
 
 private slots:
     // B-5.23: internal reply handlers (shared by first attempt and single retry)
@@ -140,8 +163,18 @@ private:
     bool m_isGeneratingDescription = false;
     bool m_isSuggestingPriority = false;
 
-    // B-5.26: QPointer so cancelSubtaskGeneration() can safely abort the HTTP request.
+    // S-Q2.20: cancellation flags for the three flows that lacked them. The
+    // reply handlers consult these before emitting result/error signals.
+    bool m_chatCancelled        = false;
+    bool m_descriptionCancelled = false;
+    bool m_priorityCancelled    = false;
+
+    // B-5.26 / S-Q2.20: QPointer so cancel*() can safely abort the HTTP request
+    // even after the QNetworkReply has been schedule-deleted by `finished`.
     QPointer<QNetworkReply> m_subtaskReply;
+    QPointer<QNetworkReply> m_chatReply;
+    QPointer<QNetworkReply> m_descriptionReply;
+    QPointer<QNetworkReply> m_priorityReply;
 
     QList<QPair<QString, QString>> m_history;  // (role, text) pairs
     static constexpr int MAX_HISTORY = 20;

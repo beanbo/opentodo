@@ -252,6 +252,20 @@ set_tests_properties(test_qml_load_smoke PROPERTIES
 # rather than QFAIL so the suite still passes if rules_ru has known quirks.
 opentodo_add_unit_test(test_nlp_robustness                Domain)
 
+# DateParser robustness v2 — behavioural pinning for tricky RU/EN phrases
+# the existing dateparser suites haven't covered. 23 slots covering
+# compound expressions ("через 2 недели в понедельник", "in 2 weeks on
+# monday"), unsupported fortnightly forms ("каждый второй вторник",
+# "every other tuesday"), bare nouns ("по будням", "weekdays", "в выходные",
+# "weekends"), monthly-anchored-to-day-1 ("первого числа каждого месяца",
+# "first day of each month"), invalid dates ("31 февраля", "feb 31"),
+# out-of-range times ("завтра в 25:00", "tomorrow at 25:00"), word-only
+# times ("yesterday at noon"), capitalization variants and whitespace
+# tolerance. Pins 14 surface bugs via qInfo() + assertions on current
+# (sometimes wrong) behaviour; flipping the assertions when production
+# rules are fixed will be the regression bench.
+opentodo_add_unit_test(test_dateparser_robustness_v2      App)
+
 # Quality round 2.18 follow-up: QuickAddParser DEEPER adversarial coverage —
 # token-grammar boundary cases that test_nlp_robustness misses (sigil at
 # token boundary, repeated priorities, multi-# inbox-less Todoist convention,

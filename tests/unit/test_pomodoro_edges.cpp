@@ -2,7 +2,8 @@
 //
 // The existing tests (test_pomodoroservice.cpp + test_pomodoro_full_session.cpp)
 // drive the happy-path state machine and the mid-session reload-defer contract.
-// This file covers the gaps flagged in the Q2.19-A audit:
+// This file covers the gaps flagged in the Q2.19-A audit and the later
+// int-overflow hardening (Q2.26):
 //
 //   1. State-machine "recovery" after app crash mid-session — the in-memory
 //      timer/phase/remaining state is by design NOT persisted; only
@@ -20,10 +21,13 @@
 //      configured duration. Document the behavior and verify the timer still
 //      drains to zero cleanly after resume (no negative-skid into next phase).
 //
-//   4. Custom durations of 0 / negative / huge — the loader clamps to ≥1 and
-//      ≥2 for cyclesBeforeLongBreak. We already test 0 + negative in the
-//      existing suite. Add huge (10000) to verify cycleSeconds() doesn't
-//      overflow int when multiplied by 60.
+//   4. Custom durations of 0 / negative / INT_MAX / INT_MIN / huge —
+//      loadDurationsFromSettings now clamps BOTH bounds (lower 1 min,
+//      upper 1 day = 1440 min; cycles between 2 and 100). The earlier
+//      qInfo()-only documentation of the INT_MAX overflow has been promoted
+//      to an assertion that the value is clamped and cycleSeconds() stays
+//      in a sane range. minutesToSecondsSafe() also widens the multiplication
+//      to qint64 as defence-in-depth.
 //
 // All tests use QTEST_GUILESS_MAIN and a unique QSettings org/app so we never
 // touch real OpenTodo state and never collide with parallel test binaries.
@@ -53,6 +57,13 @@ constexpr const char *kPhaseWork       = "work";
 constexpr const char *kPhaseShortBreak = "shortBreak";
 constexpr const char *kPhaseLongBreak  = "longBreak";
 constexpr const char *kPhaseIdle       = "idle";
+
+// Mirror of PomodoroService's internal kMaxDurationMinutes — the upper-bound
+// clamp added in Q2.26. Tests assert that out-of-band values (INT_MAX, 10000)
+// are clamped to this ceiling, not the original raw value.
+constexpr int kClampedDayMinutes = 24 * 60;                // 1440 min
+constexpr int kClampedDaySeconds = kClampedDayMinutes * 60; // 86 400 s
+constexpr qint64 kClampedDayMs   = qint64(kClampedDaySeconds) * 1000; // 86 400 000 ms
 
 // Convert the constexpr name to a QString. QLatin1String is the cheapest
 // conversion for ASCII-only keys. Named "qs" (not "s") to avoid clashing
@@ -387,16 +398,17 @@ private slots:
               "remainingSeconds. No wall-clock catch-up. Documented.");
     }
 
-    // ── 4. Custom durations: huge value doesn't overflow cycleSeconds ────────
+    // ── 4. Custom durations: huge value is clamped to one-day maximum ────────
     //
-    // PomodoroService::loadDurationsFromSettings has clamps for ≥1 and ≥2
-    // but no upper bound. Worst case the user types "10000" into the
-    // spinbox — cycleSeconds = 10000 * 60 = 600 000 seconds. That fits
-    // comfortably in int32 (max ~2.1 billion), so no overflow.
+    // loadDurationsFromSettings clamps the upper bound to kMaxDurationMinutes
+    // (= 24 * 60 = 1440 min). A user typing "10000" into the settings spinbox,
+    // a corrupt QSettings file, or an attacker-supplied payload all get
+    // coerced into the safe range. cycleSeconds therefore tops out at
+    // 1440 * 60 = 86 400 s — far below INT_MAX (~2.1B) and well within int.
     //
-    // We pin this so a future "store seconds directly" refactor doesn't
-    // accidentally allow values that overflow int.
-    void huge_duration_does_not_overflow_int()
+    // Was Q2.19-A: documented "no upper clamp; relies on int fitting 10000*60".
+    // Now Q2.26: production code clamps + uses qint64 defensively; test asserts.
+    void huge_duration_is_clamped_to_one_day()
     {
         using namespace pomo_edges;
 
@@ -410,10 +422,10 @@ private slots:
 
         PomodoroService svc(nullptr);
 
-        // 10000 min = 600 000 s — fits in int.
-        QCOMPARE(svc.cycleSeconds(), 10000 * 60);
-        QCOMPARE(svc.remainingSeconds(), 10000 * 60);
-        // Sanity: no negative value, no zero.
+        // 10000 min request → clamped to 1440 min = 86 400 s.
+        QCOMPARE(svc.cycleSeconds(), kClampedDaySeconds);
+        QCOMPARE(svc.remainingSeconds(), kClampedDaySeconds);
+        // Sanity: positive, within int range.
         QVERIFY(svc.cycleSeconds() > 0);
         QVERIFY(svc.cycleSeconds() < INT_MAX);
 
@@ -426,46 +438,202 @@ private slots:
         QVERIFY(svc.remainingSeconds() > 0);
     }
 
-    // ── 4b. INT_MAX as a setting value: clamped or tolerated, no crash ──────
+    // ── 4b. INT_MAX as a setting value: clamped, no overflow, no crash ──────
     //
-    // What if QSettings has been corrupted (or attacker-supplied) with
-    // INT_MAX? Loader has no upper clamp, so cycleSeconds = INT_MAX * 60
-    // WOULD overflow. Document the actual behavior — if the multiplication
-    // wraps, the test will show a negative cycleSeconds. This surfaces a
-    // latent bug for future hardening, without QFAIL'ing the green suite.
-    void int_max_minutes_overflows_cycleSeconds_int()
+    // Was a known-bug documentation slot (the loader had no upper clamp, so
+    // cycleSeconds = INT_MAX * 60 wrapped to negative). Now flipped to an
+    // assertion: the load path clamps INT_MAX to kMaxDurationMinutes (1440)
+    // and cycleSeconds returns exactly 86 400. No qInfo crutch.
+    void int_max_minutes_is_clamped_no_overflow()
     {
         using namespace pomo_edges;
 
         {
             QSettings s;
             s.setValue(qs(kKeyWork), INT_MAX);
+            s.setValue(qs(kKeyShort), INT_MAX);
+            s.setValue(qs(kKeyLong), INT_MAX);
             s.sync();
         }
 
         PomodoroService svc(nullptr);
 
-        // INT_MAX * 60 overflows signed int → undefined behavior in C++,
-        // but in practice the multiplication will wrap. Document whichever
-        // outcome the platform produces. The point of the test is "does not
-        // crash" — even with overflow we shouldn't trip a sanitizer.
-        const int cycSec = svc.cycleSeconds();
-        // INT_MAX * 60 wraps; the result is platform-defined but the
-        // service should not crash on access. We just check the getter
-        // returns SOMETHING and the service is in a coherent idle state.
-        Q_UNUSED(cycSec);
+        // Clamp asserts: cycleSeconds is exactly the one-day ceiling.
+        QCOMPARE(svc.cycleSeconds(), kClampedDaySeconds);
+        QCOMPARE(svc.remainingSeconds(), kClampedDaySeconds);
+        // No overflow — positive, within int range.
+        QVERIFY(svc.cycleSeconds() > 0);
+        QVERIFY(svc.cycleSeconds() < INT_MAX);
+        // Service is in a coherent idle state.
         QCOMPARE(svc.phase(), qs(kPhaseIdle));
 
-        if (cycSec <= 0) {
-            qInfo("PomodoroService: INT_MAX minutes WRAPS cycleSeconds() to "
-                  "non-positive (%d). Production code has no upper-bound "
-                  "clamp in loadDurationsFromSettings — recommend adding "
-                  "a sensible cap (e.g. workMinutes <= 999) for hardening.",
-                  cycSec);
-        } else {
-            qInfo("PomodoroService: INT_MAX minutes did not overflow on this "
-                  "platform (cycleSeconds=%d). Behavior may vary; recommend "
-                  "an upper-bound clamp regardless.", cycSec);
+        // Starting works; the first tick decrements cleanly (no wrap).
+        svc.start();
+        QCOMPARE(svc.phase(), qs(kPhaseWork));
+        QCOMPARE(svc.remainingSeconds(), kClampedDaySeconds);
+        tick(&svc);
+        QCOMPARE(svc.remainingSeconds(), kClampedDaySeconds - 1);
+    }
+
+    // ── 4c. INT_MIN as a setting value: clamped to the 1-minute floor ───────
+    //
+    // INT_MIN as workMinutes through the `<1` clamp still maps to 1 (correct),
+    // but the cyclesBeforeLongBreak floor (2) and the duration ceiling are
+    // critical to verify end-to-end so an attacker payload can't reach the
+    // multiplication site. Pin the current behavior.
+    void int_min_minutes_is_clamped_to_floor()
+    {
+        using namespace pomo_edges;
+
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork), INT_MIN);
+            s.setValue(qs(kKeyShort), INT_MIN);
+            s.setValue(qs(kKeyLong), INT_MIN);
+            s.setValue(qs(kKeyCyc), INT_MIN);
+            s.sync();
+        }
+
+        PomodoroService svc(nullptr);
+
+        // INT_MIN → 1 min for durations, 2 for cycles.
+        QCOMPARE(svc.cycleSeconds(), 60);
+        QCOMPARE(svc.remainingSeconds(), 60);
+        QCOMPARE(svc.phase(), qs(kPhaseIdle));
+
+        // Verify the cycle floor (2) is in effect — completing 2 work cycles
+        // should produce a long break.
+        svc.start();
+        tickUntilPhaseChange(&svc);                  // cycle 1 work → short
+        QCOMPARE(svc.phase(), qs(kPhaseShortBreak));
+        tickUntilPhaseChange(&svc);                  // short → work
+        QCOMPARE(svc.phase(), qs(kPhaseWork));
+        tickUntilPhaseChange(&svc);                  // cycle 2 work → long
+        QCOMPARE(svc.phase(), qs(kPhaseLongBreak));
+    }
+
+    // ── 4d. Exactly-at-boundary inputs are accepted as-is ───────────────────
+    //
+    // kMaxDurationMinutes = 1440 (== 24*60) must pass through untouched.
+    // kMaxDurationMinutes + 1 should clamp down to 1440. Same for cycles
+    // counter: 100 untouched, 101 clamped to 100. This pins the boundary
+    // so an accidental off-by-one in clamp helpers (>= vs >) gets caught.
+    void boundary_values_pass_through_unchanged()
+    {
+        using namespace pomo_edges;
+
+        // Exactly the limit.
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  1440);   // 24 h
+            s.setValue(qs(kKeyShort), 1440);
+            s.setValue(qs(kKeyLong),  1440);
+            s.setValue(qs(kKeyCyc),   100);
+            s.sync();
+        }
+        {
+            PomodoroService svc(nullptr);
+            // 1440 min = 86 400 s
+            QCOMPARE(svc.cycleSeconds(), 1440 * 60);
+            QCOMPARE(svc.remainingSeconds(), 1440 * 60);
+        }
+
+        // Just over the limit — clamped.
+        {
+            QSettings s;
+            s.clear();
+            s.setValue(qs(kKeyWork),  1441);
+            s.setValue(qs(kKeyShort), 1441);
+            s.setValue(qs(kKeyLong),  1441);
+            s.setValue(qs(kKeyCyc),   101);
+            s.sync();
+        }
+        {
+            PomodoroService svc(nullptr);
+            QCOMPARE(svc.cycleSeconds(), 1440 * 60);
+        }
+
+        // Exactly the floor.
+        {
+            QSettings s;
+            s.clear();
+            s.setValue(qs(kKeyWork),  1);
+            s.setValue(qs(kKeyShort), 1);
+            s.setValue(qs(kKeyLong),  1);
+            s.setValue(qs(kKeyCyc),   2);
+            s.sync();
+        }
+        {
+            PomodoroService svc(nullptr);
+            QCOMPARE(svc.cycleSeconds(), 60);
+            QCOMPARE(svc.remainingSeconds(), 60);
+        }
+    }
+
+    // ── 4e. reload path applies the SAME clamps as the constructor ──────────
+    //
+    // The user could set durations to safe values at startup but later
+    // attempt to enter INT_MAX through the settings UI. Verify the reload
+    // path also clamps both bounds, applied immediately on idle.
+    void reload_clamps_int_max_to_ceiling()
+    {
+        using namespace pomo_edges;
+
+        PomodoroService svc(nullptr);
+        QCOMPARE(svc.cycleSeconds(), 25 * 60);  // default
+
+        // User "edits" settings to INT_MAX via QSettings + reload.
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  INT_MAX);
+            s.setValue(qs(kKeyShort), INT_MAX);
+            s.setValue(qs(kKeyLong),  INT_MAX);
+            s.setValue(qs(kKeyCyc),   INT_MAX);
+            s.sync();
+        }
+        svc.reloadDurationsFromSettings();
+
+        // Reload-while-idle applies immediately. Both bounds enforced.
+        QCOMPARE(svc.cycleSeconds(), kClampedDaySeconds);
+        QCOMPARE(svc.remainingSeconds(), kClampedDaySeconds);
+        QCOMPARE(svc.phase(), qs(kPhaseIdle));
+    }
+
+    // ── 4f. cycleSeconds math: qint64-widened, valid inputs match exactly ───
+    //
+    // Smoke test that the cycleSeconds() getter is the qint64-widened path,
+    // not the old `int * 60` path. We can't reach the now-clamped fields
+    // directly, but we can verify the COMPUTED seconds are within int range
+    // and exactly match the expected product for valid inputs across the
+    // full range. This pins the computation contract for ms-derivation
+    // refactors (e.g. if QTimer interval ever moved off a fixed 1 s).
+    void cycle_seconds_math_matches_for_all_clamped_inputs()
+    {
+        using namespace pomo_edges;
+
+        // A handful of values spanning the clamped range, including the
+        // boundaries themselves. cycleSeconds == minutes * 60 exactly.
+        const int kMinutes[] = {1, 5, 25, 60, 720, 1439, 1440};
+        for (int minutes : kMinutes) {
+            {
+                QSettings s;
+                s.clear();
+                s.setValue(qs(kKeyWork), minutes);
+                s.sync();
+            }
+            PomodoroService svc(nullptr);
+            const int seconds = svc.cycleSeconds();
+            const int expected = minutes * 60;
+            QCOMPARE(seconds, expected);
+            // The implicit qint64 widening keeps the result strictly
+            // positive and < INT_MAX. Pin both invariants.
+            QVERIFY(seconds > 0);
+            QVERIFY(seconds < INT_MAX);
+            // And the millisecond derivation a future QTimer change would
+            // need — also wrap-safe under the current clamp.
+            const qint64 ms = qint64(seconds) * 1000;
+            QVERIFY(ms > 0);
+            QVERIFY(ms <= kClampedDayMs);
         }
     }
 

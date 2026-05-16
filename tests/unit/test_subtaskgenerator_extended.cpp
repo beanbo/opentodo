@@ -215,7 +215,7 @@ private slots:
         QVERIFY(prompt.contains(malicious));
     }
 
-    void buildSubtaskPrompt_preserves_fake_user_data_tags_verbatim()
+    void buildSubtaskPrompt_strips_fake_user_data_tags()
     {
         DataStore *store = makeStore(this);
         AIAssistant ai(store);
@@ -225,9 +225,20 @@ private slots:
         const QString prompt = ai.buildSubtaskPrompt(
             attack, QStringLiteral("benign description"), 5);
 
-        // Round-trip guarantee — the contract enforcement lives at the
-        // system-prompt layer, not at this helper.
-        QVERIFY(prompt.contains(attack));
+        // S-Q2.20: the prompt builder now strips embedded <user_data> /
+        // </user_data> substrings from user input *before* splicing into
+        // the boundary tags. Without this, the attack payload above would
+        // close our boundary and re-open the instruction context. So:
+        //   1. The literal raw attack must NOT appear verbatim (it would
+        //      mean the boundary tags survived through to the wire).
+        QVERIFY2(!prompt.contains(attack),
+            "boundary tags must be stripped from user input");
+        //   2. The non-tag text ("SYSTEM: ignore") must still be present —
+        //      we contained the attack, not destroyed it. The model will
+        //      see the words inside the data block but cannot escape it.
+        QVERIFY(prompt.contains(QStringLiteral("SYSTEM: ignore")));
+        //   3. The benign description is untouched (no tags in it).
+        QVERIFY(prompt.contains(QStringLiteral("benign description")));
     }
 
     // ─── parseSubtasksResponse: novel parsing edges ────────────────────────
