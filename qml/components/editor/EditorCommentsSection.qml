@@ -21,13 +21,13 @@ ColumnLayout {
         const nowMs  = Date.now()
         const diffMs = nowMs - dt.getTime()
         const diffSec = Math.floor(diffMs / 1000)
-        if (diffSec < 60)     return "только что"
+        if (diffSec < 60)     return qsTr("только что")
         const diffMin = Math.floor(diffSec / 60)
-        if (diffMin < 60)     return diffMin + " мин. назад"
+        if (diffMin < 60)     return qsTr("%1 мин. назад").arg(diffMin)
         const diffH = Math.floor(diffMin / 60)
-        if (diffH < 24)       return diffH + " ч. назад"
+        if (diffH < 24)       return qsTr("%1 ч. назад").arg(diffH)
         const diffD = Math.floor(diffH / 24)
-        if (diffD < 7)        return diffD + " д. назад"
+        if (diffD < 7)        return qsTr("%1 д. назад").arg(diffD)
         return Qt.formatDate(dt, "dd.MM.yyyy")
     }
 
@@ -50,7 +50,7 @@ ColumnLayout {
 
     // ── Section header ─────────────────────────────────────────────────────
     Text {
-        text:          "Комментарии"
+        text:          qsTr("Комментарии")
         font.pixelSize: 13
         font.weight:   Font.Medium
         color:         ThemeManager.textColor
@@ -126,7 +126,7 @@ ColumnLayout {
 
                     Text {
                         anchors.centerIn: parent
-                        text:          "Я"
+                        text:          qsTr("Я")
                         font.pixelSize: 11
                         font.bold:      true
                         color:          "white"
@@ -144,7 +144,7 @@ ColumnLayout {
                         spacing: 6
 
                         Text {
-                            text:          "Я"
+                            text:          qsTr("Я")
                             font.pixelSize: 12
                             font.weight:   Font.Medium
                             color:         ThemeManager.textColor
@@ -238,7 +238,7 @@ ColumnLayout {
                             Text {
                                 id:            saveEditText
                                 anchors.centerIn: parent
-                                text:          "Сохранить"
+                                text:          qsTr("Сохранить")
                                 font.pixelSize: 12
                                 color:         "white"
                             }
@@ -273,7 +273,7 @@ ColumnLayout {
                             Text {
                                 id:            cancelEditText
                                 anchors.centerIn: parent
-                                text:          "Отмена"
+                                text:          qsTr("Отмена")
                                 font.pixelSize: 12
                                 color:         ThemeManager.textColor
                             }
@@ -297,7 +297,7 @@ ColumnLayout {
         visible:        commentRepeater.count === 0
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
-        text:          "Пока нет комментариев"
+        text:          qsTr("Пока нет комментариев")
         font.pixelSize: 13
         font.italic:   true
         color:         ThemeManager.secondaryTextColor
@@ -322,7 +322,7 @@ ColumnLayout {
                 right:  parent.right
                 top:    parent.top
             }
-            placeholderText: "Написать комментарий… (Markdown поддерживается)"
+            placeholderText: qsTr("Написать комментарий… (Markdown поддерживается)")
             font.pixelSize: 13
             color:          ThemeManager.textColor
             wrapMode:       TextArea.Wrap
@@ -361,7 +361,7 @@ ColumnLayout {
             Text {
                 id:            addBtnText
                 anchors.centerIn: parent
-                text:          "Добавить"
+                text:          qsTr("Добавить")
                 font.pixelSize: 12
                 color:         addCommentBtn.canAdd ? "white" : ThemeManager.secondaryTextColor
             }

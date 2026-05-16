@@ -58,24 +58,24 @@ Item {
 
     function _dayWord(n) {
         const m = n % 10, h = n % 100
-        if (h >= 11 && h <= 19) return "дней"
-        if (m === 1)             return "день"
-        if (m >= 2 && m <= 4)   return "дня"
-        return "дней"
+        if (h >= 11 && h <= 19) return qsTr("дней")
+        if (m === 1)             return qsTr("день")
+        if (m >= 2 && m <= 4)   return qsTr("дня")
+        return qsTr("дней")
     }
     function _hourWord(n) {
         const m = n % 10, h = n % 100
-        if (h >= 11 && h <= 19) return "часов"
-        if (m === 1)             return "час"
-        if (m >= 2 && m <= 4)   return "часа"
-        return "часов"
+        if (h >= 11 && h <= 19) return qsTr("часов")
+        if (m === 1)             return qsTr("час")
+        if (m >= 2 && m <= 4)   return qsTr("часа")
+        return qsTr("часов")
     }
     function _minuteWord(n) {
         const m = n % 10, h = n % 100
-        if (h >= 11 && h <= 19) return "минут"
-        if (m === 1)             return "минуту"
-        if (m >= 2 && m <= 4)   return "минуты"
-        return "минут"
+        if (h >= 11 && h <= 19) return qsTr("минут")
+        if (m === 1)             return qsTr("минуту")
+        if (m >= 2 && m <= 4)   return qsTr("минуты")
+        return qsTr("минут")
     }
 
     function relativeDeletedTime(isoString) {
@@ -84,16 +84,16 @@ Item {
         const dt   = new Date(isoString)
         if (isNaN(dt.getTime())) return ""
         const diffMs  = Date.now() - dt.getTime()
-        if (diffMs < 0) return "только что"
+        if (diffMs < 0) return qsTr("только что")
         const diffMin = Math.floor(diffMs / 60000)
-        if (diffMin < 1)  return "только что"
-        if (diffMin < 60) return diffMin + " " + _minuteWord(diffMin) + " назад"
+        if (diffMin < 1)  return qsTr("только что")
+        if (diffMin < 60) return qsTr("%1 %2 назад").arg(diffMin).arg(_minuteWord(diffMin))
         const diffH = Math.floor(diffMin / 60)
-        if (diffH < 24)   return diffH + " " + _hourWord(diffH) + " назад"
+        if (diffH < 24)   return qsTr("%1 %2 назад").arg(diffH).arg(_hourWord(diffH))
         const diffD = Math.floor(diffH / 24)
-        if (diffD === 0)  return "сегодня"
-        if (diffD === 1)  return "вчера"
-        if (diffD < 30)   return diffD + " " + _dayWord(diffD) + " назад"
+        if (diffD === 0)  return qsTr("сегодня")
+        if (diffD === 1)  return qsTr("вчера")
+        if (diffD < 30)   return qsTr("%1 %2 назад").arg(diffD).arg(_dayWord(diffD))
         // Fallback: locale date
         return dt.toLocaleDateString(Qt.locale("ru-RU"))
     }
@@ -102,7 +102,7 @@ Item {
 
     Dialog {
         id: emptyConfirmDialog
-        title: "Очистить корзину"
+        title: qsTr("Очистить корзину")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(380, Overlay.overlay.width - Spacing.xl)
@@ -116,7 +116,7 @@ Item {
 
         Label {
             width: parent.width
-            text: "Окончательно удалить все задачи из корзины? Действие нельзя отменить."
+            text: qsTr("Окончательно удалить все задачи из корзины? Действие нельзя отменить.")
             wrapMode: Text.WordWrap
             font.pixelSize: FontSize.body
             color: root.textPrimary
@@ -124,13 +124,13 @@ Item {
 
         footer: DialogButtonBox {
             Button {
-                text: "Очистить"
+                text: qsTr("Очистить")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 Material.background: ThemeManager.errorColor
                 Material.foreground: "white"
             }
             Button {
-                text: "Отмена"
+                text: qsTr("Отмена")
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 flat: true
             }
@@ -146,7 +146,7 @@ Item {
         id: deleteOneDialog
         property string taskId:    ""
         property string taskTitle: ""
-        title: "Удалить задачу навсегда"
+        title: qsTr("Удалить задачу навсегда")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(380, Overlay.overlay.width - Spacing.xl)
@@ -160,8 +160,7 @@ Item {
 
         Label {
             width: parent.width
-            text: "Окончательно удалить «" + deleteOneDialog.taskTitle +
-                  "»? Действие нельзя отменить."
+            text: qsTr("Окончательно удалить «%1»? Действие нельзя отменить.").arg(deleteOneDialog.taskTitle)
             wrapMode: Text.WordWrap
             font.pixelSize: FontSize.body
             color: root.textPrimary
@@ -169,13 +168,13 @@ Item {
 
         footer: DialogButtonBox {
             Button {
-                text: "Удалить"
+                text: qsTr("Удалить")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 Material.background: ThemeManager.errorColor
                 Material.foreground: "white"
             }
             Button {
-                text: "Отмена"
+                text: qsTr("Отмена")
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 flat: true
             }
@@ -212,7 +211,7 @@ Item {
                 spacing: Spacing.sm
 
                 Label {
-                    text: "Корзина"
+                    text: qsTr("Корзина")
                     font.pixelSize: FontSize.h1
                     font.weight: Font.DemiBold
                     color: textPrimary
@@ -241,7 +240,7 @@ Item {
                 // «Очистить корзину»
                 Button {
                     flat: true
-                    text: "🗑 Очистить корзину"
+                    text: qsTr("🗑 Очистить корзину")
                     font.pixelSize: FontSize.small
                     visible: root.trashItems.length > 0
                     onClicked: emptyConfirmDialog.open()
@@ -268,8 +267,8 @@ Item {
                 anchors.fill: parent
                 visible: root.trashItems.length === 0
                 emoji: "🗑"
-                title: "Корзина пуста"
-                message: "Удалённые задачи появятся здесь и будут доступны для восстановления."
+                title: qsTr("Корзина пуста")
+                message: qsTr("Удалённые задачи появятся здесь и будут доступны для восстановления.")
             }
 
             // List of deleted tasks
@@ -398,7 +397,7 @@ Item {
                             // Relative deleted time
                             Text {
                                 Layout.fillWidth: true
-                                text: "Удалено: " + root.relativeDeletedTime(delegateRoot.updatedAt)
+                                text: qsTr("Удалено: %1").arg(root.relativeDeletedTime(delegateRoot.updatedAt))
                                 font.pixelSize: FontSize.caption
                                 color: textSecondary
                                 elide: Text.ElideRight
@@ -406,10 +405,10 @@ Item {
 
                             // Actions
                             ToolButton {
-                                text: "↩ Восстановить"
+                                text: qsTr("↩ Восстановить")
                                 font.pixelSize: FontSize.caption
                                 flat: true
-                                ToolTip.text: "Вернуть задачу"
+                                ToolTip.text: qsTr("Вернуть задачу")
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
                                 onClicked: {
@@ -419,10 +418,10 @@ Item {
                             }
 
                             ToolButton {
-                                text: "🗑 Удалить навсегда"
+                                text: qsTr("🗑 Удалить навсегда")
                                 font.pixelSize: FontSize.caption
                                 flat: true
-                                ToolTip.text: "Удалить безвозвратно"
+                                ToolTip.text: qsTr("Удалить безвозвратно")
                                 ToolTip.visible: hovered
                                 ToolTip.delay: 500
                                 onClicked: {

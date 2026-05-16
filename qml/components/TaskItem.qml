@@ -147,7 +147,7 @@ Item {
         const body = t ? t.content : root.content
         const due = new Date(Date.now() + minutes * 60 * 1000)
         notificationService.scheduleNotification(
-            "Отложенное напоминание", body, due, "snooze-" + root.id)
+            qsTr("Отложенное напоминание"), body, due, "snooze-" + root.id)
     }
 
     // Returns true when taskId is in the persisted expanded set.
@@ -185,13 +185,26 @@ Item {
     property bool isSubtask: false
 
     // ── Drag-and-drop support ─────────────────────────────────────────────
-    // dragActive is true while the user drags via the ⋮⋮ handle OR by holding
-    // the left mouse button on the whole row and moving past the threshold.
-    // Bug 10 fix: dragging is no longer restricted to the right-edge handle —
-    // the row-wide mouseArea (defined inside mainRow) also engages a drag via
-    // its own drag.target, and the OR of both flags keeps Drag.active and the
-    // ghost-image trigger correctly tracking either source.
-    property bool dragActive: dragHandleArea.drag.active || mouseArea.drag.active
+    // dragActive is true while the user drags via the ⋮⋮ handle, holds the
+    // left mouse button on a bare edge of the row, OR presses-and-drags over
+    // ANY inner element (priority circle, content area, chip row, …).
+    //
+    // Bug 10 fix: dragging was originally restricted to the right-edge handle.
+    // Adding `drag.target` to the row-wide MouseArea made bare edges draggable
+    // too — but the row MouseArea sits BELOW the RowLayout (line ~525) so
+    // child items (content text, labels, chevron, …) eat events and the drag
+    // never engaged from those points.
+    //
+    // Fix v2: a `DragHandler` at TaskItem-root level. Pointer handlers don't
+    // compete with MouseArea for click handling (TapHandler-style semantics) —
+    // they only engage AFTER the drag-threshold is exceeded, so clicks on
+    // inner items keep working while a press-and-drag from anywhere on the
+    // row activates the drag. `target: null` keeps the visible delegate in
+    // place; the Drag.Automatic system supplies the ghost image.
+    property bool dragActive:
+          dragHandleArea.drag.active
+       || mouseArea.drag.active
+       || rowDragHandler.active
 
     // Bind Drag.active via the dragActive property rather than re-evaluating
     // `... || ...` here — Qt 6 was flagging the latter as a binding loop
@@ -202,6 +215,18 @@ Item {
     Drag.hotSpot.x: width / 2
     Drag.hotSpot.y: 22
     Drag.dragType: Drag.Automatic
+
+    // Row-wide drag from any point. Engages after dragThreshold pixels of
+    // movement — clicks (no movement) still fall through to the row
+    // MouseArea, the priority circle MouseArea, etc. Right-button drag is
+    // disabled so the context menu remains intact.
+    DragHandler {
+        id: rowDragHandler
+        target: null
+        dragThreshold: 6
+        acceptedButtons: Qt.LeftButton
+        cursorShape: active ? Qt.ClosedHandCursor : Qt.ArrowCursor
+    }
     Drag.supportedActions: Qt.MoveAction
     Drag.mimeData: ({ "application/x-opentodo-task": root.id })
     Drag.keys: ["application/x-opentodo-task"]
@@ -246,9 +271,9 @@ Item {
     // Returns a localised string like "⏱ 30 мин", "⏱ 2 ч" or "" when no estimate.
     readonly property string _estimateLabel: {
         if (estimateMinutes <= 0) return ""
-        if (estimateMinutes < 60)       return "⏱ " + estimateMinutes + " мин"
-        if (estimateMinutes % 60 === 0) return "⏱ " + (estimateMinutes / 60) + " ч"
-        return "⏱ " + Math.floor(estimateMinutes / 60) + " ч " + (estimateMinutes % 60) + " мин"
+        if (estimateMinutes < 60)       return "⏱ " + qsTr("%1 мин").arg(estimateMinutes)
+        if (estimateMinutes % 60 === 0) return "⏱ " + qsTr("%1 ч").arg(estimateMinutes / 60)
+        return "⏱ " + qsTr("%1 ч %2 мин").arg(Math.floor(estimateMinutes / 60)).arg(estimateMinutes % 60)
     }
 
     // ── Duration label helper ─────────────────────────────────────────────
@@ -256,9 +281,9 @@ Item {
     readonly property string _durationLabel: {
         if (durationAmount <= 0 || durationUnit === "") return ""
         switch (durationUnit) {
-            case "minute": return durationAmount + " мин"
-            case "hour":   return durationAmount + " ч"
-            case "day":    return durationAmount + " дн"
+            case "minute": return qsTr("%1 мин").arg(durationAmount)
+            case "hour":   return qsTr("%1 ч").arg(durationAmount)
+            case "day":    return qsTr("%1 дн").arg(durationAmount)
             default:       return durationAmount + " " + durationUnit
         }
     }
@@ -872,8 +897,8 @@ Item {
                             if (!root.dueDate) return ""
                             const today    = Qt.formatDate(new Date(), "yyyy-MM-dd")
                             const tomorrow = Qt.formatDate(new Date(Date.now() + 86400000), "yyyy-MM-dd")
-                            if (root.dueDate === today)    return "сегодня"
-                            if (root.dueDate === tomorrow) return "завтра"
+                            if (root.dueDate === today)    return qsTr("сегодня")
+                            if (root.dueDate === tomorrow) return qsTr("завтра")
                             const d = new Date(root.dueDate + "T00:00:00")
                             if (isNaN(d.getTime())) return root.dueDate
                             const now = new Date()
@@ -1063,8 +1088,7 @@ Item {
                     // Russian tooltip per spec
                     ToolTip.visible: containsMouse
                     ToolTip.delay: 600
-                    ToolTip.text: "Подзадачи: " + _subtaskDone
-                                  + " из " + _subtaskTotal + " выполнено"
+                    ToolTip.text: qsTr("Подзадачи: %1 из %2 выполнено").arg(_subtaskDone).arg(_subtaskTotal)
                 }
             }
 
@@ -1078,7 +1102,7 @@ Item {
 
                 // ITER2 #23: drag handle is icon-only — expose as a button to AT.
                 Accessible.role: Accessible.Button
-                Accessible.name: "Перетащить задачу"
+                Accessible.name: qsTr("Перетащить задачу")
 
                 Behavior on opacity { NumberAnimation { duration: Duration.fast } }
 
@@ -1217,11 +1241,11 @@ Item {
             id: taskCtxMenu
 
             MenuItem {
-                text: "Открыть"
+                text: qsTr("Открыть")
                 onTriggered: root.taskClicked(root.id)
             }
             MenuItem {
-                text: "📋 Дублировать"
+                text: qsTr("📋 Дублировать")
                 // ITER1 #20/#41: use duplicateTask which copies all fields (labels,
                 // due date, description, section, color, deadline, etc.) but NOT
                 // recurrence and NOT the pinned flag. The duplicate is inserted
@@ -1233,11 +1257,11 @@ Item {
                 }
             }
             MenuItem {
-                text: "⬆⬆ В начало"
+                text: qsTr("⬆⬆ В начало")
                 onTriggered: taskViewModel.moveTaskToTop(root.id)
             }
             MenuItem {
-                text: "⬇⬇ В конец"
+                text: qsTr("⬇⬇ В конец")
                 onTriggered: taskViewModel.moveTaskToBottom(root.id)
             }
             // ── «Отложить до даты...» — открывает кастомный DatePicker-popup
@@ -1248,14 +1272,14 @@ Item {
             // вперёд бессмысленно (см. также _deferTaskMinutes выше — он ставит
             // напоминание, тогда как здесь меняется именно поле due).
             MenuItem {
-                text: "📅 Отложить до даты..."
+                text: qsTr("📅 Отложить до даты...")
                 visible: !root.isCompleted
                 height: visible ? implicitHeight : 0
                 onTriggered: snoozeDatePicker.openForTask()
             }
             // ── Promote subtask → standalone ────────────────────────────────
             MenuItem {
-                text: "⬅ Поднять"
+                text: qsTr("⬅ Поднять")
                 visible: root.parentId !== ""
                 height: visible ? implicitHeight : 0
                 onTriggered: taskViewModel.promoteTask(root.id)
@@ -1263,14 +1287,14 @@ Item {
             // ── Demote standalone → subtask ─────────────────────────────────
             // Opens the inline parent-picker Popup defined further down.
             MenuItem {
-                text: "➡ Сделать подзадачей..."
+                text: qsTr("➡ Сделать подзадачей...")
                 visible: root.parentId === ""
                 height: visible ? implicitHeight : 0
                 onTriggered: parentPicker.openForTask(root.id)
             }
             MenuSeparator {}
             MenuItem {
-                text: "Добавить выше"
+                text: qsTr("Добавить выше")
                 onTriggered: {
                     const newId = taskViewModel.addTaskAbove(root.id, "")
                     if (newId && newId !== "")
@@ -1278,7 +1302,7 @@ Item {
                 }
             }
             MenuItem {
-                text: "Добавить ниже"
+                text: qsTr("Добавить ниже")
                 onTriggered: {
                     const newId = taskViewModel.addTaskBelow(root.id, "")
                     if (newId && newId !== "")
@@ -1287,7 +1311,7 @@ Item {
             }
             MenuSeparator {}
             Menu {
-                title: "Перенести в проект"
+                title: qsTr("Перенести в проект")
                 Repeater {
                     model: projectViewModel
                     MenuItem {
@@ -1304,25 +1328,25 @@ Item {
             // запланированное уведомление через NotificationService — та же
             // семантика, что и у кнопки «Отложить» в InAppBanner.
             Menu {
-                title: "Отложить"
+                title: qsTr("Отложить")
                 MenuItem {
-                    text: "Отложить на %1 мин".arg(deferSettings.slot1)
+                    text: qsTr("Отложить на %1 мин").arg(deferSettings.slot1)
                     onTriggered: root._deferTaskMinutes(deferSettings.slot1)
                 }
                 MenuItem {
-                    text: "Отложить на %1 мин".arg(deferSettings.slot2)
+                    text: qsTr("Отложить на %1 мин").arg(deferSettings.slot2)
                     onTriggered: root._deferTaskMinutes(deferSettings.slot2)
                 }
                 MenuItem {
-                    text: "Отложить на %1 мин".arg(deferSettings.slot3)
+                    text: qsTr("Отложить на %1 мин").arg(deferSettings.slot3)
                     onTriggered: root._deferTaskMinutes(deferSettings.slot3)
                 }
                 MenuItem {
-                    text: "Отложить на %1 мин".arg(deferSettings.slot4)
+                    text: qsTr("Отложить на %1 мин").arg(deferSettings.slot4)
                     onTriggered: root._deferTaskMinutes(deferSettings.slot4)
                 }
                 MenuItem {
-                    text: "Отложить на %1 мин".arg(deferSettings.slot5)
+                    text: qsTr("Отложить на %1 мин").arg(deferSettings.slot5)
                     onTriggered: root._deferTaskMinutes(deferSettings.slot5)
                 }
             }
@@ -1330,16 +1354,16 @@ Item {
             MenuItem {
                 visible: root.isSubtask
                 height: visible ? implicitHeight : 0
-                text: "Повысить до задачи"
+                text: qsTr("Повысить до задачи")
                 onTriggered: taskViewModel.promoteToTopLevel(root.id)
             }
             MenuItem {
                 // Закрепить / открепить задачу наверху текущего списка
-                text: root.isPinned ? "Открепить" : "Закрепить наверху"
+                text: root.isPinned ? qsTr("Открепить") : qsTr("Закрепить наверху")
                 onTriggered: taskViewModel.updateTask(root.id, "isPinned", !root.isPinned)
             }
             MenuItem {
-                text: "Удалить"
+                text: qsTr("Удалить")
                 onTriggered: taskViewModel.deleteTask(root.id)
             }
         }
@@ -1542,7 +1566,7 @@ Item {
                     TextField {
                         id: addSubtaskField
                         Layout.fillWidth: true
-                        placeholderText: "+ Добавить подзадачу"
+                        placeholderText: qsTr("+ Добавить подзадачу")
                         font.pixelSize:  FontSize.caption
                         color:           ThemeManager.textColor
                         background: null
@@ -1594,7 +1618,7 @@ Item {
         property int _weekStartIdx: (typeof settingsViewModel !== "undefined" && settingsViewModel)
                                     ? settingsViewModel.weekStart : 0
         property int _jsWeekStart:  (_weekStartIdx + 1) % 7
-        readonly property var _allLabels: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+        readonly property var _allLabels: [qsTr("Вс"), qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб")]
         property var _weekdayLabels: {
             var arr = []
             for (var i = 0; i < 7; i++) arr.push(_allLabels[(_jsWeekStart + i) % 7])
@@ -1643,8 +1667,8 @@ Item {
         }
 
         function _monthYearLabel(year, month) {
-            var names = ["Январь","Февраль","Март","Апрель","Май","Июнь",
-                         "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
+            var names = [qsTr("Январь"),qsTr("Февраль"),qsTr("Март"),qsTr("Апрель"),qsTr("Май"),qsTr("Июнь"),
+                         qsTr("Июль"),qsTr("Август"),qsTr("Сентябрь"),qsTr("Октябрь"),qsTr("Ноябрь"),qsTr("Декабрь")]
             return names[month] + " " + year
         }
 
@@ -1714,7 +1738,7 @@ Item {
             // Заголовок popup-а
             Text {
                 Layout.fillWidth: true
-                text: "Отложить до..."
+                text: qsTr("Отложить до...")
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
                 font.bold: true
@@ -1891,7 +1915,7 @@ Item {
 
                 Button {
                     id: snoozeCancelBtn
-                    text: "Отмена"
+                    text: qsTr("Отмена")
                     flat: true
                     contentItem: Text {
                         text: snoozeCancelBtn.text
@@ -1911,7 +1935,7 @@ Item {
 
                 Button {
                     id: snoozeApplyBtn
-                    text: "Применить"
+                    text: qsTr("Применить")
                     enabled: snoozeDatePicker._pendingDate !== ""
                     contentItem: Text {
                         text: snoozeApplyBtn.text
@@ -2001,7 +2025,7 @@ Item {
             Text {
                 id: headerLabel
                 Layout.fillWidth: true
-                text:  "Выберите родительскую задачу"
+                text:  qsTr("Выберите родительскую задачу")
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
                 font.bold: true
@@ -2011,7 +2035,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 visible: parentPicker.candidates.length === 0
-                text:  "Нет подходящих задач в этом проекте"
+                text:  qsTr("Нет подходящих задач в этом проекте")
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: FontSize.caption
                 wrapMode: Text.WordWrap

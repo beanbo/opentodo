@@ -85,7 +85,7 @@ Rectangle {
         id: globalSectionMenu
 
         MenuItem {
-            text: "Переименовать раздел…"
+            text: qsTr("Переименовать раздел…")
             onTriggered: {
                 renameSectionDialog.sectionId   = root._activeSectionId
                 renameSectionDialog.currentName = root._activeSectionName
@@ -93,12 +93,12 @@ Rectangle {
             }
         }
         MenuItem {
-            text: "Добавить раздел ниже…"
+            text: qsTr("Добавить раздел ниже…")
             onTriggered: addSectionDialog.open()
         }
         MenuSeparator {}
         MenuItem {
-            text: "Удалить раздел"
+            text: qsTr("Удалить раздел")
             Material.foreground: root.todoistRed
             onTriggered: {
                 deleteSectionDialog.sectionId   = root._activeSectionId
@@ -195,7 +195,7 @@ Rectangle {
 
                     Text {
                         anchors.centerIn: parent
-                        text: parent._completedNow + "/" + (project ? project.weeklyGoal : 0) + " за неделю"
+                        text: qsTr("%1/%2 за неделю").arg(parent._completedNow).arg(project ? project.weeklyGoal : 0)
                         font.pixelSize: FontSize.caption
                         color: parent._completedNow > 0 ? "#ffffff" : ThemeManager.textColor
                         z: 1
@@ -203,8 +203,8 @@ Rectangle {
 
                     ToolTip.visible: goalHover.containsMouse
                     ToolTip.text: parent._achieved
-                        ? "Цель на эту неделю выполнена!"
-                        : "Осталось: " + ((project ? project.weeklyGoal : 0) - parent._completedNow)
+                        ? qsTr("Цель на эту неделю выполнена!")
+                        : qsTr("Осталось: %1").arg((project ? project.weeklyGoal : 0) - parent._completedNow)
 
                     MouseArea {
                         id: goalHover
@@ -222,7 +222,7 @@ Rectangle {
                     font.pixelSize: 16
                     checked: viewStyle === "list"
                     onClicked: root.setView("list")
-                    ToolTip.text: "Список"
+                    ToolTip.text: qsTr("Список")
                     ToolTip.visible: hovered
                     Material.foreground: checked ? todoistRed : textSecondary
                 }
@@ -243,7 +243,7 @@ Rectangle {
                     font.pixelSize: 16
                     checked: viewStyle === "board"
                     onClicked: root.setView("board")
-                    ToolTip.text: "Доска"
+                    ToolTip.text: qsTr("Доска")
                     ToolTip.visible: hovered
                     Material.foreground: checked ? todoistRed : textSecondary
                 }
@@ -252,7 +252,7 @@ Rectangle {
                     font.pixelSize: 16
                     checked: viewStyle === "calendar"
                     onClicked: root.setView("calendar")
-                    ToolTip.text: "Календарь"
+                    ToolTip.text: qsTr("Календарь")
                     ToolTip.visible: hovered
                     Material.foreground: checked ? todoistRed : textSecondary
                 }
@@ -267,13 +267,13 @@ Rectangle {
                 // Add-section button (visible only in list view)
                 ToolButton {
                     id:      addSectionBtn
-                    text:    "＋ Раздел"
+                    text:    qsTr("＋ Раздел")
                     font.pixelSize: FontSize.body
                     visible: viewStyle === "list"
                     onClicked: addSectionDialog.open()
                     Material.foreground: todoistRed
 
-                    ToolTip.text: "Добавить раздел в проект"
+                    ToolTip.text: qsTr("Добавить раздел в проект")
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
                 }
@@ -303,27 +303,27 @@ Rectangle {
                 y: moreBtn.height
 
                 MenuItem {
-                    text: "Редактировать проект"
+                    text: qsTr("Редактировать проект")
                     onTriggered: editDialog.open()
                 }
                 MenuItem {
-                    text: "Добавить раздел"
+                    text: qsTr("Добавить раздел")
                     onTriggered: addSectionDialog.open()
                 }
                 MenuItem {
                     text: (project && project.isFavorite)
-                          ? "Убрать из избранного"
-                          : "В избранное"
+                          ? qsTr("Убрать из избранного")
+                          : qsTr("В избранное")
                     onTriggered: projectViewModel.setFavorite(projectId,
                                      !(project && project.isFavorite))
                 }
                 MenuSeparator {}
                 MenuItem {
-                    text: "Архивировать проект"
+                    text: qsTr("Архивировать проект")
                     onTriggered: projectViewModel.archiveProject(projectId)
                 }
                 MenuItem {
-                    text: "Дублировать как шаблон"
+                    text: qsTr("Дублировать как шаблон")
                     enabled: projectId !== ""
                     onTriggered: {
                         // Wave 3 (F-6.39): copies all non-deleted tasks from
@@ -336,26 +336,26 @@ Rectangle {
                     }
                 }
                 MenuItem {
-                    text: "Экспорт проекта (JSON)"
+                    text: qsTr("Экспорт проекта (JSON)")
                     enabled: projectId !== ""
                     onTriggered: {
                         const path = taskExporter.exportProjectToJson(projectId, "")
                         const w = root.Window.window
                         if (w && typeof w.showToast === "function") {
-                            if (path && path !== "") w.showToast("Экспортировано в " + path, "success")
-                            else                     w.showToast("Не удалось экспортировать", "error")
+                            if (path && path !== "") w.showToast(qsTr("Экспортировано в %1").arg(path), "success")
+                            else                     w.showToast(qsTr("Не удалось экспортировать"), "error")
                         }
                     }
                 }
                 MenuSeparator {}
                 MenuItem {
-                    text: "Удалить все завершённые"
+                    text: qsTr("Удалить все завершённые")
                     enabled: projectId !== ""
                     onTriggered: removeCompletedConfirm.open()
                 }
                 MenuSeparator {}
                 MenuItem {
-                    text: "Удалить проект"
+                    text: qsTr("Удалить проект")
                     Material.foreground: todoistRed
                     onTriggered: deleteConfirmDialog.open()
                 }
@@ -387,7 +387,7 @@ Rectangle {
                     Layout.fillWidth: true
 
                     Label {
-                        text: "📝 Заметки"
+                        text: qsTr("📝 Заметки")
                         font.pixelSize: FontSize.body
                         font.bold: true
                         color: ThemeManager.textColor
@@ -475,7 +475,7 @@ Rectangle {
                         TextField {
                             id:               quickAddField
                             Layout.fillWidth: true
-                            placeholderText:  "Добавить задачу…"
+                            placeholderText:  qsTr("Добавить задачу…")
                             background:       Item {}
                             color:            textPrimary
                             font.pixelSize:   FontSize.body
@@ -539,7 +539,7 @@ Rectangle {
                                     : (root.isDarkTheme ? "#222" : "#f5f5f5")
 
                             property string sectionName: {
-                                if (sectionId === "") return "(Без раздела)"
+                                if (sectionId === "") return qsTr("(Без раздела)")
                                 var s = dataStore.sectionById(sectionId)
                                 return s ? s.name : sectionId
                             }
@@ -563,7 +563,7 @@ Rectangle {
                                     text:           "+"
                                     font.pixelSize: FontSize.subtitle
                                     Material.foreground: root.textSecondary
-                                    ToolTip.text: "Добавить задачу в раздел"
+                                    ToolTip.text: qsTr("Добавить задачу в раздел")
                                     ToolTip.visible: hovered
                                     onClicked: {
                                         addTaskToSectionDialog.sectionId = sectionHeaderRect.sectionId
@@ -803,7 +803,7 @@ Rectangle {
                             font.pixelSize: FontSize.subtitle
                         }
                         Text {
-                            text:           "Добавить раздел"
+                            text:           qsTr("Добавить раздел")
                             color:          root.textSecondary
                             font.pixelSize: FontSize.body
                         }
@@ -835,7 +835,7 @@ Rectangle {
     // ── Edit project dialog ───────────────────────────────────────────────────
     Dialog {
         id:      editDialog
-        title:   "Редактировать проект"
+        title:   qsTr("Редактировать проект")
         modal:   true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -893,15 +893,15 @@ Rectangle {
             spacing: 12
             width: 320
 
-            Label { text: "Название проекта"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            Label { text: qsTr("Название проекта"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
                 id:              nameField
                 Layout.fillWidth: true
-                placeholderText: "Название проекта"
+                placeholderText: qsTr("Название проекта")
                 color:           root.textPrimary
             }
 
-            Label { text: "Цвет"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            Label { text: qsTr("Цвет"); font.pixelSize: FontSize.small; color: root.textSecondary }
 
             Flow {
                 Layout.fillWidth: true
@@ -928,7 +928,7 @@ Rectangle {
             }
 
             Label {
-                text: "Иконка проекта"
+                text: qsTr("Иконка проекта")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -975,7 +975,7 @@ Rectangle {
                 ToolButton {
                     text: "✕"
                     flat: true
-                    ToolTip.text: "Убрать иконку"
+                    ToolTip.text: qsTr("Убрать иконку")
                     ToolTip.visible: hovered
                     onClicked: {
                         iconField.text = ""
@@ -985,7 +985,7 @@ Rectangle {
             }
 
             Label {
-                text: "Описание"
+                text: qsTr("Описание")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -997,7 +997,7 @@ Rectangle {
                 TextArea {
                     id: descriptionField
                     text: editDialog.editDescription
-                    placeholderText: "Описание проекта (необязательно)"
+                    placeholderText: qsTr("Описание проекта (необязательно)")
                     wrapMode: Text.WordWrap
                     color: root.textPrimary
                     background: Rectangle {
@@ -1015,7 +1015,7 @@ Rectangle {
 
             // ── Notes ────────────────────────────────────────────────────────
             Label {
-                text: "Заметки"
+                text: qsTr("Заметки")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -1027,7 +1027,7 @@ Rectangle {
                 TextArea {
                     id: notesField
                     text: editDialog.editNotes
-                    placeholderText: "Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)"
+                    placeholderText: qsTr("Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)")
                     wrapMode: Text.WordWrap
                     color: root.textPrimary
                     background: Rectangle {
@@ -1045,7 +1045,7 @@ Rectangle {
 
             // ── Weekly goal ───────────────────────────────────────────────────
             Label {
-                text: "Цель на неделю (задач)"
+                text: qsTr("Цель на неделю (задач)")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -1066,8 +1066,8 @@ Rectangle {
                 }
                 Label {
                     text: weeklyGoalSpin.value === 0
-                        ? "Без цели"
-                        : weeklyGoalSpin.value + " задач в неделю"
+                        ? qsTr("Без цели")
+                        : qsTr("%1 задач в неделю").arg(weeklyGoalSpin.value)
                     color: root.textSecondary
                     font.pixelSize: FontSize.small
                     Layout.fillWidth: true
@@ -1076,7 +1076,7 @@ Rectangle {
 
             // ── Default priority for new tasks ───────────────────────────────
             Label {
-                text: "Приоритет по умолчанию"
+                text: qsTr("Приоритет по умолчанию")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -1091,7 +1091,7 @@ Rectangle {
                 //   1 → 1 (P1)
                 //   2 → 2 (P2)
                 //   3 → 3 (P3)
-                model: ["Без приоритета", "P1 — Срочный", "P2 — Высокий", "P3 — Средний"]
+                model: [qsTr("Без приоритета"), qsTr("P1 — Срочный"), qsTr("P2 — Высокий"), qsTr("P3 — Средний")]
 
                 onActivated: {
                     editDialog.editDefaultPriority = currentIndex === 0 ? 4 : currentIndex
@@ -1107,7 +1107,7 @@ Rectangle {
 
             // ── Default labels for new tasks ─────────────────────────────────
             Label {
-                text: "Метки по умолчанию для новых задач"
+                text: qsTr("Метки по умолчанию для новых задач")
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
@@ -1116,7 +1116,7 @@ Rectangle {
             // Empty-state hint when there are no labels at all in the system.
             Label {
                 visible: dataStore.allLabels().length === 0
-                text: "В системе пока нет меток. Создай метки в разделе «Метки», чтобы выбирать их здесь."
+                text: qsTr("В системе пока нет меток. Создай метки в разделе «Метки», чтобы выбирать их здесь.")
                 font.pixelSize: FontSize.caption
                 color: root.textSecondary
                 wrapMode: Text.WordWrap
@@ -1205,7 +1205,7 @@ Rectangle {
     // ── Delete confirmation dialog ────────────────────────────────────────────
     Dialog {
         id:      deleteConfirmDialog
-        title:   "Удалить проект?"
+        title:   qsTr("Удалить проект?")
         modal:   true
         anchors.centerIn: Overlay.overlay
         // Explicit width prevents the wrapping Label from creating an
@@ -1218,7 +1218,7 @@ Rectangle {
             spacing: 8
 
             Label {
-                text:           "Проект «%1» и все его задачи будут удалены без возможности восстановления."
+                text:           qsTr("Проект «%1» и все его задачи будут удалены без возможности восстановления.")
                                 .arg(project ? project.name : "")
                 wrapMode:       Text.Wrap
                 Layout.fillWidth: true
@@ -1233,14 +1233,14 @@ Rectangle {
     // ── Remove completed tasks confirmation ───────────────────────────────────
     Dialog {
         id: removeCompletedConfirm
-        title: "Удалить все завершённые задачи?"
+        title: qsTr("Удалить все завершённые задачи?")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(380, Overlay.overlay.width - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         contentItem: Label {
-            text: "Все задачи проекта со статусом «Выполнено» будут удалены. Действие необратимо."
+            text: qsTr("Все задачи проекта со статусом «Выполнено» будут удалены. Действие необратимо.")
             wrapMode: Text.WordWrap
             color: ThemeManager.textColor
             width: 320
@@ -1251,25 +1251,25 @@ Rectangle {
             const n = projectViewModel.removeCompletedTasksInProject(projectId)
             const w = root.Window.window
             if (w && typeof w.showToast === "function") {
-                if (n > 0) w.showToast("Удалено " + n + " " + removeCompletedConfirm._wordForm(n), "success")
-                else       w.showToast("Завершённых задач не найдено", "info")
+                if (n > 0) w.showToast(qsTr("Удалено %1 %2").arg(n).arg(removeCompletedConfirm._wordForm(n)), "success")
+                else       w.showToast(qsTr("Завершённых задач не найдено"), "info")
             }
         }
 
         function _wordForm(n) {
             const m100 = n % 100
             const m10  = n % 10
-            if (m100 >= 11 && m100 <= 14) return "задач"
-            if (m10 === 1)                return "задача"
-            if (m10 >= 2 && m10 <= 4)    return "задачи"
-            return "задач"
+            if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+            if (m10 === 1)                return qsTr("задача")
+            if (m10 >= 2 && m10 <= 4)    return qsTr("задачи")
+            return qsTr("задач")
         }
     }
 
     // ── Add section dialog ────────────────────────────────────────────────────
     Dialog {
         id:      addSectionDialog
-        title:   "Добавить раздел"
+        title:   qsTr("Добавить раздел")
         modal:   true
         anchors.centerIn: Overlay.overlay
         // Explicit width so the inner ColumnLayout's content (TextField) doesn't
@@ -1294,7 +1294,7 @@ Rectangle {
             spacing: 8
 
             Label {
-                text: "Название раздела"
+                text: qsTr("Название раздела")
                 Layout.fillWidth: true
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
@@ -1302,7 +1302,7 @@ Rectangle {
             TextField {
                 id:              sectionNameField
                 Layout.fillWidth: true
-                placeholderText: "Название раздела"
+                placeholderText: qsTr("Название раздела")
                 color:           root.textPrimary
             }
         }
@@ -1313,7 +1313,7 @@ Rectangle {
         id: renameSectionDialog
         property string sectionId:  ""
         property string currentName: ""
-        title: "Переименовать раздел"
+        title: qsTr("Переименовать раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
         width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
@@ -1330,7 +1330,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Новое название"
+                text: qsTr("Новое название")
                 Layout.fillWidth: true
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
@@ -1348,7 +1348,7 @@ Rectangle {
         id: deleteSectionDialog
         property string sectionId:   ""
         property string sectionName: ""
-        title: "Удалить раздел"
+        title: qsTr("Удалить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
         width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
@@ -1358,8 +1358,8 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Удалить раздел «" + deleteSectionDialog.sectionName +
-                      "»? Задачи останутся в проекте без раздела."
+                text: qsTr("Удалить раздел «%1»? Задачи останутся в проекте без раздела.")
+                      .arg(deleteSectionDialog.sectionName)
                 wrapMode: Text.Wrap
                 Layout.fillWidth: true
                 color: root.textPrimary
@@ -1375,7 +1375,7 @@ Rectangle {
     // ── Add task to specific section dialog ───────────────────────────────────
     Dialog {
         id:      addTaskToSectionDialog
-        title:   "Добавить задачу"
+        title:   qsTr("Добавить задачу")
         modal:   true
         anchors.centerIn: Overlay.overlay
         width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
@@ -1403,7 +1403,7 @@ Rectangle {
             spacing: 8
 
             Label {
-                text: "Название задачи"
+                text: qsTr("Название задачи")
                 Layout.fillWidth: true
                 font.pixelSize: FontSize.small
                 color: root.textSecondary
@@ -1411,7 +1411,7 @@ Rectangle {
             TextField {
                 id:              taskContentField
                 Layout.fillWidth: true
-                placeholderText: "Название задачи"
+                placeholderText: qsTr("Название задачи")
                 color:           root.textPrimary
             }
         }
@@ -1497,7 +1497,7 @@ Rectangle {
             projectConfetti.celebrate()
             const w = root.Window.window
             if (w && typeof w.showToast === "function")
-                w.showToast("🎉 Цель проекта на неделю достигнута!", "success")
+                w.showToast(qsTr("🎉 Цель проекта на неделю достигнута!"), "success")
         }
     }
 }

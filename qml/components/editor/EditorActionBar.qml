@@ -19,24 +19,24 @@ Rectangle {
 
     function _wMin(n) {
         const m100 = n % 100, m10 = n % 10
-        if (m100 >= 11 && m100 <= 14) return "минут"
-        if (m10 === 1) return "минуту"
-        if (m10 >= 2 && m10 <= 4) return "минуты"
-        return "минут"
+        if (m100 >= 11 && m100 <= 14) return qsTr("минут")
+        if (m10 === 1) return qsTr("минуту")
+        if (m10 >= 2 && m10 <= 4) return qsTr("минуты")
+        return qsTr("минут")
     }
     function _wHour(n) {
         const m100 = n % 100, m10 = n % 10
-        if (m100 >= 11 && m100 <= 14) return "часов"
-        if (m10 === 1) return "час"
-        if (m10 >= 2 && m10 <= 4) return "часа"
-        return "часов"
+        if (m100 >= 11 && m100 <= 14) return qsTr("часов")
+        if (m10 === 1) return qsTr("час")
+        if (m10 >= 2 && m10 <= 4) return qsTr("часа")
+        return qsTr("часов")
     }
     function _wDay(n) {
         const m100 = n % 100, m10 = n % 10
-        if (m100 >= 11 && m100 <= 14) return "дней"
-        if (m10 === 1) return "день"
-        if (m10 >= 2 && m10 <= 4) return "дня"
-        return "дней"
+        if (m100 >= 11 && m100 <= 14) return qsTr("дней")
+        if (m10 === 1) return qsTr("день")
+        if (m10 >= 2 && m10 <= 4) return qsTr("дня")
+        return qsTr("дней")
     }
     function _relativeRus(iso) {
         if (!iso || iso === "") return ""
@@ -45,19 +45,19 @@ Rectangle {
         const now = new Date()
         const diff = (now - d) / 1000   // seconds
         if (diff < 0) return ""
-        if (diff < 30) return "только что"
-        if (diff < 60) return Math.floor(diff) + " секунд назад"
+        if (diff < 30) return qsTr("только что")
+        if (diff < 60) return qsTr("%1 секунд назад").arg(Math.floor(diff))
         if (diff < 3600) {
             const m = Math.floor(diff / 60)
-            return m + " " + _wMin(m) + " назад"
+            return qsTr("%1 %2 назад").arg(m).arg(_wMin(m))
         }
         if (diff < 86400) {
             const h = Math.floor(diff / 3600)
-            return h + " " + _wHour(h) + " назад"
+            return qsTr("%1 %2 назад").arg(h).arg(_wHour(h))
         }
         if (diff < 7 * 86400) {
             const dd = Math.floor(diff / 86400)
-            return dd + " " + _wDay(dd) + " назад"
+            return qsTr("%1 %2 назад").arg(dd).arg(_wDay(dd))
         }
         return Qt.formatDate(d, "dd.MM.yyyy")
     }
@@ -114,7 +114,7 @@ Rectangle {
             Text {
                 id: deleteText
                 anchors.centerIn: parent
-                text:          "Удалить"
+                text:          qsTr("Удалить")
                 font.pixelSize: 13
                 color:         ThemeManager.accentColor
             }
@@ -148,7 +148,7 @@ Rectangle {
             Text {
                 id: duplicateText
                 anchors.centerIn: parent
-                text:          "Дублировать"
+                text:          qsTr("Дублировать")
                 font.pixelSize: 13
                 color:         ThemeManager.textColor
             }
@@ -179,7 +179,7 @@ Rectangle {
             Text {
                 id: saveText
                 anchors.centerIn: parent
-                text:           "Сохранить"
+                text:           qsTr("Сохранить")
                 font.pixelSize: 13
                 font.weight:    Font.Medium
                 color:          "#ffffff"
@@ -208,7 +208,7 @@ Rectangle {
                     Qt.callLater(function() {
                         let w = root.Window.window
                         if (w && typeof w.showToast === "function")
-                            w.showToast("Сохранено", "success")
+                            w.showToast(qsTr("Сохранено"), "success")
                     })
                 }
             }
@@ -246,12 +246,12 @@ Rectangle {
             if (cs === "") return ""
 
             const justCreated = (new Date() - new Date(root.task.createdAt)) < 30000
-            if (justCreated) return "Создана " + cs
+            if (justCreated) return qsTr("Создана %1").arg(cs)
 
             const ms = root._relativeRus(root.task.updatedAt)
             if (!ms || ms === "" || ms === cs)
-                return "Создана " + cs
-            return "Создана " + cs + " · Изменена " + ms
+                return qsTr("Создана %1").arg(cs)
+            return qsTr("Создана %1 · Изменена %2").arg(cs).arg(ms)
         }
 
         color:              ThemeManager.secondaryTextColor

@@ -610,8 +610,8 @@ Item {
                             Label {
                                 // ITER1 #50: replace English qsTr with literal Russian
                                 text: taskViewModel.selectedTask
-                                      ? "Редактировать задачу"
-                                      : "Добавить задачу"
+                                      ? qsTr("Редактировать задачу")
+                                      : qsTr("Добавить задачу")
                                 font.pixelSize: 17
                                 font.weight: Font.Medium
                                 color: textPrimary

@@ -12,7 +12,7 @@ Item {
     // ── Clear-chat confirmation dialog ────────────────────────────────────────
     Dialog {
         id: clearChatDialog
-        title: "Очистить диалог"
+        title: qsTr("Очистить диалог")
         anchors.centerIn: Overlay.overlay
         width: 320
         modal: true
@@ -26,7 +26,7 @@ Item {
 
         Label {
             width: parent.width
-            text: "Очистить весь диалог?"
+            text: qsTr("Очистить весь диалог?")
             wrapMode: Text.WordWrap
             font.pixelSize: FontSize.body
             color: ThemeManager.textColor
@@ -34,13 +34,13 @@ Item {
 
         footer: DialogButtonBox {
             Button {
-                text: "Очистить"
+                text: qsTr("Очистить")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 Material.background: ThemeManager.accentColor
                 Material.foreground: "white"
             }
             Button {
-                text: "Отмена"
+                text: qsTr("Отмена")
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
                 flat: true
             }
@@ -62,7 +62,7 @@ Item {
             spacing: Spacing.sm
 
             Label {
-                text: "✨ Помощник"
+                text: qsTr("✨ Помощник")
                 font.pixelSize: FontSize.h1
                 font.weight: Font.DemiBold
                 color: ThemeManager.textColor
@@ -72,7 +72,7 @@ Item {
             // «Очистить» button — only visible when there are messages
             Button {
                 visible: aiAssistant.isConfigured && messages.count > 0
-                text: "Очистить"
+                text: qsTr("Очистить")
                 flat: true
                 implicitHeight: 30
                 implicitWidth: 90
@@ -113,12 +113,12 @@ Item {
                 spacing: Spacing.sm
 
                 Label {
-                    text: "Настрой Claude API ключ"
+                    text: qsTr("Настрой Claude API ключ")
                     font.pixelSize: FontSize.subtitle
                     color: ThemeManager.textColor
                 }
                 Label {
-                    text: "Получи ключ на console.anthropic.com и вставь сюда. Хранится только на этом устройстве."
+                    text: qsTr("Получи ключ на console.anthropic.com и вставь сюда. Хранится только на этом устройстве.")
                     font.pixelSize: FontSize.small
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -137,7 +137,7 @@ Item {
                     }
                     Button {
                         id: saveKeyBtn
-                        text: "Сохранить"
+                        text: qsTr("Сохранить")
                         enabled: keyField.text.trim().length > 0
                         onClicked: {
                             aiAssistant.setApiKey(keyField.text.trim())
@@ -156,10 +156,10 @@ Item {
 
             Repeater {
                 model: [
-                    "Распланируй мою неделю",
-                    "Что важнее всего сегодня?",
-                    "Помоги разбить большую задачу",
-                    "Какие задачи я могу делегировать?"
+                    qsTr("Распланируй мою неделю"),
+                    qsTr("Что важнее всего сегодня?"),
+                    qsTr("Помоги разбить большую задачу"),
+                    qsTr("Какие задачи я могу делегировать?")
                 ]
                 delegate: Rectangle {
                     required property string modelData
@@ -223,7 +223,7 @@ Item {
                     id: msgText
                     anchors.fill: parent
                     anchors.margins: Spacing.sm
-                    text: (role === "user" ? "Ты:  " : "✨  ") + content
+                    text: (role === "user" ? qsTr("Ты:  ") : qsTr("✨  ")) + content
                     wrapMode: Text.WordWrap
                     color: ThemeManager.textColor
                     font.pixelSize: FontSize.body
@@ -249,13 +249,13 @@ Item {
             TextField {
                 id: inputField
                 Layout.fillWidth: true
-                placeholderText: "Спроси что-нибудь… например, 'распланируй мою неделю'"
+                placeholderText: qsTr("Спроси что-нибудь… например, 'распланируй мою неделю'")
                 enabled: !aiAssistant.isResponding
                 Keys.onReturnPressed: sendBtn.clicked()
             }
             Button {
                 id: sendBtn
-                text: aiAssistant.isResponding ? "..." : "Отправить"
+                text: aiAssistant.isResponding ? "..." : qsTr("Отправить")
                 enabled: !aiAssistant.isResponding && inputField.text.trim().length > 0
                 Material.background: ThemeManager.accentColor
                 Material.foreground: "white"
@@ -281,7 +281,7 @@ Item {
             Qt.callLater(() => chatList.positionViewAtEnd())
         }
         function onErrorReceived(err) {
-            messages.append({ role: "assistant", content: "❌ Ошибка: " + err })
+            messages.append({ role: "assistant", content: qsTr("❌ Ошибка: %1").arg(err) })
             Qt.callLater(() => chatList.positionViewAtEnd())
         }
     }

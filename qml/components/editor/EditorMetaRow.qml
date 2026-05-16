@@ -45,7 +45,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Проект"
+            text:                 qsTr("Проект")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -120,7 +120,7 @@ ColumnLayout {
         visible: sectionCombo.count > 0
 
         Text {
-            text:                 "Раздел"
+            text:                 qsTr("Раздел")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -142,7 +142,7 @@ ColumnLayout {
                       : []
 
             model: {
-                const items = [{ id: "", name: "(без раздела)" }]
+                const items = [{ id: "", name: qsTr("(без раздела)") }]
                 for (let i = 0; i < sectionsForCurrentProject.length; ++i) {
                     items.push({
                         id:   sectionsForCurrentProject[i].id,
@@ -186,7 +186,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Срок"
+            text:                 qsTr("Срок")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -209,7 +209,7 @@ ColumnLayout {
                     leftMargin:     10
                 }
                 text:          root._dueString !== ""
-                               ? root._dueString : "Установить срок"
+                               ? root._dueString : qsTr("Установить срок")
                 font.pixelSize: 13
                 color:         root._dueString !== ""
                                ? ThemeManager.textColor
@@ -235,7 +235,7 @@ ColumnLayout {
 
             // ITER2 #23: icon-only ✕ button — provide accessible role + name.
             Accessible.role: Accessible.Button
-            Accessible.name: "Очистить дату"
+            Accessible.name: qsTr("Очистить дату")
 
             Text {
                 anchors.centerIn: parent
@@ -285,7 +285,7 @@ ColumnLayout {
         property string _deadlineStr: root.task ? (root.task.deadline || "") : ""
 
         Text {
-            text:                 "Дедлайн"
+            text:                 qsTr("Дедлайн")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -308,7 +308,7 @@ ColumnLayout {
                     leftMargin:     10
                 }
                 text:          deadlineRow._deadlineStr !== ""
-                               ? deadlineRow._deadlineStr : "Установить дедлайн"
+                               ? deadlineRow._deadlineStr : qsTr("Установить дедлайн")
                 font.pixelSize: 13
                 color:         deadlineRow._deadlineStr !== ""
                                ? ThemeManager.textColor
@@ -334,7 +334,7 @@ ColumnLayout {
 
             // ITER2 #23: icon-only ✕ button — provide accessible role + name.
             Accessible.role: Accessible.Button
-            Accessible.name: "Очистить дедлайн"
+            Accessible.name: qsTr("Очистить дедлайн")
 
             Text {
                 anchors.centerIn: parent
@@ -373,7 +373,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Приоритет"
+            text:                 qsTr("Приоритет")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -437,7 +437,7 @@ ColumnLayout {
         property string _unit:   root.task ? (root.task.durationUnit   || "minute") : "minute"
 
         Text {
-            text:                 "Длительность"
+            text:                 qsTr("Длительность")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -464,18 +464,18 @@ ColumnLayout {
             implicitWidth: 100
 
             // Internal keys map to the C++ durationUnit field values.
-            model: ListModel {
-                ListElement { text: "минут"; key: "minute" }
-                ListElement { text: "часов"; key: "hour"   }
-                ListElement { text: "дней";  key: "day"    }
-            }
+            model: [
+                { text: qsTr("минут"), key: "minute" },
+                { text: qsTr("часов"), key: "hour"   },
+                { text: qsTr("дней"),  key: "day"    }
+            ]
             textRole: "text"
 
             // Sync currentIndex to _unit whenever _unit changes (task load/change).
             // Use a simple binding helper: currentIndex tracks _unit via a function.
             function syncUnitIndex() {
-                for (var i = 0; i < model.count; i++) {
-                    if (model.get(i).key === durationRow._unit) {
+                for (var i = 0; i < model.length; i++) {
+                    if (model[i].key === durationRow._unit) {
                         currentIndex = i
                         return
                     }
@@ -491,7 +491,7 @@ ColumnLayout {
             }
 
             onActivated: {
-                const key = model.get(currentIndex).key
+                const key = model[currentIndex].key
                 durationRow._unit = key
                 if (root.taskId !== "")
                     taskViewModel.updateTask(root.taskId, "durationUnit", key)
@@ -506,7 +506,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Оценка"
+            text:                 qsTr("Оценка")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -527,7 +527,7 @@ ColumnLayout {
                 Text {
                     text:          root.task && root.task.estimateMinutes > 0
                                    ? estimateChip._formatEstimate(root.task.estimateMinutes)
-                                   : "Не задана"
+                                   : qsTr("Не задана")
                     color:         root.task && root.task.estimateMinutes > 0
                                    ? ThemeManager.textColor
                                    : ThemeManager.secondaryTextColor
@@ -538,9 +538,9 @@ ColumnLayout {
             onClicked: estimatePopup.open()
 
             function _formatEstimate(min) {
-                if (min < 60)        return min + " мин"
-                if (min % 60 === 0)  return (min / 60) + " ч"
-                return Math.floor(min / 60) + " ч " + (min % 60) + " мин"
+                if (min < 60)        return qsTr("%1 мин").arg(min)
+                if (min % 60 === 0)  return qsTr("%1 ч").arg(min / 60)
+                return qsTr("%1 ч %2 мин").arg(Math.floor(min / 60)).arg(min % 60)
             }
 
             Popup {
@@ -561,13 +561,13 @@ ColumnLayout {
 
                     Repeater {
                         model: [
-                            { label: "Без оценки",    minutes: 0   },
-                            { label: "10 минут",      minutes: 10  },
-                            { label: "30 минут",      minutes: 30  },
-                            { label: "1 час",         minutes: 60  },
-                            { label: "2 часа",        minutes: 120 },
-                            { label: "4 часа",        minutes: 240 },
-                            { label: "8 часов (день)", minutes: 480 }
+                            { label: qsTr("Без оценки"),    minutes: 0   },
+                            { label: qsTr("10 минут"),      minutes: 10  },
+                            { label: qsTr("30 минут"),      minutes: 30  },
+                            { label: qsTr("1 час"),         minutes: 60  },
+                            { label: qsTr("2 часа"),        minutes: 120 },
+                            { label: qsTr("4 часа"),        minutes: 240 },
+                            { label: qsTr("8 часов (день)"), minutes: 480 }
                         ]
 
                         delegate: ItemDelegate {
@@ -596,7 +596,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Метки"
+            text:                 qsTr("Метки")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -641,7 +641,7 @@ ColumnLayout {
                 Text {
                     id: addLabelText
                     anchors.centerIn: parent
-                    text:          "+ Добавить метку"
+                    text:          qsTr("+ Добавить метку")
                     font.pixelSize: FontSize.small
                     color:         ThemeManager.secondaryTextColor
                 }
@@ -664,7 +664,7 @@ ColumnLayout {
         spacing: 8
 
         Text {
-            text:                 "Цвет"
+            text:                 qsTr("Цвет")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
             Layout.preferredWidth: 90
@@ -684,7 +684,7 @@ ColumnLayout {
                     border.width: 1
                 }
                 Text {
-                    text:          root.task && root.task.color !== "" ? root.task.color : "Не задан"
+                    text:          root.task && root.task.color !== "" ? root.task.color : qsTr("Не задан")
                     color:         ThemeManager.textColor
                     font.pixelSize: FontSize.small
                 }
@@ -771,7 +771,7 @@ ColumnLayout {
         TextField {
             id: labelInput
             Layout.fillWidth: true
-            placeholderText:  "Название метки"
+            placeholderText:  qsTr("Название метки")
             font.pixelSize:   13
             color:            ThemeManager.textColor
             background: Rectangle {

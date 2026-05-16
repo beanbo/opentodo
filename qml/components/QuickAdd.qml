@@ -230,7 +230,7 @@ Rectangle {
 
                 // ITER2 #23: icon-only button — provide accessible role + name.
                 Accessible.role: Accessible.Button
-                Accessible.name: "Установить срок"
+                Accessible.name: qsTr("Установить срок")
 
                 contentItem: Text {
                     text:                  "\uD83D\uDCC5"   // 📅 calendar emoji fallback
@@ -246,7 +246,7 @@ Rectangle {
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text:    root.selectedDueString !== "" ? root.selectedDueString : "Установить срок"
+                ToolTip.text:    root.selectedDueString !== "" ? root.selectedDueString : qsTr("Установить срок")
 
                 onClicked: datePicker.open()
 
@@ -266,7 +266,7 @@ Rectangle {
                 padding: 0
 
                 Accessible.role: Accessible.Button
-                Accessible.name: "Повторение"
+                Accessible.name: qsTr("Повторение")
 
                 contentItem: Text {
                     text:                "🔁"  // 🔁 repeat arrows
@@ -286,7 +286,7 @@ Rectangle {
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text:    "Повторение"
+                ToolTip.text:    qsTr("Повторение")
 
                 onClicked: recurMenu.open()
 
@@ -296,33 +296,33 @@ Rectangle {
 
                     Repeater {
                         model: [
-                            { label: "Ежедневно",          phrase: "каждый день"         },
-                            { label: "По будням",          phrase: "каждый будний день"   },
-                            { label: "По выходным",        phrase: "каждые выходные"      },
-                            { label: "Еженедельно",        phrase: "каждую неделю"        },
-                            { label: "Каждый понедельник", phrase: "каждый понедельник"   },
-                            { label: "Каждый вторник",     phrase: "каждый вторник"       },
-                            { label: "Каждую среду",       phrase: "каждую среду"         },
-                            { label: "Каждый четверг",     phrase: "каждый четверг"       },
-                            { label: "Каждую пятницу",     phrase: "каждую пятницу"       },
-                            { label: "Ежемесячно",         phrase: "каждый месяц"         },
-                            { label: "Ежегодно",           phrase: "каждый год"           },
+                            { label: qsTr("Ежедневно"),          phrase: "каждый день"         },
+                            { label: qsTr("По будням"),          phrase: "каждый будний день"   },
+                            { label: qsTr("По выходным"),        phrase: "каждые выходные"      },
+                            { label: qsTr("Еженедельно"),        phrase: "каждую неделю"        },
+                            { label: qsTr("Каждый понедельник"), phrase: "каждый понедельник"   },
+                            { label: qsTr("Каждый вторник"),     phrase: "каждый вторник"       },
+                            { label: qsTr("Каждую среду"),       phrase: "каждую среду"         },
+                            { label: qsTr("Каждый четверг"),     phrase: "каждый четверг"       },
+                            { label: qsTr("Каждую пятницу"),     phrase: "каждую пятницу"       },
+                            { label: qsTr("Ежемесячно"),         phrase: "каждый месяц"         },
+                            { label: qsTr("Ежегодно"),           phrase: "каждый год"           },
                             // ── Annual / birthday presets ──────────────────────────────
                             // "Каждый год <today>" and "Каждый год <tomorrow>" are
                             // evaluated once when the menu model is constructed (on first
                             // open).  The label shows a short human date (dd MMM); the
                             // phrase uses dd.MM so the Russian date parser can resolve it.
                             {
-                                label:  "Каждый год " + Qt.formatDate(new Date(), "dd MMM"),
+                                label:  qsTr("Каждый год %1").arg(Qt.formatDate(new Date(), "dd MMM")),
                                 phrase: "каждый год " + Qt.formatDate(new Date(), "dd.MM")
                             },
                             {
-                                label:  "Каждый год " + Qt.formatDate(new Date(Date.now() + 86400000), "dd MMM"),
+                                label:  qsTr("Каждый год %1").arg(Qt.formatDate(new Date(Date.now() + 86400000), "dd MMM")),
                                 phrase: "каждый год " + Qt.formatDate(new Date(Date.now() + 86400000), "dd.MM")
                             },
                             // Sentinel that opens the birthday date-picker popup instead
                             // of inserting a phrase directly.
-                            { label: "День рождения…",     phrase: "__pick__"             }
+                            { label: qsTr("День рождения…"),     phrase: "__pick__"             }
                         ]
 
                         delegate: MenuItem {
@@ -387,7 +387,7 @@ Rectangle {
 
                 // ITER2 #23: icon-only button — provide accessible role + name.
                 Accessible.role: Accessible.Button
-                Accessible.name: "Приоритет"
+                Accessible.name: qsTr("Приоритет")
 
                 contentItem: Text {
                     text:                "\u2691"    // ⚑ flag
@@ -403,7 +403,7 @@ Rectangle {
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text:    "Приоритет " + root.selectedPriority
+                ToolTip.text:    qsTr("Приоритет %1").arg(root.selectedPriority)
 
                 onClicked: priorityPicker.open()
 
@@ -428,7 +428,7 @@ Rectangle {
                 padding: 0
 
                 Accessible.role: Accessible.Button
-                Accessible.name: "Подсказать приоритет от ИИ"
+                Accessible.name: qsTr("Подсказать приоритет от ИИ")
 
                 enabled: !root._aiBusy && taskField.text.length >= 4
 
@@ -466,7 +466,7 @@ Rectangle {
                 }
 
                 ToolTip.visible: hovered
-                ToolTip.text:    "Подсказать приоритет от ИИ"
+                ToolTip.text:    qsTr("Подсказать приоритет от ИИ")
 
                 onClicked: {
                     if (taskField.text.length < 4 || root._aiBusy) return
@@ -484,7 +484,7 @@ Rectangle {
 
                 // ITER2 #23: icon-only button — provide accessible role + name.
                 Accessible.role: Accessible.Button
-                Accessible.name: "Добавить метку"
+                Accessible.name: qsTr("Добавить метку")
 
                 contentItem: Text {
                     text:                "\uD83C\uDFF7"   // 🏷 label emoji
@@ -502,7 +502,7 @@ Rectangle {
                 ToolTip.visible: hovered
                 ToolTip.text:    root.selectedLabels.length > 0
                                   ? root.selectedLabels.join(", ")
-                                  : "Добавить метку"
+                                  : qsTr("Добавить метку")
 
                 // F-7.12: was a no-op; now shows inline label input row
                 onClicked: root.openLabelInput()
@@ -653,7 +653,7 @@ Rectangle {
             }
 
             Text {
-                text: "Раздел:"
+                text: qsTr("Раздел:")
                 font.pixelSize: 12
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
@@ -668,7 +668,7 @@ Rectangle {
 
                 // Build model: "(без раздела)" + actual sections
                 model: {
-                    var items = [{ id: "", name: "(без раздела)" }]
+                    var items = [{ id: "", name: qsTr("(без раздела)") }]
                     var secs = sectionRow._sections
                     for (var i = 0; i < secs.length; ++i)
                         items.push({ id: secs[i].id || secs[i].id, name: secs[i].name })
@@ -783,7 +783,7 @@ Rectangle {
                 // ITER4 #2: driven by root._labelInputOpen (single source of truth);
                 // no more imperative `labelInputField.visible = true/false`.
                 visible: root._labelInputOpen
-                placeholderText: "Метки через запятую (напр. работа, дом)"
+                placeholderText: qsTr("Метки через запятую (напр. работа, дом)")
                 font.pixelSize: FontSize.body
                 color: root.textCol
                 background: Rectangle {
@@ -837,7 +837,7 @@ Rectangle {
             }
 
             Text {
-                text: "По умолчанию:"
+                text: qsTr("По умолчанию:")
                 font.pixelSize: 11
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
@@ -927,7 +927,7 @@ Rectangle {
             // Cancel
             Button {
                 id: cancelBtn
-                text: "Отмена"
+                text: qsTr("Отмена")
                 flat: true
                 font.pixelSize: 13
 
@@ -950,7 +950,7 @@ Rectangle {
             // Add task
             Button {
                 id: addBtn
-                text: "Добавить задачу"
+                text: qsTr("Добавить задачу")
                 font.pixelSize: 13
                 enabled: taskField.text.trim().length > 0
 
@@ -984,7 +984,7 @@ Rectangle {
         // Populated by taskField.onTextChanged before open() is called.
         property var checklist: []
 
-        title: "Импорт чек-листа"
+        title: qsTr("Импорт чек-листа")
         modal: true
         // Center over the Overlay (covers the full window, not just this item).
         anchors.centerIn: Overlay.overlay
@@ -1008,8 +1008,9 @@ Rectangle {
             // "Создать N задач?" headline
             Label {
                 Layout.fillWidth: true
-                text: "Создать " + checklistImportDialog.checklist.length + " "
-                      + root._pluralTasks(checklistImportDialog.checklist.length) + "?"
+                text: qsTr("Создать %1 %2?")
+                        .arg(checklistImportDialog.checklist.length)
+                        .arg(root._pluralTasks(checklistImportDialog.checklist.length))
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
                 wrapMode: Text.WordWrap
@@ -1018,16 +1019,16 @@ Rectangle {
             // Destination project info
             Label {
                 Layout.fillWidth: true
-                text: "В проект: " + (function() {
-                    if (typeof taskViewModel === "undefined") return "Входящие"
+                text: qsTr("В проект: %1").arg((function() {
+                    if (typeof taskViewModel === "undefined") return qsTr("Входящие")
                     var pid = root.selectedProjectId
-                    if (pid === "") return "Входящие"
+                    if (pid === "") return qsTr("Входящие")
                     if (typeof projectViewModel !== "undefined") {
                         var p = projectViewModel.projectById(pid)
-                        return (p && p.name) ? p.name : "Входящие"
+                        return (p && p.name) ? p.name : qsTr("Входящие")
                     }
-                    return "Входящие"
-                })()
+                    return qsTr("Входящие")
+                })())
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
@@ -1314,10 +1315,10 @@ Rectangle {
     function _pluralTasks(n) {
         var m100 = n % 100
         var m10  = n % 10
-        if (m100 >= 11 && m100 <= 14) return "задач"
-        if (m10 === 1)                 return "задачу"
-        if (m10 >= 2 && m10 <= 4)     return "задачи"
-        return "задач"
+        if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+        if (m10 === 1)                 return qsTr("задачу")
+        if (m10 >= 2 && m10 <= 4)     return qsTr("задачи")
+        return qsTr("задач")
     }
 
     // F-7.12: show the inline label text field

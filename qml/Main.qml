@@ -16,10 +16,10 @@ ApplicationWindow {
 
     function _ruTaskPlural(n) {
         var m100 = n % 100, m10 = n % 10
-        if (m100 >= 11 && m100 <= 14) return "задач"
-        if (m10 === 1)                return "задача"
-        if (m10 >= 2 && m10 <= 4)     return "задачи"
-        return "задач"
+        if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+        if (m10 === 1)                return qsTr("задача")
+        if (m10 >= 2 && m10 <= 4)     return qsTr("задачи")
+        return qsTr("задач")
     }
 
     function _pendingCountCompute() {
@@ -60,7 +60,7 @@ ApplicationWindow {
 
     Connections {
         target: syncViewModel
-        function onSyncError(message) { root.showToast("Ошибка: " + message, "error") }
+        function onSyncError(message) { root.showToast(qsTr("Ошибка: %1").arg(message), "error") }
     }
 
     // GDrive auth state — read directly from the GDriveClient context property
@@ -69,7 +69,7 @@ ApplicationWindow {
         target: typeof gdriveClient !== "undefined" ? gdriveClient : null
         function onAuthenticatedChanged() {
             if (gdriveClient && gdriveClient.authenticated)
-                root.showToast("Google Drive подключён: " + gdriveClient.accountEmail, "success")
+                root.showToast(qsTr("Google Drive подключён: %1").arg(gdriveClient.accountEmail), "success")
         }
     }
 
@@ -228,7 +228,7 @@ ApplicationWindow {
             ToolButton {
                 id: undoButton
                 contentItem: Text {
-                    text: "ОТМЕНИТЬ"
+                    text: qsTr("ОТМЕНИТЬ")
                     color: ThemeManager.accentColor
                     font.bold: true
                     font.pixelSize: FontSize.body
@@ -307,7 +307,7 @@ ApplicationWindow {
         // Use "snooze-<taskId>" as the notification id so a repeated snooze
         // replaces the previous pending schedule for the same task.
         notificationService.scheduleNotification(
-            "Отложенное напоминание", body, due, "snooze-" + taskId)
+            qsTr("Отложенное напоминание"), body, due, "snooze-" + taskId)
     }
 
     function pushBanner(title, body, taskId) {
@@ -379,7 +379,7 @@ ApplicationWindow {
     Connections {
         target: taskViewModel
         function onTaskRemoved(id) {
-            undoSnackbar.showFor(undoStack.lastDescription || "Задача удалена")
+            undoSnackbar.showFor(undoStack.lastDescription || qsTr("Задача удалена"))
         }
         // ITER3 #1: bulk-delete fires this instead of N taskRemoved events;
         // show a single snackbar with the count rather than N stacked toasts.
@@ -387,12 +387,12 @@ ApplicationWindow {
             const n = ids ? ids.length : 0
             if (n <= 0) return
             undoSnackbar.showFor(undoStack.lastDescription
-                                 || ("Удалено задач: " + n))
+                                 || qsTr("Удалено задач: %1").arg(n))
         }
         function onTaskChanged(id) {
             const t = dataStore.taskById(id)
             if (t && t.isCompleted)
-                undoSnackbar.showFor(undoStack.lastDescription || "Задача завершена")
+                undoSnackbar.showFor(undoStack.lastDescription || qsTr("Задача завершена"))
         }
     }
 
@@ -400,7 +400,7 @@ ApplicationWindow {
     Connections {
         target: undoStack
         function onUndoExecuted(description) {
-            root.showToast("Отменено: " + description, "info")
+            root.showToast(qsTr("Отменено: %1").arg(description), "info")
         }
     }
 
@@ -532,7 +532,7 @@ ApplicationWindow {
             Item {
                 Dialog {
                     id: updateDialog
-                    title: "Доступно обновление"
+                    title: qsTr("Доступно обновление")
                     visible: updateChecker.updateAvailable
                     anchors.centerIn: Overlay.overlay
                     width: 380
@@ -551,13 +551,13 @@ ApplicationWindow {
                         spacing: Spacing.sm
 
                         Label {
-                            text: "OpenTodo " + updateChecker.latestVersion + " доступен."
+                            text: qsTr("OpenTodo %1 доступен.").arg(updateChecker.latestVersion)
                             font.pixelSize: FontSize.subtitle
                             font.bold: true
                             color: ThemeManager.textColor
                         }
                         Label {
-                            text: "У вас сейчас " + updateChecker.currentVersion + "."
+                            text: qsTr("У вас сейчас %1.").arg(updateChecker.currentVersion)
                             font.pixelSize: FontSize.body
                             color: ThemeManager.secondaryTextColor
                         }
@@ -568,7 +568,7 @@ ApplicationWindow {
                             spacing: Spacing.sm
 
                             Button {
-                                text: "Скачать"
+                                text: qsTr("Скачать")
                                 Material.background: ThemeManager.accentColor
                                 Material.foreground: "white"
                                 onClicked: {
@@ -577,11 +577,11 @@ ApplicationWindow {
                                 }
                             }
                             Button {
-                                text: "Позже"
+                                text: qsTr("Позже")
                                 onClicked: updateDialog.close()
                             }
                             Button {
-                                text: "Пропустить"
+                                text: qsTr("Пропустить")
                                 onClicked: {
                                     updateChecker.skipVersion(updateChecker.latestVersion)
                                     updateDialog.close()

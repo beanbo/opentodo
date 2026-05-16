@@ -32,7 +32,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Боковая панель"
+                text: qsTr("Боковая панель")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -84,7 +84,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Показывать счётчик Входящих"
+                    text: qsTr("Показывать счётчик Входящих")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -124,7 +124,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Показывать счётчик Сегодня"
+                    text: qsTr("Показывать счётчик Сегодня")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -164,7 +164,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Показывать счётчик Предстоящих"
+                    text: qsTr("Показывать счётчик Предстоящих")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true

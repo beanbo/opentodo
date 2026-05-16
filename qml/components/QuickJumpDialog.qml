@@ -87,7 +87,7 @@ Popup {
                 TextField {
                     id: searchInput
                     Layout.fillWidth: true
-                    placeholderText: "Перейти к задаче…"
+                    placeholderText: qsTr("Перейти к задаче…")
                     background: Item {}
                     color: ThemeManager.textColor
                     font.pixelSize: 16

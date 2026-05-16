@@ -27,7 +27,7 @@ Rectangle {
     // ── Reset confirmation dialog ─────────────────────────────────────────────
     Dialog {
         id: resetDialog
-        title: "Сбросить настройки"
+        title: qsTr("Сбросить настройки")
         anchors.centerIn: Overlay.overlay
         width: 340
         modal: true
@@ -45,7 +45,7 @@ Rectangle {
             spacing: 8
 
             Label {
-                text: "Сбросить все настройки?"
+                text: qsTr("Сбросить все настройки?")
                 font.pixelSize: 15
                 font.bold: true
                 color: ThemeManager.textColor
@@ -53,7 +53,7 @@ Rectangle {
             }
 
             Label {
-                text: "Это вернёт все настройки к значениям по умолчанию. Задачи и проекты затронуты не будут."
+                text: qsTr("Это вернёт все настройки к значениям по умолчанию. Задачи и проекты затронуты не будут.")
                 wrapMode: Text.WordWrap
                 font.pixelSize: 14
                 color: ThemeManager.secondaryTextColor
@@ -78,7 +78,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "О программе"
+                text: qsTr("О программе")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -158,7 +158,7 @@ Rectangle {
                             color: ThemeManager.textColor
                         }
                         Text {
-                            text: "Версия 1.0.0"
+                            text: qsTr("Версия 1.0.0")
                             font.pixelSize: 12
                             color: ThemeManager.secondaryTextColor
                         }
@@ -166,14 +166,14 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Приватный планировщик задач с открытым исходным кодом."
+                    text: qsTr("Приватный планировщик задач с открытым исходным кодом.")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.topMargin: 4
                 }
 
                 Text {
-                    text: "Создано с использованием Qt 6 · QML · C++20"
+                    text: qsTr("Создано с использованием Qt 6 · QML · C++20")
                     font.pixelSize: 12
                     color: ThemeManager.secondaryTextColor
                 }
@@ -182,7 +182,7 @@ Rectangle {
                 // Hyperlink-styled label: accent color + underline on hover.
                 Label {
                     id: whatsNewLink
-                    text: "✨ Что нового..."
+                    text: qsTr("✨ Что нового...")
                     font.pixelSize: 13
                     font.underline: whatsNewMouseArea.containsMouse
                     color: ThemeManager.accentColor
@@ -222,13 +222,13 @@ Rectangle {
                     spacing: 2
 
                     Label {
-                        text: "Анонимная статистика"
+                        text: qsTr("Анонимная статистика")
                         font.pixelSize: 14
                         font.bold: true
                         color: ThemeManager.textColor
                     }
                     Label {
-                        text: "Помогает улучшать продукт. Без личных данных. Можно отключить в любой момент."
+                        text: qsTr("Помогает улучшать продукт. Без личных данных. Можно отключить в любой момент.")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -281,7 +281,7 @@ Rectangle {
                     spacing: 10
 
                     Text {
-                        text: "Уведомления"
+                        text: qsTr("Уведомления")
                         font.pixelSize: 14
                         font.bold: true
                         color: ThemeManager.textColor
@@ -304,10 +304,10 @@ Rectangle {
                             id: notifStatusLabel
                             anchors.centerIn: parent
                             text: !notifCardRoot._hasNotifSvc
-                                ? "Недоступно"
+                                ? qsTr("Недоступно")
                                 : notifCardRoot._granted
-                                    ? "Разрешено"
-                                    : "Запрещено"
+                                    ? qsTr("Разрешено")
+                                    : qsTr("Запрещено")
                             font.pixelSize: 12
                             font.bold: true
                             color: !notifCardRoot._hasNotifSvc
@@ -322,7 +322,7 @@ Rectangle {
                 // Hint shown only when permission is denied
                 Text {
                     visible: notifCardRoot._hasNotifSvc && !notifCardRoot._granted
-                    text: "Чтобы получать напоминания, разрешите уведомления в настройках операционной системы."
+                    text: qsTr("Чтобы получать напоминания, разрешите уведомления в настройках операционной системы.")
                     font.pixelSize: 12
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -335,7 +335,7 @@ Rectangle {
                     spacing: 8
 
                     Button {
-                        text: "Послать тестовое"
+                        text: qsTr("Послать тестовое")
                         enabled: notifCardRoot._hasNotifSvc
                         implicitHeight: 36
 
@@ -356,8 +356,8 @@ Rectangle {
 
                         onClicked: {
                             notificationService.showNotification(
-                                "OpenTodo — тест",
-                                "Если ты видишь это уведомление, всё работает!",
+                                qsTr("OpenTodo — тест"),
+                                qsTr("Если ты видишь это уведомление, всё работает!"),
                                 ""
                             )
                             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
@@ -367,7 +367,7 @@ Rectangle {
 
                     Button {
                         visible: notifCardRoot._hasNotifSvc && !notifCardRoot._granted
-                        text: "Запросить разрешение"
+                        text: qsTr("Запросить разрешение")
                         implicitHeight: 36
 
                         contentItem: Text {
@@ -416,14 +416,14 @@ Rectangle {
 
                 // Header
                 Text {
-                    text: "Журнал ошибок"
+                    text: qsTr("Журнал ошибок")
                     font.pixelSize: 14
                     font.bold: true
                     color: ThemeManager.textColor
                 }
 
                 Text {
-                    text: "Сюда пишутся все qWarning / qFatal сообщения. Полезно при отчёте о баге."
+                    text: qsTr("Сюда пишутся все qWarning / qFatal сообщения. Полезно при отчёте о баге.")
                     font.pixelSize: 12
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -455,14 +455,14 @@ Rectangle {
                                 const sz = crashLogger.logFileSize()
                                 const iso = crashLogger.logFileModifiedIso()
                                 const sizeStr = sz < 1024
-                                    ? sz + " Б"
+                                    ? sz + qsTr(" Б")
                                     : sz < 1048576
-                                        ? Math.round(sz / 1024) + " КБ"
-                                        : (sz / 1048576).toFixed(1) + " МБ"
+                                        ? Math.round(sz / 1024) + qsTr(" КБ")
+                                        : (sz / 1048576).toFixed(1) + qsTr(" МБ")
                                 const dateStr = iso === ""
-                                    ? "пусто"
+                                    ? qsTr("пусто")
                                     : iso.replace("T", " ").substring(0, 16)
-                                return sizeStr + " · обновлён " + dateStr
+                                return qsTr("%1 · обновлён %2").arg(sizeStr).arg(dateStr)
                             }
                             font.pixelSize: 11
                             color: ThemeManager.secondaryTextColor
@@ -470,7 +470,7 @@ Rectangle {
                     }
 
                     Button {
-                        text: "Открыть папку"
+                        text: qsTr("Открыть папку")
                         enabled: logCardRoot._hasLogger
                         implicitHeight: 36
 
@@ -517,14 +517,14 @@ Rectangle {
                 spacing: 8
 
                 Label {
-                    text: "Расположение данных"
+                    text: qsTr("Расположение данных")
                     font.pixelSize: 14
                     font.bold: true
                     color: ThemeManager.textColor
                 }
 
                 Label {
-                    text: "Здесь хранятся state.json, бэкапы, логи и pending-commits для синхронизации."
+                    text: qsTr("Здесь хранятся state.json, бэкапы, логи и pending-commits для синхронизации.")
                     font.pixelSize: 11
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -532,7 +532,7 @@ Rectangle {
                 }
 
                 Label {
-                    text: dataPathRoot._dataDir !== "" ? dataPathRoot._dataDir : "недоступно"
+                    text: dataPathRoot._dataDir !== "" ? dataPathRoot._dataDir : qsTr("недоступно")
                     font.family: "Consolas"
                     font.pixelSize: 11
                     color: ThemeManager.textColor
@@ -549,7 +549,7 @@ Rectangle {
                     Item { Layout.fillWidth: true }
 
                     Button {
-                        text: "Открыть папку"
+                        text: qsTr("Открыть папку")
                         enabled: dataPathRoot._dataDir !== ""
                         implicitHeight: 36
 
@@ -598,14 +598,14 @@ Rectangle {
                 spacing: 8
 
                 Label {
-                    text: "Экспорт / импорт настроек"
+                    text: qsTr("Экспорт / импорт настроек")
                     font.pixelSize: 14
                     font.bold: true
                     color: ThemeManager.textColor
                 }
 
                 Label {
-                    text: "Сохраните настройки в JSON или восстановите из ранее сохранённого файла."
+                    text: qsTr("Сохраните настройки в JSON или восстановите из ранее сохранённого файла.")
                     font.pixelSize: 11
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -618,7 +618,7 @@ Rectangle {
                     spacing: 8
 
                     Button {
-                        text: "Экспорт"
+                        text: qsTr("Экспорт")
                         implicitHeight: 36
 
                         contentItem: Text {
@@ -641,15 +641,15 @@ Rectangle {
                             const w = root.Window.window
                             if (w && typeof w.showToast === "function") {
                                 if (path && path !== "")
-                                    w.showToast("Сохранено: " + path, "success")
+                                    w.showToast(qsTr("Сохранено: %1").arg(path), "success")
                                 else
-                                    w.showToast("Не удалось экспортировать настройки", "error")
+                                    w.showToast(qsTr("Не удалось экспортировать настройки"), "error")
                             }
                         }
                     }
 
                     Button {
-                        text: "Импорт..."
+                        text: qsTr("Импорт...")
                         implicitHeight: 36
 
                         contentItem: Text {
@@ -677,8 +677,8 @@ Rectangle {
             // File picker — shown when "Импорт..." is clicked
             FileDialog {
                 id: importFileDialog
-                title: "Выберите файл настроек"
-                nameFilters: ["JSON (*.json)", "Все файлы (*)"]
+                title: qsTr("Выберите файл настроек")
+                nameFilters: [qsTr("JSON (*.json)"), qsTr("Все файлы (*)")]
                 onAccepted: {
                     // Convert QUrl to a local file-system path that C++ can open.
                     // Qt gives us a proper QUrl; toString() yields "file:///C:/..."
@@ -695,7 +695,7 @@ Rectangle {
             // Confirmation dialog — shown before overwriting settings
             Dialog {
                 id: importConfirmDialog
-                title: "Перезаписать настройки?"
+                title: qsTr("Перезаписать настройки?")
                 modal: true
                 anchors.centerIn: Overlay.overlay
                 width: 360
@@ -711,7 +711,7 @@ Rectangle {
                 }
 
                 contentItem: Label {
-                    text: "Текущие настройки будут заменены содержимым файла. Продолжить?"
+                    text: qsTr("Текущие настройки будут заменены содержимым файла. Продолжить?")
                     wrapMode: Text.WordWrap
                     color: ThemeManager.textColor
                     width: 320
@@ -722,9 +722,9 @@ Rectangle {
                     const w = root.Window.window
                     if (w && typeof w.showToast === "function") {
                         if (ok)
-                            w.showToast("Настройки импортированы", "success")
+                            w.showToast(qsTr("Настройки импортированы"), "success")
                         else
-                            w.showToast("Не удалось импортировать (проверьте формат файла)", "error")
+                            w.showToast(qsTr("Не удалось импортировать (проверьте формат файла)"), "error")
                     }
                 }
             }
@@ -749,14 +749,14 @@ Rectangle {
                     spacing: 2
 
                     Label {
-                        text: "Сбросить карму"
+                        text: qsTr("Сбросить карму")
                         font.pixelSize: 14
                         font.bold: true
                         color: ThemeManager.textColor
                     }
 
                     Label {
-                        text: "Очистить очки, уровень, серии, достижения и историю кармы."
+                        text: qsTr("Очистить очки, уровень, серии, достижения и историю кармы.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -765,7 +765,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: "Сбросить"
+                    text: qsTr("Сбросить")
                     flat: true
                     Material.foreground: "#db4c3f"
                     onClicked: resetKarmaDialog.open()
@@ -774,7 +774,7 @@ Rectangle {
 
             Dialog {
                 id: resetKarmaDialog
-                title: "Сбросить карму?"
+                title: qsTr("Сбросить карму?")
                 modal: true
                 anchors.centerIn: Overlay.overlay
                 width: 360
@@ -788,7 +788,7 @@ Rectangle {
                 }
 
                 contentItem: Label {
-                    text: "Это сбросит очки кармы, уровень, ежедневную и недельную серии, а также все достижения и историю. Действие необратимо."
+                    text: qsTr("Это сбросит очки кармы, уровень, ежедневную и недельную серии, а также все достижения и историю. Действие необратимо.")
                     wrapMode: Text.WordWrap
                     color: ThemeManager.textColor
                     width: 320
@@ -804,7 +804,7 @@ Rectangle {
 
         // Reset all settings button
         Button {
-            text: "Сбросить все настройки"
+            text: qsTr("Сбросить все настройки")
             Layout.alignment: Qt.AlignHCenter
             Layout.bottomMargin: 16
             implicitHeight: 40

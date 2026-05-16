@@ -121,6 +121,13 @@ public:
     Q_INVOKABLE QStringList availableThemes() const;
     Q_INVOKABLE QStringList availableLanguages() const;
 
+    // Returns true on platforms where the app can relaunch itself in-process
+    // (desktop). Android/WASM return false — the user must restart manually.
+    Q_INVOKABLE bool canRestartApp() const;
+    // Launches a new instance of the application and quits the current one.
+    // No-op when canRestartApp() returns false.
+    Q_INVOKABLE void restartApp();
+
 signals:
     void themeChanged();
     void dailyGoalChanged();

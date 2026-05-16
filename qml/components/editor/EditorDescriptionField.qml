@@ -36,7 +36,7 @@ ColumnLayout {
         Layout.alignment: Qt.AlignRight
         Layout.topMargin: Spacing.xs
 
-        text: aiGeneratingNow ? "Думаю..." : "✨ Сгенерировать описание"
+        text: aiGeneratingNow ? qsTr("Думаю...") : qsTr("✨ Сгенерировать описание")
         flat: true
         enabled: !aiGeneratingNow
 
@@ -67,7 +67,7 @@ ColumnLayout {
             if (title === "") {
                 const w = Window.window
                 if (w && typeof w.showToast === "function")
-                    w.showToast("Сначала введите название задачи", "info")
+                    w.showToast(qsTr("Сначала введите название задачи"), "info")
                 return
             }
             aiGeneratingNow = true
@@ -181,7 +181,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
-                ToolTip.text: "Полужирный (Ctrl+B)"
+                ToolTip.text: qsTr("Полужирный (Ctrl+B)")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -210,7 +210,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
-                ToolTip.text: "Курсив (Ctrl+I)"
+                ToolTip.text: qsTr("Курсив (Ctrl+I)")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -238,7 +238,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  36
                 ToolTip.visible: hovered
-                ToolTip.text: "Код"
+                ToolTip.text: qsTr("Код")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -266,7 +266,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
-                ToolTip.text: "Вставить ссылку (Ctrl+K)"
+                ToolTip.text: qsTr("Вставить ссылку (Ctrl+K)")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -294,7 +294,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
-                ToolTip.text: "Маркированный список"
+                ToolTip.text: qsTr("Маркированный список")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -322,7 +322,7 @@ ColumnLayout {
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
-                ToolTip.text: "Нумерованный список"
+                ToolTip.text: qsTr("Нумерованный список")
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -426,14 +426,14 @@ ColumnLayout {
             spacing: Spacing.xs
 
             Label {
-                text:  "Текст"
+                text:  qsTr("Текст")
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: FontSize.caption
             }
             TextField {
                 id: linkTextField
                 Layout.fillWidth: true
-                placeholderText: "Текст ссылки"
+                placeholderText: qsTr("Текст ссылки")
                 color:            ThemeManager.textColor
                 placeholderTextColor: ThemeManager.secondaryTextColor
                 font.pixelSize:   FontSize.body
@@ -460,12 +460,12 @@ ColumnLayout {
                 Layout.topMargin: Spacing.xs
                 Item { Layout.fillWidth: true }
                 Button {
-                    text: "Отмена"
+                    text: qsTr("Отмена")
                     flat: true
                     onClicked: linkPopup.close()
                 }
                 Button {
-                    text: "Вставить"
+                    text: qsTr("Вставить")
                     highlighted: true
                     onClicked: linkPopup._accept()
                 }
@@ -482,7 +482,7 @@ ColumnLayout {
         Layout.fillWidth: true
 
         text:            root.task ? (root.task.description || "") : ""
-        placeholderText: "Описание (поддерживается Markdown)"
+        placeholderText: qsTr("Описание (поддерживается Markdown)")
         font.pixelSize:  FontSize.body
         color:           ThemeManager.textColor
         wrapMode:        TextEdit.Wrap
@@ -598,7 +598,7 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                text: "Открыть ссылку?"
+                text: qsTr("Открыть ссылку?")
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
                 font.bold: true
@@ -617,7 +617,7 @@ ColumnLayout {
                 Layout.topMargin: Spacing.xs
                 Item { Layout.fillWidth: true }
                 Button {
-                    text: "Нет"
+                    text: qsTr("Нет")
                     flat: true
                     onClicked: {
                         linkConfirmPopup.pendingUrl = ""
@@ -625,7 +625,7 @@ ColumnLayout {
                     }
                 }
                 Button {
-                    text: "Да"
+                    text: qsTr("Да")
                     highlighted: true
                     onClicked: {
                         var u = linkConfirmPopup.pendingUrl

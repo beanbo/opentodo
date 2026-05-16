@@ -32,9 +32,9 @@ Rectangle {
         var target = new Date();
         target.setHours(9, 0, 0, 0);
         if (now >= target) {
-            return "Отложить до 9:00 завтра";
+            return qsTr("Отложить до 9:00 завтра");
         }
-        return "Отложить до 9:00 сегодня";
+        return qsTr("Отложить до 9:00 сегодня");
     }
 
     // Computes the number of minutes from now until the next 9:00 AM
@@ -146,7 +146,7 @@ Rectangle {
         // "Открыть задачу" hint row — only shown when a taskId is set
         Text {
             visible: root.bannerTaskId.length > 0
-            text: "Открыть задачу →"
+            text: qsTr("Открыть задачу →")
             color: "white"
             font.pixelSize: FontSize.small
             font.underline: true
@@ -216,7 +216,7 @@ Rectangle {
             // «Готово» — completes the task and dismisses
             ActionButton {
                 id: doneBtn
-                label: "Готово"
+                label: qsTr("Готово")
                 visible_: root.bannerTaskId.length > 0
                 isHovered: doneHover.hovered
 
@@ -234,7 +234,7 @@ Rectangle {
             // «Отложить» — opens a submenu so the user can pick 5/10/15/30/60 min
             ActionButton {
                 id: snoozeBtn
-                label: "Отложить"
+                label: qsTr("Отложить")
                 isHovered: snoozeHover.hovered || snoozeMenu.opened
 
                 HoverHandler {
@@ -256,8 +256,8 @@ Rectangle {
                         model: [5, 10, 15, 30, 60]
                         delegate: MenuItem {
                             text: modelData < 60
-                                ? "На " + modelData + " минут"
-                                : "На 1 час"
+                                ? qsTr("На %1 минут").arg(modelData)
+                                : qsTr("На 1 час")
                             onTriggered: {
                                 root.snoozeRequested(root.bannerTaskId, modelData)
                                 root.dismissRequested(root.bannerIndex)
@@ -270,10 +270,10 @@ Rectangle {
                     // «📅 До понедельника 9:00» — snooze until next Monday 9 AM
                     // (today 9 AM if today is Monday and it's still before 9).
                     MenuItem {
-                        text: "📅 До понедельника 9:00"
+                        text: qsTr("📅 До понедельника 9:00")
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
-                        ToolTip.text: "Отложить до понедельника 9:00"
+                        ToolTip.text: qsTr("Отложить до понедельника 9:00")
                         onTriggered: {
                             var minutes = root._minutesUntilNextDayOfWeek(1, 9, 0);
                             if (typeof telemetry !== "undefined" && telemetry !== null) {
@@ -290,10 +290,10 @@ Rectangle {
                     // «🏖 До выходных» — snooze until next Saturday 9 AM
                     // (today 9 AM if today is Saturday and it's still before 9).
                     MenuItem {
-                        text: "🏖 До выходных"
+                        text: qsTr("🏖 До выходных")
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
-                        ToolTip.text: "Отложить до субботы 9:00"
+                        ToolTip.text: qsTr("Отложить до субботы 9:00")
                         onTriggered: {
                             var minutes = root._minutesUntilNextDayOfWeek(6, 9, 0);
                             if (typeof telemetry !== "undefined" && telemetry !== null) {
@@ -310,7 +310,7 @@ Rectangle {
                     MenuSeparator {}
 
                     MenuItem {
-                        text: "Свой…"
+                        text: qsTr("Свой…")
                         onTriggered: customSnoozeDialog.open()
                     }
                 }
@@ -320,7 +320,7 @@ Rectangle {
             // (today 9:00 if it's still before morning, otherwise tomorrow 9:00).
             ActionButton {
                 id: morningBtn
-                label: "🌅 До утра"
+                label: qsTr("🌅 До утра")
                 visible_: root.bannerTaskId.length > 0
                 isHovered: morningHover.hovered
 
@@ -349,7 +349,7 @@ Rectangle {
             // «Закрыть» — explicit dismiss button
             ActionButton {
                 id: closeBtn
-                label: "Закрыть"
+                label: qsTr("Закрыть")
                 isHovered: closeHover.hovered
 
                 HoverHandler {
@@ -388,7 +388,7 @@ Rectangle {
     // ── Custom snooze dialog ──────────────────────────────────────────────────
     Dialog {
         id: customSnoozeDialog
-        title: "Отложить на..."
+        title: qsTr("Отложить на...")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -397,7 +397,7 @@ Rectangle {
             spacing: 8
 
             Label {
-                text: "Минут:"
+                text: qsTr("Минут:")
                 color: ThemeManager.textColor
             }
 
@@ -413,11 +413,12 @@ Rectangle {
 
             Label {
                 text: customSnoozeSpin.value < 60
-                    ? "Уведомление через " + customSnoozeSpin.value + " минут"
+                    ? qsTr("Уведомление через %1 минут").arg(customSnoozeSpin.value)
                     : (customSnoozeSpin.value === 60
-                        ? "Уведомление через 1 час"
-                        : "Уведомление через " + Math.floor(customSnoozeSpin.value / 60)
-                          + " ч " + (customSnoozeSpin.value % 60) + " мин")
+                        ? qsTr("Уведомление через 1 час")
+                        : qsTr("Уведомление через %1 ч %2 мин")
+                          .arg(Math.floor(customSnoozeSpin.value / 60))
+                          .arg(customSnoozeSpin.value % 60))
                 font.pixelSize: 12
                 color: ThemeManager.secondaryTextColor
             }

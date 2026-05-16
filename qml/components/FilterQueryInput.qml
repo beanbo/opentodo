@@ -67,7 +67,7 @@ Rectangle {
             Layout.fillWidth: true
 
             text:        root.query
-            placeholderText: "напр. today & p1, #Работа & overdue"
+            placeholderText: qsTr("напр. today & p1, #Работа & overdue")
 
             // Monospace font for query text
             font.family:  "Consolas, 'Courier New', monospace"
@@ -125,7 +125,7 @@ Rectangle {
             Text {
                 id: validationMessage
                 Layout.fillWidth: true
-                text:       root._isValid ? "Запрос корректен" : root._errorText
+                text:       root._isValid ? qsTr("Запрос корректен") : root._errorText
                 font.pixelSize: 13
                 color:      root._isValid ? "#4caf50" : "#db4c3f"
                 wrapMode:   Text.WordWrap

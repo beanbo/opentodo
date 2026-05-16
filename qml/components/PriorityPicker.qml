@@ -20,10 +20,10 @@ Popup {
 
     // Priority definitions
     readonly property var priorities: [
-        { value: 1, label: "Приоритет 1", flagColor: "#db4c3f" },
-        { value: 2, label: "Приоритет 2", flagColor: "#f49c18" },
-        { value: 3, label: "Приоритет 3", flagColor: "#4073ff" },
-        { value: 4, label: "Приоритет 4", flagColor: "#808080" }
+        { value: 1, label: qsTr("Приоритет 1"), flagColor: "#db4c3f" },
+        { value: 2, label: qsTr("Приоритет 2"), flagColor: "#f49c18" },
+        { value: 3, label: qsTr("Приоритет 3"), flagColor: "#4073ff" },
+        { value: 4, label: qsTr("Приоритет 4"), flagColor: "#808080" }
     ]
 
     // ─── Popup geometry ────────────────────────────────────────────────────────

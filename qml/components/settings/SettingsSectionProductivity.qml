@@ -72,7 +72,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Продуктивность"
+                text: qsTr("Продуктивность")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -127,12 +127,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Дневная цель"
+                        text: qsTr("Дневная цель")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Сколько задач выполнять в день"
+                        text: qsTr("Сколько задач выполнять в день")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                     }
@@ -200,12 +200,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Недельная цель"
+                        text: qsTr("Недельная цель")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Сколько задач выполнять в неделю"
+                        text: qsTr("Сколько задач выполнять в неделю")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                     }
@@ -274,13 +274,13 @@ Rectangle {
                     spacing: 2
 
                     Text {
-                        text: "Режим отпуска"
+                        text: qsTr("Режим отпуска")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
 
                     Text {
-                        text: "Приостановить отслеживание кармы во время отпуска"
+                        text: qsTr("Приостановить отслеживание кармы во время отпуска")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -336,15 +336,16 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 2
                         Text {
-                            text: "Время уведомления о ежедневном обзоре"
+                            text: qsTr("Время уведомления о ежедневном обзоре")
                             font.pixelSize: 14
                             color: ThemeManager.textColor
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                         }
                         Text {
-                            text: "Обзор сработает в " + root.pad2(dailyReviewSettings.dailyReviewHour)
-                                  + ":" + root.pad2(dailyReviewSettings.dailyReviewMinute)
+                            text: qsTr("Обзор сработает в %1:%2")
+                                  .arg(root.pad2(dailyReviewSettings.dailyReviewHour))
+                                  .arg(root.pad2(dailyReviewSettings.dailyReviewMinute))
                             font.pixelSize: 12
                             color: ThemeManager.secondaryTextColor
                         }
@@ -481,7 +482,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Применяется со следующего цикла, если идёт сессия"
+                    text: qsTr("Применяется со следующего цикла, если идёт сессия")
                     font.pixelSize: 11
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
@@ -496,7 +497,7 @@ Rectangle {
                     rowSpacing: 8
 
                     Text {
-                        text: "Длительность работы (минут)"
+                        text: qsTr("Длительность работы (минут)")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
@@ -517,7 +518,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Короткий перерыв (минут)"
+                        text: qsTr("Короткий перерыв (минут)")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
@@ -538,7 +539,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Длинный перерыв (минут)"
+                        text: qsTr("Длинный перерыв (минут)")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
@@ -559,7 +560,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Циклов до длинного перерыва"
+                        text: qsTr("Циклов до длинного перерыва")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                         Layout.fillWidth: true

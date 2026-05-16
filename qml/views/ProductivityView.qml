@@ -22,28 +22,28 @@ Item {
     function taskWord(n) {
         var m100 = n % 100
         var m10  = n % 10
-        if (m100 >= 11 && m100 <= 14) return "задач"
-        if (m10 === 1) return "задача"
-        if (m10 >= 2 && m10 <= 4) return "задачи"
-        return "задач"
+        if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+        if (m10 === 1) return qsTr("задача")
+        if (m10 >= 2 && m10 <= 4) return qsTr("задачи")
+        return qsTr("задач")
     }
 
     // Russian plural: очко / очка / очков
     function _milestoneSuffix(n) {
         var m100 = n % 100
         var m10  = n % 10
-        if (m100 >= 11 && m100 <= 14) return "очков"
-        if (m10 === 1) return "очко"
-        if (m10 >= 2 && m10 <= 4) return "очка"
-        return "очков"
+        if (m100 >= 11 && m100 <= 14) return qsTr("очков")
+        if (m10 === 1) return qsTr("очко")
+        if (m10 >= 2 && m10 <= 4) return qsTr("очка")
+        return qsTr("очков")
     }
 
     function _greetingByTime() {
         var h = new Date().getHours()
-        if (h < 5)  return { emoji: "🌙", text: "Доброй ночи" }
-        if (h < 12) return { emoji: "🌅", text: "Доброе утро" }
-        if (h < 18) return { emoji: "☀️",  text: "Добрый день" }
-        return      { emoji: "🌆", text: "Добрый вечер" }
+        if (h < 5)  return { emoji: "🌙", text: qsTr("Доброй ночи") }
+        if (h < 12) return { emoji: "🌅", text: qsTr("Доброе утро") }
+        if (h < 18) return { emoji: "☀️",  text: qsTr("Добрый день") }
+        return      { emoji: "🌆", text: qsTr("Добрый вечер") }
     }
 
     function _briefingMessage(kick) {
@@ -63,24 +63,23 @@ Item {
         if (total === 0) {
             return { emoji: "🎉",
                      title: greet.text + "!",
-                     body: "Сегодня свободный день — можно отдохнуть." }
+                     body: qsTr("Сегодня свободный день — можно отдохнуть.") }
         }
         if (done === total) {
             return { emoji: "🏆",
-                     title: "Ты умница!",
-                     body: "Все задачи на сегодня выполнены — заслуженный отдых." }
+                     title: qsTr("Ты умница!"),
+                     body: qsTr("Все задачи на сегодня выполнены — заслуженный отдых.") }
         }
         if (overdueCount > 0) {
             return { emoji: "🚨",
                      title: greet.text + "!",
-                     body: "Сегодня " + remaining + " " + taskWord(remaining)
-                         + ", из них " + overdueCount + " просрочено."
-                         + " Самое время сосредоточиться." }
+                     body: qsTr("Сегодня %1 %2, из них %3 просрочено. Самое время сосредоточиться.")
+                           .arg(remaining).arg(taskWord(remaining)).arg(overdueCount) }
         }
         return { emoji: "💪",
                  title: greet.text + "!",
-                 body: "Сегодня " + remaining + " " + taskWord(remaining)
-                     + ". Вперёд — ты справишься!" }
+                 body: qsTr("Сегодня %1 %2. Вперёд — ты справишься!")
+                       .arg(remaining).arg(taskWord(remaining)) }
     }
 
     ScrollView {
@@ -115,7 +114,7 @@ Item {
                         spacing: 8
 
                         Text {
-                            text: "🍅 Помодоро"
+                            text: qsTr("🍅 Помодоро")
                             font.pixelSize: 16
                             font.bold: true
                             color: textPrimary
@@ -123,7 +122,7 @@ Item {
                         Item { Layout.fillWidth: true }
                         Text {
                             visible: pomodoroService.completedCyclesToday > 0
-                            text: "Сегодня: " + pomodoroService.completedCyclesToday
+                            text: qsTr("Сегодня: %1").arg(pomodoroService.completedCyclesToday)
                             color: textSecondary
                             font.pixelSize: 12
                         }
@@ -149,9 +148,9 @@ Item {
                         font.pixelSize: 14
                         color: textSecondary
                         text: {
-                            if (pomodoroService.phase === "work")  return "Работа"
-                            if (pomodoroService.phase === "break") return "Перерыв"
-                            return "Готов к старту"
+                            if (pomodoroService.phase === "work")  return qsTr("Работа")
+                            if (pomodoroService.phase === "break") return qsTr("Перерыв")
+                            return qsTr("Готов к старту")
                         }
                     }
 
@@ -179,8 +178,8 @@ Item {
 
                         Button {
                             text: pomodoroService.running
-                                ? "Пауза"
-                                : (pomodoroService.phase === "idle" ? "Старт" : "Продолжить")
+                                ? qsTr("Пауза")
+                                : (pomodoroService.phase === "idle" ? qsTr("Старт") : qsTr("Продолжить"))
                             onClicked: {
                                 if (pomodoroService.running)         pomodoroService.pause()
                                 else if (pomodoroService.phase === "idle") pomodoroService.start()
@@ -188,12 +187,12 @@ Item {
                             }
                         }
                         Button {
-                            text: "Пропустить"
+                            text: qsTr("Пропустить")
                             enabled: pomodoroService.phase !== "idle"
                             onClicked: pomodoroService.skip()
                         }
                         Button {
-                            text: "Сброс"
+                            text: qsTr("Сброс")
                             enabled: pomodoroService.phase !== "idle"
                             onClicked: pomodoroService.reset()
                         }
@@ -241,7 +240,7 @@ Item {
                     property string _todayIso: Qt.formatDate(new Date(), "yyyy-MM-dd")
 
                     // Russian abbreviated day-of-week labels, Mon-first.
-                    readonly property var _dayLabels: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                    readonly property var _dayLabels: [qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб"), qsTr("Вс")]
 
                     // Last 7 ISO dates, oldest → today.
                     function _last7Dates() {
@@ -407,7 +406,7 @@ Item {
 
                     // ── Header ─────────────────────────────────────────────
                     Text {
-                        text: "🍅 Pomodoro статистика"
+                        text: qsTr("🍅 Pomodoro статистика")
                         font.pixelSize: 16
                         font.bold: true
                         color: textPrimary
@@ -420,9 +419,9 @@ Item {
 
                         Repeater {
                             model: [
-                                { label: "Сегодня",   value: pomodoroStatsCol._stats.today },
-                                { label: "За неделю", value: pomodoroStatsCol._stats.week },
-                                { label: "Всего",     value: pomodoroStatsCol._stats.total }
+                                { label: qsTr("Сегодня"),   value: pomodoroStatsCol._stats.today },
+                                { label: qsTr("За неделю"), value: pomodoroStatsCol._stats.week },
+                                { label: qsTr("Всего"),     value: pomodoroStatsCol._stats.total }
                             ]
                             delegate: Rectangle {
                                 Layout.fillWidth: true
@@ -466,7 +465,7 @@ Item {
 
                     Text {
                         visible: pomodoroStatsCol._isEmpty
-                        text: "Запусти первый Pomodoro в селе"
+                        text: qsTr("Запусти первый Pomodoro в селе")
                         color: textSecondary
                         font.pixelSize: 12
                         font.italic: true
@@ -641,13 +640,13 @@ Item {
 
                     // ── Header ─────────────────────────────────────────────
                     Text {
-                        text: "📊 Прогресс по проектам"
+                        text: qsTr("📊 Прогресс по проектам")
                         font.pixelSize: 16
                         font.bold: true
                         color: textPrimary
                     }
                     Text {
-                        text: "Доля выполненных задач"
+                        text: qsTr("Доля выполненных задач")
                         font.pixelSize: 12
                         color: textSecondary
                         Layout.bottomMargin: 4
@@ -656,7 +655,7 @@ Item {
                     // ── Empty state ────────────────────────────────────────
                     Text {
                         visible: projectChartCol._projectChartData.length === 0
-                        text: "Нет проектов с задачами"
+                        text: qsTr("Нет проектов с задачами")
                         color: textSecondary
                         font.pixelSize: 12
                         font.italic: true
@@ -697,7 +696,7 @@ Item {
 
                             // "N из M"
                             Text {
-                                text: modelData.completed + " из " + modelData.total
+                                text: qsTr("%1 из %2").arg(modelData.completed).arg(modelData.total)
                                 font.pixelSize: 11
                                 color: textSecondary
                                 horizontalAlignment: Text.AlignRight
@@ -833,7 +832,7 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {
-                        text: "Карма · " + karmaViewModel.karmaLevel
+                        text: qsTr("Карма · %1").arg(karmaViewModel.karmaLevel)
                         font.pixelSize: 16
                         color: Qt.rgba(1, 1, 1, 0.85)
                         Layout.alignment: Qt.AlignHCenter
@@ -850,14 +849,14 @@ Item {
                             Layout.fillWidth: true
 
                             Text {
-                                text: "До " + karmaViewModel.nextMilestone + " кармы:"
+                                text: qsTr("До %1 кармы:").arg(karmaViewModel.nextMilestone)
                                 font.pixelSize: 12
                                 color: Qt.rgba(1, 1, 1, 0.75)
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 readonly property int _remaining: karmaViewModel.nextMilestone - karmaViewModel.karmaScore
-                                text: _remaining + " " + _milestoneSuffix(_remaining)
+                                text: qsTr("%1 %2").arg(_remaining).arg(_milestoneSuffix(_remaining))
                                 font.pixelSize: 12
                                 font.bold: true
                                 color: "white"
@@ -916,7 +915,7 @@ Item {
                         spacing: 8
 
                         Text {
-                            text: "Прогресс за день"
+                            text: qsTr("Прогресс за день")
                             font.pixelSize: 14
                             font.bold: true
                             color: textPrimary
@@ -961,7 +960,7 @@ Item {
                         spacing: 8
 
                         Text {
-                            text: "Прогресс за неделю"
+                            text: qsTr("Прогресс за неделю")
                             font.pixelSize: 14
                             font.bold: true
                             color: textPrimary
@@ -1023,7 +1022,7 @@ Item {
                                 color: textPrimary
                             }
                             Text {
-                                text: "дн. подряд"
+                                text: qsTr("дн. подряд")
                                 font.pixelSize: 12
                                 color: textSecondary
                             }
@@ -1058,7 +1057,7 @@ Item {
                                 color: textPrimary
                             }
                             Text {
-                                text: "нед. подряд"
+                                text: qsTr("нед. подряд")
                                 font.pixelSize: 12
                                 color: textSecondary
                             }
@@ -1082,7 +1081,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: "Динамика кармы (30 дней)"
+                        text: qsTr("Динамика кармы (30 дней)")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1183,7 +1182,7 @@ Item {
                     spacing: 12
 
                     Text {
-                        text: "Активность за 90 дней"
+                        text: qsTr("Активность за 90 дней")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1199,7 +1198,7 @@ Item {
                         Column {
                             spacing: 3
                             Repeater {
-                                model: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                                model: [qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб"), qsTr("Вс")]
                                 delegate: Text {
                                     width: 20
                                     height: 14
@@ -1261,10 +1260,10 @@ Item {
                                     function taskWord(n) {
                                         var mod10 = n % 10
                                         var mod100 = n % 100
-                                        if (mod100 >= 11 && mod100 <= 14) return "задач"
-                                        if (mod10 === 1) return "задача"
-                                        if (mod10 >= 2 && mod10 <= 4) return "задачи"
-                                        return "задач"
+                                        if (mod100 >= 11 && mod100 <= 14) return qsTr("задач")
+                                        if (mod10 === 1) return qsTr("задача")
+                                        if (mod10 >= 2 && mod10 <= 4) return qsTr("задачи")
+                                        return qsTr("задач")
                                     }
 
                                     // Format date from "YYYY-MM-DD" to "DD.MM.YYYY"
@@ -1289,7 +1288,7 @@ Item {
                                     HoverHandler { id: cellHover }
                                     ToolTip.visible: cellHover.hovered && inRange && cellDate !== ""
                                     ToolTip.delay: 300
-                                    ToolTip.text: taskCount + " " + taskWord(taskCount) + " — " + formatDate(cellDate)
+                                    ToolTip.text: qsTr("%1 %2 — %3").arg(taskCount).arg(taskWord(taskCount)).arg(formatDate(cellDate))
                                 }
                             }
 
@@ -1308,7 +1307,7 @@ Item {
                     RowLayout {
                         spacing: 6
                         Text {
-                            text: "Меньше"
+                            text: qsTr("Меньше")
                             font.pixelSize: 10
                             color: textSecondary
                         }
@@ -1331,7 +1330,7 @@ Item {
                             }
                         }
                         Text {
-                            text: "Больше"
+                            text: qsTr("Больше")
                             font.pixelSize: 10
                             color: textSecondary
                         }
@@ -1355,7 +1354,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: "Задачи по приоритету"
+                        text: qsTr("Задачи по приоритету")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1404,7 +1403,7 @@ Item {
                     // Empty state
                     Text {
                         visible: priorityChartCol._totalCount === 0
-                        text: "Нет активных задач."
+                        text: qsTr("Нет активных задач.")
                         color: textSecondary
                         font.pixelSize: 12
                     }
@@ -1412,10 +1411,10 @@ Item {
                     // Bar rows
                     Repeater {
                         model: priorityChartCol._totalCount > 0 ? [
-                            { label: "P1 — высокий", count: priorityChartCol._counts.p1, color: "#db4c3f" },
-                            { label: "P2 — средний", count: priorityChartCol._counts.p2, color: "#f49c18" },
-                            { label: "P3 — низкий",  count: priorityChartCol._counts.p3, color: "#4073ff" },
-                            { label: "P4 — обычный", count: priorityChartCol._counts.p4, color: "#808080" }
+                            { label: qsTr("P1 — высокий"), count: priorityChartCol._counts.p1, color: "#db4c3f" },
+                            { label: qsTr("P2 — средний"), count: priorityChartCol._counts.p2, color: "#f49c18" },
+                            { label: qsTr("P3 — низкий"),  count: priorityChartCol._counts.p3, color: "#4073ff" },
+                            { label: qsTr("P4 — обычный"), count: priorityChartCol._counts.p4, color: "#808080" }
                         ] : []
 
                         delegate: RowLayout {
@@ -1477,7 +1476,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: "Недавно завершённые"
+                        text: qsTr("Недавно завершённые")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1529,17 +1528,17 @@ Item {
                         const min  = 60 * 1000
                         const hour = 60 * min
                         const day  = 24 * hour
-                        if (diffMs < min)       return "только что"
-                        if (diffMs < hour)      return Math.floor(diffMs / min)  + " мин назад"
-                        if (diffMs < day)       return Math.floor(diffMs / hour) + " ч назад"
-                        if (diffMs < 7 * day)   return Math.floor(diffMs / day)  + " дн назад"
+                        if (diffMs < min)       return qsTr("только что")
+                        if (diffMs < hour)      return qsTr("%1 мин назад").arg(Math.floor(diffMs / min))
+                        if (diffMs < day)       return qsTr("%1 ч назад").arg(Math.floor(diffMs / hour))
+                        if (diffMs < 7 * day)   return qsTr("%1 дн назад").arg(Math.floor(diffMs / day))
                         return Qt.formatDate(d, "dd.MM.yyyy")
                     }
 
                     // Empty state — shown when there are no completed tasks.
                     Text {
                         visible: !recentDoneCol._recentTasks || recentDoneCol._recentTasks.length === 0
-                        text: "Пока нет завершённых задач."
+                        text: qsTr("Пока нет завершённых задач.")
                         color: textSecondary
                         font.pixelSize: 12
                         Layout.topMargin: 4
@@ -1630,13 +1629,13 @@ Item {
 
                     // Header: title + subtitle
                     Text {
-                        text: "Лента активности"
+                        text: qsTr("Лента активности")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
                     }
                     Text {
-                        text: "Последние 30 событий"
+                        text: qsTr("Последние 30 событий")
                         color: textSecondary
                         font.pixelSize: 11
                         Layout.bottomMargin: 4
@@ -1649,24 +1648,24 @@ Item {
                     // Russian plural helpers ──────────────────────────────────
                     function _pluralMin(n) {
                         var m100 = n % 100, m10 = n % 10
-                        if (m100 >= 11 && m100 <= 14) return "минут"
-                        if (m10 === 1) return "минуту"
-                        if (m10 >= 2 && m10 <= 4) return "минуты"
-                        return "минут"
+                        if (m100 >= 11 && m100 <= 14) return qsTr("минут")
+                        if (m10 === 1) return qsTr("минуту")
+                        if (m10 >= 2 && m10 <= 4) return qsTr("минуты")
+                        return qsTr("минут")
                     }
                     function _pluralHour(n) {
                         var m100 = n % 100, m10 = n % 10
-                        if (m100 >= 11 && m100 <= 14) return "часов"
-                        if (m10 === 1) return "час"
-                        if (m10 >= 2 && m10 <= 4) return "часа"
-                        return "часов"
+                        if (m100 >= 11 && m100 <= 14) return qsTr("часов")
+                        if (m10 === 1) return qsTr("час")
+                        if (m10 >= 2 && m10 <= 4) return qsTr("часа")
+                        return qsTr("часов")
                     }
                     function _pluralDay(n) {
                         var m100 = n % 100, m10 = n % 10
-                        if (m100 >= 11 && m100 <= 14) return "дней"
-                        if (m10 === 1) return "день"
-                        if (m10 >= 2 && m10 <= 4) return "дня"
-                        return "дней"
+                        if (m100 >= 11 && m100 <= 14) return qsTr("дней")
+                        if (m10 === 1) return qsTr("день")
+                        if (m10 >= 2 && m10 <= 4) return qsTr("дня")
+                        return qsTr("дней")
                     }
 
                     // Relative-time formatter (Russian).
@@ -1677,19 +1676,19 @@ Item {
                         var min  = 60 * 1000
                         var hour = 60 * min
                         var day  = 24 * hour
-                        if (diffMs < min) return "только что"
+                        if (diffMs < min) return qsTr("только что")
                         if (diffMs < hour) {
                             var n = Math.floor(diffMs / min)
-                            return n + " " + _pluralMin(n) + " назад"
+                            return qsTr("%1 %2 назад").arg(n).arg(_pluralMin(n))
                         }
                         if (diffMs < day) {
                             var n2 = Math.floor(diffMs / hour)
-                            return n2 + " " + _pluralHour(n2) + " назад"
+                            return qsTr("%1 %2 назад").arg(n2).arg(_pluralHour(n2))
                         }
-                        if (diffMs < 2 * day) return "вчера"
+                        if (diffMs < 2 * day) return qsTr("вчера")
                         if (diffMs < 7 * day) {
                             var n3 = Math.floor(diffMs / day)
-                            return n3 + " " + _pluralDay(n3) + " назад"
+                            return qsTr("%1 %2 назад").arg(n3).arg(_pluralDay(n3))
                         }
                         return Qt.formatDate(date, "dd.MM.yyyy")
                     }
@@ -1719,21 +1718,21 @@ Item {
                             if (completed && !isNaN(completed.getTime()) && completed.getTime() === maxTime) {
                                 kind = "completed"
                                 emoji = "✅"
-                                prefix = "Выполнено: "
+                                prefix = qsTr("Выполнено: ")
                             } else if (created && updated
                                        && !isNaN(created.getTime()) && !isNaN(updated.getTime())
                                        && Math.abs(updated.getTime() - created.getTime()) <= 5000) {
                                 kind = "created"
                                 emoji = "➕"
-                                prefix = "Создано: "
+                                prefix = qsTr("Создано: ")
                             } else if (updated && !isNaN(updated.getTime())) {
                                 kind = "edited"
                                 emoji = "✏"
-                                prefix = "Изменено: "
+                                prefix = qsTr("Изменено: ")
                             } else {
                                 kind = "created"
                                 emoji = "➕"
-                                prefix = "Создано: "
+                                prefix = qsTr("Создано: ")
                             }
 
                             entries.push({
@@ -1762,7 +1761,7 @@ Item {
                     // Empty state
                     Text {
                         visible: !activityFeedCol._feed || activityFeedCol._feed.length === 0
-                        text: "Пока нет активности"
+                        text: qsTr("Пока нет активности")
                         color: textSecondary
                         font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
@@ -1824,7 +1823,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: "Карма за 30 дней"
+                        text: qsTr("Карма за 30 дней")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1931,11 +1930,11 @@ Item {
                             var sum = 0
                             for (var i = 0; i < trendCanvas30.trendData.length; i++)
                                 sum += trendCanvas30.trendData[i].score
-                            var word = (sum === 1) ? "очко"
-                                     : (sum % 100 >= 11 && sum % 100 <= 14) ? "очков"
-                                     : (sum % 10 >= 2 && sum % 10 <= 4) ? "очка"
-                                     : "очков"
-                            return "За 30 дней: +" + sum + " " + word
+                            var word = (sum === 1) ? qsTr("очко")
+                                     : (sum % 100 >= 11 && sum % 100 <= 14) ? qsTr("очков")
+                                     : (sum % 10 >= 2 && sum % 10 <= 4) ? qsTr("очка")
+                                     : qsTr("очков")
+                            return qsTr("За 30 дней: +%1 %2").arg(sum).arg(word)
                         }
                     }
                 }
@@ -1957,7 +1956,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: "Облако меток"
+                        text: qsTr("Облако меток")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -2016,7 +2015,7 @@ Item {
                     // Empty state
                     Text {
                         visible: !tagCloudCol._tagData || tagCloudCol._tagData.length === 0
-                        text: "Метки не используются. Добавьте @метку к задаче, чтобы она появилась здесь."
+                        text: qsTr("Метки не используются. Добавьте @метку к задаче, чтобы она появилась здесь.")
                         color: textSecondary
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
@@ -2094,7 +2093,7 @@ Item {
                     spacing: 12
 
                     Text {
-                        text: "Цели"
+                        text: qsTr("Цели")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -2103,7 +2102,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "Дневная цель"
+                            text: qsTr("Дневная цель")
                             font.pixelSize: 14
                             color: textPrimary
                             Layout.fillWidth: true
@@ -2131,7 +2130,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "Недельная цель"
+                            text: qsTr("Недельная цель")
                             font.pixelSize: 14
                             color: textPrimary
                             Layout.fillWidth: true

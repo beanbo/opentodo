@@ -28,15 +28,15 @@ ColumnLayout {
                 const nm = loc.name && loc.name.length > 0 ? loc.name : null
                 const isLeave = (loc.trigger === "on_leave")
                 const zoneDir = isLeave
-                    ? "🚪 при выходе из"
-                    : "🚶 при входе в"
-                const baseLabel = isLeave ? "При выходе" : "В радиусе"
+                    ? qsTr("🚪 при выходе из")
+                    : qsTr("🚶 при входе в")
+                const baseLabel = isLeave ? qsTr("При выходе") : qsTr("В радиусе")
                 if (nm)
-                    return zoneDir + " зону «" + nm + "» (" + r + " м)"
-                return (isLeave ? "🚪 При выходе из" : "🚶 При входе в")
-                       + " зоны " + r + " м"
+                    return qsTr("%1 зону «%2» (%3 м)").arg(zoneDir).arg(nm).arg(r)
+                return (isLeave ? qsTr("🚪 При выходе из зоны %1 м").arg(r)
+                                : qsTr("🚶 При входе в зону %1 м").arg(r))
             }
-            return "Геолокационное напоминание"
+            return qsTr("Геолокационное напоминание")
         }
 
         // time-based
@@ -52,9 +52,9 @@ ColumnLayout {
                     const isToday    = dt.toDateString() === now.toDateString()
                     const isTomorrow = dt.toDateString() === tomorrow.toDateString()
                     const timeStr = Qt.formatTime(dt, "HH:mm")
-                    if (isToday)    baseStr = "Сегодня в " + timeStr
-                    else if (isTomorrow) baseStr = "Завтра в " + timeStr
-                    else baseStr = Qt.formatDate(dt, "dd.MM.yyyy") + " в " + timeStr
+                    if (isToday)    baseStr = qsTr("Сегодня в %1").arg(timeStr)
+                    else if (isTomorrow) baseStr = qsTr("Завтра в %1").arg(timeStr)
+                    else baseStr = qsTr("%1 в %2").arg(Qt.formatDate(dt, "dd.MM.yyyy")).arg(timeStr)
                 }
             }
             if (baseStr === "" && due.date && due.date.length > 0) {
@@ -68,10 +68,10 @@ ColumnLayout {
 
         if (t === "relative") {
             const off = reminder.minuteOffset || 0
-            if (off === 0)   return "В момент наступления"
-            if (off < 60)    return "За " + off + " мин"
-            if (off < 1440)  return "За " + Math.floor(off / 60) + " ч"
-            return "За " + Math.floor(off / 1440) + " д"
+            if (off === 0)   return qsTr("В момент наступления")
+            if (off < 60)    return qsTr("За %1 мин").arg(off)
+            if (off < 1440)  return qsTr("За %1 ч").arg(Math.floor(off / 60))
+            return qsTr("За %1 д").arg(Math.floor(off / 1440))
         }
 
         // absolute — append offset chip when non-zero
@@ -79,15 +79,15 @@ ColumnLayout {
             const off = reminder.minuteOffset || 0
             if (off > 0) {
                 let chip = ""
-                if (off < 60)        chip = "за " + off + " мин"
-                else if (off < 1440) chip = "за " + Math.floor(off / 60) + " ч"
-                else                 chip = "за " + Math.floor(off / 1440) + " д"
+                if (off < 60)        chip = qsTr("за %1 мин").arg(off)
+                else if (off < 1440) chip = qsTr("за %1 ч").arg(Math.floor(off / 60))
+                else                 chip = qsTr("за %1 д").arg(Math.floor(off / 1440))
                 return baseStr + " (" + chip + ")"
             }
             return baseStr
         }
 
-        return "Напоминание"
+        return qsTr("Напоминание")
     }
 
     function _refreshModel() {
@@ -112,7 +112,7 @@ ColumnLayout {
         spacing: Spacing.sm
 
         Text {
-            text:          "Напоминания"
+            text:          qsTr("Напоминания")
             font.pixelSize: 13
             font.weight:   Font.Medium
             color:         ThemeManager.textColor
@@ -233,7 +233,7 @@ ColumnLayout {
         visible:             reminderRepeater.count === 0
         Layout.fillWidth:    true
         horizontalAlignment: Text.AlignHCenter
-        text:                "Пока нет напоминаний"
+        text:                qsTr("Пока нет напоминаний")
         font.pixelSize:      12
         font.italic:         true
         color:               ThemeManager.secondaryTextColor
@@ -247,7 +247,7 @@ ColumnLayout {
         id:     addReminderDialog
         parent: Overlay.overlay
         anchors.centerIn: parent
-        title:  "Добавить напоминание"
+        title:  qsTr("Добавить напоминание")
         modal:  true
         width:  360
         standardButtons: Dialog.NoButton
@@ -268,7 +268,7 @@ ColumnLayout {
                     leftMargin:     Spacing.md
                     verticalCenter: parent.verticalCenter
                 }
-                text:          "Добавить напоминание"
+                text:          qsTr("Добавить напоминание")
                 font.pixelSize: 15
                 font.weight:   Font.Medium
                 color:         ThemeManager.textColor
@@ -317,7 +317,7 @@ ColumnLayout {
                 spacing: 0
 
                 Repeater {
-                    model: ["По времени", "По месту"]
+                    model: [qsTr("По времени"), qsTr("По месту")]
 
                     delegate: Rectangle {
                         required property string modelData
@@ -351,14 +351,14 @@ ColumnLayout {
 
             // ── Offset options (shared property, used by By-Time tab) ──────
             readonly property var offsetOptions: [
-                { label: "В точное время", value: 0    },
-                { label: "За 5 минут",     value: 5    },
-                { label: "За 10 минут",    value: 10   },
-                { label: "За 15 минут",    value: 15   },
-                { label: "За 30 минут",    value: 30   },
-                { label: "За 1 час",       value: 60   },
-                { label: "За 2 часа",      value: 120  },
-                { label: "За 1 день",      value: 1440 }
+                { label: qsTr("В точное время"), value: 0    },
+                { label: qsTr("За 5 минут"),     value: 5    },
+                { label: qsTr("За 10 минут"),    value: 10   },
+                { label: qsTr("За 15 минут"),    value: 15   },
+                { label: qsTr("За 30 минут"),    value: 30   },
+                { label: qsTr("За 1 час"),       value: 60   },
+                { label: qsTr("За 2 часа"),      value: 120  },
+                { label: qsTr("За 1 день"),      value: 1440 }
             ]
 
             // ── By Time tab ────────────────────────────────────────────────
@@ -373,7 +373,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Дата:"
+                        text:          qsTr("Дата:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 60
@@ -393,7 +393,7 @@ ColumnLayout {
                             anchors.centerIn: parent
                             text:          addReminderDialog.pickedDate !== ""
                                            ? addReminderDialog.pickedDate
-                                           : "Выбрать дату"
+                                           : qsTr("Выбрать дату")
                             font.pixelSize: 13
                             color:         addReminderDialog.pickedDate !== ""
                                            ? ThemeManager.textColor
@@ -424,7 +424,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Время:"
+                        text:          qsTr("Время:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 60
@@ -436,7 +436,7 @@ ColumnLayout {
                         font.pixelSize:   13
                         color:            ThemeManager.textColor
                         inputMask:        "99:99"
-                        placeholderText:  "ЧЧ:ММ"
+                        placeholderText:  qsTr("ЧЧ:ММ")
                         Layout.preferredWidth: 80
                         background: Rectangle {
                             color:        ThemeManager.backgroundColor
@@ -460,7 +460,7 @@ ColumnLayout {
 
                         contentItem: Text {
                             leftPadding:   repeatCheck.indicator.width + 4
-                            text:          "Повторять"
+                            text:          qsTr("Повторять")
                             font.pixelSize: 13
                             color:         ThemeManager.textColor
                             verticalAlignment: Text.AlignVCenter
@@ -474,7 +474,7 @@ ColumnLayout {
                     // B-7.65: bind text so dialog reset (onOpened sets repeatRule="")
                     // clears this field rather than leaving stale text.
                     text:             addReminderDialog.repeatRule
-                    placeholderText:  "Правило повтора (напр. FREQ=DAILY)"
+                    placeholderText:  qsTr("Правило повтора (напр. FREQ=DAILY)")
                     font.pixelSize:   12
                     color:            ThemeManager.textColor
                     onTextChanged:    addReminderDialog.repeatRule = text
@@ -492,7 +492,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:                  "Напомнить:"
+                        text:                  qsTr("Напомнить:")
                         font.pixelSize:        13
                         color:                 ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 80
@@ -577,7 +577,7 @@ ColumnLayout {
                 // Helper label
                 Text {
                     Layout.fillWidth: true
-                    text:          "Введите координаты и радиус зоны."
+                    text:          qsTr("Введите координаты и радиус зоны.")
                     font.pixelSize: 12
                     color:         ThemeManager.secondaryTextColor
                     wrapMode:      Text.Wrap
@@ -598,7 +598,7 @@ ColumnLayout {
                     Text {
                         id:            useLocText
                         anchors.centerIn: parent
-                        text:          "Использовать текущее местоположение"
+                        text:          qsTr("Использовать текущее местоположение")
                         font.pixelSize: 12
                         color:         ThemeManager.textColor
                     }
@@ -668,7 +668,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Широта:"
+                        text:          qsTr("Широта:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
@@ -676,7 +676,7 @@ ColumnLayout {
 
                     TextField {
                         Layout.fillWidth: true
-                        placeholderText: "напр. 55.751244"
+                        placeholderText: qsTr("напр. 55.751244")
                         font.pixelSize:  13
                         color:           ThemeManager.textColor
                         validator:       DoubleValidator { bottom: -90; top: 90 }
@@ -696,7 +696,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Долгота:"
+                        text:          qsTr("Долгота:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
@@ -704,7 +704,7 @@ ColumnLayout {
 
                     TextField {
                         Layout.fillWidth: true
-                        placeholderText: "напр. 37.618423"
+                        placeholderText: qsTr("напр. 37.618423")
                         font.pixelSize:  13
                         color:           ThemeManager.textColor
                         validator:       DoubleValidator { bottom: -180; top: 180 }
@@ -724,7 +724,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Радиус, м:"
+                        text:          qsTr("Радиус, м:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
@@ -752,7 +752,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:          "Название:"
+                        text:          qsTr("Название:")
                         font.pixelSize: 13
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
@@ -760,7 +760,7 @@ ColumnLayout {
 
                     TextField {
                         Layout.fillWidth: true
-                        placeholderText: "необязательно"
+                        placeholderText: qsTr("необязательно")
                         font.pixelSize:  13
                         color:           ThemeManager.textColor
                         onTextChanged:   addReminderDialog.locName = text
@@ -779,7 +779,7 @@ ColumnLayout {
                     spacing: Spacing.sm
 
                     Text {
-                        text:                  "Сработать:"
+                        text:                  qsTr("Сработать:")
                         font.pixelSize:        13
                         color:                 ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
@@ -787,7 +787,7 @@ ColumnLayout {
 
                     RadioButton {
                         id:      triggerEnterBtn
-                        text:    "При входе"
+                        text:    qsTr("При входе")
                         checked: addReminderDialog.locTriggerEnter
                         onCheckedChanged: {
                             if (checked) addReminderDialog.locTriggerEnter = true
@@ -804,7 +804,7 @@ ColumnLayout {
 
                     RadioButton {
                         id:      triggerLeaveBtn
-                        text:    "При выходе"
+                        text:    qsTr("При выходе")
                         checked: !addReminderDialog.locTriggerEnter
                         onCheckedChanged: {
                             if (checked) addReminderDialog.locTriggerEnter = false
@@ -841,7 +841,7 @@ ColumnLayout {
                     Text {
                         id:            cancelReminderText
                         anchors.centerIn: parent
-                        text:          "Отмена"
+                        text:          qsTr("Отмена")
                         font.pixelSize: 13
                         color:         ThemeManager.textColor
                     }
@@ -881,7 +881,7 @@ ColumnLayout {
                     Text {
                         id:            saveReminderText
                         anchors.centerIn: parent
-                        text:          "Сохранить"
+                        text:          qsTr("Сохранить")
                         font.pixelSize: 13
                         color:         saveReminderBtn.canSave ? "white"
                                        : ThemeManager.secondaryTextColor

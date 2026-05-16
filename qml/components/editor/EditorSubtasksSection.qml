@@ -19,9 +19,9 @@ ColumnLayout {
     function _pluralize(n) {
         var mod10  = n % 10
         var mod100 = n % 100
-        if (mod10 === 1 && mod100 !== 11)                              return "подзадача"
-        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "подзадачи"
-        return "подзадач"
+        if (mod10 === 1 && mod100 !== 11)                              return qsTr("подзадача")
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return qsTr("подзадачи")
+        return qsTr("подзадач")
     }
 
     // ── Section header row ─────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ ColumnLayout {
         spacing: Spacing.sm
 
         Text {
-            text:           "Подзадачи"
+            text:           qsTr("Подзадачи")
             font.pixelSize: 13
             font.weight:    Font.Medium
             color:          ThemeManager.textColor
@@ -68,7 +68,7 @@ ColumnLayout {
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
-                    text:           "Разбить на подзадачи"
+                    text:           qsTr("Разбить на подзадачи")
                     font.pixelSize: 11
                     color:          ThemeManager.accentColor
                     anchors.verticalCenter: parent.verticalCenter
@@ -334,7 +334,7 @@ ColumnLayout {
         TextField {
             id: subtaskInput
             Layout.fillWidth: true
-            placeholderText:  "Добавить подзадачу…"
+            placeholderText:  qsTr("Добавить подзадачу…")
             font.pixelSize:   13
             color:            ThemeManager.textColor
             background: null
@@ -363,7 +363,7 @@ ColumnLayout {
             if (count > 0) {
                 // B-7.8: proper Russian plural for numbers like 11-14
                 const noun = _pluralize(count)
-                const msg  = "Добавлено " + count + " " + noun
+                const msg  = qsTr("Добавлено %1 %2").arg(count).arg(noun)
                 let w = root.Window.window
                 if (w && typeof w.showToast === "function")
                     w.showToast(msg, "success")

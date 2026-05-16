@@ -228,8 +228,8 @@ Item {
 
         inboxZeroConfetti.celebrate()
 
-        const msg = isInbox ? "🎉 Все задачи выполнены!"
-                            : "🎉 Всё на сегодня сделано!"
+        const msg = isInbox ? qsTr("🎉 Все задачи выполнены!")
+                            : qsTr("🎉 Всё на сегодня сделано!")
         const w = root.Window.window
         if (w && typeof w.showToast === "function")
             w.showToast(msg, "success")
@@ -510,8 +510,8 @@ Item {
                             flat: true
                             font.pixelSize: 16
                             ToolTip.text: taskViewModel.showCompleted
-                                ? "Скрыть выполненные"
-                                : "Показать выполненные"
+                                ? qsTr("Скрыть выполненные")
+                                : qsTr("Показать выполненные")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
                             onClicked: {
@@ -537,7 +537,7 @@ Item {
                             text: "📂"
                             flat: true
                             font.pixelSize: 16
-                            ToolTip.text: "Развернуть подзадачи у всех задач"
+                            ToolTip.text: qsTr("Развернуть подзадачи у всех задач")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
                             onClicked: {
@@ -552,7 +552,7 @@ Item {
                             text: "📁"
                             flat: true
                             font.pixelSize: 16
-                            ToolTip.text: "Свернуть подзадачи у всех задач"
+                            ToolTip.text: qsTr("Свернуть подзадачи у всех задач")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
                             onClicked: {
@@ -704,9 +704,9 @@ Item {
                                 // Three chip definitions — modelData exposed by Repeater
                                 Repeater {
                                     model: [
-                                        { chipId: "today",   label: "Сегодня",    icon: "📅" },
-                                        { chipId: "overdue", label: "Просрочено", icon: "🚨" },
-                                        { chipId: "no_date", label: "Без даты",   icon: "💭" }
+                                        { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅" },
+                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🚨" },
+                                        { chipId: "no_date", label: qsTr("Без даты"),   icon: "💭" }
                                     ]
 
                                     delegate: Rectangle {
@@ -769,8 +769,8 @@ Item {
                                         // [undefined] to bool" 3× per Repeater chip on every load.
                                         ToolTip.visible: _chipHover.hovered
                                         ToolTip.text: _active
-                                            ? "Сбросить фильтр «" + modelData.label + "»"
-                                            : "Показать только: " + modelData.label
+                                            ? qsTr("Сбросить фильтр «%1»").arg(modelData.label)
+                                            : qsTr("Показать только: %1").arg(modelData.label)
                                     }
                                 }
 
@@ -789,7 +789,7 @@ Item {
                                     onClicked: root._clearChip()
 
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Сбросить быстрый фильтр"
+                                    ToolTip.text: qsTr("Сбросить быстрый фильтр")
 
                                     // Subtle fade-in/out
                                     opacity: visible ? 1.0 : 0.0
@@ -860,7 +860,7 @@ Item {
                                         //   • Everything else → "12 мая (среда)" format
                                         readonly property string _label: {
                                             const iso = section
-                                            if (!iso || iso === "") return "Без даты"
+                                            if (!iso || iso === "") return qsTr("Без даты")
 
                                             // Build today and tomorrow as ISO strings for
                                             // comparison, forcing midnight so getTime() is stable.
@@ -871,8 +871,8 @@ Item {
                                             tomorrow.setDate(today.getDate() + 1)
                                             const isoTomorrow = Qt.formatDate(tomorrow, "yyyy-MM-dd")
 
-                                            if (iso === isoToday)    return "Сегодня"
-                                            if (iso === isoTomorrow) return "Завтра"
+                                            if (iso === isoToday)    return qsTr("Сегодня")
+                                            if (iso === isoTomorrow) return qsTr("Завтра")
 
                                             // Parse as local midnight — append T00:00:00 so the
                                             // Date constructor does not apply UTC offset on
@@ -1131,9 +1131,9 @@ Item {
                                     if (total <= 0) return ""
                                     var h = Math.floor(total / 60)
                                     var m = total % 60
-                                    if (h === 0) return "⏱ " + m + " мин"
-                                    if (m === 0) return "⏱ " + h + " ч"
-                                    return "⏱ " + h + " ч " + m + " мин"
+                                    if (h === 0) return qsTr("⏱ %1 мин").arg(m)
+                                    if (m === 0) return qsTr("⏱ %1 ч").arg(h)
+                                    return qsTr("⏱ %1 ч %2 мин").arg(h).arg(m)
                                 }
                                 // Russian plural: "1 задаче", "2/3/4 задачам", "5+ задачам"
                                 // (dative plural). Tooltip uses dative since it follows "Сумма по N".
@@ -1141,8 +1141,8 @@ Item {
                                     var abs = Math.abs(n)
                                     var mod10 = abs % 10
                                     var mod100 = abs % 100
-                                    if (mod10 === 1 && mod100 !== 11) return "выделенной задаче"
-                                    return "выделенным задачам"
+                                    if (mod10 === 1 && mod100 !== 11) return qsTr("выделенной задаче")
+                                    return qsTr("выделенным задачам")
                                 }
 
                                 Connections {
@@ -1262,7 +1262,7 @@ Item {
                                         Text {
                                             anchors.centerIn: parent
                                             visible: bulkLabelList.count === 0
-                                            text: "Нет меток"
+                                            text: qsTr("Нет меток")
                                             color: ThemeManager.secondaryTextColor
                                             font.pixelSize: 13
                                         }
@@ -1307,7 +1307,7 @@ Item {
                                                     fill: parent
                                                     margins: Spacing.xs
                                                 }
-                                                placeholderText: "Поиск проекта…"
+                                                placeholderText: qsTr("Поиск проекта…")
                                                 font.pixelSize: 13
                                                 background: Rectangle {
                                                     color: ThemeManager.surfaceColor
@@ -1403,7 +1403,7 @@ Item {
                                             Text {
                                                 anchors.centerIn: parent
                                                 visible: bulkProjectList.count === 0
-                                                text: "Нет проектов"
+                                                text: qsTr("Нет проектов")
                                                 color: ThemeManager.secondaryTextColor
                                                 font.pixelSize: 13
                                             }
@@ -1484,14 +1484,14 @@ Item {
 
                                         Repeater {
                                             model: [
-                                                { label: "Сегодня",             phrase: "сегодня" },
-                                                { label: "Завтра",              phrase: "завтра" },
-                                                { label: "Через 3 дня",         phrase: "через 3 дня" },
-                                                { label: "На следующей неделе", phrase: "следующая неделя" },
-                                                { label: "В понедельник",       phrase: "понедельник" },
-                                                { label: "В выходные",          phrase: "суббота" },
-                                                { label: "──",                  phrase: "__sep__" },
-                                                { label: "Убрать срок",         phrase: "" }
+                                                { label: qsTr("Сегодня"),             phrase: "сегодня" },
+                                                { label: qsTr("Завтра"),              phrase: "завтра" },
+                                                { label: qsTr("Через 3 дня"),         phrase: "через 3 дня" },
+                                                { label: qsTr("На следующей неделе"), phrase: "следующая неделя" },
+                                                { label: qsTr("В понедельник"),       phrase: "понедельник" },
+                                                { label: qsTr("В выходные"),          phrase: "суббота" },
+                                                { label: "──",                        phrase: "__sep__" },
+                                                { label: qsTr("Убрать срок"),         phrase: "" }
                                             ]
 
                                             delegate: Item {
@@ -1598,7 +1598,7 @@ Item {
                                         border.width: 1
                                     }
                                     contentItem: Text {
-                                        text: "Скопировано в буфер обмена"
+                                        text: qsTr("Скопировано в буфер обмена")
                                         color: ThemeManager.textColor
                                         font.pixelSize: FontSize.body
                                     }
@@ -1616,7 +1616,7 @@ Item {
                                     spacing: Spacing.xs
 
                                     Text {
-                                        text: "Выделено: " + taskViewModel.selectionCount
+                                        text: qsTr("Выделено: %1").arg(taskViewModel.selectionCount)
                                         color: "white"
                                         font.pixelSize: FontSize.body
                                         Layout.leftMargin: Spacing.sm
@@ -1640,7 +1640,7 @@ Item {
                                         }
 
                                         contentItem: Text {
-                                            text: "📌 " + (bulkPinBtn.allPinned ? "Открепить" : "Закрепить")
+                                            text: bulkPinBtn.allPinned ? qsTr("📌 Открепить") : qsTr("📌 Закрепить")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1654,7 +1654,7 @@ Item {
                                             taskViewModel.bulkSetPinned(!allPinned)
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: allPinned ? "Открепить выделенные задачи" : "Закрепить выделенные задачи наверху"
+                                        ToolTip.text: allPinned ? qsTr("Открепить выделенные задачи") : qsTr("Закрепить выделенные задачи наверху")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1665,7 +1665,7 @@ Item {
                                     ToolButton {
                                         id: bulkColorBtn
                                         contentItem: Text {
-                                            text: "🎨 Цвет"
+                                            text: qsTr("🎨 Цвет")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1678,7 +1678,7 @@ Item {
                                             bulkColorPopup.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Установить цвет для выделенных задач"
+                                        ToolTip.text: qsTr("Установить цвет для выделенных задач")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1689,7 +1689,7 @@ Item {
                                     ToolButton {
                                         id: bulkDueBtn
                                         contentItem: Text {
-                                            text: "📅 Срок"
+                                            text: qsTr("📅 Срок")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1703,7 +1703,7 @@ Item {
                                             bulkDuePopup.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Срок"
+                                        ToolTip.text: qsTr("Срок")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1718,7 +1718,7 @@ Item {
                                     ToolButton {
                                         id: bulkDeadlineBtn
                                         contentItem: Text {
-                                            text: "📅 Дедлайн"
+                                            text: qsTr("📅 Дедлайн")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1733,7 +1733,7 @@ Item {
                                             bulkDeadlinePicker.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Установить срок"
+                                        ToolTip.text: qsTr("Установить срок")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1744,7 +1744,7 @@ Item {
                                     ToolButton {
                                         id: bulkArchiveBtn
                                         contentItem: Text {
-                                            text: "📦 Архив"
+                                            text: qsTr("📦 Архив")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1752,7 +1752,7 @@ Item {
                                         }
                                         onClicked: taskViewModel.bulkArchive()
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Архивировать выделенные задачи"
+                                        ToolTip.text: qsTr("Архивировать выделенные задачи")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1775,7 +1775,7 @@ Item {
                                                 bulkCopyMdToast.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Скопировать как Markdown"
+                                        ToolTip.text: qsTr("Скопировать как Markdown")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1785,7 +1785,7 @@ Item {
                                     // ── Завершить ────────────────────────────────────────────
                                     ToolButton {
                                         contentItem: Text {
-                                            text: "✓ Завершить"
+                                            text: qsTr("✓ Завершить")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1793,7 +1793,7 @@ Item {
                                         }
                                         onClicked: taskViewModel.bulkComplete()
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Завершить выделенные задачи"
+                                        ToolTip.text: qsTr("Завершить выделенные задачи")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1804,7 +1804,7 @@ Item {
                                     // ITER1 #48: show confirmation dialog before bulk-delete
                                     ToolButton {
                                         contentItem: Text {
-                                            text: "🗑 Удалить"
+                                            text: qsTr("🗑 Удалить")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1812,7 +1812,7 @@ Item {
                                         }
                                         onClicked: bulkDeleteConfirmDialog.open()
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Удалить выделенные задачи"
+                                        ToolTip.text: qsTr("Удалить выделенные задачи")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1823,7 +1823,7 @@ Item {
                                     ToolButton {
                                         id: bulkPriorityBtn
                                         contentItem: Text {
-                                            text: "⚑ Приоритет"
+                                            text: qsTr("⚑ Приоритет")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1835,7 +1835,7 @@ Item {
                                             bulkPriorityPicker.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Установить приоритет для выделенных задач"
+                                        ToolTip.text: qsTr("Установить приоритет для выделенных задач")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1846,7 +1846,7 @@ Item {
                                     ToolButton {
                                         id: bulkLabelBtn
                                         contentItem: Text {
-                                            text: "@ Метка"
+                                            text: qsTr("@ Метка")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1858,7 +1858,7 @@ Item {
                                             bulkLabelPopup.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Добавить метку к выделенным задачам"
+                                        ToolTip.text: qsTr("Добавить метку к выделенным задачам")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1869,7 +1869,7 @@ Item {
                                     ToolButton {
                                         id: bulkProjectBtn
                                         contentItem: Text {
-                                            text: "# Проект"
+                                            text: qsTr("# Проект")
                                             color: "white"
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
@@ -1881,7 +1881,7 @@ Item {
                                             bulkProjectPopup.open()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Переместить выделенные задачи в проект"
+                                        ToolTip.text: qsTr("Переместить выделенные задачи в проект")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1923,9 +1923,9 @@ Item {
 
                                         ToolTip.visible: estimateMouse.containsMouse
                                                          && bulkBar._estimateContributors > 0
-                                        ToolTip.text: "Сумма по " + bulkBar._estimateContributors
-                                                      + " " + bulkBar._ruTaskDative(bulkBar._estimateContributors)
-                                                      + " с оценкой времени"
+                                        ToolTip.text: qsTr("Сумма по %1 %2 с оценкой времени")
+                                                      .arg(bulkBar._estimateContributors)
+                                                      .arg(bulkBar._ruTaskDative(bulkBar._estimateContributors))
                                     }
 
                                     // ── Снять выделение ──────────────────────────────────────
@@ -1946,7 +1946,7 @@ Item {
                                             taskViewModel.clearSelection()
                                         }
                                         ToolTip.visible: hovered
-                                        ToolTip.text: "Снять выделение"
+                                        ToolTip.text: qsTr("Снять выделение")
                                         background: Rectangle {
                                             color: parent.hovered ? Qt.rgba(1,1,1,0.18) : "transparent"
                                             radius: Radius.sm
@@ -1992,7 +1992,7 @@ Item {
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                                 Text {
-                                    text: "Добавить задачу"
+                                    text: qsTr("Добавить задачу")
                                     color: ThemeManager.secondaryTextColor
                                     font.pixelSize: FontSize.body
                                     Layout.fillWidth: true
@@ -2039,7 +2039,7 @@ Item {
                                 TextField {
                                     id: bottomQuickAddInput
                                     Layout.fillWidth: true
-                                    placeholderText: "Название задачи"
+                                    placeholderText: qsTr("Название задачи")
                                     color: ThemeManager.textColor
                                     placeholderTextColor: ThemeManager.secondaryTextColor
                                     background: Item {}
@@ -2790,7 +2790,7 @@ Item {
     // ProjectView confirmation dialogs).
     Dialog {
         id: bulkDeleteConfirmDialog
-        title: "Удалить задачи"
+        title: qsTr("Удалить задачи")
         modal: true
         anchors.centerIn: Overlay.overlay
         width: Math.min(380, Overlay.overlay.width - Spacing.xl)
@@ -2800,8 +2800,8 @@ Item {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Удалить " + taskViewModel.selectionCount +
-                      " задач? Действие нельзя отменить через корзину."
+                text: qsTr("Удалить %1 задач? Действие нельзя отменить через корзину.")
+                      .arg(taskViewModel.selectionCount)
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
@@ -2815,41 +2815,41 @@ Item {
     // ── Hotkeys help dialog ───────────────────────────────────────────────────
     Dialog {
         id: hotkeysHelpDialog
-        title: "Горячие клавиши"
+        title: qsTr("Горячие клавиши")
         modal: true
         anchors.centerIn: Overlay.overlay  // B-6.26: parent resolves to DesktopLayout Item, not overlay
         standardButtons: Dialog.Close
 
         readonly property var hotkeys: [
-            { key: "Q  /  +",         desc: "Открыть быстрое добавление задачи" },
-            { key: "Enter",            desc: "Открыть редактор выделенной задачи" },
-            { key: "Space",            desc: "Переключить выполнение задачи" },
-            { key: "Delete",           desc: "Удалить задачу / удалить выделенные" },
-            { key: "1  2  3  4",       desc: "Установить приоритет P1..P4" },
-            { key: "1..4 (выделение)", desc: "Установить приоритет P1..P4 для выделенных задач" },
-            { key: "0 (выделение)",    desc: "Снять приоритет с выделенных задач" },
-            { key: "↑ / ↓ / J / K",   desc: "Перемещение по списку задач" },
-            { key: "Ctrl+F  /  /",     desc: "Фокус на строке поиска" },
-            { key: "Ctrl+K",           desc: "Открыть палитру команд" },
-            { key: "Ctrl+P",           desc: "Перейти к задаче (поиск)" },
-            { key: "Ctrl+M",           desc: "Переместить выделенные задачи в проект" },
-            { key: "Esc",              desc: "Закрыть редактор / снять выделение" },
-            { key: "Ctrl+Z",           desc: "Отменить действие" },  // F-6.9
-            { key: "Ctrl+D",           desc: "Дублировать задачу" },
-            { key: "?  /  F1",         desc: "Показать список горячих клавиш" },
-            { key: "F11",              desc: "Режим фокуса — скрыть панели" },
-            { key: "Shift+T",           desc: "Отложить на завтра" },
-            { key: "Shift+N",           desc: "Отложить на следующую неделю" },
-            { key: "Ctrl+R",            desc: "Случайная задача" },
-            { key: "F2",               desc: "Открыть задачу в редакторе" },
-            { key: "Ctrl+Shift+L",     desc: "Переключить тёмную/светлую тему" },
-            { key: "Ctrl+1..6",        desc: "Перейти к разделу: Входящие / Сегодня / Предстоящие / Настройки / Продуктивность / Уведомления" },
-            { key: "g, i",             desc: "Перейти ко Входящим" },
-            { key: "g, t",             desc: "Перейти к Сегодня" },
-            { key: "g, u",             desc: "Перейти к Предстоящим" },
-            { key: "g, s",             desc: "Перейти к Настройкам" },
-            { key: "g, p",             desc: "Перейти к Продуктивности" },
-            { key: "g, b",             desc: "Перейти к Корзине" }
+            { key: "Q  /  +",         desc: qsTr("Открыть быстрое добавление задачи") },
+            { key: "Enter",            desc: qsTr("Открыть редактор выделенной задачи") },
+            { key: "Space",            desc: qsTr("Переключить выполнение задачи") },
+            { key: "Delete",           desc: qsTr("Удалить задачу / удалить выделенные") },
+            { key: "1  2  3  4",       desc: qsTr("Установить приоритет P1..P4") },
+            { key: qsTr("1..4 (выделение)"), desc: qsTr("Установить приоритет P1..P4 для выделенных задач") },
+            { key: qsTr("0 (выделение)"),    desc: qsTr("Снять приоритет с выделенных задач") },
+            { key: "↑ / ↓ / J / K",   desc: qsTr("Перемещение по списку задач") },
+            { key: "Ctrl+F  /  /",     desc: qsTr("Фокус на строке поиска") },
+            { key: "Ctrl+K",           desc: qsTr("Открыть палитру команд") },
+            { key: "Ctrl+P",           desc: qsTr("Перейти к задаче (поиск)") },
+            { key: "Ctrl+M",           desc: qsTr("Переместить выделенные задачи в проект") },
+            { key: "Esc",              desc: qsTr("Закрыть редактор / снять выделение") },
+            { key: "Ctrl+Z",           desc: qsTr("Отменить действие") },  // F-6.9
+            { key: "Ctrl+D",           desc: qsTr("Дублировать задачу") },
+            { key: "?  /  F1",         desc: qsTr("Показать список горячих клавиш") },
+            { key: "F11",              desc: qsTr("Режим фокуса — скрыть панели") },
+            { key: "Shift+T",           desc: qsTr("Отложить на завтра") },
+            { key: "Shift+N",           desc: qsTr("Отложить на следующую неделю") },
+            { key: "Ctrl+R",            desc: qsTr("Случайная задача") },
+            { key: "F2",               desc: qsTr("Открыть задачу в редакторе") },
+            { key: "Ctrl+Shift+L",     desc: qsTr("Переключить тёмную/светлую тему") },
+            { key: "Ctrl+1..6",        desc: qsTr("Перейти к разделу: Входящие / Сегодня / Предстоящие / Настройки / Продуктивность / Уведомления") },
+            { key: "g, i",             desc: qsTr("Перейти ко Входящим") },
+            { key: "g, t",             desc: qsTr("Перейти к Сегодня") },
+            { key: "g, u",             desc: qsTr("Перейти к Предстоящим") },
+            { key: "g, s",             desc: qsTr("Перейти к Настройкам") },
+            { key: "g, p",             desc: qsTr("Перейти к Продуктивности") },
+            { key: "g, b",             desc: qsTr("Перейти к Корзине") }
         ]
 
         ColumnLayout {
@@ -2999,7 +2999,7 @@ Item {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Выйти из режима фокуса"
+                text: qsTr("Выйти из режима фокуса")
                 font.pixelSize: 12
                 color: ThemeManager.textColor
             }

@@ -27,7 +27,7 @@ Rectangle {
     // ── Disconnect confirmation dialog ────────────────────────────────────────
     Dialog {
         id: disconnectDriveDialog
-        title: "Отключить Google Drive"
+        title: qsTr("Отключить Google Drive")
         anchors.centerIn: Overlay.overlay
         width: 340
         modal: true
@@ -42,7 +42,7 @@ Rectangle {
 
         Label {
             width: parent.width
-            text: "Вы уверены, что хотите отключить Google Drive? Локальные данные останутся без изменений."
+            text: qsTr("Вы уверены, что хотите отключить Google Drive? Локальные данные останутся без изменений.")
             wrapMode: Text.WordWrap
             font.pixelSize: 14
             color: ThemeManager.textColor
@@ -68,7 +68,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Синхронизация"
+                text: qsTr("Синхронизация")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -153,7 +153,7 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "При нажатии «Подключить» откроется браузер с экраном входа Google. После согласия токены сохраняются локально и используются для последующей синхронизации."
+                    text: qsTr("При нажатии «Подключить» откроется браузер с экраном входа Google. После согласия токены сохраняются локально и используются для последующей синхронизации.")
                     wrapMode: Text.WordWrap
                     font.pixelSize: 12
                     color: ThemeManager.textColor
@@ -196,8 +196,8 @@ Rectangle {
 
                     Text {
                         text: root.driveConnected
-                              ? "Подключено к Google Drive"
-                              : "Google Drive"
+                              ? qsTr("Подключено к Google Drive")
+                              : qsTr("Google Drive")
                         font.pixelSize: 14
                         font.bold: root.driveConnected
                         color: ThemeManager.textColor
@@ -206,7 +206,7 @@ Rectangle {
                     Text {
                         text: root.driveConnected
                               ? root.driveEmail
-                              : "Синхронизация ваших данных между устройствами"
+                              : qsTr("Синхронизация ваших данных между устройствами")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         elide: Text.ElideRight
@@ -215,7 +215,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: root.driveConnected ? "Отключить" : "Подключить"
+                    text: root.driveConnected ? qsTr("Отключить") : qsTr("Подключить")
                     enabled: typeof gdriveClient !== "undefined"
                     implicitHeight: 34
                     implicitWidth: 110
@@ -288,12 +288,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Интервал синхронизации"
+                        text: qsTr("Интервал синхронизации")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Как часто выполнять автоматическую синхронизацию"
+                        text: qsTr("Как часто выполнять автоматическую синхронизацию")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                     }
@@ -305,7 +305,7 @@ Rectangle {
                     Layout.preferredWidth: 150
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
 
-                    model: ["Никогда", "5 минут", "15 минут", "30 минут", "60 минут"]
+                    model: [qsTr("Никогда"), qsTr("5 минут"), qsTr("15 минут"), qsTr("30 минут"), qsTr("60 минут")]
 
                     // ITER2 #11: replace the fragile `currentIndex: parent.parent._indexForSeconds(...)`
                     // binding (which fights with onActivated's imperative set) with a
@@ -378,7 +378,7 @@ Rectangle {
                 spacing: 8
 
                 Text {
-                    text: "Последняя синхронизация: " + syncViewModel.formatLastSyncTime()
+                    text: qsTr("Последняя синхронизация: %1").arg(syncViewModel.formatLastSyncTime())
                     font.pixelSize: 12
                     color: ThemeManager.secondaryTextColor
                     Layout.fillWidth: true
@@ -386,7 +386,7 @@ Rectangle {
 
                 // «Скачать с Drive» — explicit pull without pushing local changes
                 Button {
-                    text: "Скачать с Drive"
+                    text: qsTr("Скачать с Drive")
                     enabled: !syncViewModel.isSyncing
                     implicitHeight: 30
                     implicitWidth: 130
@@ -394,7 +394,7 @@ Rectangle {
 
                     ToolTip.visible: hovered
                     ToolTip.delay: 600
-                    ToolTip.text: "Перезагрузить состояние с Google Drive (без отправки локальных изменений)"
+                    ToolTip.text: qsTr("Перезагрузить состояние с Google Drive (без отправки локальных изменений)")
 
                     contentItem: Text {
                         text: parent.text
@@ -417,7 +417,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: syncViewModel.isSyncing ? "Синхронизация…" : "Синхронизировать"
+                    text: syncViewModel.isSyncing ? qsTr("Синхронизация…") : qsTr("Синхронизировать")
                     enabled: !syncViewModel.isSyncing
                     implicitHeight: 30
                     implicitWidth: 140
@@ -494,14 +494,14 @@ Rectangle {
                 }
 
                 Text {
-                    text: "%1 несохранённых изменений".arg(syncViewModel.pendingCommits)
+                    text: qsTr("%1 несохранённых изменений").arg(syncViewModel.pendingCommits)
                     font.pixelSize: 12
                     color: ThemeManager.isDark ? "#f0c040" : "#7a5800"
                     Layout.fillWidth: true
                 }
 
                 ToolButton {
-                    text: "Отправить"
+                    text: qsTr("Отправить")
                     enabled: true
                     font.pixelSize: 12
                     contentItem: Text {

@@ -139,7 +139,7 @@ Popup {
                 TextField {
                     id: searchInput
                     Layout.fillWidth: true
-                    placeholderText: "Поиск проекта…"
+                    placeholderText: qsTr("Поиск проекта…")
                     background: Item {}
                     color: ThemeManager.textColor
                     font.pixelSize: 16
@@ -192,9 +192,9 @@ Popup {
                 text: {
                     if (typeof taskViewModel === "undefined" || !taskViewModel) return ""
                     if (taskViewModel.selectionCount > 0)
-                        return "Переместить выделенных задач: " + taskViewModel.selectionCount
+                        return qsTr("Переместить выделенных задач: %1").arg(taskViewModel.selectionCount)
                     if (taskViewModel.selectedTask)
-                        return "Переместить открытую задачу"
+                        return qsTr("Переместить открытую задачу")
                     return ""
                 }
             }
@@ -288,8 +288,8 @@ Popup {
                 anchors.centerIn: parent
                 visible: root._results.length === 0
                 text: searchInput.text.trim().length === 0
-                      ? "Нет доступных проектов"
-                      : "Проекты не найдены"
+                      ? qsTr("Нет доступных проектов")
+                      : qsTr("Проекты не найдены")
                 color: ThemeManager.secondaryTextColor
                 font.pixelSize: FontSize.body
             }

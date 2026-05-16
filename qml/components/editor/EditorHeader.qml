@@ -51,7 +51,7 @@ RowLayout {
         color:  readingHover.containsMouse ? ThemeManager.hoverColor : "transparent"
 
         ToolTip.visible: readingHover.containsMouse
-        ToolTip.text:    "Режим чтения (Ctrl+Shift+M)"
+        ToolTip.text:    qsTr("Режим чтения (Ctrl+Shift+M)")
         ToolTip.delay:   400
 
         Text {

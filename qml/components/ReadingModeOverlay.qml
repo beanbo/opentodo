@@ -69,7 +69,7 @@ Popup {
                 Layout.fillWidth: true
                 text:             root.taskTitle.length > 0
                                       ? root.taskTitle
-                                      : "Без названия"
+                                      : qsTr("Без названия")
                 color:            ThemeManager.textColor
                 font.pixelSize:   FontSize.h2
                 font.weight:      Font.DemiBold

@@ -68,9 +68,9 @@ Item {
     // ── Theme display names ───────────────────────────────────────────────────
     function _themeLabel(key) {
         var map = {
-            "system":        "Системная тема",
-            "todoist_light": "Светлая",
-            "dark":          "Тёмная",
+            "system":        qsTr("Системная тема"),
+            "todoist_light": qsTr("Светлая"),
+            "dark":          qsTr("Тёмная"),
             "kale":          "Kale",
             "blueberry":     "Blueberry",
             "lavender":      "Lavender",
@@ -90,22 +90,22 @@ Item {
 
         // ── Navigation ──────────────────────────────────────────────────────
         list.push({ id: "nav_inbox",        category: "Navigation", icon: "📥",
-                    label: "Перейти во Входящие",    shortcut: "",
+                    label: qsTr("Перейти во Входящие"),    shortcut: "",
                     action: "inbox" })
         list.push({ id: "nav_today",        category: "Navigation", icon: "📅",
-                    label: "Перейти в Сегодня",      shortcut: "",
+                    label: qsTr("Перейти в Сегодня"),      shortcut: "",
                     action: "today" })
         list.push({ id: "nav_upcoming",     category: "Navigation", icon: "📆",
-                    label: "Перейти в Предстоящие",  shortcut: "",
+                    label: qsTr("Перейти в Предстоящие"),  shortcut: "",
                     action: "upcoming" })
         list.push({ id: "nav_settings",     category: "Navigation", icon: "⚙️",
-                    label: "Перейти в Настройки",    shortcut: "",
+                    label: qsTr("Перейти в Настройки"),    shortcut: "",
                     action: "settings" })
         list.push({ id: "nav_productivity", category: "Navigation", icon: "📊",
-                    label: "Перейти в Продуктивность", shortcut: "",
+                    label: qsTr("Перейти в Продуктивность"), shortcut: "",
                     action: "productivity" })
         list.push({ id: "nav_notifications", category: "Navigation", icon: "🔔",
-                    label: "Перейти в Уведомления",  shortcut: "",
+                    label: qsTr("Перейти в Уведомления"),  shortcut: "",
                     action: "notifications" })
 
         // ── Projects (dynamic) ──────────────────────────────────────────────
@@ -125,7 +125,7 @@ Item {
                         id:       "project_" + project.id,
                         category: "Projects",
                         icon:     "●",
-                        label:    "Перейти к проекту: " + project.name,
+                        label:    qsTr("Перейти к проекту: %1").arg(project.name),
                         keywords: (project.name || "") + " " + (project.color || ""),
                         shortcut: "",
                         action:   "project:" + project.id
@@ -149,7 +149,7 @@ Item {
                                 id:       "project_" + pfid,
                                 category: "Projects",
                                 icon:     "●",
-                                label:    "Перейти к проекту: " + pfname,
+                                label:    qsTr("Перейти к проекту: %1").arg(pfname),
                                 keywords: pfname,
                                 shortcut: "",
                                 action:   "project:" + pfid
@@ -162,22 +162,22 @@ Item {
 
         // ── Actions ──────────────────────────────────────────────────────────
         list.push({ id: "act_new_task",    category: "Actions", icon: "✏️",
-                    label: "Новая задача",       shortcut: "Q",
+                    label: qsTr("Новая задача"),       shortcut: "Q",
                     action: "new_task" })
         list.push({ id: "act_add_task",    category: "Actions", icon: "➕",
-                    label: "Добавить задачу",   shortcut: "",
+                    label: qsTr("Добавить задачу"),   shortcut: "",
                     action: "add_task" })
         list.push({ id: "act_add_project", category: "Actions", icon: "📁",
-                    label: "Добавить проект",   shortcut: "",
+                    label: qsTr("Добавить проект"),   shortcut: "",
                     action: "add_project" })
         list.push({ id: "act_add_filter",  category: "Actions", icon: "🔽",
-                    label: "Добавить фильтр",   shortcut: "",
+                    label: qsTr("Добавить фильтр"),   shortcut: "",
                     action: "add_filter" })
         list.push({ id: "act_add_label",   category: "Actions", icon: "🏷️",
-                    label: "Добавить метку",    shortcut: "",
+                    label: qsTr("Добавить метку"),    shortcut: "",
                     action: "add_label" })
         list.push({ id: "act_search",      category: "Actions", icon: "🔍",
-                    label: "Поиск",             shortcut: "/",
+                    label: qsTr("Поиск"),             shortcut: "/",
                     action: "search" })
         // ITER1 #45 / ITER2 #5: Undo action wired to undoStack.
         // Only add the entry when undoStack.canUndo is true so the palette does
@@ -188,8 +188,8 @@ Item {
         if (_canUndo) {
             var undoLabel = (typeof undoStack !== "undefined" && undoStack
                              && undoStack.lastDescription && undoStack.lastDescription !== "")
-                            ? ("Отменить: " + undoStack.lastDescription)
-                            : "Отменить действие"
+                            ? qsTr("Отменить: %1").arg(undoStack.lastDescription)
+                            : qsTr("Отменить действие")
             list.push({ id: "action_undo", category: "Actions", icon: "↩️",
                         label: undoLabel, shortcut: "Ctrl+Z",
                         action: "undo" })
@@ -201,13 +201,13 @@ Item {
                           ? taskViewModel.selectedTask : null
             if (selTask) {
                 list.push({ id: "task_complete", category: "Selected task", icon: "✅",
-                             label: "Завершить задачу",  shortcut: "",
+                             label: qsTr("Завершить задачу"),  shortcut: "",
                              action: "task_complete" })
                 list.push({ id: "task_delete",   category: "Selected task", icon: "🗑️",
-                             label: "Удалить задачу",    shortcut: "",
+                             label: qsTr("Удалить задачу"),    shortcut: "",
                              action: "task_delete" })
                 list.push({ id: "task_edit",     category: "Selected task", icon: "✏️",
-                             label: "Редактировать задачу", shortcut: "",
+                             label: qsTr("Редактировать задачу"), shortcut: "",
                              action: "task_edit" })
             }
         } catch(e) {}
@@ -223,7 +223,7 @@ Item {
                     id: "theme_" + tk,
                     category: "Themes",
                     icon: "🎨",
-                    label: "Переключить тему: " + _themeLabel(tk),
+                    label: qsTr("Переключить тему: %1").arg(_themeLabel(tk)),
                     shortcut: "",
                     action: "set_theme:" + tk
                 })
@@ -232,13 +232,13 @@ Item {
 
         // ── Other ─────────────────────────────────────────────────────────────
         list.push({ id: "other_sidebar",  category: "Other", icon: "☰",
-                    label: "Боковая панель вкл/выкл", shortcut: "",
+                    label: qsTr("Боковая панель вкл/выкл"), shortcut: "",
                     action: "toggle_sidebar" })
         list.push({ id: "other_reload",   category: "Other", icon: "🔄",
-                    label: "Перезагрузить данные",    shortcut: "",
+                    label: qsTr("Перезагрузить данные"),    shortcut: "",
                     action: "reload" })
         list.push({ id: "other_quit",     category: "Other", icon: "🚪",
-                    label: "Выйти из приложения",     shortcut: "Alt+F4",
+                    label: qsTr("Выйти из приложения"),     shortcut: "Alt+F4",
                     action: "quit" })
 
         return list
@@ -483,7 +483,7 @@ Item {
                     id: cmdInput
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    placeholderText: "Введите команду…"
+                    placeholderText: qsTr("Введите команду…")
                     font.pixelSize: 15
                     color: root._textColor
                     background: Item {}
@@ -578,13 +578,13 @@ Item {
                         // Translate category keys to Russian display strings
                         text: {
                             var map = {
-                                "Recent":        "НЕДАВНИЕ",
-                                "Navigation":    "НАВИГАЦИЯ",
-                                "Projects":      "ПРОЕКТЫ",
-                                "Actions":       "ДЕЙСТВИЯ",
-                                "Selected task": "ВЫБРАННАЯ ЗАДАЧА",
-                                "Themes":        "ТЕМЫ",
-                                "Other":         "ДРУГОЕ"
+                                "Recent":        qsTr("НЕДАВНИЕ"),
+                                "Navigation":    qsTr("НАВИГАЦИЯ"),
+                                "Projects":      qsTr("ПРОЕКТЫ"),
+                                "Actions":       qsTr("ДЕЙСТВИЯ"),
+                                "Selected task": qsTr("ВЫБРАННАЯ ЗАДАЧА"),
+                                "Themes":        qsTr("ТЕМЫ"),
+                                "Other":         qsTr("ДРУГОЕ")
                             }
                             return map[modelData.category] || modelData.category.toUpperCase()
                         }
@@ -680,7 +680,7 @@ Item {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Команды не найдены"
+                        text: qsTr("Команды не найдены")
                         font.pixelSize: 14
                         color: root._subColor
                     }

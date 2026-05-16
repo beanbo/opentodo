@@ -28,7 +28,7 @@ ColumnLayout {
         Layout.fillWidth: true
 
         text:            root.task ? (root.task.content || "") : ""
-        placeholderText: "Название задачи"
+        placeholderText: qsTr("Название задачи")
         font.pixelSize:  FontSize.title
         font.weight:     Font.Medium
         color:           ThemeManager.textColor

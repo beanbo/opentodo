@@ -2,8 +2,11 @@
 #include "storage/datastore.h"
 #include "utils/settingskeys.h"
 
+#include <QCoreApplication>
 #include <QHash>
+#include <QProcess>
 #include <QSettings>
+#include <QTimer>
 
 SettingsViewModel::SettingsViewModel(DataStore *store, QObject *parent)
     : QObject(parent)
@@ -280,6 +283,42 @@ QStringList SettingsViewModel::availableLanguages() const
         QStringLiteral("uk"),
         QStringLiteral("be"),
     };
+}
+
+bool SettingsViewModel::canRestartApp() const
+{
+    // Self-restart is only meaningful on platforms where QProcess::startDetached
+    // can spawn another instance of the same binary. Android packages launch
+    // through Activity, and WASM lives in a single browser frame — neither
+    // supports a clean in-process restart.
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WASM) || defined(__EMSCRIPTEN__)
+    return false;
+#else
+    return !QCoreApplication::applicationFilePath().isEmpty();
+#endif
+}
+
+void SettingsViewModel::restartApp()
+{
+    if (!canRestartApp())
+        return;
+
+    const QString program = QCoreApplication::applicationFilePath();
+    const QStringList args = QCoreApplication::arguments().mid(1);
+
+    // Spawn the replacement process detached so it survives our own exit,
+    // then quit the current event loop on the next tick to give Qt time to
+    // flush pending writes (DataStore auto-save runs via QSaveFile on a
+    // 1 s debounce; we depend on settings/language already being persisted
+    // by the synchronous QSettings write in setLanguage).
+    QProcess::startDetached(program, args);
+
+    // qApp could be null in degenerate test contexts; guard.
+    if (QCoreApplication::instance()) {
+        QTimer::singleShot(0, QCoreApplication::instance(), []() {
+            QCoreApplication::quit();
+        });
+    }
 }
 
 void SettingsViewModel::onSettingsChanged()

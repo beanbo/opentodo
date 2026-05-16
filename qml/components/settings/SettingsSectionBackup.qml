@@ -22,9 +22,9 @@ Rectangle {
     // ── File dialogs ──────────────────────────────────────────────────────────
     FileDialog {
         id: exportFileDialog
-        title: "Сохранить резервную копию"
+        title: qsTr("Сохранить резервную копию")
         fileMode: FileDialog.SaveFile
-        nameFilters: ["JSON-файлы (*.json)", "Все файлы (*)"]
+        nameFilters: [qsTr("JSON-файлы (*.json)"), qsTr("Все файлы (*)")]
         defaultSuffix: "json"
         currentFile: "opentodo-backup.json"
 
@@ -45,9 +45,9 @@ Rectangle {
 
     FileDialog {
         id: importFileDialog
-        title: "Загрузить резервную копию"
+        title: qsTr("Загрузить резервную копию")
         fileMode: FileDialog.OpenFile
-        nameFilters: ["JSON-файлы (*.json)", "Все файлы (*)"]
+        nameFilters: [qsTr("JSON-файлы (*.json)"), qsTr("Все файлы (*)")]
 
         onAccepted: {
             var xhr = new XMLHttpRequest()
@@ -62,9 +62,9 @@ Rectangle {
     // ── Todoist ZIP file dialog ───────────────────────────────────────────────
     FileDialog {
         id: todoistZipDialog
-        title: "Выбрать файл резервной копии Todoist (.zip)"
+        title: qsTr("Выбрать файл резервной копии Todoist (.zip)")
         fileMode: FileDialog.OpenFile
-        nameFilters: ["ZIP-архивы (*.zip)", "Все файлы (*)"]
+        nameFilters: [qsTr("ZIP-архивы (*.zip)"), qsTr("Все файлы (*)")]
 
         // ITER1 #35: do NOT start import immediately — open confirmation first.
         onAccepted: zipImportConfirmDialog.open()
@@ -74,7 +74,7 @@ Rectangle {
     // Explicit width avoids implicitWidth binding loop with wrapping Label.
     Dialog {
         id: zipImportConfirmDialog
-        title: "Подтвердить импорт"
+        title: qsTr("Подтвердить импорт")
         modal: true
         anchors.centerIn: parent
         width: 380
@@ -84,7 +84,7 @@ Rectangle {
             anchors.fill: parent
             spacing: 8
             Label {
-                text: "Импортировать из этого файла? Существующие данные будут объединены."
+                text: qsTr("Импортировать из этого файла? Существующие данные будут объединены.")
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
@@ -101,7 +101,7 @@ Rectangle {
     // ── Todoist API token dialog ──────────────────────────────────────────────
     Dialog {
         id: todoistTokenDialog
-        title: "Импорт через Todoist API"
+        title: qsTr("Импорт через Todoist API")
         modal: true
         width: 420
         anchors.centerIn: parent
@@ -111,7 +111,7 @@ Rectangle {
             anchors.margins: 16
 
             Text {
-                text: "Введите API-токен из Todoist:\nНастройки → Интеграции → Разработчикам → API-токен"
+                text: qsTr("Введите API-токен из Todoist:\nНастройки → Интеграции → Разработчикам → API-токен")
                 font.pixelSize: 13
                 color: ThemeManager.textColor
                 wrapMode: Text.WordWrap
@@ -120,7 +120,7 @@ Rectangle {
 
             TextField {
                 id: tokenField
-                placeholderText: "API-токен Todoist"
+                placeholderText: qsTr("API-токен Todoist")
                 echoMode: TextInput.Password
                 Layout.fillWidth: true
                 font.pixelSize: 13
@@ -137,7 +137,7 @@ Rectangle {
 
             CheckBox {
                 id: importCompletedApiCheck
-                text: "Импортировать завершённые задачи"
+                text: qsTr("Импортировать завершённые задачи")
                 font.pixelSize: 13
                 checked: false
                 contentItem: Text {
@@ -155,7 +155,7 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Button {
-                    text: "Отмена"
+                    text: qsTr("Отмена")
                     implicitHeight: 34
                     implicitWidth: 90
                     contentItem: Text {
@@ -175,7 +175,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: "Импортировать"
+                    text: qsTr("Импортировать")
                     implicitHeight: 34
                     implicitWidth: 130
                     enabled: tokenField.text.trim().length > 0
@@ -204,7 +204,7 @@ Rectangle {
     // ── Import result dialog ──────────────────────────────────────────────────
     Dialog {
         id: importResultDialog
-        title: importResultIsError ? "Ошибка импорта" : "Импорт завершён"
+        title: importResultIsError ? qsTr("Ошибка импорта") : qsTr("Импорт завершён")
         modal: true
         width: 380
         anchors.centerIn: parent
@@ -227,7 +227,7 @@ Rectangle {
             }
 
             Button {
-                text: "Закрыть"
+                text: qsTr("Закрыть")
                 Layout.alignment: Qt.AlignRight
                 implicitHeight: 34
                 implicitWidth: 90
@@ -267,7 +267,7 @@ Rectangle {
             } else {
                 importResultDialog.importResultIsError = false
                 importResultDialog.importResultText    =
-                    "Импортировано: " + taskCount + " задач из " + projectCount + " проектов."
+                    qsTr("Импортировано: %1 задач из %2 проектов.").arg(taskCount).arg(projectCount)
             }
             importResultDialog.open()
         }
@@ -287,7 +287,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Резервная копия"
+                text: qsTr("Резервная копия")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -342,12 +342,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Экспорт / Импорт"
+                        text: qsTr("Экспорт / Импорт")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Сохранить или восстановить все задачи и проекты в формате JSON"
+                        text: qsTr("Сохранить или восстановить все задачи и проекты в формате JSON")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -359,7 +359,7 @@ Rectangle {
                     spacing: 8
 
                     Button {
-                        text: "Экспорт"
+                        text: qsTr("Экспорт")
                         implicitHeight: 34
                         implicitWidth: 90
 
@@ -382,7 +382,7 @@ Rectangle {
                     }
 
                     Button {
-                        text: "Импорт"
+                        text: qsTr("Импорт")
                         implicitHeight: 34
                         implicitWidth: 90
 
@@ -428,7 +428,7 @@ Rectangle {
                 anchors.rightMargin: 20
 
                 Text {
-                    text: "Импорт из Todoist"
+                    text: qsTr("Импорт из Todoist")
                     font.pixelSize: 14
                     font.bold: true
                     color: ThemeManager.textColor
@@ -448,7 +448,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
                 anchors.leftMargin: 20
-                text: "Импортировать завершённые задачи"
+                text: qsTr("Импортировать завершённые задачи")
                 font.pixelSize: 13
                 checked: false
                 contentItem: Text {
@@ -476,19 +476,19 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Из файла бэкапа (.zip)"
+                        text: qsTr("Из файла бэкапа (.zip)")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Todoist → Настройки → Резервные копии → Скачать"
+                        text: qsTr("Todoist → Настройки → Резервные копии → Скачать")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                     }
                 }
 
                 Button {
-                    text: "Выбрать файл"
+                    text: qsTr("Выбрать файл")
                     implicitHeight: 34
                     implicitWidth: 120
                     enabled: typeof todoistImporter !== "undefined"
@@ -528,19 +528,19 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Через API-токен"
+                        text: qsTr("Через API-токен")
                         font.pixelSize: 13
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Todoist → Настройки → Интеграции → Разработчикам"
+                        text: qsTr("Todoist → Настройки → Интеграции → Разработчикам")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                     }
                 }
 
                 Button {
-                    text: "Ввести токен"
+                    text: qsTr("Ввести токен")
                     implicitHeight: 34
                     implicitWidth: 120
                     enabled: typeof todoistImporter !== "undefined"
@@ -635,12 +635,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Экспорт задач"
+                        text: qsTr("Экспорт задач")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Сохранить все задачи в формате CSV или Markdown"
+                        text: qsTr("Сохранить все задачи в формате CSV или Markdown")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -673,7 +673,7 @@ Rectangle {
                             const path = taskExporter.exportToCsv("")
                             if (path && path !== "")
                                 root.Window.window.showToast(
-                                    "Экспортировано в " + path, "success")
+                                    qsTr("Экспортировано в %1").arg(path), "success")
                         }
                     }
 
@@ -697,7 +697,7 @@ Rectangle {
                             const path = taskExporter.exportToMarkdown("")
                             if (path && path !== "")
                                 root.Window.window.showToast(
-                                    "Экспортировано в " + path, "success")
+                                    qsTr("Экспортировано в %1").arg(path), "success")
                         }
                     }
                 }
@@ -731,14 +731,14 @@ Rectangle {
 
             // Section label
             Text {
-                text: "История бэкапов"
+                text: qsTr("История бэкапов")
                 font.pixelSize: 14
                 font.bold: true
                 color: ThemeManager.textColor
                 bottomPadding: 2
             }
             Text {
-                text: "Локальные копии state.json. Сохраняются перед каждым записью данных."
+                text: qsTr("Локальные копии state.json. Сохраняются перед каждым записью данных.")
                 font.pixelSize: 11
                 color: ThemeManager.secondaryTextColor
                 wrapMode: Text.WordWrap
@@ -749,7 +749,7 @@ Rectangle {
             // Empty state
             Text {
                 visible: backupHistoryCol.backups.length === 0
-                text: "Бэкапов пока нет. Они появятся после первого сохранения."
+                text: qsTr("Бэкапов пока нет. Они появятся после первого сохранения.")
                 font.pixelSize: 12
                 color: ThemeManager.secondaryTextColor
                 Layout.fillWidth: true
@@ -808,7 +808,7 @@ Rectangle {
 
                         // Restore button
                         Button {
-                            text: "Восстановить"
+                            text: qsTr("Восстановить")
                             implicitHeight: 30
                             implicitWidth: 120
                             flat: true
@@ -864,7 +864,7 @@ Rectangle {
         // ── Restore confirmation dialog ────────────────────────────────────
         Dialog {
             id: restoreConfirmDialog
-            title: "Восстановить бэкап"
+            title: qsTr("Восстановить бэкап")
             modal: true
             anchors.centerIn: parent
             width: 360
@@ -878,9 +878,7 @@ Rectangle {
                 anchors.margins: 4
 
                 Text {
-                    text: "Восстановить из «" + restoreConfirmDialog.targetName + "»?\n\n"
-                          + "Текущая state.json будет сохранена в ротацию .bak "
-                          + "перед заменой — последующее восстановление позволит откатить это действие."
+                    text: qsTr("Восстановить из «%1»?\n\nТекущая state.json будет сохранена в ротацию .bak перед заменой — последующее восстановление позволит откатить это действие.").arg(restoreConfirmDialog.targetName)
                     wrapMode: Text.WordWrap
                     color: ThemeManager.textColor
                     font.pixelSize: 13
@@ -895,9 +893,9 @@ Rectangle {
                 const w = root.Window.window
                 if (w && typeof w.showToast === "function") {
                     if (ok)
-                        w.showToast("Восстановлено из " + restoreConfirmDialog.targetName, "success")
+                        w.showToast(qsTr("Восстановлено из %1").arg(restoreConfirmDialog.targetName), "success")
                     else
-                        w.showToast("Не удалось восстановить бэкап", "error")
+                        w.showToast(qsTr("Не удалось восстановить бэкап"), "error")
                 }
             }
         }

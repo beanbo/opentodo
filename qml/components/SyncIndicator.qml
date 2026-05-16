@@ -210,10 +210,10 @@ Rectangle {
 
             text: {
                 switch (syncViewModel.syncStatus) {
-                case "synced":  return "Синхронизировано"
-                case "syncing": return "Синхронизация…"
-                case "error":   return "Ошибка"
-                case "offline": return "Офлайн"
+                case "synced":  return qsTr("Синхронизировано")
+                case "syncing": return qsTr("Синхронизация…")
+                case "error":   return qsTr("Ошибка")
+                case "offline": return qsTr("Офлайн")
                 default:        return ""
                 }
             }
@@ -255,14 +255,14 @@ Rectangle {
 
             Text {
                 visible: syncViewModel.pendingCommits > 0
-                text: syncViewModel.pendingCommits + " несохранённых изменений"
+                text: qsTr("%n несохранённых изменений", "", syncViewModel.pendingCommits)
                 font.pixelSize: 13
                 color: isDarkTheme ? "#e0e0e0" : "#333333"
             }
 
             Text {
                 visible: syncViewModel.syncStatus === "error" && syncViewModel.lastError !== ""
-                text: "Ошибка: " + syncViewModel.lastError
+                text: qsTr("Ошибка: %1").arg(syncViewModel.lastError)
                 font.pixelSize: 13
                 color: colorError
                 wrapMode: Text.WordWrap

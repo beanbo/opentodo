@@ -31,7 +31,7 @@ Rectangle {
 
     function _refreshSections() {
         var raw    = dataStore.sectionsForProject(projectId)
-        var result = [{ id: "", name: "(Без раздела)" }]
+        var result = [{ id: "", name: qsTr("(Без раздела)") }]
         for (var i = 0; i < raw.length; i++) {
             result.push({ id: raw[i].id, name: raw[i].name })
         }
@@ -171,7 +171,7 @@ Rectangle {
                                 y:  columnMenuBtn.height
 
                                 MenuItem {
-                                    text: "Переименовать раздел"
+                                    text: qsTr("Переименовать раздел")
                                     onTriggered: {
                                         renameSectionDialog.sectionId   = modelData.id
                                         renameSectionDialog.sectionName = modelData.name
@@ -180,7 +180,7 @@ Rectangle {
                                 }
                                 MenuSeparator {}
                                 MenuItem {
-                                    text: "Удалить раздел"
+                                    text: qsTr("Удалить раздел")
                                     Material.foreground: root.todoistRed
                                     onTriggered: {
                                         // B-6.40 — canonical API is removeSection (not deleteSection)
@@ -401,7 +401,7 @@ Rectangle {
                                     font.pixelSize: FontSize.subtitle
                                 }
                                 Text {
-                                    text:           "Добавить задачу"
+                                    text:           qsTr("Добавить задачу")
                                     color:          root.textSecondary
                                     font.pixelSize: FontSize.body
                                 }
@@ -443,7 +443,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {
-                        text:           "Добавить раздел"
+                        text:           qsTr("Добавить раздел")
                         font.pixelSize: FontSize.body
                         color:          root.textSecondary
                         Layout.alignment: Qt.AlignHCenter
@@ -464,7 +464,7 @@ Rectangle {
     // ── Add card dialog ───────────────────────────────────────────────────────
     Dialog {
         id:    addCardDialog
-        title: "Добавить задачу"
+        title: qsTr("Добавить задачу")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -490,11 +490,11 @@ Rectangle {
             spacing: 8
             width:   280
 
-            Label { text: "Название задачи"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            Label { text: qsTr("Название задачи"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
                 id:              addCardField
                 Layout.fillWidth: true
-                placeholderText: "Название задачи"
+                placeholderText: qsTr("Название задачи")
                 color:           root.textPrimary
             }
         }
@@ -503,7 +503,7 @@ Rectangle {
     // ── Add column dialog ─────────────────────────────────────────────────────
     Dialog {
         id:    addColumnDialog
-        title: "Добавить раздел"
+        title: qsTr("Добавить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -525,11 +525,11 @@ Rectangle {
             spacing: 8
             width:   280
 
-            Label { text: "Название раздела"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
                 id:              colNameField
                 Layout.fillWidth: true
-                placeholderText: "Название раздела"
+                placeholderText: qsTr("Название раздела")
                 color:           root.textPrimary
             }
         }
@@ -538,7 +538,7 @@ Rectangle {
     // ── Rename section dialog ─────────────────────────────────────────────────
     Dialog {
         id:    renameSectionDialog
-        title: "Переименовать раздел"
+        title: qsTr("Переименовать раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -563,11 +563,11 @@ Rectangle {
             spacing: 8
             width:   280
 
-            Label { text: "Название раздела"; font.pixelSize: FontSize.small; color: root.textSecondary }
+            Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
                 id:              renameField
                 Layout.fillWidth: true
-                placeholderText: "Название раздела"
+                placeholderText: qsTr("Название раздела")
                 color:           root.textPrimary
             }
         }

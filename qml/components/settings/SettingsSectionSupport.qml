@@ -75,7 +75,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Поддержать разработчика"
+                text: qsTr("Поддержать разработчика")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -132,7 +132,7 @@ Rectangle {
                 spacing: 6
 
                 Text {
-                    text: "Поддержать разработчика"
+                    text: qsTr("Поддержать разработчика")
                     font.pixelSize: 22
                     font.bold: true
                     color: ThemeManager.textColor
@@ -141,7 +141,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Если приложение оказалось полезным — можно поддержать разработку:"
+                    text: qsTr("Если приложение оказалось полезным — можно поддержать разработку:")
                     font.pixelSize: 14
                     color: ThemeManager.secondaryTextColor
                     Layout.fillWidth: true
@@ -157,7 +157,7 @@ Rectangle {
             Layout.rightMargin: 20
             glyph: "₿"
             currencyName: "Bitcoin"
-            networkLabel: "Сеть: Bitcoin"
+            networkLabel: qsTr("Сеть: Bitcoin")
             walletAddress: root.btcAddress
         }
 
@@ -167,7 +167,7 @@ Rectangle {
             Layout.rightMargin: 20
             glyph: "Ξ"
             currencyName: "Ethereum"
-            networkLabel: "Сеть: Ethereum (ERC-20)"
+            networkLabel: qsTr("Сеть: Ethereum (ERC-20)")
             walletAddress: root.ethAddress
         }
 
@@ -177,7 +177,7 @@ Rectangle {
             Layout.rightMargin: 20
             glyph: "💎"
             currencyName: "TON"
-            networkLabel: "Сеть: The Open Network"
+            networkLabel: qsTr("Сеть: The Open Network")
             walletAddress: root.tonAddress
         }
 
@@ -187,7 +187,7 @@ Rectangle {
             Layout.rightMargin: 20
             glyph: "₮"
             currencyName: "USDT (TRC-20)"
-            networkLabel: "Сеть: Tron (TRC-20)"
+            networkLabel: qsTr("Сеть: Tron (TRC-20)")
             walletAddress: root.usdtTrcAddress
         }
 
@@ -197,7 +197,7 @@ Rectangle {
             Layout.rightMargin: 20
             glyph: "₮"
             currencyName: "USDT (ERC-20)"
-            networkLabel: "Сеть: Ethereum (ERC-20)"
+            networkLabel: qsTr("Сеть: Ethereum (ERC-20)")
             walletAddress: root.usdtErcAddress
         }
 
@@ -208,7 +208,7 @@ Rectangle {
             Layout.rightMargin: 20
             Layout.topMargin: 4
             Layout.bottomMargin: 20
-            text: "Спасибо! 🙏"
+            text: qsTr("Спасибо! 🙏")
             font.pixelSize: 14
             font.bold: true
             color: ThemeManager.textColor
@@ -340,7 +340,7 @@ Rectangle {
 
                     contentItem: Text {
                         id: copyBtnText
-                        text: cardRoot._justCopied ? "Скопировано ✓" : "Скопировать"
+                        text: cardRoot._justCopied ? qsTr("Скопировано ✓") : qsTr("Скопировать")
                         color: ThemeManager.accentColor
                         font.pixelSize: 12
                         horizontalAlignment: Text.AlignHCenter
@@ -371,8 +371,7 @@ Rectangle {
                         // section (e.g. when the user has scrolled).
                         const w = cardRoot.Window.window
                         if (w && typeof w.showToast === "function")
-                            w.showToast("Адрес " + cardRoot.currencyName
-                                        + " скопирован", "success")
+                            w.showToast(qsTr("Адрес %1 скопирован").arg(cardRoot.currencyName), "success")
 
                         if (typeof telemetry !== "undefined"
                             && telemetry && telemetry.enabled)

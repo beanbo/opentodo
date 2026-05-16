@@ -105,10 +105,10 @@ Rectangle {
     function _taskWord(n) {
         var mod10  = n % 10
         var mod100 = n % 100
-        if (mod10 === 1 && mod100 !== 11)               return "задача"
+        if (mod10 === 1 && mod100 !== 11)               return qsTr("задача")
         if (mod10 >= 2 && mod10 <= 4 &&
-            (mod100 < 10 || mod100 >= 20))              return "задачи"
-        return "задач"
+            (mod100 < 10 || mod100 >= 20))              return qsTr("задачи")
+        return qsTr("задач")
     }
 
     // ── Week helpers ──────────────────────────────────────────────────────────
@@ -233,9 +233,9 @@ Rectangle {
                     font.pixelSize: 14
                     Material.foreground: root.textPrimary
                     onClicked: root.prevPeriod()
-                    ToolTip.text: root.viewMode === "week"   ? "Предыдущая неделя"
-                                : root.viewMode === "agenda" ? "Предыдущие 14 дней"
-                                :                              "Предыдущий месяц"
+                    ToolTip.text: root.viewMode === "week"   ? qsTr("Предыдущая неделя")
+                                : root.viewMode === "agenda" ? qsTr("Предыдущие 14 дней")
+                                :                              qsTr("Предыдущий месяц")
                     ToolTip.visible: hovered
                 }
 
@@ -273,9 +273,9 @@ Rectangle {
                     font.pixelSize: 14
                     Material.foreground: root.textPrimary
                     onClicked: root.nextPeriod()
-                    ToolTip.text: root.viewMode === "week"   ? "Следующая неделя"
-                                : root.viewMode === "agenda" ? "Следующие 14 дней"
-                                :                              "Следующий месяц"
+                    ToolTip.text: root.viewMode === "week"   ? qsTr("Следующая неделя")
+                                : root.viewMode === "agenda" ? qsTr("Следующие 14 дней")
+                                :                              qsTr("Следующий месяц")
                     ToolTip.visible: hovered
                 }
 
@@ -286,29 +286,29 @@ Rectangle {
                     spacing: 2
 
                     ToolButton {
-                        text: "Месяц"
+                        text: qsTr("Месяц")
                         font.pixelSize: 13
                         checked: root.viewMode === "month"
                         onClicked: root.viewMode = "month"
                         Material.foreground: root.viewMode === "month"
                                              ? root.todoistRed : root.textSecondary
-                        ToolTip.text: "Вид: месяц"
+                        ToolTip.text: qsTr("Вид: месяц")
                         ToolTip.visible: hovered
                     }
 
                     ToolButton {
-                        text: "Неделя"
+                        text: qsTr("Неделя")
                         font.pixelSize: 13
                         checked: root.viewMode === "week"
                         onClicked: root.viewMode = "week"
                         Material.foreground: root.viewMode === "week"
                                              ? root.todoistRed : root.textSecondary
-                        ToolTip.text: "Вид: неделя"
+                        ToolTip.text: qsTr("Вид: неделя")
                         ToolTip.visible: hovered
                     }
 
                     ToolButton {
-                        text: "Список"
+                        text: qsTr("Список")
                         font.pixelSize: 13
                         checked: root.viewMode === "agenda"
                         onClicked: {
@@ -319,13 +319,13 @@ Rectangle {
                         }
                         Material.foreground: root.viewMode === "agenda"
                                              ? root.todoistRed : root.textSecondary
-                        ToolTip.text: "Вид: список (агенда)"
+                        ToolTip.text: qsTr("Вид: список (агенда)")
                         ToolTip.visible: hovered
                     }
                 }
 
                 Button {
-                    text:   "Сегодня"
+                    text:   qsTr("Сегодня")
                     flat:   true
                     onClicked: {
                         root.currentMonth = new Date()
@@ -356,7 +356,7 @@ Rectangle {
                 spacing: 0
 
                 Repeater {
-                    model: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+                    model: [qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб"), qsTr("Вс")]
 
                     delegate: Item {
                         Layout.fillWidth: true
@@ -370,7 +370,7 @@ Rectangle {
                             font.bold:      true
                             color: {
                                 // Highlight weekends
-                                if (modelData === "Сб" || modelData === "Вс")
+                                if (modelData === qsTr("Сб") || modelData === qsTr("Вс"))
                                     return root.isDarkTheme ? "#888" : "#999"
                                 return root.textSecondary
                             }
@@ -501,7 +501,7 @@ Rectangle {
                         // "+N more" overflow label
                         Text {
                             visible:        cell.dayTasks.length > 3
-                            text:           "+ ещё " + (cell.dayTasks.length - 3)
+                            text:           qsTr("+ ещё %1").arg(cell.dayTasks.length - 3)
                             font.pixelSize: 10
                             color:          root.todoistRed
                         }
@@ -668,7 +668,7 @@ Rectangle {
                     // Overflow label
                     Text {
                         visible:        weekCell.dayTasks.length > 3
-                        text:           "+ ещё " + (weekCell.dayTasks.length - 3)
+                        text:           qsTr("+ ещё %1").arg(weekCell.dayTasks.length - 3)
                         font.pixelSize: 10
                         color:          root.todoistRed
                     }
@@ -778,8 +778,8 @@ Rectangle {
 
                                 Label {
                                     text: {
-                                        if (agendaDayItem.isToday)    return "Сегодня"
-                                        if (agendaDayItem.isTomorrow) return "Завтра"
+                                        if (agendaDayItem.isToday)    return qsTr("Сегодня")
+                                        if (agendaDayItem.isTomorrow) return qsTr("Завтра")
                                         var locale = Qt.locale("ru_RU")
                                         var raw = locale.dayName(agendaDayItem.dayDate.getDay(),
                                                                  Locale.LongFormat)
@@ -876,7 +876,7 @@ Rectangle {
                             // ── Empty-day placeholder ─────────────────────────
                             Label {
                                 visible:           agendaDayItem.tasks.length === 0
-                                text:              "  Нет задач"
+                                text:              qsTr("  Нет задач")
                                 Layout.leftMargin: 36
                                 color:             root.textSecondary
                                 font.pixelSize:    12
@@ -1014,7 +1014,7 @@ Rectangle {
                     Label {
                         anchors.centerIn: parent
                         visible:          popupTaskList.count === 0
-                        text:             "На этот день задач нет"
+                        text:             qsTr("На этот день задач нет")
                         font.pixelSize:   14
                         color:            root.textSecondary
                     }
@@ -1120,7 +1120,7 @@ Rectangle {
                     TextField {
                         id:              popupAddField
                         Layout.fillWidth: true
-                        placeholderText: "Добавить задачу…"
+                        placeholderText: qsTr("Добавить задачу…")
                         background:     Item {}
                         color:          root.textPrimary
                         font.pixelSize: 14
@@ -1150,7 +1150,7 @@ Rectangle {
         property date cellDate: new Date()
 
         MenuItem {
-            text: "Добавить задачу на этот день…"
+            text: qsTr("Добавить задачу на этот день…")
             onTriggered: {
                 quickAddDialog.targetDate = quickAddMenu.cellDate
                 quickAddDialog.open()
@@ -1161,7 +1161,7 @@ Rectangle {
     // ── Quick-add dialog (opened from context menu) ───────────────────────────
     Dialog {
         id: quickAddDialog
-        title: "Новая задача"
+        title: qsTr("Новая задача")
         modal: true
         anchors.centerIn: Overlay.overlay
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -1186,8 +1186,8 @@ Rectangle {
             spacing: 8
 
             Label {
-                text:           "Дата: " + Qt.formatDate(quickAddDialog.targetDate,
-                                                         "dd.MM.yyyy")
+                text:           qsTr("Дата: %1").arg(Qt.formatDate(quickAddDialog.targetDate,
+                                                                   "dd.MM.yyyy"))
                 color:          root.textSecondary
                 font.pixelSize: 12
             }
@@ -1196,7 +1196,7 @@ Rectangle {
                 id:               quickAddField
                 Layout.fillWidth: true
                 Layout.preferredWidth: 320
-                placeholderText:  "Текст задачи"
+                placeholderText:  qsTr("Текст задачи")
                 color:            root.textPrimary
                 // Allow pressing Enter to accept the dialog
                 Keys.onReturnPressed: quickAddDialog.accept()

@@ -126,10 +126,10 @@ Rectangle {
             function _overduePlural(n) {
                 var m100 = n % 100
                 var m10 = n % 10
-                if (m100 >= 11 && m100 <= 14) return "задач"
-                if (m10 === 1) return "задача"
-                if (m10 >= 2 && m10 <= 4) return "задачи"
-                return "задач"
+                if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+                if (m10 === 1) return qsTr("задача")
+                if (m10 >= 2 && m10 <= 4) return qsTr("задачи")
+                return qsTr("задач")
             }
 
             // Note: Component.onCompleted for overdue is hooked into the
@@ -175,10 +175,10 @@ Rectangle {
             function _pinnedTaskWord(n) {
                 const m100 = n % 100
                 const m10  = n % 10
-                if (m100 >= 11 && m100 <= 14) return "задач"
-                if (m10 === 1)                 return "задача"
-                if (m10 >= 2 && m10 <= 4)      return "задачи"
-                return "задач"
+                if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+                if (m10 === 1)                 return qsTr("задача")
+                if (m10 >= 2 && m10 <= 4)      return qsTr("задачи")
+                return qsTr("задач")
             }
 
             function _priorityColor(p) {
@@ -422,8 +422,9 @@ Rectangle {
                                         leftMargin: 38
                                         verticalCenter: parent.verticalCenter
                                     }
-                                    text: "Показать все (" + mainColumn._pinnedTotal +
-                                          " " + mainColumn._pinnedTaskWord(mainColumn._pinnedTotal) + ")"
+                                    text: qsTr("Показать все (%1 %2)")
+                                            .arg(mainColumn._pinnedTotal)
+                                            .arg(mainColumn._pinnedTaskWord(mainColumn._pinnedTotal))
                                     font.pixelSize: FontSize.caption
                                     font.underline: pinnedShowAllMouse.containsMouse
                                     color: sidebarContent.activeTextColor
@@ -834,10 +835,10 @@ Rectangle {
                         function _projectTaskWord(n) {
                             const m100 = n % 100
                             const m10  = n % 10
-                            if (m100 >= 11 && m100 <= 14) return "задач"
-                            if (m10 === 1)                 return "задача"
-                            if (m10 >= 2 && m10 <= 4)      return "задачи"
-                            return "задач"
+                            if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+                            if (m10 === 1)                 return qsTr("задача")
+                            if (m10 >= 2 && m10 <= 4)      return qsTr("задачи")
+                            return qsTr("задач")
                         }
 
                         Component.onCompleted: _refreshTaskCounts()
@@ -892,14 +893,15 @@ Rectangle {
                             ToolTip.text: {
                                 if (projTreeDelegate._totalTasks === 0) return ""
                                 const lines = []
-                                lines.push("Всего: " + projTreeDelegate._totalTasks + " " +
-                                           projTreeDelegate._projectTaskWord(projTreeDelegate._totalTasks))
+                                lines.push(qsTr("Всего: %1 %2")
+                                           .arg(projTreeDelegate._totalTasks)
+                                           .arg(projTreeDelegate._projectTaskWord(projTreeDelegate._totalTasks)))
                                 if (projTreeDelegate._completedTasks > 0)
-                                    lines.push("Завершено: " + projTreeDelegate._completedTasks)
+                                    lines.push(qsTr("Завершено: %1").arg(projTreeDelegate._completedTasks))
                                 if (projTreeDelegate._overdueTasks > 0)
-                                    lines.push("Просрочено: " + projTreeDelegate._overdueTasks)
+                                    lines.push(qsTr("Просрочено: %1").arg(projTreeDelegate._overdueTasks))
                                 if (projTreeDelegate._todayTasks > 0)
-                                    lines.push("На сегодня: " + projTreeDelegate._todayTasks)
+                                    lines.push(qsTr("На сегодня: %1").arg(projTreeDelegate._todayTasks))
                                 return lines.join("\n")
                             }
                         }
@@ -926,8 +928,9 @@ Rectangle {
 
                             HoverHandler { id: badgeHoverHandler }
                             ToolTip.visible: badgeHoverHandler.hovered
-                            ToolTip.text: "Выполнено " + projTreeDelegate._completedTasks +
-                                          " из " + projTreeDelegate._totalTasks
+                            ToolTip.text: qsTr("Выполнено %1 из %2")
+                                            .arg(projTreeDelegate._completedTasks)
+                                            .arg(projTreeDelegate._totalTasks)
                             ToolTip.delay: 500
                         }
 
@@ -1665,7 +1668,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "📊"
-                label: "Продуктивность"
+                label: qsTr("Продуктивность")
                 active: isActive("productivity")
                 isDarkTheme: sidebarContent.isDarkTheme
                 onClicked: sidebarViewModel.navigateTo("productivity")
@@ -1674,7 +1677,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "🔔"
-                label: "Уведомления"
+                label: qsTr("Уведомления")
                 active: isActive("notifications")
                 isDarkTheme: sidebarContent.isDarkTheme
                 onClicked: sidebarViewModel.navigateTo("notifications")
@@ -1683,7 +1686,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "✨"
-                label: "Помощник"
+                label: qsTr("Помощник")
                 active: isActive("ai")
                 isDarkTheme: sidebarContent.isDarkTheme
                 onClicked: sidebarViewModel.navigateTo("ai")
@@ -1692,7 +1695,7 @@ Rectangle {
             SidebarItem {
                 width: parent.width
                 iconText: "⚙"
-                label: "Настройки"
+                label: qsTr("Настройки")
                 active: isActive("settings")
                 isDarkTheme: sidebarContent.isDarkTheme
                 onClicked: sidebarViewModel.navigateTo("settings")
@@ -1707,7 +1710,7 @@ Rectangle {
                 id: trashItem
                 width: parent.width
                 iconText: "🗑"
-                label: "Корзина"
+                label: qsTr("Корзина")
                 count: trashItem._trashCount
                 showCount: trashItem._trashCount > 0
                 active: isActive("trash")
@@ -1776,11 +1779,11 @@ Rectangle {
                             const m100 = n % 100
                             const m10  = n % 10
                             let word
-                            if (m100 >= 11 && m100 <= 14)      word = "дней"
-                            else if (m10 === 1)                 word = "день"
-                            else if (m10 >= 2 && m10 <= 4)     word = "дня"
-                            else                                word = "дней"
-                            return n + " " + word + " подряд"
+                            if (m100 >= 11 && m100 <= 14)      word = qsTr("дней")
+                            else if (m10 === 1)                 word = qsTr("день")
+                            else if (m10 >= 2 && m10 <= 4)     word = qsTr("дня")
+                            else                                word = qsTr("дней")
+                            return qsTr("%1 %2 подряд").arg(n).arg(word)
                         }
                         font.pixelSize: FontSize.caption
                         color: ThemeManager.textColor
@@ -1793,7 +1796,7 @@ Rectangle {
                         visible: typeof karmaViewModel !== "undefined" && karmaViewModel !== null
                                  && karmaViewModel.weeklyStreak > 0
                         text: (typeof karmaViewModel !== "undefined" && karmaViewModel !== null)
-                              ? "📆 " + karmaViewModel.weeklyStreak + " нед."
+                              ? qsTr("📆 %1 нед.").arg(karmaViewModel.weeklyStreak)
                               : ""
                         font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor

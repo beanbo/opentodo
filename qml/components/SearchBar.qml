@@ -138,7 +138,7 @@ Rectangle {
         }
 
         Text {
-            text: "Поиск"
+            text: qsTr("Поиск")
             font.pixelSize: FontSize.body
             color: root._subColor
             Layout.fillWidth: true
@@ -167,7 +167,7 @@ Rectangle {
             id: searchField
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
-            placeholderText: "Поиск…"
+            placeholderText: qsTr("Поиск…")
             font.pixelSize: FontSize.body
             color: root._textColor
             background: Item {}   // transparent — outer Rectangle is the background
@@ -383,7 +383,7 @@ Rectangle {
                     spacing: 4
 
                     Text {
-                        text: "Недавние запросы"
+                        text: qsTr("Недавние запросы")
                         font.pixelSize: FontSize.caption
                         font.weight: Font.DemiBold
                         color: root._subColor
@@ -393,7 +393,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Очистить"
+                        text: qsTr("Очистить")
                         font.pixelSize: FontSize.caption
                         color: root._accent
                         visible: root.historyEntries.length > 0
@@ -462,7 +462,7 @@ Rectangle {
                                     // Russian tooltip per spec
                                     ToolTip.visible: containsMouse
                                     ToolTip.delay: 400
-                                    ToolTip.text: "Убрать из истории"
+                                    ToolTip.text: qsTr("Убрать из истории")
                                     onClicked: function(mouse) {
                                         mouse.accepted = true
                                         root._removeHistory(modelData)
@@ -539,10 +539,10 @@ Rectangle {
                             verticalAlignment: Text.AlignVCenter
                             text: {
                                 switch (parent._cat) {
-                                    case "task":    return "ЗАДАЧИ"
-                                    case "project": return "ПРОЕКТЫ"
-                                    case "label":   return "МЕТКИ"
-                                    case "filter":  return "ФИЛЬТРЫ"
+                                    case "task":    return qsTr("ЗАДАЧИ")
+                                    case "project": return qsTr("ПРОЕКТЫ")
+                                    case "label":   return qsTr("МЕТКИ")
+                                    case "filter":  return qsTr("ФИЛЬТРЫ")
                                     default:        return parent._cat.toUpperCase()
                                 }
                             }

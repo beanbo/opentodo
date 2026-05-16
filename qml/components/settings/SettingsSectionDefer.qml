@@ -48,7 +48,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Длительность отложенного"
+                text: qsTr("Длительность отложенного")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -100,7 +100,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 20
                 anchors.rightMargin: 20
-                text: "При нажатии Snooze в напоминании или меню задачи"
+                text: qsTr("При нажатии Snooze в напоминании или меню задачи")
                 font.pixelSize: 12
                 color: ThemeManager.secondaryTextColor
                 wrapMode: Text.WordWrap
@@ -130,7 +130,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Отложить #1 (минут)"
+                    text: qsTr("Отложить #1 (минут)")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -192,7 +192,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Отложить #2 (минут)"
+                    text: qsTr("Отложить #2 (минут)")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -254,7 +254,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Отложить #3 (минут)"
+                    text: qsTr("Отложить #3 (минут)")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -316,7 +316,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Отложить #4 (минут)"
+                    text: qsTr("Отложить #4 (минут)")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -378,7 +378,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Отложить #5 (минут)"
+                    text: qsTr("Отложить #5 (минут)")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -442,7 +442,7 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 Button {
-                    text: "Сбросить значения"
+                    text: qsTr("Сбросить значения")
                     implicitHeight: 34
                     implicitWidth: 170
 

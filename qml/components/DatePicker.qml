@@ -38,7 +38,7 @@ Popup {
     // JS getDay() is 0=Sun; SettingsViewModel weekStart is 0=Mon..6=Sun,
     // so we map: settings 0→JS 1(Mon), settings 6→JS 0(Sun).
     // Labels are in JS weekday order (0=Sun): ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"]
-    readonly property var _allLabels: ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+    readonly property var _allLabels: [qsTr("Вс"), qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб")]
     // Convert SettingsViewModel 0=Mon..6=Sun to JS 0=Sun index:
     property int _jsWeekStart: (weekStartIdx + 1) % 7  // 0(Mon)->1, 6(Sun)->0
     property var weekdayLabels: {
@@ -84,10 +84,10 @@ Popup {
 
             Repeater {
                 model: [
-                    { label: "Сегодня",       value: "today"     },
-                    { label: "Завтра",        value: "tomorrow"  },
-                    { label: "След. неделя",  value: "next week" },
-                    { label: "Без даты",      value: ""          }
+                    { label: qsTr("Сегодня"),       value: "today"     },
+                    { label: qsTr("Завтра"),        value: "tomorrow"  },
+                    { label: qsTr("След. неделя"),  value: "next week" },
+                    { label: qsTr("Без даты"),      value: ""          }
                 ]
 
                 delegate: Button {
@@ -303,8 +303,8 @@ Popup {
     }
 
     function monthYearLabel(year, month) {
-        const names = ["Январь","Февраль","Март","Апрель","Май","Июнь",
-                       "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
+        const names = [qsTr("Январь"),qsTr("Февраль"),qsTr("Март"),qsTr("Апрель"),qsTr("Май"),qsTr("Июнь"),
+                       qsTr("Июль"),qsTr("Август"),qsTr("Сентябрь"),qsTr("Октябрь"),qsTr("Ноябрь"),qsTr("Декабрь")]
         return names[month] + " " + year
     }
 

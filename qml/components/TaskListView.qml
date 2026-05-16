@@ -73,10 +73,10 @@ Item {
             ToolButton {
                 id: expandAllButton
                 flat: true
-                text: "📂 Развернуть всё"
+                text: qsTr("📂 Развернуть всё")
                 font.pixelSize: FontSize.caption
                 Material.foreground: ThemeManager.secondaryTextColor
-                ToolTip.text: "Развернуть подзадачи у всех задач"
+                ToolTip.text: qsTr("Развернуть подзадачи у всех задач")
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
                 onClicked: root._expandAll()
@@ -85,10 +85,10 @@ Item {
             ToolButton {
                 id: collapseAllButton
                 flat: true
-                text: "📁 Свернуть всё"
+                text: qsTr("📁 Свернуть всё")
                 font.pixelSize: FontSize.caption
                 Material.foreground: ThemeManager.secondaryTextColor
-                ToolTip.text: "Свернуть подзадачи у всех задач"
+                ToolTip.text: qsTr("Свернуть подзадачи у всех задач")
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
                 onClicked: root._collapseAll()

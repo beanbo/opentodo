@@ -43,7 +43,7 @@ Rectangle {
             anchors.rightMargin: 20
 
             Text {
-                text: "Напоминания"
+                text: qsTr("Напоминания")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor
@@ -98,12 +98,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Звук уведомлений"
+                        text: qsTr("Звук уведомлений")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Воспроизводить системный звук при показе уведомлений"
+                        text: qsTr("Воспроизводить системный звук при показе уведомлений")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -147,7 +147,7 @@ Rectangle {
                 spacing: 16
 
                 Text {
-                    text: "Время напоминания по умолчанию"
+                    text: qsTr("Время напоминания по умолчанию")
                     font.pixelSize: 14
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
@@ -201,12 +201,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Авто-напоминание (за сколько до срока)"
+                        text: qsTr("Авто-напоминание (за сколько до срока)")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Минут до срока выполнения"
+                        text: qsTr("Минут до срока выполнения")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                     }
@@ -266,12 +266,12 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                        text: "Разрешение на уведомления"
+                        text: qsTr("Разрешение на уведомления")
                         font.pixelSize: 14
                         color: ThemeManager.textColor
                     }
                     Text {
-                        text: "Запросить у системы разрешение на показ уведомлений"
+                        text: qsTr("Запросить у системы разрешение на показ уведомлений")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -280,7 +280,7 @@ Rectangle {
                 }
 
                 Button {
-                    text: "Запросить разрешение"
+                    text: qsTr("Запросить разрешение")
                     implicitHeight: 34
                     implicitWidth: 170
 

@@ -205,6 +205,44 @@ Rectangle {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                 }
+
+                // Inline "restart now" button. Triggers SettingsViewModel.restartApp(),
+                // which launches a fresh process via QProcess::startDetached and exits
+                // the current one. On platforms where restart isn't available
+                // (Android, WASM) the button stays disabled.
+                Button {
+                    id: restartBtn
+                    text: qsTr("Перезапустить")
+                    enabled: typeof settingsViewModel !== "undefined"
+                             && typeof settingsViewModel.canRestartApp === "function"
+                             && settingsViewModel.canRestartApp()
+                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: 130
+                    Layout.alignment: Qt.AlignVCenter
+
+                    contentItem: Text {
+                        text: restartBtn.text
+                        color: restartBtn.enabled ? "white" : ThemeManager.secondaryTextColor
+                        font.pixelSize: 12
+                        font.bold: true
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    background: Rectangle {
+                        radius: 4
+                        color: restartBtn.enabled
+                               ? (restartBtn.hovered ? Qt.darker(ThemeManager.accentColor, 1.1)
+                                                     : ThemeManager.accentColor)
+                               : ThemeManager.borderColor
+                    }
+
+                    onClicked: {
+                        if (typeof settingsViewModel !== "undefined"
+                                && typeof settingsViewModel.restartApp === "function")
+                            settingsViewModel.restartApp()
+                    }
+                }
             }
         }
     }

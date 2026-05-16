@@ -80,8 +80,8 @@ Popup {
             Text {
                 Layout.fillWidth: true
                 text: root.taskContent.length > 0
-                      ? "Разбить «" + root.taskContent + "» на подзадачи"
-                      : "Разбить на подзадачи"
+                      ? qsTr("Разбить «%1» на подзадачи").arg(root.taskContent)
+                      : qsTr("Разбить на подзадачи")
                 font.pixelSize: FontSize.subtitle
                 font.weight:    Font.Medium
                 color:          ThemeManager.textColor
@@ -104,7 +104,7 @@ Popup {
             spacing:          Spacing.sm
 
             Text {
-                text:           "Количество подзадач:"
+                text:           qsTr("Количество подзадач:")
                 font.pixelSize: FontSize.body
                 color:          ThemeManager.textColor
             }
@@ -159,7 +159,7 @@ Popup {
 
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text:           "Генерирую подзадачи…"
+                text:           qsTr("Генерирую подзадачи…")
                 font.pixelSize: FontSize.body
                 color:          ThemeManager.secondaryTextColor
             }
@@ -299,7 +299,7 @@ Popup {
 
             // Cancel
             Button {
-                text: "Отмена"
+                text: qsTr("Отмена")
                 flat: true
                 contentItem: Text {
                     text:                parent.text
@@ -318,7 +318,7 @@ Popup {
                 text: {
                     // B-7.8: use proper Russian plural function
                     let n = _checkedCount()
-                    return n > 0 ? "Добавить " + n + pluralize(n) : "Ничего не выбрано"
+                    return n > 0 ? qsTr("Добавить %1%2").arg(n).arg(pluralize(n)) : qsTr("Ничего не выбрано")
                 }
                 enabled:  _checkedCount() > 0
                 Material.background: ThemeManager.accentColor
@@ -378,9 +378,9 @@ Popup {
     function pluralize(n) {
         var mod10  = n % 10
         var mod100 = n % 100
-        if (mod10 === 1 && mod100 !== 11)                           return " подзадача"
-        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return " подзадачи"
-        return " подзадач"
+        if (mod10 === 1 && mod100 !== 11)                           return qsTr(" подзадача")
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return qsTr(" подзадачи")
+        return qsTr(" подзадач")
     }
 
     function _accept() {
