@@ -131,6 +131,19 @@ opentodo_add_unit_test(test_merger_field_level_per_entity Infra)
 opentodo_add_unit_test(test_datastore_meta_helpers        Infra)
 opentodo_add_unit_test(test_subtask_hierarchy_edge        App)
 
+# Quality round 2.26: multi-device CRDT interleaving — 3/4-device conflict
+# simulation against direct Merger::mergeStates calls. Complements the
+# 2-device pairs covered by test_crdt / test_merger / test_merger_edge_cases /
+# test_merger_field_level_per_entity / test_hlc_edge_cases. Nine slots pin
+# current behaviour for: disjoint per-device field edits (each wins its own
+# field), HLC-ordered writes through three devices, four-device OR-Set union,
+# add-remove-readd OR-Set asymmetry (re-add only resurrects if HLC STRICTLY >
+# remove HLC), tombstone absorbing later edits across three devices,
+# physical-clock skew clamping lives in HLC::update not Merger, kanban
+# concurrent section drag, schema-agnostic unknown-field forward-compat at
+# Merger layer, and year-2099 HLC acceptance (no Merger-side clamping).
+opentodo_add_unit_test(test_crdt_multidevice              Infra)
+
 # Quality round 2.12: parallel-test flake fix (per-test org/app names) +
 # SyncEngine state machine (offline) + FileManager error paths +
 # SettingsViewModel reactivity + CalendarView QML smoke.
@@ -329,6 +342,16 @@ opentodo_add_unit_test(test_taskexporter_robustness       Infra)
 # loops, no stack overflow. Pins the "Empty query" lastError contract and
 # documents that !!!!today is NOT canonicalised.
 opentodo_add_unit_test(test_filterparser_adversarial      Domain)
+
+# FilterParser perf + pathological inputs (extension of the adversarial
+# suite). 9 slots covering 100/1000 nested parens, 10kB OR/AND chains,
+# 1000 NOT chain, alternating-operator precedence stress, mid-chain garbage
+# token, empty substrings, and unicode (Cyrillic + emoji) predicate names.
+# Pins behaviour with timing budgets sized for slow CI VMs (50ms / 500ms).
+# Notable pinned contract: bare identifiers (garbagetoken) silently parse as
+# Identifier predicates and fall through to content-substring matching at
+# eval time — a future tightening of this would surface as a regression here.
+opentodo_add_unit_test(test_filterparser_perf             Domain)
 
 # Quality round 2.22-B: DEEP edge-case coverage for FilterEvaluator (eval
 # side, complementing the parser-side adversarial suite). 24 slots covering

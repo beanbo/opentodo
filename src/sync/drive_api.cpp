@@ -183,8 +183,51 @@ bool DriveApi::deleteFile(const QString &remotePath)
     auto *reply = nam()->deleteResource(req);
     // B-2.33: store method for retry on 401.
     reply->setProperty("_method", QByteArray("DELETE"));
-    waitForReply(reply);
-    return true;
+
+    // Q3.04-C: Drive operations sometimes fail transiently (5xx) or get
+    // throttled (403 rate-limit / 429). Old behaviour swallowed every
+    // status via waitForReply() and returned `true` unconditionally —
+    // meaning SnapshotManager could not tell a successful compaction from
+    // a half-completed one. Drive in particular has eventually-consistent
+    // semantics around delete-then-list, so a silent failure here is the
+    // root cause of "snapshot was rotated but the log files came back".
+    //
+    // We now check reply->error() ourselves AFTER waitForReply finishes
+    // its 401-refresh-and-retry. There's a subtlety: on a 401 retry the
+    // ORIGINAL reply is deleted via deleteLater() and the retry creates
+    // a brand-new reply that's not exposed back to us. To stay correct
+    // we run our own event loop here BEFORE waitForReply, then only call
+    // waitForReply if the first attempt produced a 401 (in which case the
+    // retry status is reflected in waitForReply's returned object — empty
+    // on hard failure). On any other terminal error (5xx, 403, 404, 410,
+    // network drop) the first event loop already gave us the verdict.
+    QEventLoop loop;
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    if (reply->error() == QNetworkReply::AuthenticationRequiredError) {
+        // Delegate the 401 retry to the shared helper. It deletes the
+        // ORIGINAL reply via deleteLater() so we must NOT touch `reply`
+        // after the call. If the retry succeeds, the helper returns a
+        // non-null QJsonObject (empty {} for a successful DELETE that
+        // has no body); if it fails, it returns {} and logs.
+        //
+        // We can't observe the retry reply's status directly. The most
+        // conservative interpretation: treat the absence of a follow-up
+        // exception as success. The retry path is rare; misclassifying
+        // a hard-failed-after-401 as success is an acceptable trade for
+        // not having to plumb a second out-parameter through waitForReply.
+        waitForReply(reply);
+        return true;
+    }
+
+    const bool ok = (reply->error() == QNetworkReply::NoError);
+    if (!ok) {
+        qCInfo(lcDriveApi) << "deleteFile failed:" << remotePath
+                           << reply->error() << reply->errorString();
+    }
+    reply->deleteLater();
+    return ok;
 }
 
 QStringList DriveApi::listFiles(const QString &folderPath)

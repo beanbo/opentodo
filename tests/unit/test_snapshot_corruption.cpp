@@ -92,18 +92,203 @@
 #include <QSettings>
 #include <QCoreApplication>
 #include <QString>
+#include <QStringList>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QUrl>
+#include <QBuffer>
+#include <QTimer>
 
 #include "storage/datastore.h"
 #include "sync/snapshot.h"
 #include "sync/gdrive.h"
+#include "sync/drive_api.h"
 #include "model/task.h"
 #include "model/project.h"
+
+// ──────────────────────────────────────────────────────────────────────────
+// MockNAM / FakeReply for the Q3.04-C delete-failure simulation slots.
+//
+// The Q3.04-C fix makes SnapshotManager::createSnapshot ABORT compaction
+// on the first deleteFile failure (preserving the commit counter so the
+// next push retries). Exercising the post-upload partial-failure branch
+// requires running createSnapshot with an authenticated GDriveClient
+// against a DriveApi whose underlying QNetworkAccessManager returns a
+// 5xx on a specific DELETE request.
+//
+// MockNAM is installed via DriveApi::setNetworkManagerForTesting (the
+// existing Q2.19-E test seam). The MockNAM/FakeReply pair is the SAME
+// pattern used by test_gdrive_resilience.cpp and test_syncengine_lifecycle.cpp.
+// We keep these helpers file-scope (Q_OBJECT requires moc parsing) and
+// inert for the older slots that don't use them.
+// ──────────────────────────────────────────────────────────────────────────
+struct CannedResponse {
+    int        statusCode = 200;
+    QByteArray body       = QByteArrayLiteral("{}");
+    bool       forceNetworkError = false;
+};
+
+class FakeReply : public QNetworkReply
+{
+    Q_OBJECT
+public:
+    FakeReply(QObject *parent,
+              const QNetworkRequest &req,
+              QNetworkAccessManager::Operation op,
+              int statusCode,
+              const QByteArray &body,
+              QNetworkReply::NetworkError err)
+        : QNetworkReply(parent)
+        , m_body(body)
+        , m_buffer(&m_body)
+    {
+        setRequest(req);
+        setUrl(req.url());
+        setOperation(op);
+        m_buffer.open(QIODevice::ReadOnly);
+        open(QIODevice::ReadOnly);
+        setAttribute(QNetworkRequest::HttpStatusCodeAttribute, statusCode);
+        if (err != QNetworkReply::NoError) {
+            setError(err, QStringLiteral("FakeReply: simulated error"));
+        }
+        QTimer::singleShot(0, this, [this]() {
+            emit readyRead();
+            setFinished(true);
+            emit finished();
+        });
+    }
+    void abort() override {}
+    qint64 bytesAvailable() const override
+    {
+        return m_buffer.bytesAvailable() + QNetworkReply::bytesAvailable();
+    }
+    bool isSequential() const override { return true; }
+protected:
+    qint64 readData(char *data, qint64 maxlen) override
+    {
+        return m_buffer.read(data, maxlen);
+    }
+private:
+    QByteArray m_body;
+    QBuffer    m_buffer;
+};
+
+class MockNAM : public QNetworkAccessManager
+{
+    Q_OBJECT
+public:
+    explicit MockNAM(QObject *parent = nullptr) : QNetworkAccessManager(parent) {}
+
+    struct OutboundCall {
+        Operation  op;
+        QUrl       url;
+        QByteArray method;
+        QByteArray body;
+    };
+    QList<OutboundCall> calls;
+
+    // Insertion-ordered list of (URL-substring → response). First match wins,
+    // so register the most-specific responses BEFORE the broadest ones.
+    QList<QPair<QString, CannedResponse>> responses;
+    CannedResponse defaultResponse;
+
+    void reset()
+    {
+        calls.clear();
+        responses.clear();
+        defaultResponse = CannedResponse{};
+    }
+
+    void registerJsonResponse(const QString &urlSubstring, int status,
+                              const QJsonObject &obj)
+    {
+        CannedResponse r;
+        r.statusCode = status;
+        r.body       = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+        responses.append({urlSubstring, r});
+    }
+    void registerResponse(const QString &urlSubstring, int status,
+                          const QByteArray &body)
+    {
+        CannedResponse r;
+        r.statusCode = status;
+        r.body       = body;
+        responses.append({urlSubstring, r});
+    }
+
+    int countCallsContaining(const QString &needle) const
+    {
+        int n = 0;
+        for (const auto &c : calls) {
+            const QString s = c.url.toString();
+            const QString d = QString::fromUtf8(
+                QByteArray::fromPercentEncoding(s.toUtf8()));
+            if (s.contains(needle) || d.contains(needle))
+                ++n;
+        }
+        return n;
+    }
+
+    int countDeleteCalls() const
+    {
+        int n = 0;
+        for (const auto &c : calls) {
+            if (c.op == DeleteOperation) ++n;
+        }
+        return n;
+    }
+
+protected:
+    CannedResponse responseFor(const QUrl &u) const
+    {
+        const QString encoded = u.toString();
+        const QString decoded = QString::fromUtf8(
+            QByteArray::fromPercentEncoding(encoded.toUtf8()));
+        for (const auto &kv : responses) {
+            if (encoded.contains(kv.first) || decoded.contains(kv.first))
+                return kv.second;
+        }
+        return defaultResponse;
+    }
+
+    QNetworkReply *createRequest(Operation op,
+                                 const QNetworkRequest &req,
+                                 QIODevice *outgoingData) override
+    {
+        OutboundCall call;
+        call.op   = op;
+        call.url  = req.url();
+        call.body = outgoingData ? outgoingData->readAll() : QByteArray();
+        if (op == CustomOperation)      call.method = QByteArrayLiteral("CUSTOM");
+        else if (op == PostOperation)   call.method = QByteArrayLiteral("POST");
+        else if (op == GetOperation)    call.method = QByteArrayLiteral("GET");
+        else if (op == DeleteOperation) call.method = QByteArrayLiteral("DELETE");
+        else if (op == PutOperation)    call.method = QByteArrayLiteral("PUT");
+        calls.append(call);
+
+        const CannedResponse r = responseFor(req.url());
+        QNetworkReply::NetworkError err = QNetworkReply::NoError;
+        if (r.forceNetworkError)
+            err = QNetworkReply::UnknownNetworkError;
+        else if (r.statusCode == 401)
+            err = QNetworkReply::AuthenticationRequiredError;
+        else if (r.statusCode == 404)
+            err = QNetworkReply::ContentNotFoundError;
+        else if (r.statusCode >= 500 && r.statusCode < 600)
+            err = QNetworkReply::InternalServerError;
+        else if (r.statusCode >= 400)
+            err = QNetworkReply::UnknownContentError;
+
+        return new FakeReply(this, req, op, r.statusCode, r.body, err);
+    }
+};
 
 namespace {
 
@@ -179,6 +364,55 @@ QJsonObject makeMinimalValidSnapshot()
     root[QStringLiteral("reminders")]     = QJsonArray();
     root[QStringLiteral("comments")]      = QJsonArray();
     return root;
+}
+
+// ── Drive mock response factories ─────────────────────────────────────────
+// Drive listFiles / findFileId return JSON of shape:
+//     { "files": [ {"id":"...", "name":"..."}, ... ] }
+// downloadFile returns the file's raw body (we use compact JSON for commits).
+
+QJsonObject driveFindResponse(const QString &id)
+{
+    QJsonObject f;
+    f.insert(QStringLiteral("id"), id);
+    QJsonArray arr;
+    arr.append(f);
+    QJsonObject root;
+    root.insert(QStringLiteral("files"), arr);
+    return root;
+}
+
+QJsonObject driveEmptyFindResponse()
+{
+    QJsonObject root;
+    root.insert(QStringLiteral("files"), QJsonArray());
+    return root;
+}
+
+// Multi-file listing response (used for listFiles("log") which returns
+// the names of each commit-log file).
+QJsonObject driveFileListResponse(const QList<QPair<QString, QString>> &nameIds)
+{
+    QJsonArray arr;
+    for (const auto &p : nameIds) {
+        QJsonObject f;
+        f.insert(QStringLiteral("name"), p.first);
+        f.insert(QStringLiteral("id"),   p.second);
+        arr.append(f);
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("files"), arr);
+    return root;
+}
+
+// A minimal commit JSON (the snapshot loader needs `uuid` and `parent_commit`
+// to walk the ancestor chain — nothing else is consulted).
+QByteArray commitBytes(const QString &uuid, const QString &parent)
+{
+    QJsonObject c;
+    c.insert(QStringLiteral("uuid"),          uuid);
+    c.insert(QStringLiteral("parent_commit"), parent);
+    return QJsonDocument(c).toJson(QJsonDocument::Compact);
 }
 
 } // namespace
@@ -646,11 +880,17 @@ private slots:
     //            the SUCCESS path only),
     //        (d) NEVER produce on-disk artefacts under the working dir.
     //
+    //      The post-upload partial-delete-failure path is covered by the
+    //      sibling slot below (compaction_aborts_on_first_delete_failure).
+    //      That slot pins the Q3.04-C fix: on the FIRST deleteFile failure
+    //      the loop bails, snapshotFailed is emitted, the commit counter
+    //      is preserved (so the next push retries the compaction), and no
+    //      subsequent deletes are attempted.
+    //
     //      The "if compaction completes successfully, the commit log files
     //      for those compacted commits are removed" direction is exercised
     //      by test_snapshot_compaction_equivalence.cpp's
-    //      compacting_at_threshold_compacts_all_old_commits slot — we focus
-    //      here on the inverse (failure preserves everything).
+    //      compacting_at_threshold_compacts_all_old_commits slot.
     void compaction_atomicity()
     {
         useUniqueSettings(QStringLiteral("atomicity"));
@@ -720,20 +960,189 @@ private slots:
         QCOMPARE(static_cast<int>(d.entryList({QStringLiteral("*.json")},
                                               QDir::Files).size()),
                  logFiles.size());
+    }
 
-        // Document the secondary atomicity gap observed in snapshot.cpp:70-79
-        // for future maintainers (the deleteFile loop CONTINUES on a single
-        // failure and resetCommitCount runs unconditionally at the end —
-        // partial Drive deletions are NOT atomic in production, but that
-        // sits on the post-upload-success path that's unreachable from a
-        // unit test without GDrive integration).
-        qInfo("compaction_atomicity: snapshot UPLOAD failure (no client / no auth)"
-              " is atomic w.r.t. local artefacts — counter preserved, log files"
-              " preserved, no state.json produced. Post-upload-success per-file"
-              " deleteFile failures are NOT atomic in production (see"
-              " snapshot.cpp:70-79); the loop continues on individual failures"
-              " and resetCommitCount runs unconditionally. That gap is documented"
-              " by test_snapshot_compaction_equivalence::partial_compaction_failure_is_atomic.");
+    // ── 9. Q3.04-C: compaction aborts on first deleteFile failure ───────────
+    //      The fix this slot pins: SnapshotManager::createSnapshot must
+    //      treat a per-file deleteFile() failure as a hard abort instead
+    //      of a continue-and-pretend-it-worked. Before Q3.04-C the loop
+    //      ignored deleteFile's return value (which was always `true`
+    //      anyway because DriveApi::deleteFile silently swallowed network
+    //      errors) and resetCommitCount ran unconditionally at the end.
+    //      After Q3.04-C:
+    //        - DriveApi::deleteFile reports the REAL network status.
+    //        - SnapshotManager bails on the first false return, emits
+    //          snapshotFailed (NOT snapshotCreated), does NOT reset the
+    //          commit counter, and stops processing further deletes (so
+    //          subsequent files in the chain are NOT attempted on this
+    //          aborted pass — the next push retries the whole compaction).
+    //
+    //      We exercise this with a real authenticated GDriveClient against
+    //      a MockNAM that returns:
+    //        - 200 OK for the state.json upload (the upload phase succeeds).
+    //        - 200 with our canned log listing for listFiles("log").
+    //        - 200 with valid commit JSON for each downloadFile.
+    //        - 200 OK for deleting log/aaa.json (the chain TAIL).
+    //        - 500 SERVER ERROR for deleting log/bbb.json (the MIDDLE).
+    //        - (would be 200 for log/ccc.json — but we assert it's
+    //          NEVER reached because of the early bail-out).
+    //
+    //      Chain shape (oldest → newest):  aaa → bbb → ccc
+    //      m_headCommitId = ccc, so the walk yields {ccc, bbb, aaa} for
+    //      deletion. Production iterates logFiles in QDir::entryList order
+    //      (alphabetic for the MockNAM listing), so the actual delete
+    //      sequence is aaa, bbb, ccc. The 500 on bbb stops the loop before
+    //      ccc is touched.
+    void compaction_aborts_on_first_delete_failure()
+    {
+        useUniqueSettings(QStringLiteral("deleteFailAbort"));
+
+        DataStore store;
+        SnapshotManager sm(&store);
+
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-q304c"));
+        QVERIFY(client.isAuthenticated());
+        sm.setGDriveClient(&client);
+
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+
+        // ── Drive baseline (ensureRootFolder + log-folder lookup). ──────────
+        mock.defaultResponse.statusCode = 200;
+        mock.defaultResponse.body =
+            QJsonDocument(driveEmptyFindResponse()).toJson(QJsonDocument::Compact);
+
+        // ensureRootFolder() → findFileId("opentodo_data") returns root id.
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-id")));
+        // The log/ subfolder must exist for downloadFile("log/...") and
+        // deleteFile("log/...") to resolve the parent id.
+        mock.registerJsonResponse(QStringLiteral("name = 'log'"),
+                                  200, driveFindResponse(QStringLiteral("log-folder-id")));
+
+        // ── state.json upload: succeed. ─────────────────────────────────────
+        // findFileId("state.json") → empty → POST multipart to create.
+        mock.registerJsonResponse(QStringLiteral("name = 'state.json'"),
+                                  200, driveEmptyFindResponse());
+        QJsonObject createdState;
+        createdState.insert(QStringLiteral("id"), QStringLiteral("state-json-id"));
+        mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"),
+                                  200, createdState);
+
+        // ── downloadFile("log/<uuid>.json") for each commit. ────────────────
+        // downloadFile flow:
+        //   1. findFileId("<uuid>.json", parent=log-folder-id) → returns id
+        //   2. GET /files/<id>?alt=media → returns the commit body
+        //
+        // CRITICAL: name-specific findFileId registrations MUST be ordered
+        // BEFORE the broader listFiles("'log-folder-id' in parents") query
+        // because Drive's per-name lookup ALSO embeds "'<folder>' in parents"
+        // in its query string, so the broader match would otherwise win the
+        // first-match-wins MockNAM lookup and steer every per-name lookup to
+        // the multi-file listing (causing findFileId to return only the
+        // FIRST id in the list for every name).
+        mock.registerJsonResponse(QStringLiteral("name = 'aaa.json'"),
+                                  200, driveFindResponse(QStringLiteral("aaa-id")));
+        mock.registerJsonResponse(QStringLiteral("name = 'bbb.json'"),
+                                  200, driveFindResponse(QStringLiteral("bbb-id")));
+        mock.registerJsonResponse(QStringLiteral("name = 'ccc.json'"),
+                                  200, driveFindResponse(QStringLiteral("ccc-id")));
+        // alt=media downloads return raw bytes (not JSON-wrapped). We register
+        // the same response for both findFileId-style and alt-media-style URLs;
+        // alt=media is keyed by the file id in the URL path.
+        mock.registerResponse(QStringLiteral("aaa-id?alt=media"), 200,
+                              commitBytes(QStringLiteral("aaa"), QString()));
+        mock.registerResponse(QStringLiteral("bbb-id?alt=media"), 200,
+                              commitBytes(QStringLiteral("bbb"), QStringLiteral("aaa")));
+        mock.registerResponse(QStringLiteral("ccc-id?alt=media"), 200,
+                              commitBytes(QStringLiteral("ccc"), QStringLiteral("bbb")));
+
+        // ── listFiles("log") returns three commit files. ────────────────────
+        // The list-files query for "log" folder children is matched by the
+        // "'log-folder-id' in parents" predicate Drive injects into the q=.
+        // Registered AFTER the per-name lookups (see comment above) so that
+        // the broader substring doesn't intercept individual findFileId calls.
+        mock.registerJsonResponse(QStringLiteral("'log-folder-id' in parents"),
+                                  200, driveFileListResponse({
+                                      {QStringLiteral("aaa.json"), QStringLiteral("aaa-id")},
+                                      {QStringLiteral("bbb.json"), QStringLiteral("bbb-id")},
+                                      {QStringLiteral("ccc.json"), QStringLiteral("ccc-id")},
+                                  }));
+
+        // ── DELETE behaviour: aaa OK, bbb FAILS with 500, ccc never reached.
+        // The Q3.04-C fix makes DriveApi::deleteFile observe the response
+        // status; a 500 surfaces as a `false` return to SnapshotManager.
+        // URLs: DELETE /drive/v3/files/<id> with no body/query string.
+        // Register in MOST-SPECIFIC-FIRST order (insertion is first-match).
+        mock.registerResponse(QStringLiteral("/drive/v3/files/bbb-id"), 500,
+                              QByteArrayLiteral("{\"error\":\"simulated 500\"}"));
+        // aaa-id and ccc-id deletes succeed (the default 200 response would
+        // also match, but explicit registration documents the intent).
+        mock.registerResponse(QStringLiteral("/drive/v3/files/aaa-id"), 200,
+                              QByteArrayLiteral("{}"));
+        mock.registerResponse(QStringLiteral("/drive/v3/files/ccc-id"), 200,
+                              QByteArrayLiteral("{}"));
+
+        // ── Drive HEAD = ccc, so the walk visits {ccc, bbb, aaa}. ───────────
+        sm.setHeadCommitId(QStringLiteral("ccc"));
+
+        QSignalSpy okSpy(&sm,   &SnapshotManager::snapshotCreated);
+        QSignalSpy failSpy(&sm, &SnapshotManager::snapshotFailed);
+
+        sm.createSnapshot();
+
+        // ── Q3.04-C contract assertions. ────────────────────────────────────
+
+        // (a) snapshotFailed fires exactly once; snapshotCreated NEVER fires.
+        QCOMPARE(okSpy.count(),   0);
+        QCOMPARE(failSpy.count(), 1);
+        // The failure message should mention the file that failed so a
+        // SyncEngine log search can pinpoint the culprit.
+        QVERIFY2(failSpy.first().first().toString()
+                     .contains(QStringLiteral("bbb.json")),
+                 qPrintable(QStringLiteral(
+                     "snapshotFailed message must name the failing file. Got: %1")
+                     .arg(failSpy.first().first().toString())));
+
+        // (b) The commit counter is NOT reset. Counter is 0 here because we
+        //     can't drive incrementCommitCount from a unit test (friend-only
+        //     to SyncEngine), so "0 stays 0" is the indirect assertion.
+        //     The load-bearing observable is: snapshotCreated NEVER fired,
+        //     which is the only path that hits resetCommitCount.
+        QCOMPARE(sm.commitCount(), 0);
+
+        // (c) ONLY THE FIRST TWO DELETEs were attempted: aaa-id (success)
+        //     and bbb-id (failure). The loop must NOT have continued past
+        //     bbb to attempt ccc-id. This is the key behavioural assertion
+        //     that distinguishes the Q3.04-C fix from the pre-fix
+        //     continue-on-failure behaviour.
+        int aaaDeletes = 0, bbbDeletes = 0, cccDeletes = 0;
+        for (const auto &c : mock.calls) {
+            if (c.op != QNetworkAccessManager::DeleteOperation) continue;
+            const QString u = c.url.toString();
+            if (u.contains(QStringLiteral("/files/aaa-id"))) ++aaaDeletes;
+            if (u.contains(QStringLiteral("/files/bbb-id"))) ++bbbDeletes;
+            if (u.contains(QStringLiteral("/files/ccc-id"))) ++cccDeletes;
+        }
+        QCOMPARE(aaaDeletes, 1);
+        QCOMPARE(bbbDeletes, 1);
+        QVERIFY2(cccDeletes == 0,
+                 qPrintable(QStringLiteral(
+                     "ccc-id DELETE was attempted %1 time(s) — the loop did NOT "
+                     "abort on bbb-id's 500. Q3.04-C regression: the partial-"
+                     "failure path is back to swallowing per-file delete errors.")
+                     .arg(cccDeletes)));
+
+        // (d) state.json upload WAS attempted (counts as "compaction got past
+        //     the upload phase"). This pins that the failure is on the DELETE
+        //     side, not a regression in the upload-phase logic.
+        const int stateUploadCalls = mock.countCallsContaining(
+            QStringLiteral("/upload/drive/v3/files"));
+        QVERIFY2(stateUploadCalls >= 1,
+                 "state.json upload should have happened — this slot exercises "
+                 "the POST-upload partial-delete-failure path. Zero upload "
+                 "calls means we never reached the deletion phase.");
     }
 };
 

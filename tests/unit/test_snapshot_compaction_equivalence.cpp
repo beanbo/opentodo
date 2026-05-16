@@ -1170,25 +1170,34 @@ private slots:
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // 8. Partial compaction failure is atomic (or its actual failure mode
-    //    is documented).
+    // 8. Partial compaction failure is atomic.
     //
     // Simulate a write failure during snapshot creation by passing an
     // unwritable directory. The original commit log must remain intact —
     // SnapshotManager (or our simulation) must NOT delete log files until
     // the snapshot upload has confirmed success.
     //
-    // Actual production behaviour observed (snapshot.cpp, lines 30-83):
+    // Production behaviour (snapshot.cpp, after Q3.04-C):
     //   1. uploadFile("state.json", ...) — fails → emit snapshotFailed,
-    //      return EARLY before any deleteFile call. Log files survive.
+    //      return EARLY before any deleteFile call. Log files survive,
+    //      commit counter is preserved. (Pinned here, scenarios 1+2.)
     //   2. uploadFile succeeds, then per-file deleteFile calls run; if
-    //      one of those fails (e.g. transient Drive 5xx) the loop CONTINUES
-    //      and the remaining files are still attempted, then resetCommitCount
-    //      runs unconditionally. So per-file delete failures are NOT atomic
-    //      — they leave the log in a partially-deleted state.
+    //      one of those fails (e.g. transient Drive 5xx), the loop BAILS
+    //      on the first failure, resetCommitCount is NOT called, and
+    //      snapshotFailed is emitted instead of snapshotCreated. The
+    //      counter preservation means the next push will see
+    //      shouldCompact()==true again and retry the compaction (which
+    //      retries the failed deletes).
     //
-    // For this filesystem simulation we exercise (1): an upload failure (we
-    // make the snapshot file unwritable) leaves the commit log intact.
+    // For this filesystem simulation we exercise (1) — an upload failure
+    // (we make the snapshot file unwritable) leaves the commit log intact.
+    // The post-upload partial-delete-failure path (2) requires a mocked
+    // Drive backend and is pinned by
+    //   test_snapshot_corruption.cpp::compaction_aborts_on_first_delete_failure
+    // which installs a MockNAM through DriveApi::setNetworkManagerForTesting
+    // and asserts: (a) snapshotFailed fires, (b) snapshotCreated does NOT
+    // fire, (c) the loop bails on the first 500 (subsequent deletes are not
+    // attempted), and (d) the commit counter is not reset.
     // ════════════════════════════════════════════════════════════════════════
     void partial_compaction_failure_is_atomic()
     {
@@ -1241,13 +1250,15 @@ private slots:
         // Cleanup so QTemporaryDir can remove itself.
         QDir().rmpath(badSnapPath);
 
-        // Document the post-upload-success per-file failure case via qInfo
-        // so future maintainers know it is NOT atomic in production.
+        // Q3.04-C: the post-upload partial-delete-failure path is now
+        // pinned by test_snapshot_corruption::compaction_aborts_on_first_delete_failure
+        // (uses MockNAM + DriveApi::setNetworkManagerForTesting to stage a
+        // 500 on one specific DELETE request and asserts the loop bails).
         qInfo("partial_compaction_failure_is_atomic: snapshot UPLOAD failure"
-              " is atomic (log untouched). However per-file deleteFile failures"
-              " AFTER successful state.json upload are NOT atomic in production"
-              " — see snapshot.cpp lines 70-79; the loop continues on failure"
-              " and resetCommitCount runs unconditionally.");
+              " is atomic (log untouched). The post-upload deleteFile failure"
+              " case is now atomic too — see Q3.04-C fix in snapshot.cpp and"
+              " the dedicated slot in test_snapshot_corruption.cpp"
+              " (compaction_aborts_on_first_delete_failure).");
     }
 };
 
