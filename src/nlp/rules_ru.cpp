@@ -27,10 +27,16 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                 || c == QLatin1Char('!') || c == QLatin1Char('?');
         });
     if (hasPunct) {
+        // Punctuation-bearing inputs go through the full regex normalisation.
         static const QRegularExpression punctRe(QStringLiteral("[,;!?]+"));
         static const QRegularExpression wsRe(QStringLiteral("\\s+"));
         normalised.replace(punctRe, QStringLiteral(" "));
         normalised = normalised.trimmed().replace(wsRe, QStringLiteral(" "));
+    } else {
+        // No punctuation → skip the (perf-hostile) regex but ALWAYS trim
+        // leading/trailing whitespace; the matchDay() helper compares the
+        // first token with a literal word, so untrimmed input wouldn't match.
+        normalised = normalised.trimmed();
     }
     const QString lower = normalised.toLower();
 

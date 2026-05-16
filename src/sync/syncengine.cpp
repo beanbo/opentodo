@@ -446,8 +446,47 @@ void SyncEngine::applyCommit(Commit *commit)
                     task->setProjectId(patched[QStringLiteral("project_id")].toString());
                 if (patched.contains(QStringLiteral("section_id")))
                     task->setSectionId(patched[QStringLiteral("section_id")].toString());
-                if (patched.contains(QStringLiteral("parent_id")))
-                    task->setParentId(patched[QStringLiteral("parent_id")].toString());
+                if (patched.contains(QStringLiteral("parent_id"))) {
+                    // Q3.03-D: cycle guard. An inbound commit that sets
+                    // parent_id must not create a subtask cycle (e.g.
+                    // A→B→C followed by C→A → A reachable from C's chain).
+                    // Walk the candidate parent's ancestry — if it leads
+                    // back to the task being updated, REJECT the
+                    // parent_id update but apply every other field in
+                    // the patch. MAX_DEPTH bounds the walk so a
+                    // pre-existing remote cycle cannot infinite-loop
+                    // this guard either.
+                    const QString candidate =
+                        patched[QStringLiteral("parent_id")].toString();
+                    constexpr int MAX_DEPTH = 1000;
+                    bool wouldCycle = false;
+                    if (candidate == op.entityId) {
+                        // Self-parent — trivially a 1-cycle.
+                        wouldCycle = true;
+                    } else if (!candidate.isEmpty()) {
+                        QString cursor = candidate;
+                        for (int i = 0; i < MAX_DEPTH; ++i) {
+                            Task *ancestor = m_store->taskById(cursor);
+                            if (!ancestor) break;                  // chain ends at a missing task — no cycle.
+                            const QString next = ancestor->parentId();
+                            if (next.isEmpty()) break;             // reached root — no cycle.
+                            if (next == op.entityId) {             // chain returns to the task being reparented.
+                                wouldCycle = true;
+                                break;
+                            }
+                            if (next == cursor) break;             // self-loop on an ancestor; not our cycle, but stop walking.
+                            cursor = next;
+                        }
+                    }
+                    if (wouldCycle) {
+                        qCWarning(lcSync)
+                            << "applyCommit: rejected parent_id cycle for task"
+                            << op.entityId << "→" << candidate
+                            << "(ancestry chain would loop back).";
+                    } else {
+                        task->setParentId(candidate);
+                    }
+                }
                 if (patched.contains(QStringLiteral("order")))
                     task->setOrder(patched[QStringLiteral("order")].toInt());
                 if (patched.contains(QStringLiteral("day_order")))

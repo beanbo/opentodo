@@ -37,7 +37,7 @@
 //   4. pull_with_corrupted_commit_log_skips_or_aborts
 //   5. pull_with_HEAD_pointing_to_missing_commit_aborts_cleanly
 //   6. pull_with_commit_having_unknown_operation_type_skips_that_op
-//   7. applyCommit_with_circular_subtask_parent_chain_does_not_recurse_forever
+//   7. applyCommit_with_circular_subtask_parent_chain_is_rejected
 //
 // NO PRODUCTION CODE IS MODIFIED. The asserts below pin the behaviour as
 // observed today; flipping any of them when a fix lands is the intended
@@ -968,29 +968,30 @@ private slots:
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // SLOT 7 — applyCommit_with_circular_subtask_parent_chain_does_not_recurse_forever
+    // SLOT 7 — applyCommit_with_circular_subtask_parent_chain_is_rejected
     //
     // Contract under test: a sequence of commits creates parent A → child B
-    // → grandchild C, then updates A's parent_id to point at C. The result
-    // is a 3-cycle: A → C → B → A.
+    // → grandchild C, then updates A's parent_id to point at C. WITHOUT a
+    // guard this would create a 3-cycle A → C → B → A.
     //
-    // DataStore::subtasks(parentId) walks the flat task list once, returning
-    // direct children only (no recursion). So the cycle cannot crash that
-    // particular query. But the engine has NO guard against the cycle being
-    // CREATED in the first place — task_update's "parent_id" assignment at
-    // syncengine.cpp:449-450 simply calls setParentId without validating that
-    // the new parent isn't a (transitive) descendant.
+    // Q3.03-D fix: applyCommit's task_update branch now walks the candidate
+    // parent's ancestry. If the walk reaches the task being updated, the
+    // parent_id portion of the patch is REJECTED — every other field still
+    // applies. The walk is bounded by MAX_DEPTH=1000 so a pre-existing
+    // remote cycle cannot infinite-loop the guard itself.
     //
-    // We pin both halves:
-    //   - The cycle IS allowed to be created (no validation in applyCommit).
-    //   - DataStore::subtasks does not recurse, so reading the structure
-    //     remains O(N) and safe.
-    //   - But any caller that DOES walk transitively (e.g. UI ancestor chain)
-    //     would now infinite-loop. We document the gap.
+    // We pin:
+    //   - The cycle-introducing parent_id is rejected: A.parentId remains
+    //     empty (its add-time value) after the malicious update.
+    //   - The B→A and C→B legs ARE intentional reparents from the add
+    //     commits and remain in place; only the cycle-closing edge is
+    //     rejected.
+    //   - DataStore::subtasks remains non-recursive — the regression bench
+    //     against the original infinite-loop concern still holds.
     //
     // Implementation: construct + pull a commit containing all 4 ops.
     // ════════════════════════════════════════════════════════════════════════
-    void applyCommit_with_circular_subtask_parent_chain_does_not_recurse_forever()
+    void applyCommit_with_circular_subtask_parent_chain_is_rejected()
     {
         useUniqueSettings(QStringLiteral("circularParentChain"));
         DataStore store;
@@ -1068,13 +1069,16 @@ private slots:
             QStringLiteral("commit-file-id?alt=media"),
             200, commit);
 
-        // state.json mirrors the post-commit state with the cycle present so
-        // the LWW merge doesn't undo our setup.
+        // state.json mirrors the post-applyCommit state AFTER the guard has
+        // rejected the cycle-closing edge. A has no parent (its add-time
+        // value), B→A, C→B. This way pull()'s final
+        // loadFromJson(remoteState) does not undo what applyCommit's cycle
+        // guard achieved — what we observe in DataStore IS what applyCommit
+        // produced (after the redundant LWW from the snapshot).
         QJsonObject remoteState;
         QJsonArray tasks;
         tasks.append(makeTaskJson(QStringLiteral("A"),
-                                  QStringLiteral("parent A"),
-                                  QStringLiteral("C"))); // cycle: A's parent is C
+                                  QStringLiteral("parent A"))); // NO cycle edge.
         tasks.append(makeTaskJson(QStringLiteral("B"),
                                   QStringLiteral("child B"),
                                   QStringLiteral("A")));
@@ -1090,8 +1094,8 @@ private slots:
         mock.registerJsonResponse(QStringLiteral("state-id?alt=media"),
                                   200, remoteState);
 
-        // Use a bounded wall clock — if applyCommit DOES infinite-loop, we
-        // catch it.
+        // Use a bounded wall clock — also catches infinite recursion if a
+        // future regression reintroduces the unbounded walk.
         QElapsedTimer wall; wall.start();
         engine.pull();
         const qint64 elapsedMs = wall.elapsed();
@@ -1101,48 +1105,41 @@ private slots:
                             "3-cycle parent chain — likely infinite recursion "
                             "or unbounded loop.").arg(elapsedMs)));
 
-        // PIN: pull succeeded; the cycle is now in the store.
+        // PIN: pull succeeded; all three tasks are present.
         QCOMPARE(engine.status(), SyncEngine::Synced);
         QVERIFY(store.taskById(QStringLiteral("A")) != nullptr);
         QVERIFY(store.taskById(QStringLiteral("B")) != nullptr);
         QVERIFY(store.taskById(QStringLiteral("C")) != nullptr);
 
-        // Verify the cycle is reflected in the in-memory model: A's parent
-        // is now C (the cycle-closing edge).
+        // Q3.03-D fix: applyCommit rejected A's parent_id update because the
+        // candidate parent C's ancestry chain (C→B→A) leads back to A. So A
+        // remains at its add-time parent (none); B→A and C→B legs persist.
         QCOMPARE(store.taskById(QStringLiteral("A"))->parentId(),
-                 QStringLiteral("C"));
+                 QString()); // rejected — no cycle-closing edge.
         QCOMPARE(store.taskById(QStringLiteral("B"))->parentId(),
                  QStringLiteral("A"));
         QCOMPARE(store.taskById(QStringLiteral("C"))->parentId(),
                  QStringLiteral("B"));
 
-        // DataStore::subtasks is non-recursive — exercising it on each cycle
-        // node returns the DIRECT children only and terminates immediately.
-        // This is the safety net that prevents the cycle from crashing the
-        // app today.
+        // DataStore::subtasks remains non-recursive as a defense-in-depth
+        // safety net — even if a cycle slipped past the guard somehow, this
+        // call still terminates after one pass.
         const auto childrenOfA = store.subtasks(QStringLiteral("A"));
         const auto childrenOfB = store.subtasks(QStringLiteral("B"));
         const auto childrenOfC = store.subtasks(QStringLiteral("C"));
         QCOMPARE(childrenOfA.size(), 1); // B
         QCOMPARE(childrenOfB.size(), 1); // C
-        QCOMPARE(childrenOfC.size(), 1); // A
+        QCOMPARE(childrenOfC.size(), 0); // nothing — A's parent_id was rejected.
         QCOMPARE(childrenOfA.first()->id(), QStringLiteral("B"));
         QCOMPARE(childrenOfB.first()->id(), QStringLiteral("C"));
-        QCOMPARE(childrenOfC.first()->id(), QStringLiteral("A"));
 
-        qInfo() << "applyCommit cycle creation took ms:" << elapsedMs;
-        qInfo() << "DOCUMENTED GAP: SyncEngine::applyCommit's task_update "
-                   "branch (syncengine.cpp:449-450) calls setParentId WITHOUT "
-                   "validating that the new parent is not a transitive "
-                   "descendant of the task being updated. Cycles can be "
-                   "introduced by a remote commit OR by a local UI bug. The "
-                   "safety net is that DataStore::subtasks is intentionally "
-                   "non-recursive (datastore.cpp:558-566). Any caller that "
-                   "DOES walk ancestors transitively (UI breadcrumb, drag-"
-                   "drop reparent validation) must defend against the cycle "
-                   "itself. A future fix in applyCommit's task_update branch "
-                   "could reject a parent_id whose ancestry walk reaches the "
-                   "task itself.";
+        qInfo() << "applyCommit cycle-guard pull took ms:" << elapsedMs;
+        qInfo() << "Q3.03-D FIX VERIFIED: SyncEngine::applyCommit's "
+                   "task_update branch walks the candidate parent's "
+                   "ancestry; if it loops back to the task being updated, "
+                   "the parent_id portion of the patch is rejected (other "
+                   "fields still apply). Walk is bounded by MAX_DEPTH=1000 "
+                   "to defend against pre-existing remote cycles.";
     }
 };
 

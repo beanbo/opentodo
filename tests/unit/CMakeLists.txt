@@ -382,6 +382,16 @@ opentodo_add_unit_test(test_karma_rollover                App)
 # failure but resetCommitCount runs unconditionally).
 opentodo_add_unit_test(test_snapshot_compaction_equivalence Infra)
 
+# SnapshotManager corruption-resilience pinning. Eight slots covering
+# the on-disk snapshot blob (state.json) being garbage / truncated /
+# missing / half-written, forward-compat against unknown entity types,
+# orphan-tombstone preservation through loadFromJson, the >= boundary
+# in shouldCompact() at exact threshold, and the atomicity contract on
+# the early-exit failure branches (no client / no auth — counter and
+# log files preserved). Complements test_snapshot_compaction_equivalence
+# (replay equivalence) and test_snapshot_manager (pure threshold logic).
+opentodo_add_unit_test(test_snapshot_corruption           Infra)
+
 # Quality round 2.18-A: regression coverage for the Q2.17-D CRDT bug. Pins
 # that SyncEngine::applyCommit's *_update branches now push inbound _meta
 # back into DataStore::m_*Meta via applyInbound<Entity>Meta, and that
@@ -494,6 +504,19 @@ opentodo_add_unit_test(test_hotkeyservice_conflicts       App)
 opentodo_add_unit_test(test_pomodoro_edges                Infra)
 opentodo_add_unit_test(test_dailyreview_dst               Infra)
 opentodo_add_unit_test(test_updatechecker_resilience      Infra)
+
+# DST / timezone audit for ReminderScheduler (sister to test_dailyreview_dst).
+# Eight slots covering: spring-forward 02:30 wall-clock gap, fall-back 01:30
+# ambiguous wall-clock (no scheduler-induced double-fire), recurring daily
+# reminder across DST (wall-clock 09:00 preserved — scheduler reads
+# task->dueDatetime each pass, never adds 24h to lastFire), TZ-tagged ISO
+# datetime (setTimeZone retags without shifting — C-5 bug-fix contract),
+# weekly recurring across DST (Wed 10:00 stays Wed 10:00), ISO storage is
+# timezone-naive local wall-clock (TZ change moves the reminder), Feb 29 in
+# non-leap year (invalid QDate -> silent skip, no auto Feb 28 fallback), and
+# far-past reminders (24h / 180d / epoch+1s all silently skipped, no negative
+# arithmetic). Pins behavior — no production-code changes in this round.
+opentodo_add_unit_test(test_reminderscheduler_dst         Infra)
 
 # Narrow-width DesktopLayout responsive-collapse pinning. Boots a
 # QQmlApplicationEngine, mounts DesktopLayout.qml inside a wrapper Item at
