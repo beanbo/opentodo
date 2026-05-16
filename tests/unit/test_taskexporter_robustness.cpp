@@ -105,13 +105,13 @@ private slots:
     // =====================================================================
     //  Slot 1 -- Newline variants in content (bare CR, CRLF, LF)
     //
-    //  Exporter's csvEscape() triggers quoting on '\n', '"', or ','.
-    //  It does NOT trigger on a bare '\r'. So a value like "Line1\rLine2"
-    //  ships UNQUOTED into the CSV, and a downstream parser that treats
-    //  CR as a row break (RFC 4180 says CRLF is the row separator)
-    //  would split the cell across two records.
+    //  RFC 4180 sec 2.6 requires fields containing CR, LF, double-quote or
+    //  comma to be enclosed in double-quotes. csvEscape now checks all four
+    //  triggers, so a bare CR in content is correctly wrapped.
     //
-    //  Confirmed bug: bare \r is not quoted. Documented via qInfo().
+    //  Previously pinned as a bug -- now flipped to assert the correct
+    //  RFC-4180 behaviour. Fix: csvEscape predicate gained
+    //  `s.contains(QChar('\r'))` in taskexporter.cpp.
     // =====================================================================
 
     void csv_bare_cr_in_content_is_not_quoted_pin_bug()
@@ -121,9 +121,8 @@ private slots:
 
         DataStore ds;
         Project *p = ds.addProject(QStringLiteral("CR test"));
-        // Bare CR with no LF. RFC 4180 sec 2.6 says fields containing CR or LF
-        // SHALL be enclosed in double-quotes -- current csvEscape only checks
-        // for LF.
+        // Bare CR with no LF. RFC 4180 sec 2.6 says fields containing CR or
+        // LF MUST be enclosed in double-quotes.
         ds.addTask(QStringLiteral("Line1\rLine2"), p->id());
 
         TaskExporter exp(&ds);
@@ -131,21 +130,12 @@ private slots:
         QVERIFY(!path.isEmpty());
 
         const QString raw = readUtf8(path);
-        // The cell SHOULD have been quoted; confirm whether or not it is.
-        const bool isQuoted = raw.contains(QStringLiteral("\"Line1\rLine2\""));
-        if (!isQuoted) {
-            qInfo("BUG: bare CR in CSV cell is not quoted -- csvEscape only "
-                  "checks for LF, not CR. RFC 4180 sec 2.6 violation. "
-                  "Downstream parsers treating CR as a row break will "
-                  "mis-split the record. Fix: add `s.contains(QChar('\\r'))` "
-                  "to csvEscape's predicate in taskexporter.cpp:21.");
-        }
-        // Pin the current behaviour so the bug fix produces a visible
-        // test-suite signal (this assertion will fail when fix lands).
-        QVERIFY(!isQuoted);
+        // The cell MUST be wrapped in quotes now (RFC 4180 compliance).
+        QVERIFY2(raw.contains(QStringLiteral("\"Line1\rLine2\"")),
+                 "Bare CR in CSV content must be quoted (RFC 4180 sec 2.6).");
 
-        // CRLF case: the LF half of CRLF triggers the existing predicate, so
-        // CRLF *is* correctly quoted today. Confirm.
+        // CRLF case: the LF half of CRLF triggers the predicate independently,
+        // so CRLF is also correctly quoted. Confirm.
         DataStore ds2;
         Project *p2 = ds2.addProject(QStringLiteral("CRLF test"));
         ds2.addTask(QStringLiteral("Line1\r\nLine2"), p2->id());
@@ -355,13 +345,10 @@ private slots:
     //  Slot 6 -- Deep parent chain (4 levels: parent -> child -> grandchild
     //            -> great-grandchild)
     //
-    //  CSV iterates ALL tasks (regardless of parentId), so all 4 should
-    //  appear. JSON's secondary `allTasks` sweep also picks them up.
-    //  MARKDOWN, however, only iterates `tasksForProject()`, which filters
-    //  out any task with a non-empty parentId -- meaning subtasks, grand-
-    //  subtasks, etc. silently disappear from the MD export.
-    //
-    //  Confirmed bug: MD drops subtasks. Documented + pinned.
+    //  CSV iterates ALL tasks (regardless of parentId), JSON's secondary
+    //  `allTasks` sweep picks them up, and MD now recurses through subtasks
+    //  with 2-space indent per depth. Previously a bug (MD dropped every
+    //  subtask); now flipped to assert the correct indented hierarchy.
     // =====================================================================
 
     void deep_parent_chain_md_drops_subtasks_pin_bug()
@@ -403,27 +390,24 @@ private slots:
             QVERIFY2(json.contains(c), qPrintable(QStringLiteral("JSON missing %1").arg(c)));
         }
 
-        // MD -- only the L1 root appears; subtasks are silently dropped.
+        // MD -- ALL 4 levels must appear, each indented by depth * 2 spaces
+        // before its `- [ ] ` checkbox prefix. The exporter recurses into
+        // DataStore::subtasks() for every rendered task.
         const QString mdPath = exp.exportToMarkdown(tmp.path());
         QVERIFY(!mdPath.isEmpty());
         const QString md = readUtf8(mdPath);
-        QVERIFY(md.contains(QStringLiteral("L1-parent")));
-        const bool subtaskMissing =
-            !md.contains(QStringLiteral("L2-child")) &&
-            !md.contains(QStringLiteral("L3-grandchild")) &&
-            !md.contains(QStringLiteral("L4-greatgrandchild"));
-        if (subtaskMissing) {
-            qInfo("BUG: Markdown export silently drops every subtask. "
-                  "exportToMarkdown iterates DataStore::tasksForProject(), "
-                  "which filters out tasks where parentId is set. "
-                  "Fix candidates: "
-                  "(a) iterate allTasks() filtered by projectId (matches CSV), "
-                  "(b) recurse and indent subtasks under their parent. "
-                  "Recommend (b) -- preserves the visual hierarchy MD is for.");
-        }
-        // Pin the current behaviour. Will fail when the fix lands -> forces
-        // someone to update the test (and review the new MD output shape).
-        QVERIFY(subtaskMissing);
+        // Top-level: no indent.
+        QVERIFY2(md.contains(QStringLiteral("- [ ] L1-parent")),
+                 "MD missing L1 root checkbox");
+        // Depth 1: two-space indent.
+        QVERIFY2(md.contains(QStringLiteral("  - [ ] L2-child")),
+                 "MD missing L2 child at 2-space indent");
+        // Depth 2: four-space indent.
+        QVERIFY2(md.contains(QStringLiteral("    - [ ] L3-grandchild")),
+                 "MD missing L3 grandchild at 4-space indent");
+        // Depth 3: six-space indent.
+        QVERIFY2(md.contains(QStringLiteral("      - [ ] L4-greatgrandchild")),
+                 "MD missing L4 great-grandchild at 6-space indent");
     }
 
     // =====================================================================
@@ -671,10 +655,12 @@ private slots:
     // =====================================================================
     //  Slot 11 -- Filename collision in same second (timestamp-only naming)
     //
-    //  Both CSV and MD paths use yyyyMMdd-HHmmss as the only uniquifier.
-    //  Two exports inside the same second yield the SAME path and the
-    //  second silently overwrites the first. Document this so a future
-    //  fix (e.g. millisecond stamp, or .1/.2 suffix) has a target.
+    //  Both CSV and MD paths use yyyyMMdd-HHmmss as the timestamp. Previously,
+    //  two exports inside the same second yielded the SAME path and the
+    //  second silently overwrote the first. The exporter now passes the
+    //  candidate path through a uniquifier that appends "-1", "-2", ...
+    //  before the suffix when the file already exists -- both files are
+    //  preserved and each captures the DataStore state at its own moment.
     // =====================================================================
 
     void filename_collision_within_one_second_overwrites()
@@ -690,44 +676,53 @@ private slots:
         const QString path1 = exp.exportToCsv(tmp.path());
         QVERIFY(!path1.isEmpty());
 
-        // Mutate, immediately re-export -- both paths share the same second.
+        // Mutate, immediately re-export -- both paths likely share the same
+        // second, but the uniquifier must keep them distinct on disk.
         Task *t2 = ds.addTask(QStringLiteral("second"), p->id());
         Q_UNUSED(t2)
 
         const QString path2 = exp.exportToCsv(tmp.path());
         QVERIFY(!path2.isEmpty());
 
-        if (path1 == path2) {
-            qInfo("BUG: same-second exports collide on filename. The second "
-                  "call silently overwrote the first. Fix: add ms (.zzz) to "
-                  "the timestamp format, or detect collision and append "
-                  "-N suffix in taskexporter.cpp.");
-            // Pin the current overwrite behaviour: only one file survived,
-            // and it contains BOTH tasks (the second export saw both rows).
-            const QString csv = readUtf8(path2);
-            QVERIFY(csv.contains(QStringLiteral("first")));
-            QVERIFY(csv.contains(QStringLiteral("second")));
-        } else {
-            // If the system was slow enough to roll past a second, the two
-            // files exist independently -- that's the desired post-fix shape.
-            QVERIFY(QFile::exists(path1));
-            QVERIFY(QFile::exists(path2));
-        }
+        // Two distinct files MUST exist now -- no silent overwrite.
+        QVERIFY2(path1 != path2,
+                 qPrintable(QStringLiteral("Same path returned twice: %1").arg(path1)));
+        QVERIFY(QFile::exists(path1));
+        QVERIFY(QFile::exists(path2));
+
+        // First file: snapshot before the mutation -- contains "first" but not "second".
+        const QString csv1 = readUtf8(path1);
+        QVERIFY2(csv1.contains(QStringLiteral("first")),
+                 "First export must contain the pre-mutation task");
+        QVERIFY2(!csv1.contains(QStringLiteral("second")),
+                 "First export must NOT contain the task added after it was written");
+
+        // Second file: post-mutation snapshot -- contains both.
+        const QString csv2 = readUtf8(path2);
+        QVERIFY(csv2.contains(QStringLiteral("first")));
+        QVERIFY(csv2.contains(QStringLiteral("second")));
+
+        // The uniquifier should have appended a "-N" suffix before ".csv" on
+        // whichever of the two collided. Confirm the second path matches the
+        // <stem>-<N>.csv shape (either path2 carries the suffix, or path1 does
+        // if the wall-clock second rolled between the two calls -- in which
+        // case the timestamps themselves differ and no suffix was needed).
+        const bool path2HasSuffix = QFileInfo(path2).fileName().contains(QRegularExpression(
+                QStringLiteral("-\\d+\\.csv$")));
+        const bool timestampsDiffer = QFileInfo(path1).completeBaseName()
+                                      != QFileInfo(path2).completeBaseName().section(QChar('-'), 0, -2);
+        QVERIFY2(path2HasSuffix || timestampsDiffer,
+                 "Second path must either carry a -N suffix or fall in a different second");
     }
 
     // =====================================================================
-    //  Slot 12 -- Description with embedded LF in MD: replaced by space, but
-    //             CRLF leaves a stray CR
+    //  Slot 12 -- Description with embedded CRLF collapses to a single space
     //
-    //  exportToMarkdown does:
-    //      out << "  > " << QString(t->description())
-    //                          .replace("\n", " ");
-    //  This handles bare LF, but a CRLF in description leaves the CR
-    //  un-collapsed: the "\n" half is replaced by " ", but the "\r" stays
-    //  -> the rendered MD has " \r" trailing on the description line,
-    //  which a strict markdown renderer might treat as a hard line break.
-    //
-    //  Confirmed bug: CRLF in description produces stray CR in MD output.
+    //  exportToMarkdown now uses a `[\r\n]+` regex replace, so any run of
+    //  CR / LF characters in a description collapses to one space. Previously
+    //  only LF was stripped, leaving stray CRs that strict Markdown renderers
+    //  could treat as hard line breaks. Pinned bug, now flipped to assert
+    //  the correct collapse.
     // =====================================================================
 
     void md_description_crlf_leaves_stray_cr_pin_bug()
@@ -746,19 +741,25 @@ private slots:
 
         // Read raw bytes (NOT through normaliseEol) to preserve any embedded CR.
         const QByteArray raw = readBytes(path);
-        // After ".replace('\n', ' ')" the description should look like
-        // "Line1\r Line2" (the CR survives). We confirm a stray CR appears
-        // immediately followed by a space -- the smoking gun.
-        const bool hasStrayCr = raw.contains("Line1\r Line2");
-        if (hasStrayCr) {
-            qInfo("BUG: MD description leaves a stray CR when the source "
-                  "contains CRLF. exportToMarkdown only strips LF, not CRLF "
-                  "(taskexporter.cpp around line 102). Fix: replace CRLF "
-                  "first, then LF, OR use QString::replace with a [\\r\\n]+ "
-                  "regex. Strict markdown renderers may treat the trailing "
-                  "CR as a hard break.");
-        }
-        QVERIFY(hasStrayCr);
+        // The previous bug emitted "Line1\r Line2" (CR survives, LF -> space).
+        // The fix collapses CRLF (and any [\r\n]+ run) to a single space.
+        QVERIFY2(!raw.contains("Line1\r Line2"),
+                 "MD description must not leave stray CR after the LF->space replace");
+        QVERIFY2(!raw.contains("Line1\rLine2"),
+                 "MD description must not leave the raw CR untouched");
+        QVERIFY2(raw.contains("Line1 Line2"),
+                 "CRLF in description should collapse to a single space");
+
+        // Also confirm CRLF (the typical Windows EOL) is the only run that
+        // appears in the body of the task line, by sweeping for stray CRs
+        // anywhere in the description payload area. The line-ending CR/LF
+        // that QIODevice::Text adds is irrelevant because we look at the
+        // specific 12-byte window around "Line1 Line2".
+        const int pos = raw.indexOf("Line1 Line2");
+        QVERIFY(pos >= 0);
+        // No CR allowed in the 13-char "Line1 Line2" run itself.
+        for (int i = 0; i < 11; ++i)
+            QVERIFY(raw.at(pos + i) != '\r');
     }
 
     // =====================================================================

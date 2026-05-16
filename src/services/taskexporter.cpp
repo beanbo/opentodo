@@ -17,10 +17,35 @@
 #include <QSet>
 
 // CSV escape: wrap in quotes, escape internal quotes by doubling.
+// RFC 4180 sec 2.6: a field containing comma, double-quote, CR, or LF must
+// be enclosed in double-quotes. Bare CR matters because some downstream
+// parsers (and Excel) treat CR as a row separator.
 static QString csvEscape(const QString &s) {
-    if (s.contains(QChar(',')) || s.contains(QChar('"')) || s.contains(QChar('\n')))
+    if (s.contains(QChar(',')) || s.contains(QChar('"'))
+            || s.contains(QChar('\n')) || s.contains(QChar('\r')))
         return QStringLiteral("\"%1\"").arg(QString(s).replace(QChar('"'), QStringLiteral("\"\"")));
     return s;
+}
+
+// Pick a path that does not yet exist on disk. If `desired` is free, return
+// it as-is; otherwise append "-1", "-2", ... before the suffix until a free
+// slot is found. Used to prevent same-second filename collisions on the
+// timestamped exports (CSV / MD).
+static QString uniquifyPath(const QString &desired)
+{
+    if (!QFile::exists(desired))
+        return desired;
+    const int dot = desired.lastIndexOf(QChar('.'));
+    const QString stem   = dot >= 0 ? desired.left(dot)   : desired;
+    const QString suffix = dot >= 0 ? desired.mid(dot)    : QString();
+    for (int i = 1; i < 10000; ++i) {
+        const QString candidate = stem + QStringLiteral("-") + QString::number(i) + suffix;
+        if (!QFile::exists(candidate))
+            return candidate;
+    }
+    // Pathological fall-through: 10000 collisions in one second is a bug
+    // elsewhere; let the caller overwrite rather than spin forever.
+    return desired;
 }
 
 TaskExporter::TaskExporter(DataStore *store, QObject *parent)
@@ -35,7 +60,8 @@ QString TaskExporter::exportToCsv(const QString &dir)
         : dir;
     QDir().mkpath(outDir);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-    const QString path = outDir + QStringLiteral("/opentodo-export-") + stamp + QStringLiteral(".csv");
+    const QString path = uniquifyPath(
+        outDir + QStringLiteral("/opentodo-export-") + stamp + QStringLiteral(".csv"));
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -67,6 +93,37 @@ QString TaskExporter::exportToCsv(const QString &dir)
     return path;
 }
 
+// Render one MD checkbox line for `t` (optionally indented) and recurse into
+// its subtasks. Indent is 2 spaces per nesting level, which matches CommonMark
+// nested-list rendering. The CR+LF stripper uses a [\r\n]+ regex so that
+// CRLF in a description does not leave a stray CR behind (a hard line break
+// for strict renderers).
+static void renderMdTaskRecursive(QTextStream &out,
+                                  const DataStore *store,
+                                  const Task *t,
+                                  int depth)
+{
+    if (!t || t->isDeleted()) return;
+
+    const QString indent(depth * 2, QChar(' '));
+    const QChar mark = t->isCompleted() ? QChar('x') : QChar(' ');
+    out << indent << "- [" << mark << "] " << t->content();
+    if (!t->dueDate().isEmpty()) out << " \xF0\x9F\x93\x85 " << t->dueDate();
+    if (t->priority() < 4) out << " \xE2\x9A\x91P" << t->priority();
+    out << "\n";
+    if (!t->description().isEmpty()) {
+        static const QRegularExpression eolRe(QStringLiteral("[\\r\\n]+"));
+        out << indent << "  > "
+            << QString(t->description()).replace(eolRe, QStringLiteral(" "))
+            << "\n";
+    }
+
+    // Recurse into subtasks (parentId == t->id()), preserving DataStore order.
+    for (const Task *child : store->subtasks(t->id())) {
+        renderMdTaskRecursive(out, store, child, depth + 1);
+    }
+}
+
 QString TaskExporter::exportToMarkdown(const QString &dir)
 {
     const QString outDir = dir.isEmpty()
@@ -74,7 +131,8 @@ QString TaskExporter::exportToMarkdown(const QString &dir)
         : dir;
     QDir().mkpath(outDir);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-    const QString path = outDir + QStringLiteral("/opentodo-export-") + stamp + QStringLiteral(".md");
+    const QString path = uniquifyPath(
+        outDir + QStringLiteral("/opentodo-export-") + stamp + QStringLiteral(".md"));
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -90,16 +148,11 @@ QString TaskExporter::exportToMarkdown(const QString &dir)
     for (const Project *p : m_store->allProjects()) {
         if (p->isDeleted() || p->isArchived()) continue;
         out << "## " << p->name() << "\n\n";
-        const auto tasks = m_store->tasksForProject(p->id());
-        for (const Task *t : tasks) {
-            if (t->isDeleted()) continue;
-            const QChar mark = t->isCompleted() ? QChar('x') : QChar(' ');
-            out << "- [" << mark << "] " << t->content();
-            if (!t->dueDate().isEmpty()) out << " \xF0\x9F\x93\x85 " << t->dueDate();
-            if (t->priority() < 4) out << " \xE2\x9A\x91P" << t->priority();
-            out << "\n";
-            if (!t->description().isEmpty())
-                out << "  > " << QString(t->description()).replace(QStringLiteral("\n"), QStringLiteral(" ")) << "\n";
+        // `tasksForProject` returns only top-level tasks (parentId empty);
+        // we render those at depth 0 and recurse into their subtasks so the
+        // nested hierarchy survives the export.
+        for (const Task *t : m_store->tasksForProject(p->id())) {
+            renderMdTaskRecursive(out, m_store, t, 0);
         }
         out << "\n";
     }

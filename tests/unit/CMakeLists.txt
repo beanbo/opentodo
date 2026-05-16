@@ -275,6 +275,17 @@ opentodo_add_unit_test(test_taskexporter_robustness       Infra)
 # documents that !!!!today is NOT canonicalised.
 opentodo_add_unit_test(test_filterparser_adversarial      Domain)
 
+# Quality round 2.22-B: DEEP edge-case coverage for FilterEvaluator (eval
+# side, complementing the parser-side adversarial suite). 24 slots covering
+# operator precedence, OR/AND short-circuit, triple-NOT, tombstone exclusion,
+# nonexistent #Project, case-folding contract (ASCII + Cyrillic), regex
+# metachars treated as literal, midnight boundary for dueDatetime-only tasks,
+# `recurring` predicate ignoring RRULE validity, far-future before/after,
+# `view all`, `assigned: me`, priority ranges, `no labels`, section name
+# case-folding, `N days` inclusive range, De Morgan equivalence. Pins
+# documented contracts via qInfo where the behavior is non-obvious.
+opentodo_add_unit_test(test_filtereval_edge_cases_v2      Infra)
+
 # Quality round 2.17-C: Karma day-rollover and streak edge cases. SURFACED
 # TWO REAL PRODUCTION BUGS (documented via qInfo, slots stay green):
 #   1. m_lastStreakIncrementDate is in-memory only — restart wipes streak
@@ -407,6 +418,19 @@ set_tests_properties(test_thememanager_switch PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_thememanager_switch>"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+# Quality round 2.20: TodoistImporter ROBUSTNESS — adversarial coverage for
+# edge cases the basic + extended suites miss. Twelve slots covering malformed
+# ZIPs (truncated, tiny garbage, unsupported compression method, 200-entry
+# stress), unusual encodings (CP-1251 fallback, UTF-16LE BOM), degenerate CSV
+# bodies (whitespace, BOM-only, no header), invalid priority values (0, 5, -1,
+# "high"/"low"), date-format variants (MM/DD/YYYY, DD.MM.YYYY, natural-language),
+# edge-content section names (Cyrillic, emoji, 220 chars), label/project color
+# mapping, deep subtask chain (5 levels), image-attachment marker preservation,
+# and re-run dedup. Surfaces three real bugs (priority-0 collapse to p4,
+# non-ISO date silently downgraded, CSV re-run duplicates because createdAt
+# is set to now()) via qInfo() + pinned assertions.
+opentodo_add_unit_test(test_todoist_importer_robustness   Infra)
 
 # Todoist import tests — needs fixture ZIP next to the binary.
 qt_add_executable(test_todoist_import test_todoist_import.cpp)
