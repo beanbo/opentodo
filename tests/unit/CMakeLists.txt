@@ -71,6 +71,17 @@ opentodo_add_unit_test(test_dragdrop_extended             App)
 opentodo_add_unit_test(test_projectviewmodel_crud         App)
 opentodo_add_unit_test(test_telemetry_retry               Infra)
 
+# Quality round Q3.07-B: Telemetry retry-queue + persistence EDGE cases.
+# Eight slots complementing test_telemetry (basic state) and
+# test_telemetry_retry (anonymous-id lifecycle + PII allowlist). Covers
+# disabled-then-re-enabled no-replay, very long string payload, queue
+# persistence across restart (NEGATIVE pin — none today), 1000-event offline
+# batching, unicode/emoji round-trip, disable-clears-queue (NEGATIVE pin),
+# external QSettings change observed by next read, and burst rate limit
+# (NEGATIVE pin — none today). qInfo() surfaces three documented gaps:
+# in-memory-only queue, no max-queue cap, no rate limiter.
+opentodo_add_unit_test(test_telemetry_edges               Infra)
+
 # Quality round 2.5: UndoStack extended (cross-domain LIFO + capacity edge),
 # SubtaskGenerator extended (parsing, busy-flag, count clamping), CrashLogger
 # (rotation, level prefixes, restore handler), DailyReviewService (custom
@@ -348,6 +359,31 @@ opentodo_add_unit_test(test_export_import_roundtrip       Infra)
 # so AUTOMOC can scan the file and emit the required .moc.
 opentodo_add_unit_test(test_taskexporter_robustness       Infra)
 
+# Quality round Q3.07-B: TaskExporter MARKDOWN-format edge cases.
+# Companion to test_taskexporter (basic) + test_taskexporter_robustness
+# (general adversarial). This suite drills exclusively into exportToMarkdown
+# / renderMdTaskRecursive for payloads that resemble Markdown syntax to a
+# downstream CommonMark renderer.
+#
+# Nine slots covering: `*` and `_` (bold/italic emphasis vectors), triple-
+# backtick code-block opener (defanged by the [\r\n]+ collapse in
+# renderMdTaskRecursive — single-line form survives though), `[text](url)`
+# link syntax pass-through (no URL encoding, no entity rewrite), title
+# brackets including the adversarial `[x]` prefix that could be mis-read as
+# a checked checkbox, HTML entity preservation (no decode, no double-encode),
+# 3-level nested subtask indentation (depth * 2 for the checkbox, depth * 2
+# + 2 for the description blockquote, ordering invariant: subtree completes
+# before next root renders), filename collision uniquifier exercised at 99
+# back-to-back exports inside a temp dir, and emoji round-trip via UTF-8
+# byte sequences (BMP + supplementary plane + ZWJ sequence — plus the
+# exporter's own 📅 and ⚑ glyphs).
+#
+# Suite-level contract: NO production-code changes. Every assertion pins
+# current observed behaviour; flipping it when a fix lands is the
+# regression-bench. Per-suite QSettings org/app via initTestCase keeps the
+# test isolated from other taskexporter suites under `ctest -j`.
+opentodo_add_unit_test(test_taskexporter_md_edges         Infra)
+
 # Quality round 2.17-B: FilterParser adversarial / fuzz — 50-deep parens,
 # 1000-OR chains, NUL bytes, mixed Unicode, unmatched brackets, garbage
 # tokens. Confirmed: parser is genuinely robust — no crashes, no infinite
@@ -396,6 +432,18 @@ opentodo_add_unit_test(test_searchviewmodel_edge_cases    App)
 # COUNT=0, unknown FREQ, BYSETPOS, DTSTART with Z suffix. Behaviour-pin only;
 # any surfaced engine bug is a separate work item.
 opentodo_add_unit_test(test_recurrence_edges_v2           App)
+
+# Quality round Q3.07: DataStore::loadFromJson migration edge cases that the
+# existing test_datastore_migration + test_schema_downgrade suites don't
+# cover. 9 slots: missing/null top-level entity keys, extra unknown top-level
+# keys (forward-compat drop on resave), missing required id (no UUID
+# fallback — collides in index), invalid UUID format (opaque-string contract),
+# orphan parent_id / orphan label name (no cross-entity validation), settings
+# dict forward-compat, embedded NUL bytes (constructed at runtime via
+# QChar(QChar::Null) — source stays NUL-free for AUTOMOC), and 1 MB content
+# string (no upper bound enforced on string fields — documented gap).
+# Behaviour-pin only; no production-code changes.
+opentodo_add_unit_test(test_datastore_migration_v2        Infra)
 
 # Quality round 2.22-E: SyncEngine deep lifecycle coverage. Push during
 # pending pull, snapshot compaction during sync, commit ordering (load-order
