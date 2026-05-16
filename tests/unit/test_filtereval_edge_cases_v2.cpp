@@ -691,21 +691,22 @@ private slots:
     }
 
     // =====================================================================
-    // SLOT 18 — `assigned` alone matches all (defaults to "me").
+    // SLOT 18 — `assigned` (bare) and `assigned: <name>` both parse and
+    // match correctly. F-Q2.24-B FIX: the tokenizer's outer word loop now
+    // stops at ':', so the keyword `assigned` is properly recognised and
+    // its dedicated branch consumes the optional `:<name>` suffix.
     //
-    // ! BUG SURFACED ! `assigned: me` does NOT parse at all — the tokenizer's
-    // outer "word" loop does NOT stop at ':', so the first word read is
-    // "assigned:" (with trailing colon), which then doesn't match any
-    // keyword and falls through to Identifier. The trailing " me" becomes
-    // a second Identifier, and two consecutive identifiers without an
-    // operator → parse error → AST is null.
+    // Behaviour pinned here:
+    //   * `assigned`           → all tasks (default assignee "me").
+    //   * `assigned: me`       → all tasks (explicit "me").
+    //   * `assigned: alice`    → no tasks (no task is assigned to "alice").
     //
-    // The intended path (consume "assigned" then optional ":<name>" suffix)
-    // is unreachable from this input form because the lexer eats the colon
-    // before the keyword match runs.
-    //
-    // Workaround for users: just write `assigned` (no suffix) — equivalent
-    // to `assigned: me` per the F-4.43 implementation, and parses fine.
+    // Note: the evaluator currently treats every task as "assigned to me"
+    // because OpenTodo doesn't yet model multi-user assignees — the
+    // `Assigned` predicate matches everything when the assignee is "me".
+    // Any other assignee name matches nothing. This is wired-up parser ->
+    // evaluator behaviour; the upstream multi-user feature can layer on
+    // top later without changing the syntax.
     // =====================================================================
     void slot18_assigned_me_matches_all_others_none()
     {
@@ -715,28 +716,27 @@ private slots:
         const int n1 = matchCount(*m_eval, QStringLiteral("assigned"), all);
         QCOMPARE(n1, all.size());
 
-        // `assigned: me` — fails to parse due to the colon-in-word bug.
-        // PIN the bug: -1 = parse-failure sentinel from our helper.
+        // `assigned: me` — parses cleanly after F-Q2.24-B and matches all
+        // tasks because the evaluator treats every task as assigned to "me"
+        // (no multi-user data model yet).
         const int n2 = matchCount(*m_eval, QStringLiteral("assigned: me"), all);
-        QCOMPARE(n2, -1);
+        QCOMPARE(n2, all.size());
 
-        // Same for an explicit assignee name — also fails to parse.
+        // No-space variant: `assigned:me` — same semantics, also parses.
+        const int n2b = matchCount(*m_eval, QStringLiteral("assigned:me"), all);
+        QCOMPARE(n2b, all.size());
+
+        // Explicit foreign assignee: parses cleanly but matches no task.
         const int n3 = matchCount(*m_eval,
             QStringLiteral("assigned: alice"), all);
-        QCOMPARE(n3, -1);
+        QCOMPARE(n3, 0);
 
-        // Sanity: a syntactically equivalent form WITHOUT the colon-in-word
-        // problem is NOT exposed. There is no recognised second form.
-
-        qInfo() << "BUG (parser): `assigned: <name>` does not parse — the"
-                   " tokenizer's word-loop does not stop at ':', so the"
-                   " keyword 'assigned' is never matched (the word read is"
-                   " 'assigned:' with the colon). Only the bare `assigned`"
-                   " form works. The token-level `assigned: <name>` branch"
-                   " in filterparser.cpp is unreachable from this input."
-                   " See filterparser.cpp lines 128-135 — the outer word"
-                   " loop needs `:` added to its stop-char set, OR the"
-                   " keyword test needs to handle a trailing colon variant.";
+        qInfo() << "CONTRACT (F-Q2.24-B fix): `assigned` and `assigned: <name>`"
+                   " both parse. The tokenizer now stops at ':', so the"
+                   " 'assigned' keyword's optional-colon-suffix branch is"
+                   " reachable. The evaluator treats every task as 'assigned"
+                   " to me' (no multi-user model), so `assigned: me` matches"
+                   " all and `assigned: alice` matches none.";
     }
 
     // =====================================================================

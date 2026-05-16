@@ -179,6 +179,21 @@ set_tests_properties(test_mobile_layout_views PROPERTIES
     WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_mobile_layout_views>"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+# Q-Loop B (May 2026): regression tests for two C++ bugs.
+#   Bug A — TaskViewModel::m_selectedTask was a raw QObject* that dangled
+#           after DataStore::clear() (sync pull / Todoist import / reset all).
+#           Fix made it QPointer<QObject> + explicit clear in aboutToReset.
+#           QTEST_MAIN because the test exercises the QML-facing property
+#           contract under a QGuiApplication-style harness.
+#   Bug B — ReminderScheduler::rescheduleAll filtered tombstoned reminders
+#           BEFORE the cancelNotification() call, so the QTimer armed by an
+#           earlier scheduleNotification kept ticking and fired a toast for
+#           a task that no longer existed. Fix walks
+#           DataStore::allRemindersIncludingDeleted() up-front and cancels
+#           every is_deleted reminder. QTEST_GUILESS_MAIN — no GUI needed.
+opentodo_add_unit_test(test_selectedtask_uaf              App)
+opentodo_add_unit_test(test_reminder_cascade_cancel       Infra)
 opentodo_add_unit_test(test_recurrence_advance_chain      Domain)
 
 # Quality round 2.15: AchievementUnlocked wiring (in main.cpp + VM) +
@@ -302,6 +317,15 @@ opentodo_add_unit_test(test_karma_rollover                App)
 # secondary atomicity gap in snapshot.cpp (deleteFile loop continues on
 # failure but resetCommitCount runs unconditionally).
 opentodo_add_unit_test(test_snapshot_compaction_equivalence Infra)
+
+# Quality round 2.18-A: regression coverage for the Q2.17-D CRDT bug. Pins
+# that SyncEngine::applyCommit's *_update branches now push inbound _meta
+# back into DataStore::m_*Meta via applyInbound<Entity>Meta, and that
+# markTaskModified is no longer called for inbound updates (which would
+# clobber the inbound updated_at stamp with the local HLC). Six slots cover
+# task + project + section + label + filter + reminder + comment update
+# branches, signal-count contract, and the "trust the wire" semantics.
+opentodo_add_unit_test(test_applycommit_meta_preservation Infra)
 
 # Quality round 2.17-E: SyncEngine resilience under failure paths
 # (offline, fake-token 401, repeated push, corrupt local commit, no-auth

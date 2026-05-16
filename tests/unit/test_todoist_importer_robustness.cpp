@@ -523,12 +523,11 @@ private slots:
 
     void encoding_utf16le_bom_does_not_crash()
     {
-        // UTF-16LE byte order mark is FF FE — neither UTF-8 BOM (EF BB BF)
-        // nor any other recognised encoding. The parser will:
-        //   1. fail the UTF-8 BOM check,
-        //   2. attempt UTF-8 decode (every other byte is a NUL → invalid),
-        //   3. fall back to fromLocal8Bit which produces garbage but no crash.
-        // We pin: importer completes (signal fires), busy clears, no crash.
+        // F-Q2.24-C #5 FIX: parseBytes now detects UTF-16 LE / BE BOM
+        // (FF FE / FE FF) at the start of the byte stream and dispatches
+        // to the proper QStringDecoder before falling through to UTF-8
+        // / local-8bit. A UTF-16LE-encoded CSV now imports the same way
+        // a UTF-8 one would.
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
 
@@ -562,27 +561,57 @@ private slots:
         QCOMPARE(finished.size(), 1);
         QVERIFY(!imp->busy());
 
-        // [DOCUMENTED] UTF-16LE files import as garbled rather than failing
-        // cleanly. The parser's encoding-detection chain has no UTF-16
-        // branch, so a UTF-16LE CSV is decoded as 8-bit junk. The header
-        // check sees "T" then NUL-bytes interpreted as random CP-1251
-        // glyphs, which usually fails the "first column == TYPE" gate and
-        // surfaces as a per-file warning rather than a fatal error.
-        //
-        // The slot pins "doesn't crash, doesn't deadlock, signal fires" —
-        // future hardening could add a UTF-16 BOM branch to parseBytes().
-        if (!finished[0][2].toString().isEmpty()) {
-            qInfo() << "UTF-16LE BOM rejected with error:"
-                    << finished[0][2].toString();
-        } else if (finished[0][0].toInt() == 0) {
-            qInfo() << "UTF-16LE BOM accepted but produced zero tasks "
-                       "(header mismatch dropped them).";
-        } else {
-            qInfo() << "UTF-16LE BOM produced"
-                    << finished[0][0].toInt()
-                    << "tasks via local-8bit fallback.";
+        // Aggregate import succeeds — error string is empty.
+        QVERIFY2(finished[0][2].toString().isEmpty(),
+                 qPrintable(finished[0][2].toString()));
+
+        // The single row should have been parsed: exactly one task and
+        // its content is the canonical "Hello" (not 8-bit garbage).
+        QCOMPARE(finished[0][0].toInt(), 1);
+        const auto allTasks = ds->allTasks();
+        QCOMPARE(allTasks.size(), 1);
+        QCOMPARE(allTasks[0]->content(), QStringLiteral("Hello"));
+    }
+
+    // F-Q2.24-C #5 follow-up: UTF-16BE BOM is also recognised.
+    void encoding_utf16be_bom_decodes_cleanly()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        const QString header =
+            QStringLiteral("TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,"
+                           "RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,"
+                           "DURATION_UNIT\n");
+        const QString row = QStringLiteral("task,Bonjour,,1,1,,,,en,,,\n");
+
+        QByteArray utf16be;
+        utf16be.append(char(0xFE)); // BOM
+        utf16be.append(char(0xFF));
+        const QString combined = header + row;
+        for (QChar c : combined) {
+            const ushort u = c.unicode();
+            utf16be.append(char((u >> 8) & 0xFF)); // BE: high byte first
+            utf16be.append(char(u & 0xFF));
         }
-        QVERIFY(true); // pin: doesn't crash
+
+        const QString path = writeZipTo(tmp,
+            QStringLiteral("utf16be.zip"),
+            { { QStringLiteral("U.csv"), utf16be, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+        imp->importFromBackupZip(path, false);
+
+        QCOMPARE(finished.size(), 1);
+        QVERIFY(finished[0][2].toString().isEmpty());
+        QCOMPARE(finished[0][0].toInt(), 1);
+        const auto allTasks = ds->allTasks();
+        QCOMPARE(allTasks.size(), 1);
+        QCOMPARE(allTasks[0]->content(), QStringLiteral("Bonjour"));
     }
 
     // ── 3. Empty / degenerate CSV bodies ─────────────────────────────────────
@@ -672,26 +701,80 @@ private slots:
                          .arg(t.content).arg(t.priority)));
         }
 
-        // [DOCUMENTED] Todoist's "0" priority — used by the API as a null
-        // sentinel meaning "no priority" — currently falls through the
-        // `v < 1 || v > 4 → return 1` branch and ends up as internal p4 (1).
-        // That's the LOWEST internal priority; if Todoist semantically means
-        // "no priority at all" then mapping it to p4 is fine, but it loses
-        // the distinction with explicitly-set Normal (CSV 4). The fix would
-        // need a Task::hasPriority flag, which is out of scope.
-        qInfo() << "Todoist priority 0 (null sentinel) maps to internal p4 — "
-                   "no distinction from 'explicit Normal'.";
+        // F-Q2.24-C #3 fix: the parser now counts rows whose PRIORITY was
+        // exactly Todoist's null sentinel "0" so the importer can surface a
+        // single user-facing warning ("X task(s) had no priority in Todoist;
+        // imported as p4"). The mapping itself is still lossy (no schema
+        // distinction between "0/null" and "explicit Normal"), but the user
+        // now SEES that distinction at import time.
+        //
+        // We had exactly ONE row with literal "0" — Zero. Five (5), Minus
+        // (-1), Hi (high), Lo (low) all parse as non-zero or non-numeric,
+        // so they don't bump the lossy counter.
+        QCOMPARE(r.lossyPriorityZeroCount, 1);
+
+        qInfo() << "F-Q2.24-C #3: Todoist priority 0 (null sentinel) is still"
+                   " collapsed to internal p4, but the count of such rows is"
+                   " now propagated via ParseResult.lossyPriorityZeroCount so"
+                   " the importer can emit a one-line user notice. Schema-"
+                   " level distinction would require Task::hasPriority.";
     }
 
-    // ── 5. Date format variants the importer doesn't natively understand ────
+    // F-Q2.24-C #3 follow-up: pin that the importer surfaces the lossy
+    // priority count as a user-facing warning emitted via importWarnings().
+    void priority_zero_emits_user_warning_at_end_of_import()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
 
+        const QByteArray csv = (kHeader
+            + QStringLiteral("task,Implicit,,0,1,,,,en,,,\n") // priority null
+            + QStringLiteral("task,Explicit,,4,1,,,,en,,,\n") // priority Normal
+            ).toUtf8();
+        const QString path = writeZipTo(tmp,
+            QStringLiteral("pri0.zip"),
+            { { QStringLiteral("Pri.csv"), csv, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+        QSignalSpy warnings(imp.data(), &TodoistImporter::importWarnings);
+
+        imp->importFromBackupZip(path, false);
+
+        QCOMPARE(finished.size(), 1);
+        QVERIFY(finished[0][2].toString().isEmpty());
+        QCOMPARE(finished[0][0].toInt(), 2);
+
+        // The importWarnings signal must have fired and at least one row
+        // mentions the lossy priority — pin substring match.
+        QVERIFY2(warnings.size() == 1,
+                 "importWarnings should fire once when priority 0 rows exist");
+        const QStringList list = warnings[0][0].toStringList();
+        bool foundPriorityNotice = false;
+        for (const QString &w : list) {
+            if (w.contains(QStringLiteral("приоритет"))) {
+                foundPriorityNotice = true;
+                break;
+            }
+        }
+        QVERIFY2(foundPriorityNotice,
+                 qPrintable(QStringLiteral(
+                     "Expected a priority-zero notice in warnings; got: %1")
+                     .arg(list.join(u'|'))));
+    }
+
+    // ── 5. Date format variants the importer now recognises ─────────────────
+    //
+    // F-Q2.24-C #4 FIX: parseDue now tries ISO → US slash → EU dot →
+    // natural-language (DateParser) before giving up. User-edited CSVs that
+    // use any of those forms now produce a proper YYYY-MM-DD due.date.
     void date_format_variants_preserved_as_natural_language()
     {
-        // ISO YYYY-MM-DD is the only format the regex recognises — anything
-        // else falls through to natural-language mode where the string is
-        // preserved verbatim but no .date is extracted.
         const QString csv = kHeader
-            + QStringLiteral("task,T1,,1,1,,,2026-12-31,en,,,\n")   // ISO ok
+            + QStringLiteral("task,T1,,1,1,,,2026-12-31,en,,,\n")   // ISO
             + QStringLiteral("task,T2,,1,1,,,12/31/2026,en,,,\n")   // US slash
             + QStringLiteral("task,T3,,1,1,,,31.12.2026,en,,,\n")   // EU dot
             + QStringLiteral("task,T4,,1,1,,,today,en,,,\n")
@@ -702,34 +785,42 @@ private slots:
         QVERIFY(r.error.isEmpty());
         QCOMPARE(r.tasks.size(), 6);
 
-        // T1 — ISO format: date extracted, not recurring
+        // T1 — ISO format: date extracted as 2026-12-31, not recurring.
         QCOMPARE(r.tasks[0].due.date, QStringLiteral("2026-12-31"));
         QVERIFY(!r.tasks[0].due.isRecurring);
 
-        // T2..T6 — non-ISO: date empty, string preserved, not recurring
-        for (int i = 1; i < r.tasks.size(); ++i) {
-            QVERIFY2(r.tasks[i].due.date.isEmpty(),
-                     qPrintable(QStringLiteral("Task %1 should have empty due.date, got '%2'")
-                                    .arg(r.tasks[i].content, r.tasks[i].due.date)));
-            QVERIFY2(!r.tasks[i].due.string.isEmpty(),
-                     qPrintable(QStringLiteral("Task %1 lost its due.string")
-                                    .arg(r.tasks[i].content)));
-            QVERIFY2(!r.tasks[i].due.isRecurring,
-                     qPrintable(QStringLiteral(
-                         "Task %1 ('%2') is marked recurring but contains no "
-                         "recurrence keyword")
-                         .arg(r.tasks[i].content, r.tasks[i].due.string)));
-        }
+        // T2 — US MM/DD/YYYY: now resolves to 2026-12-31.
+        QCOMPARE(r.tasks[1].due.date, QStringLiteral("2026-12-31"));
+        QVERIFY(!r.tasks[1].due.isRecurring);
+        QCOMPARE(r.tasks[1].due.string, QStringLiteral("12/31/2026"));
 
-        // [DOCUMENTED] MM/DD/YYYY and DD.MM.YYYY are silently downgraded to
-        // natural-language. The Todoist API hands back ISO dates so this
-        // affects only manually-edited CSVs — but users who export, edit
-        // and re-import might be surprised that "12/31/2026" doesn't land
-        // as 2026-12-31. Fix would be to extend the regex with two more
-        // alternation branches.
-        qInfo() << "Non-ISO date strings (MM/DD/YYYY, DD.MM.YYYY, 'today', "
-                   "'tomorrow') are preserved as natural-language but never "
-                   "converted to a YYYY-MM-DD due.date.";
+        // T3 — EU DD.MM.YYYY: now resolves to 2026-12-31.
+        QCOMPARE(r.tasks[2].due.date, QStringLiteral("2026-12-31"));
+        QVERIFY(!r.tasks[2].due.isRecurring);
+        QCOMPARE(r.tasks[2].due.string, QStringLiteral("31.12.2026"));
+
+        // T4 — "today" → today's ISO date via DateParser natural-language.
+        const QString todayIso = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        QCOMPARE(r.tasks[3].due.date, todayIso);
+        QVERIFY(!r.tasks[3].due.isRecurring);
+
+        // T5 — "tomorrow" → today+1 ISO date.
+        const QString tomorrowIso = QDate::currentDate().addDays(1)
+            .toString(QStringLiteral("yyyy-MM-dd"));
+        QCOMPARE(r.tasks[4].due.date, tomorrowIso);
+        QVERIFY(!r.tasks[4].due.isRecurring);
+
+        // T6 — "next week" → a future ISO date; DateParser computes the
+        // exact day-of-week; we just pin "non-empty, after today, not
+        // recurring" rather than the exact value (varies with day-of-week).
+        QVERIFY2(!r.tasks[5].due.date.isEmpty(),
+                 qPrintable(QStringLiteral("'next week' did not yield a date; got '%1'")
+                                .arg(r.tasks[5].due.date)));
+        const QDate next = QDate::fromString(r.tasks[5].due.date,
+                                             QStringLiteral("yyyy-MM-dd"));
+        QVERIFY(next.isValid());
+        QVERIFY(next > QDate::currentDate());
+        QVERIFY(!r.tasks[5].due.isRecurring);
     }
 
     // ── 6. Section names with edge content ──────────────────────────────────
@@ -810,34 +901,15 @@ private slots:
     }
 
     // ── 7. Label colour mapping (via intermediate data → applyImport) ───────
-
+    //
+    // F-Q2.24-C #6 FIX: CSV-imported projects still land as grey (the CSV
+    // format genuinely doesn't carry a project colour column), but the
+    // importer now emits a user-facing notice via importWarnings telling
+    // the user that the API-token path preserves colours. The QCOMPARE on
+    // #b8b8b8 below is unchanged; the new assertion is that a notice was
+    // emitted alongside the grey colour.
     void label_color_mapping_covers_all_documented_palette()
     {
-        // The CSV path never carries labels, so we drive applyImport()
-        // through the only public seam available — the ZIP path with a
-        // dummy CSV that produces zero tasks, plus a hand-built
-        // TodoistImportData... wait — applyImport() is private. We can
-        // only reach it via importFromBackupZip / importFromApiToken.
-        //
-        // Solution: build a ZIP that imports cleanly, then manually
-        // exercise the colour mapper via a follow-up addLabel + setColor
-        // sequence that mimics what applyImport() would do. Cross-check
-        // by importing a single project, observing the project's mapped
-        // colour ("grey" — the default), and re-checking against the same
-        // palette table the importer uses for labels.
-        //
-        // The mapper is `mapTodoistColor` (file-private, anonymous
-        // namespace). We can't call it directly, so we exercise it
-        // through Project::color which uses the same function on the
-        // ZIP path. Driving every palette name requires us to send
-        // every name through the CSV path — but CSV projects always get
-        // colour "grey" hard-coded by importFromBackupZip(). So the
-        // colour mapper is only meaningfully reachable through the API
-        // path, which we can't exercise without a network mock.
-        //
-        // The thing we CAN pin: every CSV-imported Project gets the
-        // canonical CSS hex for "grey", and that hex string is exactly
-        // "#b8b8b8" — proving the mapper is hooked up at least once.
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
 
@@ -852,6 +924,7 @@ private slots:
             new TodoistImporter(ds.data(), this));
 
         QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+        QSignalSpy warnings(imp.data(), &TodoistImporter::importWarnings);
         imp->importFromBackupZip(path, false);
         QCOMPARE(finished.size(), 1);
         QVERIFY(finished[0][2].toString().isEmpty());
@@ -865,15 +938,22 @@ private slots:
         QVERIFY(colorProj);
         QCOMPARE(colorProj->color(), QStringLiteral("#b8b8b8"));
 
-        // [DOCUMENTED] CSV path always sets project colour to "grey" before
-        // mapTodoistColor, so every CSV-imported project comes in
-        // #b8b8b8. The full palette mapping (berry_red → #b8256f, charcoal
-        // → #808080, …) is only exercised via the API path. Adding a label
-        // colour column to the CSV path would let users carry their
-        // Todoist colours through a backup-based migration; right now the
-        // user has to re-colour every project manually.
-        qInfo() << "CSV-imported projects always get colour '#b8b8b8' (grey). "
-                   "Full palette only reachable via API path.";
+        // F-Q2.24-C #6: importWarnings must include a one-line notice that
+        // CSV colours are unavailable. The full Cyrillic message lives in
+        // todoistimporter.cpp; we pin a substring match on "Цвета".
+        QCOMPARE(warnings.size(), 1);
+        const QStringList list = warnings[0][0].toStringList();
+        bool foundColourNotice = false;
+        for (const QString &w : list) {
+            if (w.contains(QString::fromUtf8("Цвета"))) {
+                foundColourNotice = true;
+                break;
+            }
+        }
+        QVERIFY2(foundColourNotice,
+                 qPrintable(QStringLiteral(
+                     "Expected colour-unavailability notice; got: %1")
+                     .arg(list.join(u'|'))));
     }
 
     // ── 8. Project hierarchy depth (4-level subtask chain) ──────────────────
@@ -1007,17 +1087,13 @@ private slots:
     }
 
     // ── 10. Incremental / re-run import dedup ───────────────────────────────
-
+    //
+    // F-Q2.24-C #2 FIX: the dedup fingerprint is now MD5(content + "|" +
+    // projectId), which is stable across runs (project-by-name lookup means
+    // the same display name reuses the same OpenTodo Project UUID). Re-
+    // importing the same backup no longer duplicates tasks OR projects.
     void rerun_same_zip_deduplicates_via_fingerprint()
     {
-        // ITER3 #17: applyImport hashes (content + createdAt-ISO) for every
-        // existing task. A re-run of the same backup must not re-add tasks
-        // it already imported.
-        //
-        // Catch: the CSV path leaves Task::createdAt at QDateTime::currentDateTimeUtc()
-        // (because the CSV format doesn't carry a created-at column). That
-        // means the second run uses a NEW current-time fingerprint and the
-        // dedup hash MISSES. So duplicates do happen. Document this clearly.
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
 
@@ -1040,51 +1116,19 @@ private slots:
         QVERIFY(finished[0][2].toString().isEmpty());
         QVERIFY(finished[1][2].toString().isEmpty());
 
-        // Count tasks whose content == "Unique task".
+        // Task dedup — exactly one copy of the task after two runs.
         int copies = 0;
         for (auto *t : ds->allTasks()) {
             if (t->content() == QStringLiteral("Unique task")) ++copies;
         }
+        QCOMPARE(copies, 1);
 
-        if (copies == 1) {
-            // Dedup worked — fingerprint hit.
-            QVERIFY(true);
-        } else {
-            // [DOCUMENTED BUG] CSV path's dedup misses on re-run because
-            // the fingerprint is MD5(content + "|" + createdAt), and
-            // createdAt for a CSV-imported task is set to "now" rather
-            // than carried from the backup. Two runs of the same ZIP
-            // produce two different createdAt values, two different
-            // fingerprints, and therefore two copies of every task.
-            //
-            // Fix would require either (a) carrying createdAt through the
-            // CSV format somehow (Todoist doesn't expose it), or (b)
-            // changing the fingerprint to (content + projectName) which
-            // would dedup correctly across runs.
-            qInfo() << "REAL BUG SURFACED: re-running the same backup ZIP "
-                       "duplicates every task. Got"
-                    << copies << "copies of 'Unique task' after 2 runs.";
-            QVERIFY2(copies == 2,
-                     qPrintable(QStringLiteral(
-                         "Expected exactly 2 copies on re-run dedup miss, got %1")
-                         .arg(copies)));
-        }
-
-        // The importer ALWAYS creates a new project per run (project id
-        // synthesised from csvIdx + content hash, so the SAME content
-        // produces the SAME content-hash, but a NEW csvIdx → different
-        // project id). Two runs of the same ZIP therefore produce 2
-        // projects with the same display name.
-        int colorProjCount = 0;
+        // Project dedup — exactly one project named "R" after two runs.
+        int rProjCount = 0;
         for (auto *p : ds->allProjects()) {
-            if (p->name() == QStringLiteral("R")) ++colorProjCount;
+            if (p->name() == QStringLiteral("R")) ++rProjCount;
         }
-        if (colorProjCount > 1) {
-            qInfo() << "Re-run also duplicates projects:"
-                    << colorProjCount << "copies of 'R'.";
-        }
-        QVERIFY2(colorProjCount >= 1,
-                 "First run lost its project entirely (regression)");
+        QCOMPARE(rProjCount, 1);
     }
 };
 

@@ -70,4 +70,14 @@ private:
     DataStore   *m_store;
     bool         m_busy = false;
     QStringList  m_warnings; // accumulated per-import non-fatal errors [B-5.62]
+
+    // F-Q2.24-C #3: total rows with PRIORITY=0 (Todoist null sentinel) across
+    // every CSV in the current import. Collapsed into a single end-of-import
+    // user warning rather than one per row.
+    int          m_lossyPriorityZeroCount = 0;
+
+    // F-Q2.24-C #6: number of projects imported from the CSV path in the
+    // current run. Used to emit a single user-facing notice about CSV color
+    // unavailability (the per-project palette is only reachable via the API).
+    int          m_csvProjectCount = 0;
 };

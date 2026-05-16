@@ -30,6 +30,13 @@ public:
         QList<TodoistNote>    notes;
         QList<TodoistSection> sections;
         QString               error; // empty on success
+
+        // F-Q2.24-C #3: count of rows whose PRIORITY column was Todoist's
+        // null sentinel (0). These tasks land at internal priority 1 (Normal,
+        // p4 in UI), which is also where explicit Normal lands — the two are
+        // indistinguishable after import. The importer surfaces this count
+        // as a single qInfo / user warning at the end of an import.
+        int lossyPriorityZeroCount = 0;
     };
 
     /**

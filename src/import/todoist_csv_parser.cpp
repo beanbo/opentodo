@@ -1,4 +1,5 @@
 #include "todoist_csv_parser.h"
+#include "nlp/dateparser.h"
 
 #include <QStringList>
 #include <QDateTime>
@@ -104,6 +105,14 @@ static QString safeField(const QStringList &row, int idx)
 //   csv 2 (High)   → internal 3  ✓
 //   csv 3 (Medium) → internal 2  ✓
 //   csv 4 (Normal) → internal 1  ✓
+//
+// F-Q2.24-C #3: Todoist's API emits PRIORITY=0 as a null sentinel meaning
+// "no explicit priority set". The CSV path inherits this. We map it to
+// internal 1 (Normal/p4), exactly the same bucket where an EXPLICIT Normal
+// also lands. This is documented LOSSY behaviour — distinguishing the two
+// would require a `Task::hasPriority` flag (schema change, out of scope).
+// The parser counts these rows so the importer can surface a single user-
+// facing notice rather than silently collapsing them.
 // ---------------------------------------------------------------------------
 int TodoistCsvParser::todoistPriority(const QString &raw)
 {
@@ -118,6 +127,16 @@ int TodoistCsvParser::todoistPriority(const QString &raw)
 // ---------------------------------------------------------------------------
 // Due-date parsing
 // ---------------------------------------------------------------------------
+// F-Q2.24-C #4: parseDue now tries (in order):
+//   1. ISO YYYY-MM-DD[T...] — the canonical Todoist API form.
+//   2. US MM/DD/YYYY — common in user-edited CSVs from en-US locales.
+//   3. EU DD.MM.YYYY — common in user-edited CSVs from de/ru/etc locales.
+//   4. Natural-language via DateParser (en or ru) — handles "today",
+//      "tomorrow", "next week", "every day", ordinals, weekday names, etc.
+// On every successful conversion the original `string` field is preserved
+// for round-trip fidelity; `date` is the ISO form. Recurrence flag is taken
+// from DateParser when natural-language matches; otherwise a heuristic on
+// keyword presence (unchanged from B-5.42).
 TodoistDue TodoistCsvParser::parseDue(const QString &dateStr,
                                       const QString &lang,
                                       const QString &timezone)
@@ -129,24 +148,84 @@ TodoistDue TodoistCsvParser::parseDue(const QString &dateStr,
     due.lang     = lang.isEmpty() ? QStringLiteral("en") : lang;
     due.timezone = timezone;
 
-    // Try ISO date YYYY-MM-DD
-    static const QRegularExpression reDate(QStringLiteral(R"(^(\d{4}-\d{2}-\d{2})(T[\d:Z.+-]+)?$)"));
-    const auto m = reDate.match(dateStr.trimmed());
-    if (m.hasMatch()) {
-        due.date = m.captured(1);
-        if (!m.captured(2).isEmpty()) {
-            // Has a time part
-            const QDateTime dt = QDateTime::fromString(dateStr.trimmed(), Qt::ISODate);
-            if (dt.isValid())
-                due.datetime = dt.toString(Qt::ISODate);
+    const QString trimmed = dateStr.trimmed();
+
+    // 1. ISO date YYYY-MM-DD[Thh:mm:ss...]
+    {
+        static const QRegularExpression reIso(
+            QStringLiteral(R"(^(\d{4}-\d{2}-\d{2})(T[\d:Z.+-]+)?$)"));
+        const auto m = reIso.match(trimmed);
+        if (m.hasMatch()) {
+            due.date = m.captured(1);
+            if (!m.captured(2).isEmpty()) {
+                const QDateTime dt = QDateTime::fromString(trimmed, Qt::ISODate);
+                if (dt.isValid())
+                    due.datetime = dt.toString(Qt::ISODate);
+            }
+            due.isRecurring = false;
+            return due;
         }
-        // A plain date without a recurrence string is not recurring
-        due.isRecurring = false;
-        return due;
     }
 
-    // Natural-language string → mark as recurring if it contains recurrence keywords
-    const QString lower = dateStr.toLower();
+    // 2. US slash format MM/DD/YYYY (also accepts M/D/YY).
+    {
+        static const QRegularExpression reUs(
+            QStringLiteral(R"(^(\d{1,2})/(\d{1,2})/(\d{2,4})$)"));
+        const auto m = reUs.match(trimmed);
+        if (m.hasMatch()) {
+            int month = m.captured(1).toInt();
+            int day   = m.captured(2).toInt();
+            int year  = m.captured(3).toInt();
+            if (year < 70)        year += 2000;
+            else if (year < 100)  year += 1900;
+            const QDate d(year, month, day);
+            if (d.isValid()) {
+                due.date = d.toString(QStringLiteral("yyyy-MM-dd"));
+                due.isRecurring = false;
+                return due;
+            }
+        }
+    }
+
+    // 3. EU dot format DD.MM.YYYY (also accepts D.M.YY).
+    {
+        static const QRegularExpression reEu(
+            QStringLiteral(R"(^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$)"));
+        const auto m = reEu.match(trimmed);
+        if (m.hasMatch()) {
+            int day   = m.captured(1).toInt();
+            int month = m.captured(2).toInt();
+            int year  = m.captured(3).toInt();
+            if (year < 70)        year += 2000;
+            else if (year < 100)  year += 1900;
+            const QDate d(year, month, day);
+            if (d.isValid()) {
+                due.date = d.toString(QStringLiteral("yyyy-MM-dd"));
+                due.isRecurring = false;
+                return due;
+            }
+        }
+    }
+
+    // 4. Natural-language via DateParser (en or ru). This handles "today",
+    // "tomorrow", "yesterday", "next monday", "in 3 days", "every weekday",
+    // ordinal forms ("3rd of march"), and more. We pass through the DATE_LANG
+    // column verbatim so Russian rows ("сегодня") parse via rules_ru.
+    {
+        const DateParseResult pr = (due.lang == QStringLiteral("ru"))
+            ? DateParser::parseRussian(trimmed)
+            : DateParser::parseEnglish(trimmed);
+        if (pr.valid) {
+            due.date        = pr.date;
+            due.datetime    = pr.datetime;
+            due.isRecurring = pr.isRecurring;
+            return due;
+        }
+    }
+
+    // 5. Last-resort heuristic for unrecognized strings — still try to flag
+    // recurrence so the rest of the pipeline knows. Date stays empty.
+    const QString lower = trimmed.toLower();
     due.isRecurring =
         lower.contains(QStringLiteral("every "))   ||
         lower.contains(QStringLiteral("каждый "))  ||
@@ -161,13 +240,40 @@ TodoistDue TodoistCsvParser::parseDue(const QString &dateStr,
 
 // ---------------------------------------------------------------------------
 // Encoding-aware bytes entry point [B-5.40]
+//
+// F-Q2.24-C #5: added UTF-16 LE/BE BOM detection. The previous chain (UTF-8
+// BOM → UTF-8 → local-8bit) silently mojibaked UTF-16 CSVs because their
+// byte sequences look like ASCII followed by NULs — not invalid UTF-8 in the
+// strict sense, but garbage when interpreted as 8-bit. Detecting the FF FE
+// (LE) or FE FF (BE) prefix dispatches to the proper decoder.
 // ---------------------------------------------------------------------------
 TodoistCsvParser::ParseResult TodoistCsvParser::parseBytes(const QByteArray &rawBytes,
                                                             const QString    &projectId)
 {
     QString csv;
 
-    // 1. UTF-8 BOM (EF BB BF) → UTF-8
+    // 1a. UTF-16 LE BOM (FF FE)
+    if (rawBytes.size() >= 2
+        && quint8(rawBytes[0]) == 0xFF
+        && quint8(rawBytes[1]) == 0xFE)
+    {
+        QStringDecoder decoder(QStringConverter::Utf16LE);
+        // Skip the 2-byte BOM before decoding so it doesn't surface as U+FEFF.
+        csv = decoder(QByteArrayView(rawBytes.constData() + 2, rawBytes.size() - 2));
+        return parse(csv, projectId);
+    }
+
+    // 1b. UTF-16 BE BOM (FE FF)
+    if (rawBytes.size() >= 2
+        && quint8(rawBytes[0]) == 0xFE
+        && quint8(rawBytes[1]) == 0xFF)
+    {
+        QStringDecoder decoder(QStringConverter::Utf16BE);
+        csv = decoder(QByteArrayView(rawBytes.constData() + 2, rawBytes.size() - 2));
+        return parse(csv, projectId);
+    }
+
+    // 2. UTF-8 BOM (EF BB BF) → UTF-8
     if (rawBytes.size() >= 3
         && quint8(rawBytes[0]) == 0xEF
         && quint8(rawBytes[1]) == 0xBB
@@ -177,7 +283,7 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parseBytes(const QByteArray &raw
         return parse(csv, projectId); // BOM already stripped
     }
 
-    // 2. Try UTF-8 without errors (QStringDecoder::hasError() detects invalid sequences)
+    // 3. Try UTF-8 without errors (QStringDecoder::hasError() detects invalid sequences)
     {
         QStringDecoder decoder(QStringConverter::Utf8);
         QString attempt = decoder(rawBytes);
@@ -186,7 +292,7 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parseBytes(const QByteArray &raw
         }
     }
 
-    // 3. Fallback: use the system locale encoding (Windows-1251 on Russian-locale
+    // 4. Fallback: use the system locale encoding (Windows-1251 on Russian-locale
     //    Windows, which matches older Todoist CSV exports) [B-5.40].
     //    QString::fromLocal8Bit honours the process locale set by the OS.
     csv = QString::fromLocal8Bit(rawBytes);
@@ -249,7 +355,17 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parse(const QString &csv,
             task.content     = safeField(fields, COL_CONTENT);
             task.description = safeField(fields, COL_DESCRIPTION);
             task.projectId   = projectId;
-            task.priority    = todoistPriority(safeField(fields, COL_PRIORITY));
+
+            // F-Q2.24-C #3: detect Todoist's null sentinel (PRIORITY=0) and
+            // count it. The collapse to internal Normal happens inside
+            // todoistPriority(); we just want the count here.
+            const QString rawPri = safeField(fields, COL_PRIORITY);
+            {
+                bool ok = false;
+                if (rawPri.toInt(&ok) == 0 && ok)
+                    ++result.lossyPriorityZeroCount;
+            }
+            task.priority    = todoistPriority(rawPri);
             task.indent      = qMax(1, safeField(fields, COL_INDENT).toInt());
             task.order       = taskOrder++;
 

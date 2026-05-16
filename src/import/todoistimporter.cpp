@@ -262,6 +262,13 @@ void TodoistImporter::importFromBackupZip(const QString &filePath, bool importCo
     if (m_busy) return;
     setBusy(true);
 
+    // F-Q2.24-C #3/#6: reset per-import diagnostic counters before parsing.
+    m_lossyPriorityZeroCount = 0;
+    m_csvProjectCount        = 0;
+    // F-Q2.24-C: clear warnings here (not inside applyImport, which would
+    // wipe per-CSV parse warnings accumulated during the file loop below).
+    m_warnings.clear();
+
     const QString localPath = stripFilePrefix(filePath);
 
     emit importProgress(0, 100, QStringLiteral("Открываем архив…"));
@@ -346,11 +353,19 @@ void TodoistImporter::importFromBackupZip(const QString &filePath, bool importCo
         TodoistProject proj;
         proj.id    = projectId;
         proj.name  = projectName;
+        // F-Q2.24-C #6: Todoist's CSV-per-project export does NOT carry a
+        // project-level color column (only TASK rows live in the file).
+        // The full mapTodoistColor palette is only reachable via the API
+        // path. Default to grey here; the importer surfaces a one-shot
+        // user notice below when any CSV project is imported.
         proj.color = QStringLiteral("grey");
         proj.order = csvIdx - 1;
         // The CSV backup includes an "Inbox" file for the Inbox project
         proj.isInbox = (projectName.compare(QStringLiteral("Inbox"), Qt::CaseInsensitive) == 0);
         data.projects.append(proj);
+        // F-Q2.24-C #6: count non-Inbox CSV projects for the end-of-import notice.
+        if (!proj.isInbox)
+            ++m_csvProjectCount;
 
         // [B-5.40] Use parseBytes() for encoding detection (UTF-8 BOM /
         // UTF-8 / Windows-1251 fallback) instead of a hard-coded fromUtf8().
@@ -360,6 +375,8 @@ void TodoistImporter::importFromBackupZip(const QString &filePath, bool importCo
             m_warnings.append(QStringLiteral("%1: %2").arg(entry.fileName, result.error));
             continue;
         }
+        // F-Q2.24-C #3: accumulate "priority 0 was lossy" tally.
+        m_lossyPriorityZeroCount += result.lossyPriorityZeroCount;
         data.sections.append(result.sections);
         data.tasks.append(result.tasks);
         data.notes.append(result.notes);
@@ -381,6 +398,10 @@ void TodoistImporter::importFromApiToken(const QString &apiToken, bool importCom
         return;
     }
     setBusy(true);
+
+    // F-Q2.24-C #3: reset per-import diagnostic state.
+    m_lossyPriorityZeroCount = 0;
+    m_warnings.clear();
 
     emit importProgress(0, 100, QStringLiteral("Подключаемся к Todoist API…"));
 
@@ -421,8 +442,9 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     // The real guard is that a fresh call always generates a fresh batchId.
     settings.setValue(QStringLiteral("import/current_batch"), batchId);
 
-    // Clear warnings from any previous import run [B-5.62]
-    m_warnings.clear();
+    // F-Q2.24-C: m_warnings is cleared by the entry points (importFromBackupZip
+    // / importFromApiToken) so that per-file parse warnings accumulated before
+    // applyImport() runs are NOT wiped.
 
     // Counts captured out of the QSignalBlocker scope so we can emit
     // importFinished() with the final values after the blocker releases.
@@ -472,6 +494,22 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     QMap<QString, QString> projIdMap; // todoistId → openTodo UUID
     int projCount = 0;
 
+    // F-Q2.24-C #2: when re-importing the same backup, reuse an existing
+    // active project with a matching (case-insensitive) name instead of
+    // creating a fresh copy. Without this every re-run multiplies projects.
+    // Manual user projects are also captured by the lookup — if a user has
+    // their own "Work" project and imports a Todoist "Work" project, they
+    // merge. That's intentional: it makes incremental imports idempotent.
+    auto findExistingProjectByName = [this](const QString &name) -> Project * {
+        for (auto *p : m_store->allProjects()) {
+            if (p->isDeleted()) continue;
+            if (p->isInbox()) continue; // inbox is mapped separately
+            if (p->name().compare(name, Qt::CaseInsensitive) == 0)
+                return p;
+        }
+        return nullptr;
+    };
+
     // Process projects in order; inbox project treated specially
     for (const TodoistProject &tp : data.projects) {
         if (tp.isArchived) continue; // skip archived as per spec
@@ -484,6 +522,13 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
                 ++projCount; // [B-5.48] Count inbox project in projCount
                 continue;
             }
+        }
+
+        // F-Q2.24-C #2: reuse existing project by name (dedup across imports).
+        if (Project *existing = findExistingProjectByName(tp.name)) {
+            projIdMap[tp.id] = existing->id();
+            ++projCount;
+            continue;
         }
 
         auto *proj = m_store->addProject(tp.name);
@@ -537,10 +582,20 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     int taskCount = 0;
     const int totalTasks = data.tasks.size();
 
-    // ITER3 #17: Task has no externalId field, so dedup using a content+createdAt
-    // fingerprint. Build a set of fingerprints from all existing tasks so that
-    // importing the same backup twice skips already-imported tasks.
-    // Fingerprint = MD5(content + "|" + createdAt ISO string).
+    // ITER3 #17 / F-Q2.24-C #2: dedup using a content + projectId fingerprint
+    // that is STABLE across import runs. The previous shape (content + createdAt)
+    // broke the CSV path because Todoist CSV exports carry no created_at field,
+    // so the importer stamped each row with `QDateTime::currentDateTimeUtc()`.
+    // Two runs of the same backup produced two different createdAt values →
+    // two different fingerprints → every task duplicated. Dropping createdAt
+    // makes the fingerprint stable; the projectId is now also stable because
+    // project dedup-by-name above reuses an existing project on re-import.
+    //
+    // Trade-off: two tasks with the same content in the same project are now
+    // treated as the same task for dedup purposes. That's an unusual case
+    // (people don't usually file two literal duplicates) and the previous
+    // shape was lossy in other ways anyway (it relied on a timestamp the user
+    // could not see). The win — idempotent re-imports — far outweighs it.
     QSet<QByteArray> existingFingerprints;
     {
         const auto existingTasks = m_store->allTasks();
@@ -548,7 +603,7 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         for (const Task *et : existingTasks) {
             if (et->isDeleted()) continue;
             QByteArray raw = et->content().toUtf8() + "|"
-                           + et->createdAt().toString(Qt::ISODate).toUtf8();
+                           + et->projectId().toUtf8();
             existingFingerprints.insert(
                 QCryptographicHash::hash(raw, QCryptographicHash::Md5));
         }
@@ -562,12 +617,15 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
         if (tt.content.isEmpty()) continue;
 
-        // ITER3 #17: skip if a task with matching content+createdAt already exists
+        const QString mappedProjectId = projIdMap.value(
+            tt.projectId, m_store->inboxProject() ? m_store->inboxProject()->id() : QString{});
+        if (mappedProjectId.isEmpty()) continue;
+
+        // F-Q2.24-C #2: skip if a task with matching content+projectId already
+        // exists. Fingerprint must be computed AFTER projectId mapping so the
+        // hash matches the one built from the existing DataStore tasks above.
         {
-            const QString createdStr = tt.createdAt.isValid()
-                ? tt.createdAt.toString(Qt::ISODate)
-                : QString{};
-            QByteArray raw = tt.content.toUtf8() + "|" + createdStr.toUtf8();
+            QByteArray raw = tt.content.toUtf8() + "|" + mappedProjectId.toUtf8();
             const QByteArray fp = QCryptographicHash::hash(raw, QCryptographicHash::Md5);
             if (existingFingerprints.contains(fp)) {
                 m_warnings.append(QStringLiteral("Пропущено (уже импортировано): %1").arg(tt.content));
@@ -575,11 +633,10 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
                 taskIdMap[tt.id] = QStringLiteral("__skipped__");
                 continue;
             }
+            // Add this fp so duplicates within the SAME import (e.g. the file
+            // appears twice in the ZIP) also dedup.
+            existingFingerprints.insert(fp);
         }
-
-        const QString mappedProjectId = projIdMap.value(
-            tt.projectId, m_store->inboxProject() ? m_store->inboxProject()->id() : QString{});
-        if (mappedProjectId.isEmpty()) continue;
 
         auto *task = new Task(m_store);
         task->setContent(tt.content);
@@ -709,6 +766,33 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     emit importProgress(100, 100, QStringLiteral("Завершено"));
 
     setBusy(false);
+
+    // F-Q2.24-C #3: emit a single user-facing warning when one or more rows
+    // had PRIORITY=0 (Todoist null sentinel). They land at internal Normal,
+    // indistinguishable from explicit Normal — see todoistPriority() comment.
+    if (m_lossyPriorityZeroCount > 0) {
+        const QString line = QStringLiteral(
+            "У %1 задач(и) приоритет не был задан в Todoist (значение 0); "
+            "они импортированы как обычный приоритет (p4).")
+            .arg(m_lossyPriorityZeroCount);
+        qInfo().noquote() << "[TodoistImporter]" << line;
+        m_warnings.append(line);
+    }
+
+    // F-Q2.24-C #6: emit a single user-facing notice when CSV-path projects
+    // were imported. The CSV format carries no project colour, so every CSV
+    // project lands as grey. The user can either re-colour manually after
+    // import, or re-import via the API path to pick up the original palette.
+    if (m_csvProjectCount > 0) {
+        const QString line = QStringLiteral(
+            "Цвета проектов не сохраняются в Todoist CSV-экспорте: "
+            "%1 проект(ов) импортирован(ы) серым. Используйте импорт по "
+            "API-токену для сохранения исходных цветов.")
+            .arg(m_csvProjectCount);
+        qInfo().noquote() << "[TodoistImporter]" << line;
+        m_warnings.append(line);
+    }
+
     emit importFinished(finalTaskCount, finalProjCount, QString{});
 
     // [B-5.62] Emit non-fatal parse warnings after importFinished so QML can

@@ -126,14 +126,26 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 ++i;
             tokens.append(Token(TokenType::Section, input.mid(start, i - start), startPos));
         } else {
-            // Read a word (stop at all operator characters, including '!')
+            // Read a word. Stop at all operator characters, including '!' and
+            // ':' (the colon is a sigil-class character: it introduces a value
+            // suffix for several keywords — search:, due:, assigned:). Keeping
+            // the colon out of the word lets the keyword switch below match
+            // bare names like "assigned" and "search" cleanly. F-Q2.24-B fix.
             int start = i;
             while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
                    input[i] != QLatin1Char('(') && input[i] != QLatin1Char('|') &&
                    input[i] != QLatin1Char('&') && input[i] != QLatin1Char(',') &&
-                   input[i] != QLatin1Char('!'))
+                   input[i] != QLatin1Char('!') && input[i] != QLatin1Char(':'))
                 ++i;
             QString word = input.mid(start, i - start).toLower();
+
+            // Guard against an unexpected stop-only char at position `i` —
+            // e.g. a bare ':' with nothing before it. Without consumption the
+            // outer while-loop would not advance and we'd spin forever.
+            if (word.isEmpty()) {
+                ++i; // skip the stray character
+                continue;
+            }
 
             if (word == QStringLiteral("today")) {
                 tokens.append(Token(TokenType::Today, word, startPos));
@@ -325,39 +337,6 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 } else {
                     tokens.append(Token(TokenType::HasDue, QStringLiteral("due"), -1, startPos));
                 }
-            } else if (word.startsWith(QStringLiteral("due:"))) {
-                // Single-word forms: "due:7" — colon is not a tokenizer stop char,
-                // so the lexer hands us the whole "due:N" as one word. The suffix
-                // after the colon may be empty when the user wrote "due: 7" with
-                // a space; in that case peek the next word for digits.
-                const QString suffix = word.mid(4);
-                bool ok = false;
-                const int n = suffix.toInt(&ok);
-                if (ok && n >= 0) {
-                    tokens.append(Token(TokenType::HasDue,
-                                        QStringLiteral("due:") + QString::number(n),
-                                        n, startPos));
-                } else if (suffix.isEmpty()) {
-                    // "due:" with possible number after whitespace.
-                    int p = i;
-                    while (p < len && input[p].isSpace()) ++p;
-                    int numStart = p;
-                    while (p < len && input[p].isDigit()) ++p;
-                    if (p > numStart) {
-                        const int n2 = input.mid(numStart, p - numStart).toInt();
-                        i = p;
-                        tokens.append(Token(TokenType::HasDue,
-                                            QStringLiteral("due:") + QString::number(n2),
-                                            n2, startPos));
-                    } else {
-                        // "due:" with nothing parseable after — fall back to "any due".
-                        tokens.append(Token(TokenType::HasDue, QStringLiteral("due"), -1, startPos));
-                    }
-                } else {
-                    // "due:foo" — not a valid form; emit identifier so the user
-                    // sees a parse error rather than a silent match.
-                    tokens.append(Token(TokenType::Identifier, word, startPos));
-                }
             } else if (word == QStringLiteral("subtask")) {
                 tokens.append(Token(TokenType::Subtask, word, startPos));
             } else if (word == QStringLiteral("view")) {
@@ -379,16 +358,28 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 }
             } else if (word == QStringLiteral("all")) {
                 tokens.append(Token(TokenType::ViewAll, word, startPos));
-            } else if (word == QStringLiteral("search:")) {
-                // B-4.48 FIX: stop search term at ',', ')', '|', '&'.
-                while (i < len && input[i].isSpace()) ++i;
-                int searchStart = i;
-                while (i < len &&
-                       input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
-                       input[i] != QLatin1Char(',') && input[i] != QLatin1Char(')'))
-                    ++i;
-                QString searchTerm = input.mid(searchStart, i - searchStart).trimmed();
-                tokens.append(Token(TokenType::Search, searchTerm, startPos));
+            } else if (word == QStringLiteral("search")) {
+                // F-Q2.24-B: colon is now a word stop, so the bare word is
+                // "search" rather than "search:". Consume an optional ':' and
+                // optional whitespace, then read the search term up to the
+                // next top-level operator. The colon itself is required —
+                // a bare "search" without ':' falls through to Identifier.
+                if (i < len && input[i] == QLatin1Char(':')) {
+                    ++i; // consume ':'
+                    while (i < len && input[i].isSpace()) ++i;
+                    int searchStart = i;
+                    while (i < len &&
+                           input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
+                           input[i] != QLatin1Char(',') && input[i] != QLatin1Char(')'))
+                        ++i;
+                    QString searchTerm = input.mid(searchStart, i - searchStart).trimmed();
+                    tokens.append(Token(TokenType::Search, searchTerm, startPos));
+                } else {
+                    // "search" without a colon — treat as an identifier so
+                    // content-substring matching still applies for a user who
+                    // typed it as a literal word.
+                    tokens.append(Token(TokenType::Identifier, word, startPos));
+                }
             } else if (word == QStringLiteral("created")) {
                 // Look for "before", "after", "today", or "this week"
                 while (i < len && input[i].isSpace()) ++i;
