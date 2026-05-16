@@ -35,4 +35,19 @@ public:
     {
         qDebug() << "[StubNotification] cancelAll";
     }
+
+    // Q-Android-Audit #2.1: on platforms where requestPermission() is a no-op
+    // (Linux/macOS dev stub), still fire permissionRequestCompleted(true) so
+    // the QML SyncIndicator flow is uniform — the gating flag flips in the
+    // signal handler instead of synchronously after the call. We use
+    // QMetaObject::invokeMethod with QueuedConnection to defer the emit until
+    // after the caller returns; SyncIndicator subscribes in its
+    // Component.onCompleted, and a synchronous emit during construction would
+    // race the Connections binding setup.
+    void requestPermission() override
+    {
+        QMetaObject::invokeMethod(this, [this]() {
+            emit permissionRequestCompleted(true);
+        }, Qt::QueuedConnection);
+    }
 };

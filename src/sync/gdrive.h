@@ -55,6 +55,11 @@ public:
     bool releaseLock()  { return m_drive->releaseLock(); }
     bool isLocked() const { return m_drive->isLocked(); }
 
+    // Q2.19-E: test hook — exposes the underlying DriveApi so the test suite
+    // can install a mock QNetworkAccessManager via DriveApi::setNetworkManagerForTesting.
+    // Production code never calls this.
+    DriveApi *driveApiForTesting() { return m_drive; }
+
 signals:
     void authenticatedChanged();
     void accountEmailChanged();

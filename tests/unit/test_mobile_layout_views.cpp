@@ -52,6 +52,7 @@
 
 #include "storage/datastore.h"
 #include "storage/filemanager.h"
+#include "sync/syncengine.h"
 #include "model/project.h"
 #include "model/task.h"
 #include "viewmodels/taskviewmodel.h"
@@ -67,7 +68,19 @@
 #include "services/aiassistant.h"
 #include "services/taskexporter.h"
 #include "services/telemetry.h"
-#include "services/notificationservice_stub.h"
+// Pick the same NotificationService backend src/main.cpp picks. The
+// header-only StubNotificationService has its vtable emitted only when the
+// translation unit defining a virtual method is linked; on Windows we use
+// WindowsNotificationService (already a real .cpp) instead. Mirrors the
+// pattern used by test_desktop_narrow_layout.cpp / test_qml_load_smoke.cpp.
+#include "services/notificationservice.h"
+#if defined(Q_OS_WIN)
+#  include "services/notificationservice_win.h"
+#elif defined(Q_OS_ANDROID)
+#  include "services/notificationservice_android.h"
+#else
+#  include "services/notificationservice_stub.h"
+#endif
 #include "services/reminderscheduler.h"
 #include "services/pomodoroservice.h"
 #include "services/updatechecker.h"
@@ -112,6 +125,7 @@ private:
     QObject                *m_scope            = nullptr;
     DataStore              *m_dataStore        = nullptr;
     FileManager            *m_fileManager      = nullptr;
+    SyncEngine             *m_syncEngine       = nullptr;
     UndoStack              *m_undoStack        = nullptr;
     TaskViewModel          *m_taskVM           = nullptr;
     ProjectViewModel       *m_projectVM        = nullptr;
@@ -125,7 +139,7 @@ private:
     AIAssistant            *m_aiAssistant      = nullptr;
     TaskExporter           *m_taskExporter     = nullptr;
     Telemetry              *m_telemetry        = nullptr;
-    StubNotificationService *m_notifService    = nullptr;
+    NotificationService    *m_notifService     = nullptr;
     ReminderScheduler      *m_reminderSched    = nullptr;
     PomodoroService        *m_pomodoroService  = nullptr;
     UpdateChecker          *m_updateChecker    = nullptr;
@@ -248,6 +262,11 @@ private slots:
         m_scope            = new QObject;
         m_dataStore        = new DataStore(m_scope);
         m_fileManager      = new FileManager(m_dataStore, m_scope);
+        // SyncViewModel's constructor unconditionally connects to its
+        // SyncEngine pointer and calls gdriveClient() — passing nullptr
+        // segfaults. Construct a real engine; it never reaches the network
+        // because no GDrive credentials are configured in test mode.
+        m_syncEngine       = new SyncEngine(m_dataStore, m_scope);
         m_undoStack        = new UndoStack(m_scope);
         m_taskVM           = new TaskViewModel(m_dataStore, m_scope);
         m_taskVM->setUndoStack(m_undoStack);
@@ -257,15 +276,21 @@ private slots:
         m_searchVM         = new SearchViewModel(m_dataStore, m_scope);
         m_settingsVM       = new SettingsViewModel(m_dataStore, m_scope);
         m_karmaVM          = new KarmaViewModel(m_dataStore, m_scope);
+#if defined(Q_OS_WIN)
+        m_notifService     = new WindowsNotificationService(m_scope);
+#elif defined(Q_OS_ANDROID)
+        m_notifService     = new AndroidNotificationService(m_scope);
+#else
         m_notifService     = new StubNotificationService(m_scope);
+#endif
         m_reminderSched    = new ReminderScheduler(m_dataStore,
                                                    m_notifService, m_scope);
         Q_UNUSED(m_reminderSched);
         m_pomodoroService  = new PomodoroService(m_notifService, m_scope);
         m_updateChecker    = new UpdateChecker(m_scope);
         m_notificationsVM  = new NotificationsViewModel(m_dataStore,
-                                                       nullptr, m_scope);
-        m_syncVM           = new SyncViewModel(nullptr, m_scope);
+                                                       m_syncEngine, m_scope);
+        m_syncVM           = new SyncViewModel(m_syncEngine, m_scope);
         m_aiAssistant      = new AIAssistant(m_dataStore, m_scope);
         m_taskExporter     = new TaskExporter(m_dataStore, m_scope);
         m_telemetry        = new Telemetry(m_scope);

@@ -177,6 +177,16 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
     case TokenType::Priority:
         return task->priority() == token.value.toInt();
 
+    case TokenType::PriorityRange: {
+        // token.value is a QVariantList of two ints (min, max), inclusive.
+        const QVariantList rng = token.value.toList();
+        if (rng.size() != 2) return false;
+        const int minVal = rng[0].toInt();
+        const int maxVal = rng[1].toInt();
+        const int p = task->priority();
+        return p >= minVal && p <= maxVal;
+    }
+
     case TokenType::Project: {
         const QString projectName = token.text;
         const auto *project = m_store->projectById(task->projectId());
@@ -217,6 +227,23 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
         return createdDate.isValid() && afterDate.isValid() && createdDate > afterDate;
     }
 
+    case TokenType::CreatedToday: {
+        const QDate createdDate = task->createdAt().date();
+        return createdDate.isValid() && createdDate == today;
+    }
+
+    case TokenType::CreatedThisWeek: {
+        // "This week" = ISO week containing today (Mon..Sun).
+        // Qt: QDate::dayOfWeek() returns 1=Mon..7=Sun. Compute week start
+        // (Monday) and end (Sunday) and check inclusive containment.
+        const QDate createdDate = task->createdAt().date();
+        if (!createdDate.isValid()) return false;
+        const int daysFromMonday = today.dayOfWeek() - 1; // 0..6
+        const QDate weekStart = today.addDays(-daysFromMonday);
+        const QDate weekEnd   = weekStart.addDays(6);
+        return createdDate >= weekStart && createdDate <= weekEnd;
+    }
+
     case TokenType::Recurring:
         return task->dueIsRecurring();
 
@@ -240,6 +267,28 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
 
     case TokenType::Completed:
         return task->isCompleted();
+
+    case TokenType::HasDue: {
+        // value < 0 → "any due date"; value >= 0 → within today..today+N inclusive.
+        const QDate due = effectiveDueDate(task);
+        if (!due.isValid()) return false;
+        const int n = token.value.toInt();
+        if (n < 0) return true;
+        const QDate end = today.addDays(n);
+        // Inclusive of today and today+N (Todoist semantics).
+        return due >= today && due <= end;
+    }
+
+    case TokenType::Subtask:
+        return !task->parentId().isEmpty();
+
+    case TokenType::ViewAll:
+        // Always matches — used to override implicit project scoping.
+        // Soft-deleted tasks are filtered out earlier by allTasks().
+        return true;
+
+    case TokenType::NoLabels:
+        return task->labels().isEmpty();
 
     case TokenType::Identifier:
         // Treat as search by content

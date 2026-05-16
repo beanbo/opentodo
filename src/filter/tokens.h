@@ -25,7 +25,8 @@ enum class TokenType {
     Date,           // literal date YYYY-MM-DD
 
     // Priority
-    Priority,       // p1, p2, p3, p4
+    Priority,       // p1, p2, p3, p4 — also "priority N" (single value)
+    PriorityRange,  // "priority N..M" — token.value is QVariantList[min, max]
 
     // Entity references
     Project,        // #ProjectName
@@ -38,6 +39,8 @@ enum class TokenType {
     // Created date
     CreatedBefore,
     CreatedAfter,
+    CreatedToday,    // "created today"
+    CreatedThisWeek, // "created this week"
 
     // Recurring
     Recurring,
@@ -51,6 +54,20 @@ enum class TokenType {
 
     // Completed
     Completed,
+
+    // Has-any-due-date / due-within-N-days (Todoist-style "due" / "due: N")
+    // token.value holds N (-1 == "any due date", N>=0 == within N days)
+    HasDue,
+
+    // Subtask: task has a non-empty parentId
+    Subtask,
+
+    // "view all" / "all" — matches every (non-deleted) task; lets a saved
+    // filter ignore the implicit project/inbox scoping the UI may apply.
+    ViewAll,
+
+    // "label none" / "no labels" — task with empty labels array
+    NoLabels,
 
     // Literal / identifier
     Identifier,

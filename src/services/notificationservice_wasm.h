@@ -25,6 +25,12 @@ public:
     void cancelAll() override;
     Q_INVOKABLE bool hasPermission() const override { return true; }
 
+    // Q-Android-Audit #2.1: emit permissionRequestCompleted(true) async so
+    // the QML SyncIndicator's "asked" gating runs through the same code path
+    // as Android. WASM has no runtime grant for in-app banners (we never use
+    // the real Web Notifications API in v1), so this always succeeds.
+    Q_INVOKABLE void requestPermission() override;
+
 private:
     struct ScheduledEntry {
         QString title;

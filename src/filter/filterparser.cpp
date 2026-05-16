@@ -206,6 +206,7 @@ QList<Token> FilterParser::tokenize(const QString &input)
             } else if (word == QStringLiteral("no")) {
                 // B-4.41 FIX: "no date" is valid; "no due date" is valid only if "date"
                 // follows "due".  If "no due" is NOT followed by "date", rewind fully.
+                // Also: "no labels" → NoLabels token.
                 while (i < len && input[i].isSpace()) ++i;
                 int nextStart = i;
                 while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
@@ -217,6 +218,10 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 if (nextWord == QStringLiteral("date")) {
                     // "no date"
                     tokens.append(Token(TokenType::NoDate, QStringLiteral("no date"), startPos));
+                } else if (nextWord == QStringLiteral("labels") ||
+                           nextWord == QStringLiteral("label")) {
+                    // "no labels" / "no label"
+                    tokens.append(Token(TokenType::NoLabels, QStringLiteral("no labels"), startPos));
                 } else if (nextWord == QStringLiteral("due")) {
                     // peek at the word after "due"
                     int afterDue = i;
@@ -252,6 +257,128 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 } else {
                     tokens.append(Token(TokenType::Identifier, word, startPos));
                 }
+            } else if (word == QStringLiteral("priority")) {
+                // "priority N" or "priority N..M" (range, inclusive)
+                // If pattern doesn't match, rewind fully and emit identifier.
+                int saved = i;
+                while (i < len && input[i].isSpace()) ++i;
+                int valStart = i;
+                while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
+                       input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
+                       input[i] != QLatin1Char(',') && input[i] != QLatin1Char('!'))
+                    ++i;
+                QString valWord = input.mid(valStart, i - valStart);
+
+                // Try N..M (range)
+                const int dots = valWord.indexOf(QStringLiteral(".."));
+                if (dots > 0 && dots + 2 < valWord.length()) {
+                    bool okMin = false;
+                    bool okMax = false;
+                    const int minVal = valWord.left(dots).toInt(&okMin);
+                    const int maxVal = valWord.mid(dots + 2).toInt(&okMax);
+                    if (okMin && okMax && minVal >= 1 && minVal <= 4 &&
+                        maxVal >= 1 && maxVal <= 4 && minVal <= maxVal) {
+                        // Encode (min, max) as a 2-int QVariantList — QPoint is not in
+                        // headers we depend on, and QVariantList round-trips cleanly.
+                        QVariantList rng;
+                        rng.append(minVal);
+                        rng.append(maxVal);
+                        tokens.append(Token(TokenType::PriorityRange, valWord,
+                                            QVariant::fromValue(rng), startPos));
+                        continue;
+                    }
+                }
+                // Try single int
+                bool okSingle = false;
+                const int p = valWord.toInt(&okSingle);
+                if (okSingle && p >= 1 && p <= 4) {
+                    tokens.append(Token(TokenType::Priority,
+                                        QStringLiteral("p") + QString::number(p), p, startPos));
+                } else {
+                    // Rewind: "priority" alone (or with garbage) becomes identifier.
+                    i = saved;
+                    tokens.append(Token(TokenType::Identifier, word, startPos));
+                }
+            } else if (word == QStringLiteral("due")) {
+                // "due"     → HasDue with value -1 (any due date)
+                // "due: N"  → HasDue with value N  (within next N days inclusive)
+                // "due:N"   would be a single word "due:N"; that is handled below.
+                int look = i;
+                while (look < len && input[look].isSpace()) ++look;
+                if (look < len && input[look] == QLatin1Char(':')) {
+                    int p = look + 1;
+                    while (p < len && input[p].isSpace()) ++p;
+                    int numStart = p;
+                    while (p < len && input[p].isDigit()) ++p;
+                    if (p > numStart) {
+                        const int n = input.mid(numStart, p - numStart).toInt();
+                        i = p;
+                        tokens.append(Token(TokenType::HasDue,
+                                            QStringLiteral("due:") + QString::number(n),
+                                            n, startPos));
+                    } else {
+                        // "due:" with no number — treat as "any due date" and
+                        // consume the colon so it doesn't poison the next token.
+                        i = look + 1;
+                        tokens.append(Token(TokenType::HasDue, QStringLiteral("due"), -1, startPos));
+                    }
+                } else {
+                    tokens.append(Token(TokenType::HasDue, QStringLiteral("due"), -1, startPos));
+                }
+            } else if (word.startsWith(QStringLiteral("due:"))) {
+                // Single-word forms: "due:7" — colon is not a tokenizer stop char,
+                // so the lexer hands us the whole "due:N" as one word. The suffix
+                // after the colon may be empty when the user wrote "due: 7" with
+                // a space; in that case peek the next word for digits.
+                const QString suffix = word.mid(4);
+                bool ok = false;
+                const int n = suffix.toInt(&ok);
+                if (ok && n >= 0) {
+                    tokens.append(Token(TokenType::HasDue,
+                                        QStringLiteral("due:") + QString::number(n),
+                                        n, startPos));
+                } else if (suffix.isEmpty()) {
+                    // "due:" with possible number after whitespace.
+                    int p = i;
+                    while (p < len && input[p].isSpace()) ++p;
+                    int numStart = p;
+                    while (p < len && input[p].isDigit()) ++p;
+                    if (p > numStart) {
+                        const int n2 = input.mid(numStart, p - numStart).toInt();
+                        i = p;
+                        tokens.append(Token(TokenType::HasDue,
+                                            QStringLiteral("due:") + QString::number(n2),
+                                            n2, startPos));
+                    } else {
+                        // "due:" with nothing parseable after — fall back to "any due".
+                        tokens.append(Token(TokenType::HasDue, QStringLiteral("due"), -1, startPos));
+                    }
+                } else {
+                    // "due:foo" — not a valid form; emit identifier so the user
+                    // sees a parse error rather than a silent match.
+                    tokens.append(Token(TokenType::Identifier, word, startPos));
+                }
+            } else if (word == QStringLiteral("subtask")) {
+                tokens.append(Token(TokenType::Subtask, word, startPos));
+            } else if (word == QStringLiteral("view")) {
+                // "view all" → ViewAll. Anything else: rewind and emit "view"
+                // as an identifier so we don't break content matching.
+                int saved = i;
+                while (i < len && input[i].isSpace()) ++i;
+                int nStart = i;
+                while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
+                       input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
+                       input[i] != QLatin1Char(',') && input[i] != QLatin1Char('!'))
+                    ++i;
+                QString nextW = input.mid(nStart, i - nStart).toLower();
+                if (nextW == QStringLiteral("all")) {
+                    tokens.append(Token(TokenType::ViewAll, QStringLiteral("view all"), startPos));
+                } else {
+                    i = saved;
+                    tokens.append(Token(TokenType::Identifier, word, startPos));
+                }
+            } else if (word == QStringLiteral("all")) {
+                tokens.append(Token(TokenType::ViewAll, word, startPos));
             } else if (word == QStringLiteral("search:")) {
                 // B-4.48 FIX: stop search term at ',', ')', '|', '&'.
                 while (i < len && input[i].isSpace()) ++i;
@@ -263,7 +390,7 @@ QList<Token> FilterParser::tokenize(const QString &input)
                 QString searchTerm = input.mid(searchStart, i - searchStart).trimmed();
                 tokens.append(Token(TokenType::Search, searchTerm, startPos));
             } else if (word == QStringLiteral("created")) {
-                // Look for "before" or "after"
+                // Look for "before", "after", "today", or "this week"
                 while (i < len && input[i].isSpace()) ++i;
                 int kStart = i;
                 while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
@@ -272,19 +399,43 @@ QList<Token> FilterParser::tokenize(const QString &input)
                     ++i;
                 QString keyword = input.mid(kStart, i - kStart).toLower();
 
-                // Read the date value
-                while (i < len && input[i].isSpace()) ++i;
-                int dStart = i;
-                while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
-                       input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
-                       input[i] != QLatin1Char(','))
-                    ++i;
-                QString dateVal = input.mid(dStart, i - dStart);
+                if (keyword == QStringLiteral("today")) {
+                    tokens.append(Token(TokenType::CreatedToday, QStringLiteral("created today"), startPos));
+                } else if (keyword == QStringLiteral("this")) {
+                    // peek next word for "week"
+                    int afterThis = i;
+                    while (afterThis < len && input[afterThis].isSpace()) ++afterThis;
+                    int wkStart = afterThis;
+                    while (afterThis < len && !input[afterThis].isSpace() &&
+                           input[afterThis] != QLatin1Char(')') &&
+                           input[afterThis] != QLatin1Char('|') &&
+                           input[afterThis] != QLatin1Char('&') &&
+                           input[afterThis] != QLatin1Char(','))
+                        ++afterThis;
+                    QString maybeWeek = input.mid(wkStart, afterThis - wkStart).toLower();
+                    if (maybeWeek == QStringLiteral("week")) {
+                        i = afterThis;
+                        tokens.append(Token(TokenType::CreatedThisWeek, QStringLiteral("created this week"), startPos));
+                    } else {
+                        // Not "this week" — rewind and treat "created" as identifier.
+                        tokens.append(Token(TokenType::Identifier, word, startPos));
+                        i = kStart;
+                    }
+                } else if (keyword == QStringLiteral("before") || keyword == QStringLiteral("after")) {
+                    // Read the date value
+                    while (i < len && input[i].isSpace()) ++i;
+                    int dStart = i;
+                    while (i < len && !input[i].isSpace() && input[i] != QLatin1Char(')') &&
+                           input[i] != QLatin1Char('|') && input[i] != QLatin1Char('&') &&
+                           input[i] != QLatin1Char(','))
+                        ++i;
+                    QString dateVal = input.mid(dStart, i - dStart);
 
-                if (keyword == QStringLiteral("before")) {
-                    tokens.append(Token(TokenType::CreatedBefore, dateVal, startPos));
-                } else if (keyword == QStringLiteral("after")) {
-                    tokens.append(Token(TokenType::CreatedAfter, dateVal, startPos));
+                    if (keyword == QStringLiteral("before")) {
+                        tokens.append(Token(TokenType::CreatedBefore, dateVal, startPos));
+                    } else {
+                        tokens.append(Token(TokenType::CreatedAfter, dateVal, startPos));
+                    }
                 } else {
                     tokens.append(Token(TokenType::Identifier, word, startPos));
                     i = kStart; // rewind
@@ -481,17 +632,24 @@ AstNode *FilterParser::parseAtom()
     case TokenType::Before:
     case TokenType::After:
     case TokenType::Priority:
+    case TokenType::PriorityRange:
     case TokenType::Project:
     case TokenType::Label:
     case TokenType::Section:
     case TokenType::Search:
     case TokenType::CreatedBefore:
     case TokenType::CreatedAfter:
+    case TokenType::CreatedToday:
+    case TokenType::CreatedThisWeek:
     case TokenType::Recurring:
     case TokenType::NotRecurring:  // B-4.42: now handled
     case TokenType::HasDeadline:
     case TokenType::Assigned:      // F-4.43: now handled
     case TokenType::Completed:
+    case TokenType::HasDue:
+    case TokenType::Subtask:
+    case TokenType::ViewAll:
+    case TokenType::NoLabels:
     case TokenType::Identifier:
     case TokenType::Date:
         advance();

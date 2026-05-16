@@ -106,3 +106,14 @@ void WasmNotificationService::cancelAll()
     }
     m_scheduled.clear();
 }
+
+void WasmNotificationService::requestPermission()
+{
+    // Q-Android-Audit #2.1: WASM uses in-app banners only (no Web Notifications
+    // API integration in v1). Treat the "permission" as always granted, but
+    // still emit asynchronously so the QML SyncIndicator's Connections block
+    // observes the same async semantics as Android.
+    QMetaObject::invokeMethod(this, [this]() {
+        emit permissionRequestCompleted(true);
+    }, Qt::QueuedConnection);
+}

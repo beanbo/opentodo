@@ -5,6 +5,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QPointer>
 #include <QStringList>
 
 class OAuthClient;
@@ -16,6 +17,13 @@ class DriveApi : public QObject
 
 public:
     explicit DriveApi(OAuthClient *auth, QObject *parent = nullptr);
+
+    // Q2.19-E: test hook — inject a custom QNetworkAccessManager so the test
+    // suite can intercept outbound traffic without making real HTTP calls.
+    // Ownership is NOT transferred; the caller must outlive the DriveApi.
+    // Pass nullptr to revert to the internal manager. Production code
+    // continues to use the embedded m_nam.
+    void setNetworkManagerForTesting(QNetworkAccessManager *nam);
 
     // File operations
     bool uploadFile(const QString &remotePath, const QByteArray &data);
@@ -59,8 +67,13 @@ private:
     // Internal helper: retry the request with a fresh token when allowRetry=true.
     QJsonObject waitForReplyWithRetry(QNetworkReply *reply, bool allowRetry);
 
+    // Returns the active network manager — either the test-injected one or
+    // the internal m_nam. All HTTP requests MUST go through this accessor.
+    QNetworkAccessManager *nam();
+
     OAuthClient *m_auth;
     QNetworkAccessManager m_nam;
+    QPointer<QNetworkAccessManager> m_namOverride;  // test hook
     QString m_rootFolderId;
 
     static constexpr auto ROOT_FOLDER_NAME = "opentodo_data";

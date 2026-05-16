@@ -30,6 +30,12 @@ public:
     void cancelNotification(const QString &id) override;
     void cancelAll() override;
 
+    // Q-Android-Audit #2.1: Windows has no runtime POST_NOTIFICATIONS prompt
+    // (toasts are gated by app-level Windows Settings, not by a per-call grant
+    // dialog). Override emits permissionRequestCompleted(true) asynchronously
+    // so the QML SyncIndicator's flag-flip path is identical to Android.
+    void requestPermission() override;
+
 private slots:
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
     void onScheduledNotificationDue(const QString &id);

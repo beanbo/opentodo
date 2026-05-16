@@ -25,6 +25,18 @@ DriveApi::DriveApi(OAuthClient *auth, QObject *parent)
 {
 }
 
+// Q2.19-E: All HTTP requests funnel through nam() so the test suite can
+// intercept outbound traffic. Production code always sees the internal m_nam.
+QNetworkAccessManager *DriveApi::nam()
+{
+    return m_namOverride ? m_namOverride.data() : &m_nam;
+}
+
+void DriveApi::setNetworkManagerForTesting(QNetworkAccessManager *nam)
+{
+    m_namOverride = nam;
+}
+
 bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
 {
     if (!m_auth->isAuthenticated()) return false;
@@ -52,7 +64,7 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
                          QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
         req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
-        auto *reply = m_nam.sendCustomRequest(req, "PATCH", data);
+        auto *reply = nam()->sendCustomRequest(req, "PATCH", data);
         // B-2.33: store method+body for retry on 401.
         reply->setProperty("_method", QByteArray("PATCH"));
         reply->setProperty("_body", data);
@@ -83,7 +95,7 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
                   QStringLiteral("multipart/related; boundary=%1")
                   .arg(QString::fromUtf8(boundary)));
 
-    auto *reply = m_nam.post(req, body);
+    auto *reply = nam()->post(req, body);
     // B-2.33: store method+body for retry on 401.
     reply->setProperty("_method", QByteArray("POST"));
     reply->setProperty("_body", body);
@@ -126,7 +138,7 @@ bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
     req.setRawHeader("Authorization",
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-    auto *reply = m_nam.get(req);
+    auto *reply = nam()->get(req);
 
     QEventLoop loop;
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
@@ -168,7 +180,7 @@ bool DriveApi::deleteFile(const QString &remotePath)
     req.setRawHeader("Authorization",
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-    auto *reply = m_nam.deleteResource(req);
+    auto *reply = nam()->deleteResource(req);
     // B-2.33: store method for retry on 401.
     reply->setProperty("_method", QByteArray("DELETE"));
     waitForReply(reply);
@@ -198,7 +210,7 @@ QStringList DriveApi::listFiles(const QString &folderPath)
     req.setRawHeader("Authorization",
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-    auto *reply = m_nam.get(req);
+    auto *reply = nam()->get(req);
     const auto json = waitForReply(reply);
 
     const auto files = json[QStringLiteral("files")].toArray();
@@ -241,7 +253,7 @@ bool DriveApi::acquireLock()
         req.setRawHeader("Authorization",
                          QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-        auto *reply = m_nam.get(req);
+        auto *reply = nam()->get(req);
         const auto json = waitForReply(reply);
         const auto modifiedTime = QDateTime::fromString(
             json[QStringLiteral("modifiedTime")].toString(), Qt::ISODate);
@@ -284,7 +296,7 @@ bool DriveApi::isLocked() const
     req.setRawHeader("Authorization",
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-    auto *reply = self->m_nam.get(req);
+    auto *reply = self->nam()->get(req);
     const auto json = self->waitForReply(reply);
     const auto modifiedTime = QDateTime::fromString(
         json[QStringLiteral("modifiedTime")].toString(), Qt::ISODate);
@@ -312,7 +324,7 @@ QString DriveApi::findFileId(const QString &name, const QString &parentId)
     req.setRawHeader("Authorization",
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
-    auto *reply = m_nam.get(req);
+    auto *reply = nam()->get(req);
     const auto json = waitForReply(reply);
 
     const auto files = json[QStringLiteral("files")].toArray();
@@ -339,7 +351,7 @@ QString DriveApi::findOrCreateFolder(const QString &name, const QString &parentI
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
 
     const QByteArray folderBody = QJsonDocument(metadata).toJson(QJsonDocument::Compact);
-    auto *reply = m_nam.post(req, folderBody);
+    auto *reply = nam()->post(req, folderBody);
     // B-2.33: tag method for 401 retry.
     reply->setProperty("_method", QByteArray("POST"));
     reply->setProperty("_body", folderBody);
@@ -357,7 +369,7 @@ QNetworkReply *DriveApi::makeRequest(const QString &url, const QByteArray &metho
     if (!contentType.isEmpty())
         req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
 
-    return m_nam.sendCustomRequest(req, method, data);
+    return nam()->sendCustomRequest(req, method, data);
 }
 
 QJsonObject DriveApi::waitForReply(QNetworkReply *reply)
@@ -401,14 +413,14 @@ QJsonObject DriveApi::waitForReplyWithRetry(QNetworkReply *reply, bool allowRetr
         // Re-issue the request using the same method as the original.
         QNetworkReply *retryReply;
         if (method == "POST") {
-            retryReply = m_nam.post(retryReq, sentBody);
+            retryReply = nam()->post(retryReq, sentBody);
         } else if (method == "PATCH") {
-            retryReply = m_nam.sendCustomRequest(retryReq, "PATCH", sentBody);
+            retryReply = nam()->sendCustomRequest(retryReq, "PATCH", sentBody);
         } else if (method == "DELETE") {
-            retryReply = m_nam.deleteResource(retryReq);
+            retryReply = nam()->deleteResource(retryReq);
         } else {
             // Default: GET (covers findFileId, listFiles, acquireLock metadata fetch).
-            retryReply = m_nam.get(retryReq);
+            retryReply = nam()->get(retryReq);
         }
 
         // Retry once more without further retry to avoid infinite loops.

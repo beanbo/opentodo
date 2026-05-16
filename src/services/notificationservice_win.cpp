@@ -169,6 +169,16 @@ void WindowsNotificationService::onTrayActivated(QSystemTrayIcon::ActivationReas
     }
 }
 
+void WindowsNotificationService::requestPermission()
+{
+    // Q-Android-Audit #2.1: no runtime permission grant on Windows — just
+    // emit permissionRequestCompleted(true) after the call returns so QML
+    // SyncIndicator flips its "asked" flag uniformly across platforms.
+    QMetaObject::invokeMethod(this, [this]() {
+        emit permissionRequestCompleted(true);
+    }, Qt::QueuedConnection);
+}
+
 void WindowsNotificationService::onScheduledNotificationDue(const QString &id)
 {
     auto it = m_scheduled.find(id);

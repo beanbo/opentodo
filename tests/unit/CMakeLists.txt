@@ -6,6 +6,10 @@ opentodo_add_unit_test(test_dateparser_ru  Domain)
 opentodo_add_unit_test(test_dateparser_en  Domain)
 opentodo_add_unit_test(test_filterparser   Domain)
 opentodo_add_unit_test(test_filterevaluator Infra)
+# May 2026: new Todoist-parity predicates (due/due:N, subtask, view all,
+# priority N..M, no labels, created today/this week). Test exercises both
+# parsing (Domain) and evaluation against a DataStore fixture (needs Infra).
+opentodo_add_unit_test(test_filterparser_extensions Infra)
 opentodo_add_unit_test(test_merger         Infra)
 opentodo_add_unit_test(test_recurrence     App)
 opentodo_add_unit_test(test_viewmodels     App)
@@ -161,18 +165,20 @@ set_tests_properties(test_views_smoke PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
-# Q-Android-Audit #1.1: MobileLayout fullPageLoader smoke — TEMPORARILY
-# DISABLED. The agent that wrote this file ran out of tokens before
-# completing the StubNotificationService impl + MobileLayout.qml Loader
-# changes, so the test file references a vtable that isn't generated.
-# Re-enable after Q2.21-A is re-dispatched and lands the production-side
-# MobileLayout Loader + StubNotificationService stub.
-# opentodo_add_unit_test(test_mobile_layout_views           App)
-# target_link_libraries(test_mobile_layout_views PRIVATE OpenTodoAppplugin)
-# set_tests_properties(test_mobile_layout_views PROPERTIES
-#     WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_mobile_layout_views>"
-#     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-# )
+# Q-Android-Audit #1.1: MobileLayout fullPageLoader smoke — pins the production
+# fix for "tapping Settings/Productivity/etc on mobile only updates the top-bar
+# title". For each of the 7 full-page filter modes the test instantiates
+# MobileLayout.qml inside a wrapper Loader and asserts the inner fullPageLoader
+# is `active: true` with `source` ending in the matching .qml filename. A
+# negative slot pins that Inbox keeps the loader inactive so the task list
+# renders. Same env shape as test_views_smoke / test_calendar_view_smoke (needs
+# the OpenTodoUI plugin and the offscreen Qt platform plugin).
+opentodo_add_unit_test(test_mobile_layout_views           App)
+target_link_libraries(test_mobile_layout_views PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_mobile_layout_views PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_mobile_layout_views>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
 opentodo_add_unit_test(test_recurrence_advance_chain      Domain)
 
 # Quality round 2.15: AchievementUnlocked wiring (in main.cpp + VM) +
@@ -247,6 +253,23 @@ set_tests_properties(test_settings_sections_smoke PROPERTIES
 # isPinned; inverts priority). Pins which fields survive each path.
 opentodo_add_unit_test(test_export_import_roundtrip       Infra)
 
+# TaskExporter robustness — adversarial edge cases beyond the basic CSV
+# escaping covered by test_taskexporter (round 2.3). Drives bare CR / CRLF
+# inside content (RFC 4180 violation), embedded NUL bytes, 10 KB single
+# task, deep parent chains (CSV/JSON keep them, MD silently drops),
+# all-empty entity, NFC vs NFD survival, filename collision in same
+# second, format consistency across CSV/MD/JSON for the same input,
+# RTL + bidi-override content. 16 slots; pins three confirmed bugs
+# (bare-CR-not-quoted, MD-drops-subtasks, MD-CRLF-stray-CR-in-description)
+# that are surfaced via assertions so a future fix produces a visible
+# test-suite signal.
+# DISABLED: the source file contains literal NUL bytes (intentional —
+# tests handling of NUL in task content) which prevents Qt's AUTOMOC
+# from scanning the file → moc symbols missing → link error. Re-enable
+# after the test is rewritten to use QChar(QChar::Null) at runtime
+# instead of literal NUL bytes in source.
+# opentodo_add_unit_test(test_taskexporter_robustness       Infra)
+
 # Quality round 2.17-B: FilterParser adversarial / fuzz — 50-deep parens,
 # 1000-OR chains, NUL bytes, mixed Unicode, unmatched brackets, garbage
 # tokens. Confirmed: parser is genuinely robust — no crashes, no infinite
@@ -291,6 +314,16 @@ opentodo_add_unit_test(test_sidebar_expand                App)
 # preservation, empty-input fast-fail. Uses a custom QNetworkAccessManager
 # installed via setNetworkManagerForTesting() to intercept outbound HTTP.
 opentodo_add_unit_test(test_aiassistant_safety            Infra)
+
+# Quality round 2.19-E: GDriveClient / DriveApi resilience audit. Uses a
+# MockNAM (file-scope QNetworkAccessManager subclass) installed via
+# DriveApi::setNetworkManagerForTesting() to simulate token refresh failure,
+# 403/413 quota, 5xx without retry, network drop mid-upload, 404 file not
+# found, recreated root folder, peer-held .lock, clock skew on lock
+# freshness, and a perf observation for 10 MB state.json upload. Documents
+# multiple gaps (no 5xx backoff, no resumable upload, lock cache staleness)
+# via qInfo for the next maintainer.
+opentodo_add_unit_test(test_gdrive_resilience             Infra)
 
 # Quality round 2.18: BoardView (kanban) drag-drop edge cases. Twelve slots
 # covering cross-section move, cross-project drop, "(Без раздела)" pseudo-
@@ -353,6 +386,29 @@ set_tests_properties(test_desktop_narrow_layout PROPERTIES
 # and clicking expand never reached the toggle path. Test catches the
 # regression early.
 opentodo_add_unit_test(test_childprojects_qml_shape       App)
+
+# WindowChrome + ThemeManager regression coverage.
+#
+# WindowChrome contract test (Infra layer): structural pinning for the Win32
+# dark-title-bar helper. Verifies the Q_INVOKABLE surface is stable, nullptr
+# inputs are quiet no-ops, the DWMWA_USE_IMMERSIVE_DARK_MODE constant is the
+# Win10 1809+ canonical value (20), and the dwmapi link path resolves at
+# runtime via a real QWindow. QTEST_GUILESS_MAIN — no QML engine needed.
+opentodo_add_unit_test(test_windowchrome_contract         Infra)
+#
+# ThemeManager switch test (App layer): boots a QQmlApplicationEngine, loads
+# the ThemeManager singleton via `import OpenTodoUI`, iterates every bundled
+# palette, verifies the live colour properties update reactively, the
+# corresponding NOTIFY signals fire, custom accent override wins, and theme
+# persistence survives a DataStore toJson + loadFromJson round-trip. QTEST_MAIN
+# (needs QGuiApplication for the QML engine + Material style). Linked against
+# the OpenTodoApp QML plugin so OpenTodoUI registers at startup.
+opentodo_add_unit_test(test_thememanager_switch           App)
+target_link_libraries(test_thememanager_switch PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_thememanager_switch PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_thememanager_switch>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
 
 # Todoist import tests — needs fixture ZIP next to the binary.
 qt_add_executable(test_todoist_import test_todoist_import.cpp)
