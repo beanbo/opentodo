@@ -1,0 +1,26 @@
+********* Start testing of TestTaskItemDragHandler *********
+Config: Using QtTest library 6.11.0, Qt 6.11.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by GCC 13.1.0), windows 11
+QINFO  : TestTaskItemDragHandler::initTestCase() CONTRACT: TaskItem.qml exposes property bool dragActive
+QINFO  : TestTaskItemDragHandler::initTestCase()   = dragHandleArea.drag.active   (right-edge ?? MouseArea)
+QINFO  : TestTaskItemDragHandler::initTestCase()   || mouseArea.drag.active        (whole-row MouseArea)
+QINFO  : TestTaskItemDragHandler::initTestCase()   || rowDragHandler.active        (root-level DragHandler)
+QINFO  : TestTaskItemDragHandler::initTestCase() Drag.active is bound through dragActive so Drag.Automatic
+QINFO  : TestTaskItemDragHandler::initTestCase() kicks in when any of the three sources flips true.
+QINFO  : TestTaskItemDragHandler::initTestCase() Threshold for both MouseArea.drag and DragHandler is 6 px.
+QWARN  : TestTaskItemDragHandler::initTestCase() QFontDatabase: Cannot find font directory C:/Main/Projects/Smart Home/opentodo/build/release/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QINFO  : TestTaskItemDragHandler::initTestCase() TaskItem geometry: 480 x 44
+PASS   : TestTaskItemDragHandler::initTestCase()
+QINFO  : TestTaskItemDragHandler::initial_dragActive_is_false() PINNED: TaskItem.dragActive defaults to false at construction
+PASS   : TestTaskItemDragHandler::initial_dragActive_is_false()
+QINFO  : TestTaskItemDragHandler::center_press_drag_engages_dragActive() CENTER probe ( 240 , 22 ) => pre=F post=T
+PASS   : TestTaskItemDragHandler::center_press_drag_engages_dragActive()
+QINFO  : TestTaskItemDragHandler::chip_row_press_drag_engages_dragActive() CHIP-ROW probe ( 430 , 22 ) => pre=F post=T
+PASS   : TestTaskItemDragHandler::chip_row_press_drag_engages_dragActive()
+QINFO  : TestTaskItemDragHandler::right_edge_handle_press_drag_engages_dragActive() RIGHT-HANDLE probe ( 470 , 22 ) => pre=F post=F
+FAIL!  : TestTaskItemDragHandler::right_edge_handle_press_drag_engages_dragActive() 'active' returned FALSE. (Press+drag over the right-edge ⋮⋮ handle MUST engage dragActive. This is the original Bug 10 surface — the dragHandleArea MouseArea's drag.target is dragGhost.)
+C:/Main/Projects/Smart Home/opentodo/tests/unit/test_taskitem_drag_handler.cpp(493) : failure location
+QINFO  : TestTaskItemDragHandler::chevron_region_behaviour_is_observed() CHEVRON probe ( 10 , 22 ) => pre=F post=F
+QINFO  : TestTaskItemDragHandler::chevron_region_behaviour_is_observed() OBSERVED: chevron-region press+drag does NOT engage drag. The chevron MouseArea's preventStealing+24?24 hit zone wins over rowDragHandler at this coordinate.
+PASS   : TestTaskItemDragHandler::chevron_region_behaviour_is_observed()
+QINFO  : TestTaskItemDragHandler::dragActive_resets_after_release() POST-RELEASE dragActive: F

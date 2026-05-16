@@ -58,6 +58,13 @@ public:
     // Resets karma score, level, streaks, milestones, and history. Irreversible.
     Q_INVOKABLE void resetAllKarma();
 
+    // Read accessor for the persisted streak-dedup date (Q2.18-FOLLOWUP).
+    // Returns the ISO-8601 "YYYY-MM-DD" string of m_lastStreakIncrementDate,
+    // or an empty string when the date is invalid (no streak-bump has fired
+    // since QSettings was last cleared). Public so tests can introspect the
+    // persistence contract without poking private state.
+    Q_INVOKABLE QString lastStreakIncrementDate() const;
+
     // Returns a QVariantList of {date: "YYYY-MM-DD", count: int} entries
     // for the past `days` calendar days (default 90), inclusive of today.
     // All days in the range are present, including zero-count days.

@@ -272,14 +272,30 @@ void KarmaViewModel::onTaskCompleted()
     emit karmaChanged();
 }
 
+QString KarmaViewModel::lastStreakIncrementDate() const
+{
+    // Q2.18-FOLLOWUP test introspection: returns the persisted dedup date as
+    // an ISO-8601 string, or empty if the in-memory cache is invalid.
+    if (!m_lastStreakIncrementDate.isValid())
+        return QString();
+    return m_lastStreakIncrementDate.toString(Qt::ISODate);
+}
+
 void KarmaViewModel::resetAllKarma()
 {
     // Clear milestone tracking (QSettings-backed)
     m_shownMilestones.clear();
     saveShownMilestones();
 
-    // Reset transient streak dedup guard
+    // Reset transient streak dedup guard — in memory AND on disk. Without
+    // wiping the QSettings entry, the very next KarmaViewModel construction
+    // would re-load the stale date and the post-reset behaviour would
+    // diverge from "as if installed fresh".
     m_lastStreakIncrementDate = QDate();
+    {
+        QSettings s;
+        s.remove(QStringLiteral("karma/lastStreakIncrementDate"));
+    }
 
     // Reset DataStore-backed karma fields
     m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore),   0);

@@ -180,6 +180,24 @@ set_tests_properties(test_mobile_layout_views PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# Drag-from-anywhere contract for TaskItem rows. Pins that a press+drag gesture
+# at ANY point on a TaskItem row activates dragActive (the public observable
+# property that gates Drag.active + the closed-hand cursor + the ⋮⋮ glyph fade)
+# — not just clicks on the right-edge ⋮⋮ handle. Probes four x-coordinates at
+# mid-row height (left+10 chevron region, centre, width-50 chip row, width-10
+# right-edge handle) using QTest::mousePress/mouseMove/mouseRelease into a
+# QQuickView so the events bypass the OS event queue. Guards against three
+# regression classes: removing the rowDragHandler at TaskItem.qml ~line 223,
+# changing its target away from null (which would reparent the visible
+# delegate), and raising dragThreshold above ~10 px. Same env shape as
+# test_views_smoke (needs the OpenTodoUI plugin + offscreen Qt platform).
+opentodo_add_unit_test(test_taskitem_drag_handler         App)
+target_link_libraries(test_taskitem_drag_handler PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_taskitem_drag_handler PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_taskitem_drag_handler>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Q-Loop B (May 2026): regression tests for two C++ bugs.
 #   Bug A — TaskViewModel::m_selectedTask was a raw QObject* that dangled
 #           after DataStore::clear() (sync pull / Todoist import / reset all).
@@ -323,13 +341,7 @@ opentodo_add_unit_test(test_searchviewmodel_edge_cases    App)
 # file-scope MockNAM for canned HTTP responses. Pins behavioural quirks via
 # qInfo so a fix produces a visible signal.
 #
-# DISABLED 2026-05-16: 5/12 slots pass, 7 fail because the file-scope MockNAM
-# response table is incomplete for the upload-followed-by-HEAD-update path —
-# SyncEngine sees Error instead of Synced. The bug-surfacing qInfo lines fire
-# correctly even when the assertion fails, so the file is preserved as a
-# documentation artefact. TODO: extend MockNAM to cover the full GDrive REST
-# sequence (lock/upload/HEAD/state.json/release) and re-enable.
-# opentodo_add_unit_test(test_syncengine_lifecycle          Infra)
+opentodo_add_unit_test(test_syncengine_lifecycle          Infra)
 
 # Quality round 2.17-C: Karma day-rollover and streak edge cases. SURFACED
 # TWO REAL PRODUCTION BUGS (documented via qInfo, slots stay green):

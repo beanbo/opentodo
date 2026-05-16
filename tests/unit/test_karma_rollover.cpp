@@ -248,59 +248,159 @@ private slots:
     }
 
     // =====================================================================
-    // 3) Streak across 5 consecutive days.
+    // 3) Streak across 5 consecutive days — restart-survival contract.
     //
     //    Limitation: KarmaViewModel reads QDate::currentDate() directly with
     //    no injection point.  We cannot truly "be on day N" without freezing
-    //    the system clock.  Instead, we drive the streak via
-    //    onTaskCompleted() with completedAt back-dated AND we set
-    //    m_lastStreakIncrementDate indirectly by recording streak after each
-    //    "day".  Since the streak update path uses today=QDate::currentDate(),
-    //    only ONE real-time call can advance the streak per test run.
-    //    We therefore document this limitation and pin the single-crossing
-    //    behaviour: the streak goes from 0 → 1 on first goal-cross.
+    //    the system clock.
+    //
+    //    What we CAN test (Q2.18-FOLLOWUP fix):
+    //    Pre-seed the QSettings entry as if a prior session had bumped the
+    //    streak yesterday + a pre-existing DailyStreak of 4 in DataStore.
+    //    Construct a fresh KarmaViewModel — it should rehydrate
+    //    m_lastStreakIncrementDate from QSettings and on the next same-day
+    //    completion respect the dedup guard (no first-ever-completion reset).
+    //
+    //    Previously this slot pinned the BUG: with no persistence,
+    //    m_lastStreakIncrementDate was invalid after construction and the
+    //    next goal-crossing fell into the "first ever completion" branch,
+    //    silently overwriting a 4-day streak with 1. With the fix in place,
+    //    the dedup guard holds and the streak stays at 4.
     // =====================================================================
-    void streak_increments_across_consecutive_days()
+    void streak_persists_across_simulated_restart()
     {
-        qInfo() << "[streak_increments_across_consecutive_days] "
-                   "KarmaViewModel exposes no setCurrentDate()/onDateChanged() "
-                   "hook — cannot simulate true day-rollover.  Pinning the "
-                   "single-day +1 increment instead.";
-
         Fixture *f = makeFixture();
         f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal), 1);
         f->store->setSetting(QLatin1String(SettingsKeys::DailyStreak), 4);
 
+        // Simulate "yesterday's session bumped the streak then exited" by
+        // writing the dedup-date directly to QSettings under the same key the
+        // production code uses. A subsequent KarmaViewModel construction must
+        // pick it up.
+        const QDate today = QDate::currentDate();
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("karma/lastStreakIncrementDate"),
+                       today.toString(Qt::ISODate));
+            s.sync();
+        }
+
         KarmaViewModel karma(f->store);
         QCOMPARE(karma.dailyStreak(), 4);
 
-        addCompletedTask(f->store, f->inboxId, QStringLiteral("Day-N task"));
+        // Verify the constructor loaded the persisted date.
+        QCOMPARE(karma.lastStreakIncrementDate(),
+                 today.toString(Qt::ISODate));
+
+        // Now complete a task today. Because the dedup guard sees
+        // m_lastStreakIncrementDate == today, the streak path must be a
+        // no-op — streak stays at 4, not collapsed to 1.
+        addCompletedTask(f->store, f->inboxId, QStringLiteral("Same-day task"));
         karma.onTaskCompleted();
 
-        // Goal crossed (0 → 1) and m_lastStreakIncrementDate was unset, so the
-        // code resets streak to 1 — NOT 5.  This is the documented behaviour
-        // for "first ever completion" branch in onTaskCompleted.
-        const int observed = karma.dailyStreak();
-        qInfo() << "[streak_increments_across_consecutive_days] Observed "
-                   "streak after first crossing with no prior dedup-date:" << observed;
+        QCOMPARE(karma.dailyStreak(), 4);
+        QCOMPARE(karma.lastStreakIncrementDate(),
+                 today.toString(Qt::ISODate));
 
-        // Because we set DailyStreak to 4 in DataStore but
-        // m_lastStreakIncrementDate is freshly-constructed (invalid), the
-        // "first ever completion" branch fires and resets streak to 1.
-        // → Surfaces a real bug: pre-existing dailyStreak from a prior
-        //   session is silently overwritten on the FIRST completion of a new
-        //   in-process KarmaViewModel because m_lastStreakIncrementDate is
-        //   not persisted across restarts.
-        if (observed == 1) {
-            qInfo() << "[streak_increments_across_consecutive_days] "
-                       "REAL BUG: m_lastStreakIncrementDate is in-memory only. "
-                       "After app restart, the first completion that crosses "
-                       "the daily goal RESETS dailyStreak to 1 even if the "
-                       "user had a streak of 4 yesterday.";
+        delete f;
+    }
+
+    // =====================================================================
+    // 3.b) Q2.18-FOLLOWUP regression — the dedup-date written by one
+    //      KarmaViewModel instance must be visible to a freshly-constructed
+    //      instance against the same DataStore.  Simulates an app restart
+    //      between completions on the same calendar day.
+    //
+    //      Steps:
+    //        - DailyGoal=1, fresh DataStore + fresh QSettings (init() clears).
+    //        - First instance: complete a task → streak=1, lastStreakIncrementDate=today.
+    //        - Destroy the first instance, construct a second instance against
+    //          the same DataStore (simulates process restart).
+    //        - Second instance MUST report lastStreakIncrementDate=today on
+    //          load (the persistence we just fixed).
+    //        - Completing another task today MUST keep streak at 1 (dedup
+    //          guard sees today == today and skips the bump).
+    //
+    //      Pre-fix behaviour: the in-memory m_lastStreakIncrementDate was
+    //      invalid on the new instance → the "first ever completion" branch
+    //      fired → streak silently re-bumped to 1 (and worse: would have
+    //      reset a 4-day streak to 1 in the simulated-yesterday scenario,
+    //      pinned by streak_persists_across_simulated_restart above).
+    // =====================================================================
+    void streak_increment_date_survives_restart()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal), 1);
+
+        const QDate today = QDate::currentDate();
+        const QString todayKey = today.toString(Qt::ISODate);
+
+        // First KarmaViewModel — completes one task and bumps the streak.
+        {
+            KarmaViewModel karma1(f->store);
+            QCOMPARE(karma1.dailyStreak(), 0);
+            QVERIFY(karma1.lastStreakIncrementDate().isEmpty());
+
+            addCompletedTask(f->store, f->inboxId,
+                             QStringLiteral("Pre-restart task"));
+            karma1.onTaskCompleted();
+
+            QCOMPARE(karma1.dailyStreak(), 1);
+            QCOMPARE(karma1.lastStreakIncrementDate(), todayKey);
+        }
+        // karma1 destroyed — simulates app exit.
+
+        // Second KarmaViewModel — same DataStore, same QSettings backend.
+        // Must rehydrate the dedup-date from disk on construction.
+        KarmaViewModel karma2(f->store);
+        QCOMPARE(karma2.lastStreakIncrementDate(), todayKey);
+        QCOMPARE(karma2.dailyStreak(), 1);
+
+        // Complete another task today through the new instance.  The dedup
+        // guard MUST see today == today and skip the streak bump.
+        addCompletedTask(f->store, f->inboxId,
+                         QStringLiteral("Post-restart task"));
+        karma2.onTaskCompleted();
+
+        // Streak must NOT have advanced to 2 — that would mean the dedup
+        // failed and the bookkeeping date was lost on restart (the original
+        // Q2.18-FOLLOWUP bug).
+        QCOMPARE(karma2.dailyStreak(), 1);
+        QCOMPARE(karma2.lastStreakIncrementDate(), todayKey);
+
+        delete f;
+    }
+
+    // =====================================================================
+    // 3.c) Corrupt / garbage QSettings value for the dedup date.
+    //      The constructor uses QDate::fromString(..., Qt::ISODate) which
+    //      returns an invalid QDate on unparseable input.  An invalid
+    //      m_lastStreakIncrementDate must behave like "never incremented" —
+    //      the next completion at the daily goal must start the streak at 1.
+    // =====================================================================
+    void corrupt_persisted_dedup_date_falls_back_to_invalid()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal), 1);
+
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("karma/lastStreakIncrementDate"),
+                       QStringLiteral("not-a-date-at-all"));
+            s.sync();
         }
 
-        // Pin observed value either way so the test stays green.
-        QVERIFY(observed >= 1);
+        KarmaViewModel karma(f->store);
+        // Garbage parse → invalid QDate → empty accessor.
+        QVERIFY(karma.lastStreakIncrementDate().isEmpty());
+
+        addCompletedTask(f->store, f->inboxId, QStringLiteral("Fresh start"));
+        karma.onTaskCompleted();
+
+        // First valid increment lands at 1 and persists today's date.
+        QCOMPARE(karma.dailyStreak(), 1);
+        QCOMPARE(karma.lastStreakIncrementDate(),
+                 QDate::currentDate().toString(Qt::ISODate));
 
         delete f;
     }

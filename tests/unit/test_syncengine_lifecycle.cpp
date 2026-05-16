@@ -332,17 +332,46 @@ QJsonObject driveEmptyFindResponse()
 // Configure a MockNAM with the standard "happy-path Drive backend" responses
 // that SyncEngine::push/pull need to clear ensureRootFolder and lock acquisition.
 // Callers add more specific responses (HEAD, state.json, log files) after.
+//
+// The full sequence covered:
+//   - findFileId("opentodo_data") → returns rootFolderId (folder exists)
+//   - findFileId(".lock") → empty list (lock file does not exist)
+//   - findFileId("log") → returns "log-folder-id" (log subfolder exists)
+//   - POST /upload/drive/v3/files (multipart) → 200 with non-empty {"id":...}
+//   - PATCH /upload/drive/v3/files/<id> → 200 with non-empty {"id":...}
+//   - DELETE /drive/v3/files/<id> → 200 (releaseLock body)
+//
+// The catch-all default for unmatched URLs is an empty `{"files": []}` so any
+// findFileId lookup the slot forgot to register returns "not found" (which
+// triggers SyncEngine's new-file-create branch) rather than failing parsing.
 void seedDriveHappyPath(MockNAM &mock,
                         const QString &rootFolderId = QStringLiteral("root-id"))
 {
+    // Default: empty-files-list response for any URL not specifically matched.
+    // findFileId expects a {"files": [...]} shape; an empty {} would parse
+    // identically (empty array) but explicit shape documents intent.
+    mock.defaultResponse.statusCode = 200;
+    mock.defaultResponse.body =
+        QJsonDocument(driveEmptyFindResponse()).toJson(QJsonDocument::Compact);
+
     // ensureRootFolder() → findFileId("opentodo_data") returns a folder id.
     mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
                               200, driveFindResponse(rootFolderId));
     // The lock file does not exist → acquireLock succeeds via POST upload.
     mock.registerJsonResponse(QStringLiteral("name = '.lock'"),
                               200, driveEmptyFindResponse());
-    // Default: any other findFileId lookup returns empty (file does not exist),
-    // which forces SyncEngine to create new files via POST.
+    // The log/ subfolder exists — so uploadFile("log/<uuid>.json") does
+    // NOT trigger a folder-create POST and proceeds straight to multipart
+    // upload of the commit file.
+    mock.registerJsonResponse(QStringLiteral("name = 'log'"),
+                              200, driveFindResponse(QStringLiteral("log-folder-id")));
+    // Every multipart-create upload (lock file, commit log, HEAD, state.json)
+    // succeeds and returns a non-empty body so uploadFile()'s
+    // `!result.isEmpty()` check returns true.
+    QJsonObject created;
+    created.insert(QStringLiteral("id"), QStringLiteral("new-file-id"));
+    mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"),
+                              200, created);
 }
 
 } // namespace
