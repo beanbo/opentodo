@@ -69,6 +69,15 @@ opentodo_add_unit_test(test_reminderscheduler_edge_cases  Infra)
 opentodo_add_unit_test(test_datastore_migration           Infra)
 opentodo_add_unit_test(test_dragdrop_extended             App)
 opentodo_add_unit_test(test_projectviewmodel_crud         App)
+# Quality round Q3.07-C: ProjectViewModel hierarchy + immutability edges.
+# 9 slots pinning cycle prevention when moving a parent under its own
+# descendant, archive cascade (none today — pinned), Inbox immutability
+# (SURFACED GAPS: rename/setParentId are silently accepted; only delete
+# is rejected — asymmetric), color/icon Q_PROPERTY NOTIFY plumbing,
+# reorder tie-break with duplicate `order` values (depends on std::sort
+# non-stable contract — surfaced via qInfo), move-to-root via empty
+# parentId, and back-to-back setName rename (no debounce — last wins).
+opentodo_add_unit_test(test_projectviewmodel_hierarchy    App)
 opentodo_add_unit_test(test_telemetry_retry               Infra)
 
 # Quality round Q3.07-B: Telemetry retry-queue + persistence EDGE cases.
@@ -433,6 +442,24 @@ opentodo_add_unit_test(test_searchviewmodel_edge_cases    App)
 # any surfaced engine bug is a separate work item.
 opentodo_add_unit_test(test_recurrence_edges_v2           App)
 
+# Quality round Q3.07: subtask hierarchy at depth >= 5 + cross-project move
+# + cycle attempt at depth 5 + soft-delete cascade depth boundary. Sister
+# of test_subtasks (depth-1) and test_subtask_hierarchy_edge (depth ~3).
+# Nine slots, all App layer:
+#   1. depth-5 chain — subtasks() returns DIRECT children only.
+#   2. promote at depth 3 — descendants stay attached to the promoted node.
+#   3. demote root under an existing subtask — succeeds at API level
+#      (candidateParents hides it, but demoteTask itself accepts it).
+#   4. moveTask across projects — pin that subtree projectId does NOT
+#      cascade (gap vs Todoist parity; parent-child split across projects).
+#   5. depth-5 cycle attempt — demoteTask BFS rejects.
+#   6/7. complete-parent / subtask-of-completed-parent — no cascade in
+#      either direction.
+#   8. softdelete cascade — depth-1 only, grandchild C orphaned.
+#   9. subtasks(<fresh-uuid>) — empty; subtasks("") — all top-level.
+# Behaviour-pin only; no production-code changes.
+opentodo_add_unit_test(test_subtask_deep_hierarchy        App)
+
 # Quality round Q3.07: DataStore::loadFromJson migration edge cases that the
 # existing test_datastore_migration + test_schema_downgrade suites don't
 # cover. 9 slots: missing/null top-level entity keys, extra unknown top-level
@@ -678,6 +705,24 @@ set_tests_properties(test_thememanager_switch PROPERTIES
 # non-ISO date silently downgraded, CSV re-run duplicates because createdAt
 # is set to now()) via qInfo() + pinned assertions.
 opentodo_add_unit_test(test_todoist_importer_robustness   Infra)
+
+# Quality round Q3.07: TodoistImporter PRO-feature edges. Nine slots pinning
+# behaviour for Todoist Pro corners not covered by the basic / extended /
+# robustness suites: (1) TYPE=section row creates Section entity but does NOT
+# wire task.sectionId on following tasks — documented gap; (2) TYPE=note rows
+# attach as Comments to preceding task; (3) multi-CSV ZIP imports all projects
+# disjoint; (4) DATE="каждый день" + DATE_LANG=ru sets dueIsRecurring=true but
+# loses the FREQ=DAILY RRULE because TodoistDue has no recurrenceRule member —
+# documented gap; (5) INDENT 1→2→3 builds A → B → C parent chain; (6) header-
+# only CSV creates Project, zero Tasks; (7) duplicate CONTENT in one CSV
+# coalesces via in-import fingerprint dedup (documented trade-off vs. spec —
+# the slot pins the current "collapses to one" behaviour); (8) named palette
+# (berry_red / lavender / olive_green / …) maps documented hex values via
+# mapTodoistColor but CSV-path projects always land grey (no colour column in
+# CSV export); (9) UTF-8 BOM at byte 0 strips cleanly via parseBytes BOM
+# branch. Surfaces 3 gaps (section-id, dueRecurrenceRule, in-csv dedup) via
+# qInfo + pinned assertions, no production-code edits.
+opentodo_add_unit_test(test_todoist_importer_pro          Infra)
 
 # Todoist import tests — needs fixture ZIP next to the binary.
 qt_add_executable(test_todoist_import test_todoist_import.cpp)
