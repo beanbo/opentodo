@@ -221,6 +221,13 @@ Rectangle {
             // startup for the singleton), so persistence lives here. We mirror
             // the persisted value into ThemeManager.customAccentHex on startup
             // and on every change.
+            //
+            // We also push the value through SettingsViewModel.customAccentHex
+            // so it lands in DataStore (state.json) where C++ services —
+            // notably TrayIconService for the badge tint — can read it without
+            // having to reach into QML. The Qt.labs.settings backing stays as
+            // the authoritative QML-side store so the previous on-disk format
+            // continues to load cleanly for upgrades.
             Settings {
                 id: accentSettings
                 category: "appearance"
@@ -228,14 +235,33 @@ Rectangle {
             }
 
             Component.onCompleted: {
-                if (accentSettings.customAccentHex && accentSettings.customAccentHex.length === 7)
-                    ThemeManager.setCustomAccent(accentSettings.customAccentHex)
+                // On first launch after upgrade the QSettings value may exist
+                // while SettingsVM has nothing — prefer the QSettings value so
+                // we don't lose the user's chosen accent. Otherwise prefer the
+                // SettingsVM value (canonical source going forward).
+                var vmHex = settingsViewModel.customAccentHex
+                var qsHex = accentSettings.customAccentHex
+                var initial = (vmHex && vmHex.length === 7) ? vmHex
+                            : (qsHex && qsHex.length === 7) ? qsHex
+                            : ""
+                if (initial.length === 7) {
+                    ThemeManager.setCustomAccent(initial)
+                    if (vmHex !== initial)
+                        settingsViewModel.customAccentHex = initial
+                    if (qsHex !== initial)
+                        accentSettings.customAccentHex = initial
+                }
             }
 
             Connections {
                 target: ThemeManager
                 function onCustomAccentHexChanged() {
                     accentSettings.customAccentHex = ThemeManager.customAccentHex
+                    // Mirror into the C++ settings VM so DataStore (and the
+                    // tray-icon badge) sees the same value. The setter
+                    // accepts "" to mean "reset to palette default".
+                    if (settingsViewModel.customAccentHex !== ThemeManager.customAccentHex)
+                        settingsViewModel.customAccentHex = ThemeManager.customAccentHex
                 }
             }
 

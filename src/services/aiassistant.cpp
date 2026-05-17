@@ -15,14 +15,25 @@
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
+#include "services/secretstore.h"
 
-// S-5.1: Store the key under a non-obvious name to reduce casual inspection risk.
-// The value is XOR-obfuscated with a machine-derived secret (see obfuscate/deobfuscate).
-// NOTE: This is obfuscation, NOT encryption. Recommend installing QtKeychain for
-// real OS-keychain storage: https://github.com/frankosterfeld/qtkeychain
+// S-5.1: legacy QSettings key (XOR-obfuscated). Sec-1: when a SecretStore is
+// wired via setSecretStore(), reads/writes go through the OS keyring instead
+// and this key is only consulted for the one-time migration step.
 static const char *kSettingsKey = "ai/k";
+
+// Sec-1: name under which the API key lives in the SecretStore. Stable across
+// versions — changing it would orphan the keyring entry.
+static const char *kSecretKey = "claude_api_key";
+
 static const char *kApiEndpoint = "https://api.anthropic.com/v1/messages";
 static const char *kModel       = "claude-haiku-4-5-20251001";
+
+// static
+const char *AIAssistant::secretKey()
+{
+    return kSecretKey;
+}
 
 // ─── S-5.1: XOR-obfuscation helpers ──────────────────────────────────────────
 
@@ -113,9 +124,89 @@ bool AIAssistant::isConfigured() const
     return !loadApiKey().isEmpty();
 }
 
-// S-5.1: Load and deobfuscate the stored key.
+// Sec-1: Wire a SecretStore so reads/writes go through the OS keyring.
+// Performs a one-time migration: if a plaintext (XOR-obfuscated) key exists
+// in the legacy QSettings location and the SecretStore has nothing cached,
+// decode it, push it into the SecretStore, and clear QSettings. The migration
+// runs synchronously enough that subsequent loadApiKey() calls see the
+// migrated value via the SecretStore cache.
+void AIAssistant::setSecretStore(SecretStore *store)
+{
+    m_secretStore = store;
+    if (!store)
+        return;
+
+    // Wire signals so we can refresh isConfigured() once the async read
+    // finishes (e.g. on warm-up). The cache is also populated by these
+    // callbacks, so loadApiKey() will start returning the keyring value.
+    QObject::connect(store, &SecretStore::secretRetrieved, this,
+                     [this](const QString &k, const QString &) {
+        if (k == QLatin1String(kSecretKey))
+            emit isConfiguredChanged();
+    });
+    QObject::connect(store, &SecretStore::secretStored, this,
+                     [this](const QString &k) {
+        if (k == QLatin1String(kSecretKey))
+            emit isConfiguredChanged();
+    });
+    QObject::connect(store, &SecretStore::secretDeleted, this,
+                     [this](const QString &k) {
+        if (k == QLatin1String(kSecretKey))
+            emit isConfiguredChanged();
+    });
+
+    // Migration: if QSettings still has the old XOR-obfuscated key, decode it
+    // and push it into the SecretStore. We synchronously hand the cleartext to
+    // the SecretStore (which write-through-caches it) and remove the legacy
+    // QSettings entry — so even users who launch this version once and never
+    // touch settings end up with their key in the keyring.
+    QSettings s;
+    const QString stored = s.value(QLatin1String(kSettingsKey)).toString().trimmed();
+    if (!stored.isEmpty()) {
+        const QString clear = deobfuscate(stored).trimmed();
+        if (!clear.isEmpty()) {
+            store->setSecret(QLatin1String(kSecretKey), clear);
+        }
+        s.remove(QLatin1String(kSettingsKey));
+        s.sync();
+        // setSecret() populates the SecretStore cache synchronously; emit so
+        // any QML binding refreshes immediately.
+        emit isConfiguredChanged();
+    } else if (!store->hasCachedSecret(QLatin1String(kSecretKey))) {
+        // No legacy value to migrate and the cache is cold — kick off an
+        // async warm-up read so the cache becomes populated for future
+        // sendMessage()/generateSubtasks() calls.
+        store->getSecret(QLatin1String(kSecretKey));
+    } else {
+        // Cache already warm (e.g. a prior setSecret in this process). Just
+        // emit isConfiguredChanged so the UI re-reads the current state.
+        emit isConfiguredChanged();
+    }
+}
+
+// Sec-1: Load via SecretStore when wired, else fall back to the legacy
+// XOR-obfuscated QSettings path. SecretStore reads from its in-memory cache
+// synchronously, so this stays the simple inline call AIAssistant's request
+// handlers rely on. If the cache is cold on first call, this returns an
+// empty string — the warm-up read kicked off in setSecretStore() will
+// populate the cache shortly and a retry will succeed; meanwhile the caller
+// surfaces the standard "API ключ не настроен" error path.
 QString AIAssistant::loadApiKey() const
 {
+    if (m_secretStore) {
+        if (m_secretStore->hasCachedSecret(QLatin1String(kSecretKey)))
+            return m_secretStore->cachedSecret(QLatin1String(kSecretKey)).trimmed();
+        // Cache cold — also peek at the legacy location so a migration that
+        // hasn't run yet (e.g. setSecretStore called slightly later) doesn't
+        // leave us reporting "no key" when a key is actually present.
+        QSettings s;
+        const QString stored = s.value(QLatin1String(kSettingsKey)).toString().trimmed();
+        if (!stored.isEmpty())
+            return deobfuscate(stored).trimmed();
+        return {};
+    }
+
+    // Legacy path — no SecretStore wired. Used by older tests.
     QSettings s;
     const QString stored = s.value(QLatin1String(kSettingsKey)).toString().trimmed();
     if (stored.isEmpty())
@@ -123,11 +214,26 @@ QString AIAssistant::loadApiKey() const
     return deobfuscate(stored).trimmed();
 }
 
-// S-5.1: Obfuscate before storing.
+// Sec-1: Write via SecretStore when wired, else fall back to the legacy path.
+// SecretStore::setSecret populates its cache synchronously, so subsequent
+// isConfigured()/loadApiKey() calls in the same scope return the new value
+// immediately. The async backend write fires isConfiguredChanged a second
+// time via the secretStored signal — harmless duplicate that just causes
+// one extra QML binding refresh.
 void AIAssistant::setApiKey(const QString &key)
 {
-    QSettings s;
     const QString trimmed = key.trimmed();
+    if (m_secretStore) {
+        if (trimmed.isEmpty())
+            m_secretStore->deleteSecret(QLatin1String(kSecretKey));
+        else
+            m_secretStore->setSecret(QLatin1String(kSecretKey), trimmed);
+        emit isConfiguredChanged();
+        return;
+    }
+
+    // Legacy fallback.
+    QSettings s;
     if (trimmed.isEmpty())
         s.remove(QLatin1String(kSettingsKey));
     else

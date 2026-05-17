@@ -50,6 +50,28 @@ Rectangle {
         }
     }
 
+    // ── iCalendar (.ics) Save dialog ─────────────────────────────────────────
+    // Saves a VCALENDAR/VTODO file users can import or subscribe to from
+    // Apple Calendar, Google Calendar, Outlook, etc.
+    FileDialog {
+        id: icsExportFileDialog
+        title: qsTr("Сохранить как iCalendar")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("iCalendar (*.ics)"), qsTr("Все файлы (*)")]
+        defaultSuffix: "ics"
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        selectedFile: currentFolder + "/opentodo-tasks.ics"
+
+        onAccepted: {
+            const path = icsExporter.exportToIcs(selectedFile.toString())
+            if (path && path !== "" && root.Window.window
+                    && typeof root.Window.window.showToast === "function") {
+                root.Window.window.showToast(
+                    qsTr("Экспортировано в %1").arg(path), "success")
+            }
+        }
+    }
+
     FileDialog {
         id: importFileDialog
         title: qsTr("Загрузить резервную копию")
@@ -691,6 +713,35 @@ Rectangle {
 
                         contentItem: Text {
                             text: parent.text
+                            color: ThemeManager.textColor
+                            font.pixelSize: 13
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            radius: 4
+                            color: "transparent"
+                            border.color: ThemeManager.borderColor
+                            border.width: 1
+                        }
+                        onClicked: {
+                            const path = taskExporter.exportToMarkdown("")
+                            if (path && path !== "")
+                                root.Window.window.showToast(
+                                    qsTr("Экспортировано в %1").arg(path), "success")
+                        }
+                    }
+
+                    // iCalendar export — opens a Save-As dialog so users can
+                    // pick where the .ics goes (calendar apps usually want
+                    // ~/Calendars/ or a Drive/iCloud location to subscribe).
+                    Button {
+                        text: "iCalendar"
+                        implicitHeight: 34
+                        implicitWidth: 96
+
+                        contentItem: Text {
+                            text: parent.text
                             color: "#ffffff"
                             font.pixelSize: 13
                             horizontalAlignment: Text.AlignHCenter
@@ -700,12 +751,7 @@ Rectangle {
                             radius: 4
                             color: ThemeManager.accentColor
                         }
-                        onClicked: {
-                            const path = taskExporter.exportToMarkdown("")
-                            if (path && path !== "")
-                                root.Window.window.showToast(
-                                    qsTr("Экспортировано в %1").arg(path), "success")
-                        }
+                        onClicked: icsExportFileDialog.open()
                     }
                 }
             }

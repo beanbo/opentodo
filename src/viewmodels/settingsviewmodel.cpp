@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QHash>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
 
@@ -122,6 +123,77 @@ void SettingsViewModel::setCompactDensity(bool compact) {
     emit compactDensityChanged();
 }
 
+// --- Q2.26-B: search accent sensitivity ---
+
+bool SettingsViewModel::searchAccentSensitive() const {
+    // Default false (accent-INSENSITIVE) — missing key counts as false so
+    // first-run users get the "café finds cafe" behaviour out of the box.
+    return setting(QLatin1String(SettingsKeys::SearchAccentSensitive)).toBool();
+}
+void SettingsViewModel::setSearchAccentSensitive(bool sensitive) {
+    set(QLatin1String(SettingsKeys::SearchAccentSensitive), sensitive);
+    emit searchAccentSensitiveChanged();
+}
+
+// --- Custom accent color override ---
+
+QString SettingsViewModel::customAccentHex() const
+{
+    // Read from DataStore so the value persists across launches in state.json
+    // alongside every other setting. The QML SettingsSectionAppearance layer
+    // mirrors this into ThemeManager.customAccentHex on startup, and writes
+    // back through setCustomAccentHex() on every change — keeping the two
+    // sources of truth (state.json and ThemeManager) coherent at all times.
+    return setting(QLatin1String(SettingsKeys::CustomAccentHex)).toString();
+}
+
+void SettingsViewModel::setCustomAccentHex(const QString &hex)
+{
+    // Accept only "#RRGGBB" (case-insensitive) or empty string (reset).
+    // Anything else is silently dropped so a stray QML binding never corrupts
+    // the persisted value with a "red"/"transparent"/"" mix.
+    static const QRegularExpression re(QStringLiteral("^#[0-9A-Fa-f]{6}$"));
+    const QString trimmed = hex.trimmed();
+    if (!trimmed.isEmpty() && !re.match(trimmed).hasMatch())
+        return;
+
+    if (trimmed == customAccentHex())
+        return;
+
+    set(QLatin1String(SettingsKeys::CustomAccentHex), trimmed);
+    emit accentColorChanged();
+}
+
+QColor SettingsViewModel::accentColor() const
+{
+    // Resolve to a concrete QColor for C++ consumers (e.g. TrayIconService).
+    // When the user hasn't set an override we fall back to #db4c3f — the
+    // accent of both the todoist_light and dark palettes, which together
+    // cover the default ("system") theme path. This is intentional: making
+    // the tray badge always paintable means we don't have to special-case
+    // "no override" in every consumer.
+    const QString hex = customAccentHex();
+    if (hex.isEmpty())
+        return QColor(QStringLiteral("#db4c3f"));
+    QColor c(hex);
+    return c.isValid() ? c : QColor(QStringLiteral("#db4c3f"));
+}
+
+// --- Tray icon (desktop only) ---
+
+bool SettingsViewModel::showTrayIcon() const {
+    const QVariant v = setting(QLatin1String(SettingsKeys::ShowTrayIcon));
+    // Default ON: a missing key (invalid variant) means the user has never
+    // toggled the preference, which on desktop platforms should still show
+    // the tray icon. Android/WASM ignore the setting entirely so the default
+    // is harmless there.
+    return !v.isValid() || v.toBool();
+}
+void SettingsViewModel::setShowTrayIcon(bool show) {
+    set(QLatin1String(SettingsKeys::ShowTrayIcon), show);
+    emit showTrayIconChanged();
+}
+
 // --- Sidebar ---
 
 bool SettingsViewModel::showInboxCount() const { return setting(QLatin1String(SettingsKeys::ShowInboxCount)).toBool(); }
@@ -146,6 +218,39 @@ bool SettingsViewModel::notificationPermissionAsked() const {
 void SettingsViewModel::setNotificationPermissionAsked(bool asked) {
     set(QLatin1String(SettingsKeys::NotificationPermissionAsked), asked);
     emit notificationPermissionAskedChanged();
+}
+
+// --- Q3.10: storage caps ---
+
+int SettingsViewModel::backupRetentionCount() const {
+    const QVariant v = setting(QLatin1String(SettingsKeys::BackupRetentionCount));
+    return v.isValid() ? v.toInt() : 50;   // default matches FileManager
+}
+void SettingsViewModel::setBackupRetentionCount(int n) {
+    if (n < 0) n = 0;
+    set(QLatin1String(SettingsKeys::BackupRetentionCount), n);
+    emit backupRetentionCountChanged();
+}
+
+int SettingsViewModel::backupRetentionDays() const {
+    const QVariant v = setting(QLatin1String(SettingsKeys::BackupRetentionDays));
+    return v.isValid() ? v.toInt() : 30;
+}
+void SettingsViewModel::setBackupRetentionDays(int days) {
+    if (days < 0) days = 0;
+    set(QLatin1String(SettingsKeys::BackupRetentionDays), days);
+    emit backupRetentionDaysChanged();
+}
+
+qint64 SettingsViewModel::vacuumThresholdBytes() const {
+    const QVariant v = setting(QLatin1String(SettingsKeys::VacuumThresholdBytes));
+    return v.isValid() ? v.toLongLong() : (10LL * 1024 * 1024);
+}
+void SettingsViewModel::setVacuumThresholdBytes(qint64 bytes) {
+    if (bytes < 0) bytes = 0;
+    set(QLatin1String(SettingsKeys::VacuumThresholdBytes),
+        QVariant::fromValue<qint64>(bytes));
+    emit vacuumThresholdBytesChanged();
 }
 
 // --- Methods ---
@@ -179,6 +284,15 @@ QString canonicalSettingKey(const QString &key)
         {QStringLiteral("autoArchiveDays"),     QLatin1String(SettingsKeys::AutoArchiveOldProjectsDays)},
         {QStringLiteral("dailyReviewEnabled"),  QStringLiteral("daily_review_enabled")},
         {QStringLiteral("compactDensity"),      QLatin1String(SettingsKeys::TaskDensity)},
+        {QStringLiteral("showTrayIcon"),        QLatin1String(SettingsKeys::ShowTrayIcon)},
+        {QStringLiteral("customAccentHex"),     QLatin1String(SettingsKeys::CustomAccentHex)},
+        {QStringLiteral("accentColor"),         QLatin1String(SettingsKeys::CustomAccentHex)},
+        // Q3.10: storage caps.
+        {QStringLiteral("backupRetentionCount"), QLatin1String(SettingsKeys::BackupRetentionCount)},
+        {QStringLiteral("backupRetentionDays"),  QLatin1String(SettingsKeys::BackupRetentionDays)},
+        {QStringLiteral("vacuumThresholdBytes"), QLatin1String(SettingsKeys::VacuumThresholdBytes)},
+        {QStringLiteral("searchAccentSensitive"),
+                                                QLatin1String(SettingsKeys::SearchAccentSensitive)},
     };
     return map.value(key, key); // unknown camelCase keys pass through unchanged
 }
@@ -211,6 +325,13 @@ void SettingsViewModel::updateSetting(const QString &key, const QVariant &value)
     if (canonical == QLatin1String(SettingsKeys::WeeklyGoal))             { setWeeklyGoal(value.toInt()); return; }
     if (canonical == QLatin1String(SettingsKeys::NotificationPermissionAsked))
                                                                           { setNotificationPermissionAsked(value.toBool()); return; }
+    if (canonical == QLatin1String(SettingsKeys::BackupRetentionCount)) { setBackupRetentionCount(value.toInt()); return; }
+    if (canonical == QLatin1String(SettingsKeys::BackupRetentionDays))  { setBackupRetentionDays(value.toInt());  return; }
+    if (canonical == QLatin1String(SettingsKeys::VacuumThresholdBytes)) { setVacuumThresholdBytes(value.toLongLong()); return; }
+    if (canonical == QLatin1String(SettingsKeys::SearchAccentSensitive)) {
+        setSearchAccentSensitive(value.toBool());
+        return;
+    }
     if (canonical == QLatin1String(SettingsKeys::AutoArchiveOldProjectsDays))
                                                                           { setAutoArchiveDays(value.toInt()); return; }
     if (canonical == QStringLiteral("daily_review_enabled"))              { setDailyReviewEnabled(value.toBool()); return; }
@@ -228,6 +349,8 @@ void SettingsViewModel::updateSetting(const QString &key, const QVariant &value)
         }
         return;
     }
+    if (canonical == QLatin1String(SettingsKeys::ShowTrayIcon))           { setShowTrayIcon(value.toBool()); return; }
+    if (canonical == QLatin1String(SettingsKeys::CustomAccentHex))        { setCustomAccentHex(value.toString()); return; }
     set(canonical, value);
 }
 
@@ -355,6 +478,12 @@ void SettingsViewModel::onSettingsChanged()
     emit autoArchiveDaysChanged();
     emit dailyReviewEnabledChanged();
     emit compactDensityChanged();
+    emit showTrayIconChanged();
+    emit accentColorChanged();
     emit syncIntervalChanged();
     emit notificationPermissionAskedChanged();
+    emit backupRetentionCountChanged();
+    emit backupRetentionDaysChanged();
+    emit vacuumThresholdBytesChanged();
+    emit searchAccentSensitiveChanged();
 }

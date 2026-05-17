@@ -85,20 +85,49 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
         return tryParseTime(input, result);
     }
 
-    // --- "через N дней/недель/месяцев" ---
+    // --- "через N дней/недель/месяцев" with optional trailing "в <weekday>" ---
+    // Q3.02-E Bug 1 fix: compound "через 2 недели в понедельник" — first
+    // compute the relative offset, then snap forward to the next occurrence
+    // of the named weekday (inclusive of the offset day itself if it falls
+    // on the target dow).
     {
         static const QRegularExpression cherezRe(
-            QString::fromUtf8("^через\\s+(\\d+)\\s+(день|дня|дней|неделю|недели|недель|месяц|месяца|месяцев)$"));
+            QString::fromUtf8("^через\\s+(\\d+)\\s+(день|дня|дней|неделю|недели|недель|месяц|месяца|месяцев)"
+                              "(?:\\s+в(?:о)?\\s+(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье))?$"));
         const auto m = cherezRe.match(lower);
         if (m.hasMatch()) {
             int n = m.captured(1).toInt();
             const QString unit = m.captured(2);
+            const QString dayName = m.captured(3);
             QDate date = reference;
             if (unit.startsWith(QString::fromUtf8("д"))) date = reference.addDays(n);
             else if (unit.startsWith(QString::fromUtf8("н"))) date = reference.addDays(n * 7);
             else if (unit.startsWith(QString::fromUtf8("м"))) date = reference.addMonths(n);
+
+            if (!dayName.isEmpty()) {
+                static const QMap<QString, int> ruDayMap = {
+                    {QString::fromUtf8("понедельник"), 1},
+                    {QString::fromUtf8("вторник"), 2},
+                    {QString::fromUtf8("среду"), 3},
+                    {QString::fromUtf8("четверг"), 4},
+                    {QString::fromUtf8("пятницу"), 5},
+                    {QString::fromUtf8("субботу"), 6},
+                    {QString::fromUtf8("воскресенье"), 7},
+                };
+                const int target = ruDayMap.value(dayName, 0);
+                if (target > 0) {
+                    int curDow = date.dayOfWeek();
+                    int daysAhead = target - curDow;
+                    if (daysAhead < 0) daysAhead += 7;
+                    date = date.addDays(daysAhead);
+                }
+                result.humanString = QString::fromUtf8("Через %1 %2 в %3")
+                    .arg(n).arg(unit).arg(dayName);
+            } else {
+                result.humanString = QString::fromUtf8("Через %1 %2").arg(n).arg(unit);
+            }
+
             result.date = formatDate(date);
-            result.humanString = QString::fromUtf8("Через %1 %2").arg(n).arg(unit);
             result.valid = true;
             return tryParseTime(input, result);
         }
@@ -136,6 +165,34 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                 int daysAhead = targetDow - currentDow;
                 if (daysAhead <= 0) daysAhead += 7;
                 QDate date = reference.addDays(daysAhead);
+
+                // Q3.02-E Bug 1 fix: compound "<weekday> через N <unit>" —
+                // e.g. "в субботу через 3 недели" means the Saturday three
+                // weeks from the upcoming Saturday. Detect the "через N
+                // дней/недель/месяцев" tail and add the corresponding offset.
+                // We do this BEFORE writing date/humanString so the offset
+                // applies to the snapped date.
+                const QString tail = (lower == it.key())
+                    ? QString()
+                    : lower.mid(it.key().size()).trimmed();
+                if (!tail.isEmpty()) {
+                    static const QRegularExpression cherezTailRe(
+                        QString::fromUtf8("^через\\s+(\\d+)\\s+"
+                                          "(день|дня|дней|неделю|недели|недель|"
+                                          "месяц|месяца|месяцев)$"));
+                    const auto cm = cherezTailRe.match(tail);
+                    if (cm.hasMatch()) {
+                        int n = cm.captured(1).toInt();
+                        const QString unit = cm.captured(2);
+                        if (unit.startsWith(QString::fromUtf8("д")))
+                            date = date.addDays(n);
+                        else if (unit.startsWith(QString::fromUtf8("н")))
+                            date = date.addDays(n * 7);
+                        else if (unit.startsWith(QString::fromUtf8("м")))
+                            date = date.addMonths(n);
+                    }
+                }
+
                 result.date = formatDate(date);
                 static const QStringList ruDayNames = {
                     QString(), QString::fromUtf8("Понедельник"), QString::fromUtf8("Вторник"),
@@ -197,6 +254,86 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             result.humanString = QString::fromUtf8("По выходным");
             result.valid = true;
             return tryParseTime(input, result);
+        }
+    }
+
+    // --- Q3.02-E Bug 2 fix: "первого числа каждого месяца" / "15 числа каждого
+    // месяца" / "первое число каждого месяца" — monthly anchored to a specific
+    // day-of-month. Emits FREQ=MONTHLY;BYMONTHDAY=N; the RecurrenceEngine
+    // handles the skip-on-missing for shorter months (e.g. BYMONTHDAY=31 in
+    // Feb is advanced to the next 31-day month).
+    {
+        // Russian ordinals for day-of-month. The genitive form ("первого",
+        // "пятнадцатого") is the natural one for the "X числа" idiom; we also
+        // accept the nominative "первое" via the rule's second branch.
+        auto ruOrdinalToDay = [](const QString &w) -> int {
+            static const QMap<QString, int> ordinals = {
+                // genitive (X числа каждого месяца — "of the Xth day of every month")
+                {QString::fromUtf8("первого"),      1},
+                {QString::fromUtf8("второго"),      2},
+                {QString::fromUtf8("третьего"),     3},
+                {QString::fromUtf8("четвёртого"),   4},
+                {QString::fromUtf8("четвертого"),   4},
+                {QString::fromUtf8("пятого"),       5},
+                {QString::fromUtf8("шестого"),      6},
+                {QString::fromUtf8("седьмого"),     7},
+                {QString::fromUtf8("восьмого"),     8},
+                {QString::fromUtf8("девятого"),     9},
+                {QString::fromUtf8("десятого"),    10},
+                {QString::fromUtf8("пятнадцатого"),15},
+                {QString::fromUtf8("двадцатого"),  20},
+                {QString::fromUtf8("тридцатого"),  30},
+                // nominative
+                {QString::fromUtf8("первое"),       1},
+                {QString::fromUtf8("второе"),       2},
+                {QString::fromUtf8("третье"),       3},
+                {QString::fromUtf8("четвёртое"),    4},
+                {QString::fromUtf8("четвертое"),    4},
+                {QString::fromUtf8("пятое"),        5},
+                {QString::fromUtf8("пятнадцатое"), 15},
+                {QString::fromUtf8("двадцатое"),   20},
+                {QString::fromUtf8("тридцатое"),   30},
+            };
+            return ordinals.value(w, 0);
+        };
+
+        // Match either ordinal-word OR digit form, followed by "числа каждого
+        // месяца" (genitive) OR "число каждого месяца" (nominative).
+        static const QRegularExpression monthlyAnchorRe(
+            QString::fromUtf8("^(\\d{1,2}|первого|второго|третьего|четвёртого|четвертого"
+                              "|пятого|шестого|седьмого|восьмого|девятого|десятого"
+                              "|пятнадцатого|двадцатого|тридцатого"
+                              "|первое|второе|третье|четвёртое|четвертое"
+                              "|пятое|пятнадцатое|двадцатое|тридцатое)"
+                              "\\s+числ[ао]\\s+кажд(?:ого|ое)\\s+месяца$"));
+        const auto m = monthlyAnchorRe.match(lower);
+        if (m.hasMatch()) {
+            const QString token = m.captured(1);
+            int day = 0;
+            bool numericOk = false;
+            const int asDigit = token.toInt(&numericOk);
+            if (numericOk)
+                day = asDigit;
+            else
+                day = ruOrdinalToDay(token);
+
+            if (day >= 1 && day <= 31) {
+                int year = reference.year(), month = reference.month();
+                QDate first;
+                if (day <= QDate(year, month, 1).daysInMonth())
+                    first = QDate(year, month, day);
+                if (!first.isValid() || first < reference) {
+                    QDate probe = QDate(year, month, 1).addMonths(1);
+                    int target = qMin(day, probe.daysInMonth());
+                    first = QDate(probe.year(), probe.month(), target);
+                }
+                result.isRecurring = true;
+                result.date = formatDate(first);
+                result.recurrenceRule = QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=%1").arg(day);
+                result.humanString = QString::fromUtf8("%1 числа каждого месяца").arg(day);
+                result.valid = true;
+                return tryParseTime(input, result);
+            }
         }
     }
 

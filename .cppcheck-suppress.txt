@@ -1,0 +1,19 @@
+# OpenTodo cppcheck suppressions.
+#
+# This file is intentionally empty at this point. It is the project home for
+# any false-positive suppressions that cannot reasonably be silenced inline.
+#
+# Format (one per line, blank lines and `#` comments ignored):
+#     <id>                          # suppress globally
+#     <id>:<file>                   # suppress for a single file
+#     <id>:<file>:<line>            # suppress for one specific line
+#
+# Example:
+#     unmatchedSuppression
+#     unusedStructMember:src/sync/hlc.h
+#     constParameter:src/utils/uuid.h:42
+#
+# To activate, pass `--suppressions-list=.cppcheck-suppress.txt` to cppcheck.
+# It is NOT wired into the CMake target or the wrapper scripts yet — add the
+# flag once real suppressions accumulate (preferred: inline `// cppcheck-suppress <id>`
+# in the source, since that documents the reason next to the code).

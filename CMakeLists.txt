@@ -5,6 +5,59 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+# ── Static analysis: clang-tidy (opt-in, per-TU) ─────────────────────────────
+# Enable with `cmake -DOPENTODO_ENABLE_CLANG_TIDY=ON ...`. The toolchain then
+# runs clang-tidy alongside the C++ compiler for every translation unit and
+# reports findings as warnings (no build failure — see WarningsAsErrors: '' in
+# .clang-tidy). If clang-tidy is not on PATH the flag is a warning, not an
+# error, so the build still configures cleanly on machines without it.
+option(OPENTODO_ENABLE_CLANG_TIDY "Run clang-tidy during build" OFF)
+if(OPENTODO_ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+        message(STATUS "clang-tidy: ${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING
+            "OPENTODO_ENABLE_CLANG_TIDY=ON but clang-tidy was not found on PATH. "
+            "Install LLVM/clang-tidy or use the Qt Creator clang bundle "
+            "(C:/Qt/Tools/QtCreator/bin/clang/bin on Windows).")
+    endif()
+endif()
+
+# ── Static analysis: cppcheck (opt-in, separate target) ──────────────────────
+# Configure: standard CMake. Run: `cmake --build <build> --target cppcheck`.
+# Findings are streamed to stderr in the build window and to cppcheck.log via
+# the wrapper scripts under tools/. Like clang-tidy, this is informational and
+# never fails the build. See tools/run-cppcheck.{bat,sh} for the standalone
+# (no-CMake) entry point used by CI / pre-commit hooks.
+find_program(CPPCHECK_EXE NAMES cppcheck)
+if(CPPCHECK_EXE)
+    # --library=qt loads cppcheck's bundled qt.cfg so Q_PROPERTY / Q_OBJECT /
+    # `slots:` etc. don't trigger unknownMacro noise. Suppressions match those
+    # in tools/run-cppcheck.{bat,sh} — keep them in sync.
+    add_custom_target(cppcheck
+        COMMAND "${CPPCHECK_EXE}"
+            --enable=all
+            --inconclusive
+            --library=qt
+            --suppress=missingIncludeSystem
+            --suppress=unusedFunction
+            --suppress=useStlAlgorithm
+            --suppress=cstyleCast
+            --suppress=unmatchedSuppression
+            --inline-suppr
+            --std=c++20
+            --language=c++
+            -I "${CMAKE_SOURCE_DIR}/src"
+            "${CMAKE_SOURCE_DIR}/src"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Running cppcheck on src/"
+        VERBATIM
+    )
+    message(STATUS "cppcheck: ${CPPCHECK_EXE} (target: cppcheck)")
+endif()
+
 # ── WASM detection ────────────────────────────────────────────────────────────
 # EMSCRIPTEN is set automatically when the emscripten toolchain is loaded.
 # We also normalise a convenience variable used in comments/messages.
@@ -35,6 +88,64 @@ endif()
 
 qt_standard_project_setup(REQUIRES 6.5)
 
+# ── Code coverage (opt-in) ───────────────────────────────────────────────────
+# Off by default. Per-compiler: GCC → --coverage (gcovr), Clang → source-based
+# (-fprofile-instr-generate / llvm-cov), MSVC → use OpenCppCoverage externally.
+# Helper scripts: tools/coverage.{bat,sh}. Full workflow in docs/BUILDING.md.
+option(OPENTODO_ENABLE_COVERAGE "Enable code coverage instrumentation (off by default; see docs/BUILDING.md)" OFF)
+
+if(OPENTODO_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        message(STATUS "OpenTodo: code coverage enabled — GCC (gcov)")
+        add_compile_options(--coverage -O0 -g)
+        add_link_options(--coverage)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(STATUS "OpenTodo: code coverage enabled — Clang (source-based)")
+        add_compile_options(-fprofile-instr-generate -fcoverage-mapping -O0 -g)
+        add_link_options(-fprofile-instr-generate)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        message(WARNING
+            "OPENTODO_ENABLE_COVERAGE=ON requested but MSVC has no built-in "
+            "line coverage. Use OpenCppCoverage against a normal Debug build.")
+    else()
+        message(WARNING
+            "OPENTODO_ENABLE_COVERAGE=ON but compiler '${CMAKE_CXX_COMPILER_ID}' "
+            "is not recognised — no instrumentation flags applied.")
+    endif()
+endif()
+
+# ── QtKeychain (OS keyring backend for SecretStore) ───────────────────────────
+# Sec-1: replace XOR-obfuscated QSettings storage of the Claude API key with the
+# native OS keyring (Windows Credential Manager / macOS Keychain / libsecret /
+# kwallet). On Android and WASM there's no OS-level keyring we can target, so
+# the SecretStore falls back to QSettings (still suboptimal but consistent with
+# existing behavior on those platforms).
+#
+# FetchContent keeps the dependency vendored — no system-install requirement on
+# build machines. v0.14.0 is the latest published tag as of 2026-05.
+# QTKEYCHAIN_STATIC=ON avoids generating a separate .dll that we'd have to
+# deploy next to the exe.
+if(NOT EMSCRIPTEN AND NOT ANDROID)
+    include(FetchContent)
+    set(BUILD_WITH_QT6 ON CACHE BOOL "" FORCE)
+    set(BUILD_TEST_APPLICATION OFF CACHE BOOL "" FORCE)
+    set(BUILD_TRANSLATIONS OFF CACHE BOOL "" FORCE)
+    set(QTKEYCHAIN_STATIC ON CACHE BOOL "" FORCE)
+    set(QT_DEFAULT_MAJOR_VERSION 6 CACHE STRING "" FORCE)
+    FetchContent_Declare(qtkeychain
+        GIT_REPOSITORY https://github.com/frankosterfeld/qtkeychain.git
+        GIT_TAG v0.14.0
+    )
+    FetchContent_MakeAvailable(qtkeychain)
+    if(TARGET qt6keychain)
+        set(OPENTODO_QTKEYCHAIN_TARGET qt6keychain)
+    elseif(TARGET Qt6Keychain)
+        set(OPENTODO_QTKEYCHAIN_TARGET Qt6Keychain)
+    elseif(TARGET qtkeychain)
+        set(OPENTODO_QTKEYCHAIN_TARGET qtkeychain)
+    endif()
+endif()
+
 # ── Domain layer ─────────────────────────────────────────────────────────────
 # model + filter + nlp + utils — zero Qt::Quick dependency
 set(DOMAIN_SOURCES
@@ -51,6 +162,7 @@ set(DOMAIN_SOURCES
     src/nlp/rules_ru.cpp
     src/nlp/recurrenceengine.cpp
     src/nlp/quickaddparser.cpp
+    src/utils/textsearch.cpp
 )
 
 set(DOMAIN_HEADERS
@@ -68,6 +180,7 @@ set(DOMAIN_HEADERS
     src/nlp/quickaddparser.h
     src/utils/uuid.h
     src/utils/datetime.h
+    src/utils/textsearch.h
 )
 
 qt_add_library(OpenTodoDomain STATIC ${DOMAIN_SOURCES} ${DOMAIN_HEADERS})
@@ -108,9 +221,12 @@ set(INFRA_SOURCES
     src/services/windowchrome.cpp
     src/services/undostack.cpp
     src/services/aiassistant.cpp
+    src/services/secretstore.cpp
+    src/sync/sharemanager.cpp
     src/services/updatechecker.cpp
     src/services/telemetry.cpp
     src/services/taskexporter.cpp
+    src/services/icsexporter.cpp
     src/import/todoist_csv_parser.cpp
     src/import/todoist_api_client.cpp
     src/import/todoistimporter.cpp
@@ -136,11 +252,14 @@ set(INFRA_HEADERS
     src/services/windowchrome.h
     src/services/undostack.h
     src/services/aiassistant.h
+    src/services/secretstore.h
+    src/sync/sharemanager.h
     src/services/crashlogger.h
     src/services/dailyreviewservice.h
     src/services/updatechecker.h
     src/services/telemetry.h
     src/services/taskexporter.h
+    src/services/icsexporter.h
     src/import/todoist_types.h
     src/import/todoist_csv_parser.h
     src/import/todoist_api_client.h
@@ -163,9 +282,11 @@ elseif(WIN32)
     list(APPEND INFRA_SOURCES
         src/services/notificationservice_win.cpp
         src/services/hotkeyservice_win.cpp
+        src/services/trayicon.cpp
     )
     list(APPEND INFRA_HEADERS
         src/services/notificationservice_win.h
+        src/services/trayicon.h
     )
 elseif(ANDROID)
     list(APPEND INFRA_SOURCES
@@ -180,11 +301,16 @@ else()
     # StubNotificationService is a header-only no-op that logs to qDebug() and emits
     # inAppBannerRequested so the QML layer can show in-app toasts.
     # HotkeyService uses the existing stub (already compiles on all non-Windows platforms).
+    # TrayIconService is built here too — QSystemTrayIcon works on Linux/macOS
+    # (with the GNOME extension on most Wayland setups); the runtime guard on
+    # isSystemTrayAvailable() handles the rare environment where it does not.
     list(APPEND INFRA_SOURCES
         src/services/hotkeyservice_stub.cpp
+        src/services/trayicon.cpp
     )
     list(APPEND INFRA_HEADERS
         src/services/notificationservice_stub.h
+        src/services/trayicon.h
     )
 endif()
 
@@ -240,6 +366,18 @@ endif()
 if(Qt6Positioning_FOUND)
     target_link_libraries(OpenTodoInfra PUBLIC Qt6::Positioning)
     target_compile_definitions(OpenTodoInfra PUBLIC HAS_POSITIONING)
+endif()
+
+# Sec-1: link QtKeychain on platforms where it is available. SecretStore
+# guards its includes with HAS_QTKEYCHAIN; without the macro it compiles
+# against the QSettings fallback path only.
+if(OPENTODO_QTKEYCHAIN_TARGET)
+    target_link_libraries(OpenTodoInfra PUBLIC ${OPENTODO_QTKEYCHAIN_TARGET})
+    target_include_directories(OpenTodoInfra PUBLIC
+        "${qtkeychain_SOURCE_DIR}"
+        "${qtkeychain_BINARY_DIR}"
+    )
+    target_compile_definitions(OpenTodoInfra PUBLIC HAS_QTKEYCHAIN)
 endif()
 
 # ── Application layer ─────────────────────────────────────────────────────────
@@ -322,6 +460,7 @@ set(QML_FILES
     qml/components/ReadingModeOverlay.qml
     qml/components/SubtaskGeneratorDialog.qml
     qml/components/WhatsNewDialog.qml
+    qml/components/ShareLinkDialog.qml
     # B-7.26: ProjectItem.qml deleted — was dead code, never referenced by any Loader or createComponent
     qml/components/FilterQueryInput.qml
     qml/components/EmptyState.qml
@@ -632,7 +771,83 @@ install(TARGETS OpenTodo
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 option(BUILD_TESTING "Build the OpenTodo test suite" ON)
+
+# libFuzzer harnesses for FilterParser / DateParser / QuickAddParser. Opt-in
+# because the fuzzer is Clang-only (-fsanitize=fuzzer is an LLVM compiler-rt
+# feature unavailable under MSVC/GCC). See tests/fuzz/README.md.
+option(OPENTODO_ENABLE_FUZZ "Build libFuzzer parser harnesses (requires Clang)" OFF)
+
 if(BUILD_TESTING)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# ── Coverage report target (opt-in, requires OPENTODO_ENABLE_COVERAGE=ON) ────
+# `cmake --build <build> --target coverage_report` runs ctest with coverage
+# instrumentation and builds an HTML report at <build>/coverage/index.html.
+# Tool discovery via find_program (gcovr / llvm-profdata + llvm-cov) — fresh
+# checkouts configure cleanly even without the optional tooling installed.
+if(OPENTODO_ENABLE_COVERAGE AND BUILD_TESTING)
+    set(_OPENTODO_COVERAGE_DIR "${CMAKE_BINARY_DIR}/coverage")
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        find_program(GCOVR_EXE NAMES gcovr)
+        if(GCOVR_EXE)
+            add_custom_target(coverage_report
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_OPENTODO_COVERAGE_DIR}"
+                COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+                COMMAND "${GCOVR_EXE}"
+                        --root "${CMAKE_SOURCE_DIR}"
+                        --html --html-details
+                        --output "${_OPENTODO_COVERAGE_DIR}/index.html"
+                        --exclude "${CMAKE_SOURCE_DIR}/tests/"
+                        --exclude "${CMAKE_SOURCE_DIR}/build/"
+                        --exclude "${CMAKE_BINARY_DIR}/"
+                        --print-summary
+                        "${CMAKE_BINARY_DIR}"
+                WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+                COMMENT "Running ctest and generating gcovr HTML report under ${_OPENTODO_COVERAGE_DIR}/"
+                VERBATIM)
+            add_dependencies(coverage_report OpenTodo)
+            message(STATUS "Coverage report target available (gcovr at ${GCOVR_EXE})")
+        else()
+            add_custom_target(coverage_report
+                COMMAND ${CMAKE_COMMAND} -E echo
+                        "ERROR: coverage_report requires gcovr. Install with: pip install gcovr"
+                COMMAND ${CMAKE_COMMAND} -E false
+                VERBATIM)
+            message(WARNING "OPENTODO_ENABLE_COVERAGE=ON but gcovr not found. pip install gcovr.")
+        endif()
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        find_program(LLVM_PROFDATA_EXE NAMES llvm-profdata)
+        find_program(LLVM_COV_EXE      NAMES llvm-cov)
+        if(LLVM_PROFDATA_EXE AND LLVM_COV_EXE)
+            add_custom_target(coverage_report
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_OPENTODO_COVERAGE_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E env
+                        "LLVM_PROFILE_FILE=${_OPENTODO_COVERAGE_DIR}/profile-%p.profraw"
+                        ${CMAKE_CTEST_COMMAND} --output-on-failure
+                COMMAND "${LLVM_PROFDATA_EXE}" merge -sparse
+                        -o "${_OPENTODO_COVERAGE_DIR}/coverage.profdata"
+                        "${_OPENTODO_COVERAGE_DIR}/profile-*.profraw"
+                COMMAND "${LLVM_COV_EXE}" show
+                        "$<TARGET_FILE:OpenTodo>"
+                        "-instr-profile=${_OPENTODO_COVERAGE_DIR}/coverage.profdata"
+                        -format=html
+                        "-output-dir=${_OPENTODO_COVERAGE_DIR}"
+                        "-ignore-filename-regex=(tests/|build/|${CMAKE_BINARY_DIR})"
+                WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+                VERBATIM)
+            add_dependencies(coverage_report OpenTodo)
+            message(STATUS "Coverage report target available (llvm-cov at ${LLVM_COV_EXE})")
+        else()
+            add_custom_target(coverage_report
+                COMMAND ${CMAKE_COMMAND} -E echo
+                        "ERROR: coverage_report requires llvm-profdata + llvm-cov from LLVM toolchain"
+                COMMAND ${CMAKE_COMMAND} -E false
+                VERBATIM)
+            message(WARNING "OPENTODO_ENABLE_COVERAGE=ON but LLVM tools not found.")
+        endif()
+    endif()
+endif()
+

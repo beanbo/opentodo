@@ -2,6 +2,7 @@
 #include "utils/datetime.h"
 #include "sync/crdt_meta.h"
 #include "sync/hlc.h"
+#include "utils/textsearch.h"
 #include "utils/uuid.h"
 
 #include <QSettings>
@@ -9,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QSet>
 #include <QStandardPaths>
 
 DataStore::DataStore(QObject *parent)
@@ -565,16 +567,26 @@ QList<Task *> DataStore::subtasks(const QString &parentId) const
     return result;
 }
 
-QList<Task *> DataStore::searchTasks(const QString &query) const
+QList<Task *> DataStore::searchTasks(const QString &query,
+                                     bool accentSensitive) const
 {
     QList<Task *> result;
     if (query.isEmpty()) return result;
 
-    const QString lowerQuery = query.toLower();
+    // Pre-normalize the needle once — hoists the NFKC/Mn/casefold work out of
+    // the per-task loop. For 10k tasks this is the difference between O(N+M)
+    // and O(N*M) normalization passes.
+    const bool stripDiacritics = !accentSensitive;
+    const QString normalizedQuery =
+        TextSearch::normalize(query, stripDiacritics);
+    if (normalizedQuery.isEmpty()) return result; // query was pure diacritics
+
     for (auto *t : m_tasks) {
         if (!t->isDeleted() &&
-            (t->content().toLower().contains(lowerQuery) ||
-             t->description().toLower().contains(lowerQuery)))
+            (TextSearch::containsNormalized(t->content(), normalizedQuery,
+                                            stripDiacritics) ||
+             TextSearch::containsNormalized(t->description(), normalizedQuery,
+                                            stripDiacritics)))
             result.append(t);
     }
     return result;
@@ -830,6 +842,106 @@ int DataStore::autoArchiveStaleProjects(int daysThreshold)
         emit dataChanged();
     }
     return archivedCount;
+}
+
+// ===================== VACUUM (Q3.10) =====================
+
+// Hard-purge tombstones whose updated_at is older than `daysToKeep` days.
+// Convenience overload — does not consult the sync layer for pending commits;
+// callers wiring this from main.cpp should prefer the 2-arg overload so
+// unsynced tombstones survive.
+int DataStore::vacuum(int daysToKeep)
+{
+    return vacuum(daysToKeep, QStringList{});
+}
+
+int DataStore::vacuum(int daysToKeep, const QStringList &pendingEntityIds)
+{
+    // Defensive: refuse a degenerate threshold. We never want to nuke
+    // freshly-created tombstones that may still be in flight to peers.
+    if (daysToKeep < 1) daysToKeep = 1;
+
+    const QDateTime cutoff = QDateTime::currentDateTimeUtc().addDays(-daysToKeep);
+    // O(1) membership check for entity ids referenced by pending commits.
+    const QSet<QString> pending = QSet<QString>(pendingEntityIds.cbegin(),
+                                                pendingEntityIds.cend());
+    int removed = 0;
+
+    // Generic walker — captures the pattern used for every entity list:
+    //   1. iterate from the back so removeAt(i) doesn't invalidate i+1
+    //   2. skip non-tombstones (is_deleted == false)
+    //   3. skip tombstones younger than cutoff
+    //   4. skip tombstones referenced by a pending commit (sync canary)
+    //   5. erase from list, index, meta map; deleteLater the QObject
+    auto walk = [&](auto &list, auto &index, QMap<QString, QJsonObject> &meta) {
+        for (int i = list.size() - 1; i >= 0; --i) {
+            auto *e = list.at(i);
+            if (!e) continue;
+            if (!e->isDeleted()) continue;
+            const QDateTime ts = e->updatedAt();
+            // Guard: if updated_at is invalid (e.g. malformed legacy entry)
+            // err on the safe side and keep the entry.
+            if (!ts.isValid()) continue;
+            if (ts >= cutoff) continue;
+            if (pending.contains(e->id())) continue;
+            const QString id = e->id();
+            index.remove(id);
+            meta.remove(id);
+            list.removeAt(i);
+            e->deleteLater();
+            ++removed;
+        }
+    };
+
+    walk(m_tasks,     m_taskIndex,     m_taskMeta);
+    walk(m_projects,  m_projectIndex,  m_projectMeta);
+    walk(m_sections,  m_sectionIndex,  m_sectionMeta);
+    walk(m_filters,   m_filterIndex,   m_filterMeta);
+    walk(m_reminders, m_reminderIndex, m_reminderMeta);
+    walk(m_comments,  m_commentIndex,  m_commentMeta);
+
+    // Label has no updated_at field (the model is intentionally minimal —
+    // id/name/color/order/isFavorite/isDeleted only), so we can't gate the
+    // tombstone drop on age. Instead: drop tombstoned labels unconditionally
+    // unless they're referenced by a pending commit. Labels churn so rarely
+    // in practice that lack of a grace window is acceptable.
+    for (int i = m_labels.size() - 1; i >= 0; --i) {
+        auto *l = m_labels.at(i);
+        if (!l) continue;
+        if (!l->isDeleted()) continue;
+        if (pending.contains(l->id())) continue;
+        const QString id = l->id();
+        m_labelIndex.remove(id);
+        m_labelMeta.remove(id);
+        m_labels.removeAt(i);
+        l->deleteLater();
+        ++removed;
+    }
+
+    // Rebuild the case-folded label-name index since walk() doesn't know
+    // about it. Cheaper than tracking removals inline.
+    m_labelNameIndex.clear();
+    for (auto *l : m_labels) {
+        if (l && !l->isDeleted())
+            m_labelNameIndex.insert(l->name().toLower(), l);
+    }
+
+    if (removed > 0) {
+        // Emit per-collection signals so any ViewModel listening on the
+        // specific change re-fetches. dataChanged() at the end coalesces
+        // FileManager autosave to ONE write.
+        emit tasksChanged();
+        emit projectsChanged();
+        emit sectionsChanged();
+        emit labelsChanged();
+        emit filtersChanged();
+        emit remindersChanged();
+        emit commentsChanged();
+        emit dataChanged();
+    }
+    qInfo("DataStore::vacuum: removed %d tombstoned entities (cutoff %s, pending %d)",
+          removed, qPrintable(cutoff.toString(Qt::ISODate)), pending.size());
+    return removed;
 }
 
 // ===================== SECTIONS =====================

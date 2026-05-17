@@ -86,7 +86,12 @@ public:
     Q_INVOKABLE QList<Task *> overdueTasks() const;
     Q_INVOKABLE QList<Task *> completedTasks() const;
     Q_INVOKABLE QList<Task *> subtasks(const QString &parentId) const;
-    Q_INVOKABLE QList<Task *> searchTasks(const QString &query) const;
+    // Q2.26-B: substring search with Unicode normalization (NFKC + optional
+    // Mn-strip + case fold) via TextSearch::contains. Default behaviour is
+    // accent-INSENSITIVE so "café" matches "café" and "cafe". Pass
+    // accentSensitive=true to preserve ё ≠ е / é ≠ e.
+    Q_INVOKABLE QList<Task *> searchTasks(const QString &query,
+                                          bool accentSensitive = false) const;
     int taskCount() const;
     void addExistingTask(Task *task);
 
@@ -205,6 +210,31 @@ public:
     // project. Returns the count of newly archived projects.
     // No-op when daysThreshold <= 0.
     int autoArchiveStaleProjects(int daysThreshold);
+
+    // --- Vacuum (Q3.10) ---
+    //
+    // Permanently removes (hard-purges) tombstoned entities whose
+    // `updated_at` is older than `daysToKeep` days. Unlike the soft-delete
+    // tombstone (which sync still propagates), vacuum erases the entity
+    // from the in-memory store AND drops its per-entity CRDT _meta blob
+    // so the next save writes a smaller state.json.
+    //
+    // Safety:
+    //   * Tombstones younger than `daysToKeep` are preserved — peers that
+    //     haven't synced for that long still see the deletion.
+    //   * Entities referenced by any pending (unsynced) commit in
+    //     `local_log/` are skipped — peer that receives that commit must
+    //     still find a tombstone to merge against.
+    //   * The default `daysToKeep` is conservatively large (90 days) to
+    //     give every offline peer time to round-trip a sync.
+    //   * Caller is responsible for ensuring a state.json safety backup
+    //     before invoking — FileManager::createPreVacuumBackup().
+    //
+    // Returns count of entities removed across every collection. Emits
+    // dataChanged() exactly once at the end so FileManager autosaves the
+    // smaller state in a single coalesced write.
+    Q_INVOKABLE int vacuum(int daysToKeep = 90);
+    Q_INVOKABLE int vacuum(int daysToKeep, const QStringList &pendingEntityIds);
 
     // --- Serialization ---
     QJsonObject toJson() const;

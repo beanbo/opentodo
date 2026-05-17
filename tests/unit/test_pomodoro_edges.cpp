@@ -37,6 +37,12 @@
 #include <QSettings>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QFile>
+#include <QStandardPaths>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDateTime>
+#include <QDir>
 #include <climits>
 
 #include "services/pomodoroservice.h"
@@ -106,6 +112,25 @@ private:
 private slots:
     // ── Test fixture lifecycle ───────────────────────────────────────────────
 
+    // Compute the on-disk pomodoro_state.json path for this test binary.
+    // Mirrors PomodoroService's own resolution (matches FileManager too).
+    // Used by init/cleanup to clear leftover state between slots and by the
+    // crash-recovery slots to pre-seed a "previous crashed session" blob.
+    static QString stateFilePath()
+    {
+        const QString base = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        if (base.isEmpty()) return QString();
+        return base + QStringLiteral("/OpenTodo/pomodoro_state.json");
+    }
+
+    static void removeStateFile()
+    {
+        const QString p = stateFilePath();
+        if (!p.isEmpty() && QFile::exists(p))
+            QFile::remove(p);
+    }
+
     void initTestCase()
     {
         // Per-test-binary org/app so parallel ctest runs don't smash each
@@ -119,6 +144,11 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        // Also blow away any pomodoro_state.json left over from a previous
+        // slot — PomodoroService persists session state to disk now (added
+        // for crash-recovery), so cross-slot bleed-through would otherwise
+        // resurrect spurious "running" sessions.
+        removeStateFile();
     }
 
     void cleanup()
@@ -126,6 +156,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     void cleanupTestCase()
@@ -133,27 +164,25 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
-    // ── 1. Crash-recovery: only completed_count + completed_date survive ────
+    // ── 1. Crash-recovery (no state file): daily count survives via QSettings ─
     //
-    // Simulate the "app crashed mid-work-phase" scenario by pre-seeding
-    // QSettings with the persisted daily stats (date=today, count=2), then
-    // constructing a fresh PomodoroService. We expect:
+    // When NO pomodoro_state.json exists (clean first launch, or the user
+    // explicitly hit reset() last session), the service stays idle and the
+    // daily counter is restored from QSettings as before. This pins the
+    // "no stale running state" half of the spec acceptance criterion.
     //
-    //   * completedCyclesToday() returns 2 (the count survives)
-    //   * phase() is "idle" (in-memory state did NOT survive — no phase
-    //     restoration; the user must press Start again)
-    //   * remainingSeconds is the configured work duration
-    //   * running() is false
-    //
-    // This pins the documented contract: the timer/phase/remainingSeconds
-    // are session-scoped, not persistent. A future "save my session" would
-    // need a deliberate change to PomodoroService::loadCompletedToday() and
-    // a new save path on every tick.
+    // The complementary "running session resumes" half is covered by
+    // crash_recovery_resumes_running_session() below.
     void crash_recovery_restores_only_daily_count()
     {
         using namespace pomo_edges;
+
+        // Sanity: init() already removed any leftover state file, so this
+        // slot exercises the "no prior session blob" path.
+        QVERIFY(!QFile::exists(stateFilePath()));
 
         // Pre-seed the persisted daily stats (the "crashed" state).
         {
@@ -170,18 +199,228 @@ private slots:
         // Daily count survived the "crash".
         QCOMPARE(svc.completedCyclesToday(), 2);
 
-        // In-memory state did NOT survive — service is idle, not running, and
-        // remainingSeconds is back to the full work duration. The user must
-        // press Start to resume a session; we do not auto-restore in-flight
-        // state because we never persisted it. Documenting this contract.
+        // No state file means the service stays idle on construction. The user
+        // sees a fresh "Start" button and the full work duration on the clock.
         QCOMPARE(svc.phase(), qs(kPhaseIdle));
         QVERIFY(!svc.running());
         QCOMPARE(svc.remainingSeconds(), 25 * 60);
         QCOMPARE(svc.cycleSeconds(), 25 * 60);
+    }
 
-        qInfo("PomodoroService: crash-recovery semantics — only completed_count "
-              "and completed_date are persisted across process restarts. "
-              "Phase, remainingSeconds, and running state are session-scoped.");
+    // ── 1c. Crash mid-focus: state file restores the running session ────────
+    //
+    // The new persistence layer: a pre-existing pomodoro_state.json marked
+    // is_running=true with started_at < planned_duration_ms wall-clock-ago
+    // should resurrect the session at the correct remaining time and emit
+    // sessionRestored(elapsedSecondsAgo).
+    //
+    // Constructed JSON simulates "the user was 10 s into a 60 s focus phase
+    // when the app crashed". On construction the service should:
+    //   - phase = "work"
+    //   - running = true
+    //   - remainingSeconds ≈ 50 (60 - 10) — allow ±3 s slack for test timing
+    //   - sessionRestored signal fired once with arg ≈ 10
+    void crash_recovery_resumes_running_session()
+    {
+        using namespace pomo_edges;
+
+        // Seed durations so cycleSeconds() returns 60 s (work=1 min).
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  1);
+            s.setValue(qs(kKeyShort), 1);
+            s.setValue(qs(kKeyLong),  1);
+            s.setValue(qs(kKeyCyc),   4);
+            s.sync();
+        }
+
+        // Build the on-disk blob — started 10 s ago, planned 60 000 ms.
+        const QDateTime startedAt =
+            QDateTime::currentDateTimeUtc().addSecs(-10);
+        QJsonObject root;
+        root[QStringLiteral("is_running")]          = true;
+        root[QStringLiteral("phase")]               = QStringLiteral("work");
+        root[QStringLiteral("started_at")]          = startedAt.toString(Qt::ISODateWithMs);
+        root[QStringLiteral("planned_duration_ms")] = qint64(60 * 1000);
+        root[QStringLiteral("remaining_seconds")]   = 50;
+        root[QStringLiteral("task_id")]             = QString();
+        root[QStringLiteral("work_cycles_since_long_break")] = 0;
+        root[QStringLiteral("updated_at")] =
+            startedAt.toString(Qt::ISODateWithMs);
+
+        const QString path = stateFilePath();
+        QVERIFY(!path.isEmpty());
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.write(QJsonDocument(root).toJson());
+        out.close();
+
+        // Construct. The session should resurrect synchronously inside the
+        // constructor, so we connect to sessionRestored BEFORE construction
+        // by using a QSignalSpy on a separately-tracked instance. Since the
+        // signal is emitted DURING construction, the spy has to be on the
+        // already-constructed object — capture-after-the-fact won't work.
+        //
+        // Workaround: assert restored state directly (running, remaining,
+        // phase) instead of spying on the signal — the post-conditions of
+        // the signal firing are observable on the public surface.
+        PomodoroService svc(nullptr);
+
+        QCOMPARE(svc.phase(), qs(kPhaseWork));
+        QVERIFY(svc.running());
+        // remainingSeconds should be ~50 s (60 - 10), with some test-timing slack.
+        QVERIFY2(svc.remainingSeconds() >= 47 && svc.remainingSeconds() <= 53,
+                 qPrintable(QStringLiteral("remainingSeconds was %1 (expected ~50)")
+                            .arg(svc.remainingSeconds())));
+    }
+
+    // ── 1d. Crash mid-break: same restore path works for shortBreak ─────────
+    //
+    // Same as 1c but the persisted phase is "shortBreak". Verifies the
+    // restore path isn't hard-coded to work-only and correctly seeds
+    // cycleSeconds from m_shortBreakMinutes.
+    void crash_recovery_resumes_running_short_break()
+    {
+        using namespace pomo_edges;
+
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  5);
+            s.setValue(qs(kKeyShort), 1);  // 1-min break = 60 s
+            s.setValue(qs(kKeyLong),  1);
+            s.setValue(qs(kKeyCyc),   4);
+            s.sync();
+        }
+
+        const QDateTime startedAt =
+            QDateTime::currentDateTimeUtc().addSecs(-20);
+        QJsonObject root;
+        root[QStringLiteral("is_running")]          = true;
+        root[QStringLiteral("phase")]               = QStringLiteral("shortBreak");
+        root[QStringLiteral("started_at")]          = startedAt.toString(Qt::ISODateWithMs);
+        root[QStringLiteral("planned_duration_ms")] = qint64(60 * 1000);
+        root[QStringLiteral("remaining_seconds")]   = 40;
+        root[QStringLiteral("task_id")]             = QString();
+        root[QStringLiteral("work_cycles_since_long_break")] = 1;
+        root[QStringLiteral("updated_at")] =
+            startedAt.toString(Qt::ISODateWithMs);
+
+        const QString path = stateFilePath();
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.write(QJsonDocument(root).toJson());
+        out.close();
+
+        PomodoroService svc(nullptr);
+        QCOMPARE(svc.phase(), qs(kPhaseShortBreak));
+        QVERIFY(svc.running());
+        QVERIFY2(svc.remainingSeconds() >= 37 && svc.remainingSeconds() <= 43,
+                 qPrintable(QStringLiteral("remainingSeconds was %1 (expected ~40)")
+                            .arg(svc.remainingSeconds())));
+    }
+
+    // ── 1e. Clean exit: no stale "running" state on next launch ─────────────
+    //
+    // After reset(), the state file is deleted. A subsequent construction
+    // sees an idle service with the daily counter from QSettings, NOT a
+    // resurrected session.
+    void clean_exit_removes_state_file()
+    {
+        using namespace pomo_edges;
+
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  1);
+            s.sync();
+        }
+
+        {
+            PomodoroService svc(nullptr);
+            svc.start();
+            QVERIFY(svc.running());
+            // State file should now exist with is_running=true.
+            QVERIFY(QFile::exists(stateFilePath()));
+
+            // Clean exit: reset() returns to idle and deletes the file.
+            svc.reset();
+            QVERIFY(!QFile::exists(stateFilePath()));
+        }
+
+        // Fresh construction sees no file → idle, not running.
+        PomodoroService svc2(nullptr);
+        QCOMPARE(svc2.phase(), qs(kPhaseIdle));
+        QVERIFY(!svc2.running());
+    }
+
+    // ── 1f. Stale state file with elapsed > planned: phase boundary replays ─
+    //
+    // If the persisted started_at is so far in the past that the phase would
+    // have ended naturally (elapsed > planned_duration_ms), the load path
+    // replays the phase-end machinery: bumps the daily counter (for work
+    // phase) and transitions to the next phase. The user lands in the next
+    // phase, not stranded mid-flight or skipped to "now".
+    void crash_recovery_replays_phase_end_when_elapsed_exceeds_planned()
+    {
+        using namespace pomo_edges;
+
+        {
+            QSettings s;
+            s.setValue(qs(kKeyWork),  1);
+            s.setValue(qs(kKeyShort), 1);
+            s.setValue(qs(kKeyLong),  1);
+            s.setValue(qs(kKeyCyc),   4);
+            s.sync();
+        }
+
+        // Work phase started 5 min ago, planned 1 min. Long-elapsed.
+        const QDateTime startedAt =
+            QDateTime::currentDateTimeUtc().addSecs(-5 * 60);
+        QJsonObject root;
+        root[QStringLiteral("is_running")]          = true;
+        root[QStringLiteral("phase")]               = QStringLiteral("work");
+        root[QStringLiteral("started_at")]          = startedAt.toString(Qt::ISODateWithMs);
+        root[QStringLiteral("planned_duration_ms")] = qint64(60 * 1000);
+        root[QStringLiteral("remaining_seconds")]   = 0;
+        root[QStringLiteral("task_id")]             = QString();
+        root[QStringLiteral("work_cycles_since_long_break")] = 0;
+        root[QStringLiteral("updated_at")] =
+            startedAt.toString(Qt::ISODateWithMs);
+
+        const QString path = stateFilePath();
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.write(QJsonDocument(root).toJson());
+        out.close();
+
+        PomodoroService svc(nullptr);
+        // Work phase ended → counter incremented, transitioned to shortBreak
+        // (not longBreak — only 1 work cycle, N=4 not reached).
+        QCOMPARE(svc.completedCyclesToday(), 1);
+        QCOMPARE(svc.phase(), qs(kPhaseShortBreak));
+        QVERIFY(svc.running());
+    }
+
+    // ── 1g. Corrupt state file is deleted, service starts fresh ─────────────
+    //
+    // If pomodoro_state.json is garbage (truncated JSON, binary blob, etc.)
+    // we should NOT crash; instead delete the bad file and start idle.
+    void crash_recovery_corrupt_file_is_discarded()
+    {
+        const QString path = stateFilePath();
+        QDir().mkpath(QFileInfo(path).absolutePath());
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.write("{not a valid json, deliberately broken");
+        out.close();
+
+        PomodoroService svc(nullptr);
+        QCOMPARE(svc.phase(), QStringLiteral("idle"));
+        QVERIFY(!svc.running());
+        // Corrupt file should have been removed.
+        QVERIFY(!QFile::exists(path));
     }
 
     // ── 1b. Stale completed_date → counter resets cleanly ────────────────────

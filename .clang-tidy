@@ -1,0 +1,38 @@
+# OpenTodo clang-tidy configuration.
+#
+# Enabled by passing -DOPENTODO_ENABLE_CLANG_TIDY=ON to CMake. When that flag
+# is set, CMake exports CMAKE_CXX_CLANG_TIDY, which makes the toolchain run
+# clang-tidy on every translation unit during the build.
+#
+# Baseline checks aim for high signal / low noise:
+#   bugprone-*         — real correctness/safety problems
+#   clang-analyzer-*   — the underlying clang static analyzer
+#   modernize-*        — C++20 idioms
+#   performance-*      — non-trivial perf footguns (copies, allocations)
+#   readability-*      — naming, magic-number, complexity warnings
+#
+# Specific opt-outs justified inline below.
+
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -bugprone-easily-swappable-parameters,
+  -modernize-use-nodiscard
+
+# Do NOT promote warnings to errors. The baseline carries a backlog; promoting
+# would make the configuration unusable until it's all fixed.
+WarningsAsErrors: ''
+
+# Only check headers under src/ — avoids drowning in Qt / standard library noise.
+HeaderFilterRegex: 'src/.*\.h$'
+
+# Use clang-format with the project's .clang-format (if/when one is added);
+# without it, clang-tidy uses the default LLVM style for any auto-fixes.
+FormatStyle: file

@@ -53,6 +53,25 @@ private:
         QFile::remove(bak0Path());
         QFile::remove(bak1Path());
         QFile::remove(bak2Path());
+        // Q3.10: listBackups() also surfaces dated (.bak.YYYYMMDDhhmmss)
+        // backups and the pre-vacuum safety snapshot. cleanup() must wipe
+        // these too so the "no backups exist" assertion is meaningful —
+        // otherwise dated backups left behind by prior test runs (e.g.
+        // sibling slots, or the parallel test_filemanager_error_paths
+        // process when ctest -j is in effect) leak into this slot's
+        // listBackups() output.
+        QFile::remove(stateFilePath() + QStringLiteral(".pre-vacuum.bak"));
+        const QString dataDir = QStandardPaths::writableLocation(
+                                    QStandardPaths::AppDataLocation)
+                                + QStringLiteral("/OpenTodo");
+        QDir dir(dataDir);
+        if (dir.exists()) {
+            const auto dated = dir.entryInfoList(
+                QStringList{} << QStringLiteral("state.json.bak.*"),
+                QDir::Files | QDir::NoSymLinks);
+            for (const QFileInfo &fi : dated)
+                QFile::remove(fi.absoluteFilePath());
+        }
     }
 
     // Helper: read stored JSON file and return its top-level "projects" array
@@ -212,9 +231,17 @@ private slots:
         QCOMPARE(list.size(), 0);
     }
 
-    // After 4 saves the chain is full; listBackups should return 3 entries
-    // with valid path/name/size/mtime fields. The ordering follows the
-    // implementation's iteration order: .bak, .bak.1, .bak.2.
+    // After 4 saves the chain is full; listBackups should surface the three
+    // rolling generations (.bak / .bak.1 / .bak.2). Each entry must carry
+    // valid path/name/size/mtime fields.
+    //
+    // Q3.10: listBackups() ALSO includes dated (.bak.YYYYMMDDhhmmss)
+    // backups created on every save plus an optional pre-vacuum snapshot.
+    // The three saves above land within a single wall-clock second so the
+    // dedup logic in writeDatedBackup() collapses them into one dated file
+    // — total entries are 3 (rolling) + at most 1 (dated) = up to 4. We
+    // pin the lower bound and explicitly verify the rolling triplet is
+    // present rather than constraining the exact size.
     void listBackups_after_four_saves_returns_three_entries()
     {
         DataStore ds;
@@ -228,7 +255,9 @@ private slots:
         fm.saveImmediate();
 
         const QVariantList list = fm.listBackups();
-        QCOMPARE(list.size(), 3);
+        QVERIFY2(list.size() >= 3,
+                 qPrintable(QStringLiteral("expected ≥3 backups, got %1")
+                                .arg(list.size())));
 
         // Build map name → entry for order-independent assertions, and verify
         // every required key is present and well-formed.

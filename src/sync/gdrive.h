@@ -38,12 +38,24 @@ public:
     bool uploadFile(const QString &remotePath, const QByteArray &data)
         { return m_drive->uploadFile(remotePath, data); }
     bool downloadFile(const QString &remotePath, QByteArray &data,
-                      bool notFoundIsOk = false)
-        { return m_drive->downloadFile(remotePath, data, notFoundIsOk); }
+                      bool notFoundIsOk = false, qint64 maxBytes = 0)
+        { return m_drive->downloadFile(remotePath, data, notFoundIsOk, maxBytes); }
     bool deleteFile(const QString &remotePath)
         { return m_drive->deleteFile(remotePath); }
     QStringList listFiles(const QString &folderPath)
         { return m_drive->listFiles(folderPath); }
+
+    // Public-share operations (used by ShareManager). Uploads to Drive root
+    // and grants anonymous reader role. See DriveApi::uploadPublicFile.
+    bool uploadPublicFile(const QString &name,
+                          const QByteArray &data,
+                          const QString &mimeType,
+                          QString *outFileId,
+                          QString *outWebViewLink)
+        { return m_drive->uploadPublicFile(name, data, mimeType, outFileId, outWebViewLink); }
+
+    bool deletePublicFileById(const QString &fileId)
+        { return m_drive->deletePublicFileById(fileId); }
 
     // Folder operations
     bool createFolder(const QString &path)  { return m_drive->createFolder(path); }

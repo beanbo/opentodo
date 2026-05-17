@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QStandardPaths>
+#include <QFile>
 
 #include "services/pomodoroservice.h"
 
@@ -48,12 +49,28 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("test_pomodoroservice"));
     }
 
+    // PomodoroService persists session state to pomodoro_state.json on every
+    // mutation (added for crash-recovery). Without scrubbing it between slots,
+    // a previous slot's running session would resurrect inside the next slot's
+    // fresh PomodoroService constructor. Recompute the path the same way the
+    // service does so we don't have to expose a private getter.
+    static void removeStateFile()
+    {
+        const QString base = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        if (base.isEmpty()) return;
+        const QString path = base + QStringLiteral("/OpenTodo/pomodoro_state.json");
+        if (QFile::exists(path))
+            QFile::remove(path);
+    }
+
     void init()
     {
         // Fully clear settings before each test for isolation.
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     void cleanup()
@@ -61,6 +78,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     void cleanupTestCase()
@@ -68,6 +86,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     // ── Defaults ──────────────────────────────────────────────────────────────

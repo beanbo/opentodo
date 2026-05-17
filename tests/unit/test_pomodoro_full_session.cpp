@@ -3,6 +3,8 @@
 #include <QSettings>
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QStandardPaths>
+#include <QFile>
 
 #include "services/pomodoroservice.h"
 
@@ -56,6 +58,19 @@ private:
         s.sync();
     }
 
+    // PomodoroService persists pomodoro_state.json on every mutation now
+    // (crash-recovery). Scrub between slots so a prior session blob doesn't
+    // resurrect inside the next slot's fresh service.
+    static void removeStateFile()
+    {
+        const QString base = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation);
+        if (base.isEmpty()) return;
+        const QString path = base + QStringLiteral("/OpenTodo/pomodoro_state.json");
+        if (QFile::exists(path))
+            QFile::remove(path);
+    }
+
 private slots:
     // ── Test fixture lifecycle ────────────────────────────────────────────────
 
@@ -72,6 +87,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
         seedDurations();
     }
 
@@ -80,6 +96,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     void cleanupTestCase()
@@ -87,6 +104,7 @@ private slots:
         QSettings s;
         s.clear();
         s.sync();
+        removeStateFile();
     }
 
     // ── The headline integration test: walk a complete 3-cycle session ──────

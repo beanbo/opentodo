@@ -12,6 +12,7 @@ class DataStore;
 class GDriveClient;
 class Merger;
 class SnapshotManager;
+class Telemetry;
 
 class SyncEngine : public QObject
 {
@@ -24,6 +25,13 @@ class SyncEngine : public QObject
     Q_PROPERTY(QString deviceId READ deviceId CONSTANT)
 
 public:
+    // Reliability caps on remote payload sizes (used by pull() — see the
+    // Content-Length and streaming guards in syncengine.cpp). A malicious
+    // or runaway peer could otherwise push a multi-GB state.json that the
+    // desktop client would happily buffer into memory.
+    static constexpr qint64 MAX_STATE_SIZE  = 50LL * 1024 * 1024; // 50 MB
+    static constexpr qint64 MAX_COMMIT_SIZE =  5LL * 1024 * 1024; //  5 MB
+
     enum SyncStatus {
         Synced,
         Syncing,
@@ -56,6 +64,22 @@ public:
     void savePendingCommitToDisk(Commit *commit);
     void loadPendingCommitsFromDisk();
 
+    // Q3.10: list every entityId referenced by an unsynced commit in the
+    // local pending log. Used by DataStore::vacuum to skip tombstones whose
+    // deletion hasn't yet propagated to peers — purging those would leave
+    // peers with an orphan that can never resolve.
+    Q_INVOKABLE QStringList pendingEntityIds() const;
+
+    // Inject optional telemetry service. Wired in main.cpp; safe to leave
+    // nullptr in tests — callers must null-check before use.
+    void setTelemetry(Telemetry *telemetry);
+
+    // True when HEAD references a commit not present in either the local or
+    // last-seen remote log. push() refuses to operate in this state to avoid
+    // chaining new commits off a phantom parent. Cleared on the next
+    // successful pull() that resolves a consistent HEAD.
+    bool isDanglingHead() const { return m_danglingHead; }
+
 signals:
     void statusChanged();
     void lastErrorChanged();
@@ -63,6 +87,16 @@ signals:
     void syncCompleted();
     void syncFailed(const QString &error);
     void commitCreated(Commit *commit);
+
+    // Emitted when pull() drops a single commit whose JSON body could not be
+    // parsed. The remaining commits still process; this surfaces the per-file
+    // skip so QML / telemetry / user-visible toasts can react.
+    void commitCorrupted(const QString &hash, const QString &reason);
+
+    // Emitted when pull() detects HEAD references a commit absent from log/.
+    // The engine enters a "dangling HEAD" state and will refuse push() until
+    // a manual resync resolves the inconsistency.
+    void danglingHeadDetected(const QString &headHash);
 
 private slots:
     void onSyncTimerTimeout();
@@ -83,6 +117,7 @@ private:
     GDriveClient *m_gdrive;
     Merger *m_merger;
     SnapshotManager *m_snapshot;
+    Telemetry *m_telemetry = nullptr;
 
     SyncStatus m_status = Offline;
     QString m_lastError;
@@ -90,5 +125,6 @@ private:
     QString m_deviceId;
     QList<Commit *> m_pendingCommits;
     QString m_headCommitId;
+    bool m_danglingHead = false;
     QTimer m_syncTimer;
 };

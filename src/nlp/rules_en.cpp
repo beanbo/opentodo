@@ -36,20 +36,49 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
         }
     }
 
-    // --- "in N days/weeks/months" ---
+    // --- "in N days/weeks/months" with optional trailing " on <weekday>" ---
+    // Q3.02-E Bug 1 + Bug 5 fix: compound expressions "in N weeks on monday" /
+    // "in N weeks on saturday" — first compute the relative offset, then snap
+    // forward to the next occurrence of the named weekday (inclusive of the
+    // offset day itself if it happens to fall on the target dow).
     {
         static const QRegularExpression inNRe(
-            QStringLiteral("^in\\s+(\\d+)\\s+(day|days|week|weeks|month|months)$"));
+            QStringLiteral("^in\\s+(\\d+)\\s+(day|days|week|weeks|month|months)"
+                           "(?:\\s+on\\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+                           "|mon|tue|wed|thu|fri|sat|sun))?$"));
         const auto m = inNRe.match(lower);
         if (m.hasMatch()) {
             int n = m.captured(1).toInt();
             const QString unit = m.captured(2);
+            const QString dayName = m.captured(3);
             QDate date = reference;
             if (unit.startsWith(QStringLiteral("day"))) date = reference.addDays(n);
             else if (unit.startsWith(QStringLiteral("week"))) date = reference.addDays(n * 7);
             else if (unit.startsWith(QStringLiteral("month"))) date = reference.addMonths(n);
+
+            if (!dayName.isEmpty()) {
+                static const QMap<QString, int> dayMap = {
+                    {QStringLiteral("monday"), 1}, {QStringLiteral("mon"), 1},
+                    {QStringLiteral("tuesday"), 2}, {QStringLiteral("tue"), 2},
+                    {QStringLiteral("wednesday"), 3}, {QStringLiteral("wed"), 3},
+                    {QStringLiteral("thursday"), 4}, {QStringLiteral("thu"), 4},
+                    {QStringLiteral("friday"), 5}, {QStringLiteral("fri"), 5},
+                    {QStringLiteral("saturday"), 6}, {QStringLiteral("sat"), 6},
+                    {QStringLiteral("sunday"), 7}, {QStringLiteral("sun"), 7},
+                };
+                const int target = dayMap.value(dayName, 0);
+                if (target > 0) {
+                    int curDow = date.dayOfWeek();
+                    int daysAhead = target - curDow;
+                    if (daysAhead < 0) daysAhead += 7;
+                    date = date.addDays(daysAhead);
+                }
+                result.humanString = QStringLiteral("In %1 %2 on %3").arg(n).arg(unit).arg(dayName);
+            } else {
+                result.humanString = QStringLiteral("In %1 %2").arg(n).arg(unit);
+            }
+
             result.date = formatDate(date);
-            result.humanString = QStringLiteral("In %1 %2").arg(n).arg(unit);
             result.valid = true;
             return tryParseTime(input, result);
         }
@@ -134,6 +163,82 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             result.humanString = QStringLiteral("Weekends");
             result.valid = true;
             return tryParseTime(input, result);
+        }
+    }
+
+    // --- Q3.02-E Bug 2 fix: "first day of each month", "1st of each month",
+    // "Nth of every month", "15th day of each month" → monthly anchor on
+    // a specific day-of-month. Produces FREQ=MONTHLY;BYMONTHDAY=N.
+    //
+    // The RecurrenceEngine MONTHLY branch already handles the BYMONTHDAY-31-
+    // in-February skip-on-missing correctly (rules_en gives the anchor, the
+    // engine walks forward); see RecurrenceEngine::advance().
+    {
+        // Map ordinal words / suffixed-digit forms to a day-of-month integer.
+        // We only cover the most natural English forms here; "1st" through
+        // "31st" via suffix, plus the named ordinals "first" / "last".
+        auto wordOrdinalToDay = [](const QString &w) -> int {
+            static const QMap<QString, int> ordinals = {
+                {QStringLiteral("first"),     1},
+                {QStringLiteral("second"),    2},
+                {QStringLiteral("third"),     3},
+                {QStringLiteral("fourth"),    4},
+                {QStringLiteral("fifth"),     5},
+                {QStringLiteral("sixth"),     6},
+                {QStringLiteral("seventh"),   7},
+                {QStringLiteral("eighth"),    8},
+                {QStringLiteral("ninth"),     9},
+                {QStringLiteral("tenth"),    10},
+                {QStringLiteral("eleventh"), 11},
+                {QStringLiteral("twelfth"),  12},
+                {QStringLiteral("fifteenth"), 15},
+                {QStringLiteral("twentieth"), 20},
+                {QStringLiteral("thirtieth"), 30},
+                {QStringLiteral("last"),     31}, // last day → BYMONTHDAY=31, engine clamps via skip-on-missing
+            };
+            return ordinals.value(w.toLower(), 0);
+        };
+
+        // Pattern: "(<ordinal>|<N><suffix>) [day] of (each|every) month"
+        // Examples: "first day of each month", "1st of every month",
+        //           "15th of each month", "last day of every month".
+        static const QRegularExpression monthlyAnchorRe(
+            QStringLiteral("^(\\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh"
+                           "|eighth|ninth|tenth|eleventh|twelfth|fifteenth|twentieth|thirtieth|last)"
+                           "(?:\\s+day)?\\s+of\\s+(?:each|every)\\s+month$"));
+        const auto m = monthlyAnchorRe.match(lower);
+        if (m.hasMatch()) {
+            QString token = m.captured(1);
+            int day = 0;
+            // Numeric form: "1st", "15th", "31" → strip suffix and parse.
+            static const QRegularExpression numericRe(QStringLiteral("^(\\d{1,2})(?:st|nd|rd|th)?$"));
+            const auto nm = numericRe.match(token);
+            if (nm.hasMatch())
+                day = nm.captured(1).toInt();
+            else
+                day = wordOrdinalToDay(token);
+
+            if (day >= 1 && day <= 31) {
+                // First-occurrence date: this month's <day> if still upcoming,
+                // else next month's <day>. The RecurrenceEngine handles the
+                // skip-on-missing for BYMONTHDAY=29/30/31 in shorter months.
+                int year = reference.year(), month = reference.month();
+                QDate first(year, month, qMin(day, QDate(year, month, 1).daysInMonth()));
+                if (day <= QDate(year, month, 1).daysInMonth())
+                    first = QDate(year, month, day);
+                if (first < reference || !first.isValid()) {
+                    // Move to next month and clamp again.
+                    QDate probe = QDate(year, month, 1).addMonths(1);
+                    int target = qMin(day, probe.daysInMonth());
+                    first = QDate(probe.year(), probe.month(), target);
+                }
+                result.isRecurring = true;
+                result.date = formatDate(first);
+                result.recurrenceRule = QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=%1").arg(day);
+                result.humanString = QStringLiteral("Day %1 of every month").arg(day);
+                result.valid = true;
+                return tryParseTime(input, result);
+            }
         }
     }
 

@@ -12,6 +12,7 @@
 
 class DataStore;
 class QNetworkReply;
+class SecretStore;
 
 class AIAssistant : public QObject
 {
@@ -27,6 +28,23 @@ class AIAssistant : public QObject
 
 public:
     explicit AIAssistant(DataStore *store, QObject *parent = nullptr);
+
+    // Sec-1: inject a SecretStore so the API key lives in the OS keyring
+    // instead of QSettings. When unset (legacy / tests that don't wire it),
+    // the class falls back to the original XOR-obfuscated QSettings path so
+    // existing test fixtures keep passing without modification.
+    // The pointer is not owned — the caller (typically main.cpp) keeps it
+    // alive for the lifetime of the AIAssistant. Calling setSecretStore()
+    // triggers an async warm-up read so cachedApiKey() becomes populated
+    // shortly after wiring. Pre-existing plaintext keys in QSettings are
+    // migrated into the SecretStore on this first wiring and removed from
+    // QSettings.
+    void setSecretStore(SecretStore *store);
+
+    // Sec-1: the key under which we stash the Claude API key in the
+    // SecretStore. Exposed as a public constant so the migration code in
+    // main.cpp can reference it without duplicating the literal.
+    static const char *secretKey();
 
     bool isResponding() const { return m_isResponding; }
     bool isConfigured() const;  // true if API key is set
@@ -127,10 +145,14 @@ private:
     QString buildSystemPrompt() const;        // includes current task context (S-5.22)
     QString buildUserContextSnapshot() const; // current projects/tasks summary (S-5.22)
 
-    // S-5.1: XOR-obfuscation helpers for API key storage.
-    // NOTE: This is obfuscation, NOT encryption. It prevents casual plaintext
-    // exposure in QSettings files. For real security, install QtKeychain
-    // (https://github.com/frankosterfeld/qtkeychain) and use its WritePasswordJob.
+    // S-5.1 / Sec-1: XOR-obfuscation helpers for the *legacy* QSettings storage
+    // path. Still public-static because:
+    //   (a) the migration step in main.cpp uses deobfuscate() to read the old
+    //       plaintext value before moving it into the SecretStore;
+    //   (b) tests that didn't wire a SecretStore continue to exercise these
+    //       helpers (the storage backend stays QSettings in that path).
+    // NOTE: This is obfuscation, NOT encryption. New code paths should
+    // funnel through SecretStore, which uses QtKeychain on desktop.
     static QByteArray machineSecret();
     static QString obfuscate(const QString &plain);
     static QString deobfuscate(const QString &cipher);
@@ -155,6 +177,7 @@ private:
     QNetworkAccessManager *nam();
 
     DataStore *m_store;
+    QPointer<SecretStore> m_secretStore;  // Sec-1: nullable; legacy QSettings path when unset
     QNetworkAccessManager m_nam;
     QPointer<QNetworkAccessManager> m_namOverride;  // test hook
     bool m_isResponding = false;

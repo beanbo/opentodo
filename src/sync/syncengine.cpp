@@ -5,15 +5,18 @@
 #include "hlc.h"
 #include "storage/datastore.h"
 #include "utils/uuid.h"
+#include "services/telemetry.h"
 
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonParseError>
 #include <QLoggingCategory>
 #include <QMap>
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QVariantMap>
 
 Q_LOGGING_CATEGORY(lcSync, "opentodo.sync")
 
@@ -46,6 +49,13 @@ QString SyncEngine::lastError() const { return m_lastError; }
 QDateTime SyncEngine::lastSyncTime() const { return m_lastSyncTime; }
 QString SyncEngine::deviceId() const { return m_deviceId; }
 
+void SyncEngine::setTelemetry(Telemetry *telemetry)
+{
+    m_telemetry = telemetry;
+    if (m_merger)
+        m_merger->setTelemetry(telemetry);
+}
+
 Commit *SyncEngine::createCommit(const QList<SyncOperation> &operations)
 {
     if (operations.isEmpty()) return nullptr;
@@ -70,6 +80,21 @@ void SyncEngine::push()
 {
     if (!m_gdrive->isAuthenticated()) {
         setStatus(Offline);
+        return;
+    }
+
+    // Refuse to push while HEAD is dangling — a successful push would chain
+    // new commits off a parent that no peer can resolve, silently corrupting
+    // the commit chain. The caller must trigger a manual resync first.
+    if (m_danglingHead) {
+        const QString reason = QStringLiteral(
+            "Refusing to push: local HEAD '%1' references a commit not present "
+            "in the remote log. Run a manual resync to recover.")
+            .arg(m_headCommitId);
+        qCWarning(lcSync) << reason;
+        setLastError(reason);
+        setStatus(Error);
+        emit syncFailed(reason);
         return;
     }
 
@@ -159,11 +184,15 @@ void SyncEngine::pull()
 
     // B-2.13: use notFoundIsOk=true so a missing HEAD (first sync) is not
     // treated as a network error. A real network failure still returns false.
+    // The HEAD file is tiny (a JSON object with one commit hash + timestamp),
+    // so cap it with the same MAX_STATE_SIZE bound used elsewhere — a
+    // multi-MB HEAD response would already be a sign of remote corruption.
     QByteArray headData;
     const bool headOk = m_gdrive->downloadFile(QStringLiteral("HEAD"), headData,
-                                                /*notFoundIsOk=*/true);
+                                                /*notFoundIsOk=*/true,
+                                                /*maxBytes=*/MAX_STATE_SIZE);
     if (!headOk) {
-        // Real network error — do not proceed.
+        // Real network error (or oversize) — do not proceed.
         setLastError(QStringLiteral("Network error downloading HEAD. Check connectivity."));
         m_gdrive->releaseLock();
         setStatus(Error);
@@ -191,18 +220,200 @@ void SyncEngine::pull()
 
     // B-2.1: download and apply individual commits newer than our local HEAD,
     // then merge with the snapshot.
+    //
+    // Pipeline order (Q3.10 refresh):
+    //   1. listFiles(log/) — the directory listing is the SOURCE OF TRUTH for
+    //      dangling-HEAD detection. Whether a particular commit body was
+    //      downloadable / parseable is unrelated — a malformed commit is
+    //      already accounted for in the listing.
+    //   2. Download state.json with MAX_STATE_SIZE cap + B-2.42 invariants.
+    //      A failure here aborts the pull with the SPECIFIC error (size,
+    //      malformed, missing 'tasks') rather than falling through to the
+    //      coarser-grained dangling-HEAD message.
+    //   3. Dangling-HEAD check, using the log-file listing built in step 1.
+    //      When dangling is detected we still apply state.json IF that
+    //      snapshot carries real content (state.json is the authoritative
+    //      snapshot — the log is just for incremental updates). An empty
+    //      snapshot under a dangling HEAD is suspicious enough to refuse,
+    //      preserving local data.
+    //   4. Download + parse the individual commits, skipping (and surfacing
+    //      via commitCorrupted) any that fail. Apply them when safe.
+    //   5. Apply state.json.
+
     const QStringList logFiles = m_gdrive->listFiles(QStringLiteral("log"));
 
-    // Parse all log commits and chain-sort them.
+    // Build the set of commit hashes that EXIST in the log directory (drop
+    // the ".json" suffix). Used by the dangling-HEAD check below — based on
+    // directory contents, NOT on which commit bodies happened to parse.
+    QSet<QString> logFileHashes;
+    for (const QString &fileName : logFiles) {
+        if (!fileName.endsWith(QStringLiteral(".json"))) continue;
+        logFileHashes.insert(fileName.left(fileName.size() - 5));
+    }
+
+    // ── Download + validate state.json BEFORE the dangling-HEAD check ─────
+    //
+    // A failure here is the more actionable diagnosis: "your state.json is
+    // malformed / too big" beats "your HEAD pointer is stale" when both are
+    // true simultaneously. The size cap also acts as a DoS guard before any
+    // further memory is allocated.
+    QByteArray stateData;
+    if (!m_gdrive->downloadFile(QStringLiteral("state.json"), stateData,
+                                /*notFoundIsOk=*/false,
+                                /*maxBytes=*/MAX_STATE_SIZE)) {
+        setLastError(QStringLiteral(
+            "Failed to download remote state (network error or body "
+            "exceeded MAX_STATE_SIZE = %1 bytes)").arg(MAX_STATE_SIZE));
+        m_gdrive->releaseLock();
+        setStatus(Error);
+        return;
+    }
+
+    const QJsonDocument stateDoc = QJsonDocument::fromJson(stateData);
+    const QJsonObject remoteState = stateDoc.object();
+
+    // B-2.42: validate remote state before loading — an empty or structurally
+    // invalid JSON must never clear user data. (QJsonDocument::fromJson
+    // returns an invalid doc on parse error → .object() yields an empty
+    // QJsonObject, so isEmpty() covers both.)
+    if (remoteState.isEmpty() || !remoteState.contains(QStringLiteral("tasks"))) {
+        qCWarning(lcSync) << "pull(): remote state.json is invalid or empty — aborting pull";
+        m_gdrive->releaseLock();
+        setLastError(QStringLiteral("Remote state.json is invalid (missing 'tasks'). Pull aborted."));
+        setStatus(Error);
+        return;
+    }
+
+    // ── Dangling-HEAD detection (using the directory listing) ──────────────
+    //
+    // If HEAD references a commit absent from log/ AND we don't already have
+    // it locally (m_headCommitId), the remote is internally inconsistent.
+    // We discriminate by snapshot content:
+    //
+    //  - If state.json carries real entities (at least one of
+    //    tasks/projects/sections/labels is non-empty), trust the snapshot —
+    //    it represents the authoritative state. Flag for telemetry / signal
+    //    but proceed with the merge.
+    //  - If state.json is entirely empty, treat dangling HEAD as the more
+    //    likely truth: a partial / failed remote write. Abort the pull,
+    //    preserve local data, and require manual resync.
+    const bool danglingHead = !remoteHead.isEmpty()
+        && !logFileHashes.contains(remoteHead)
+        && remoteHead != m_headCommitId;
+    auto isStateEmpty = [&]() {
+        const auto tasksArr      = remoteState.value(QStringLiteral("tasks"))     .toArray();
+        const auto projectsArr   = remoteState.value(QStringLiteral("projects"))  .toArray();
+        const auto sectionsArr   = remoteState.value(QStringLiteral("sections"))  .toArray();
+        const auto labelsArr     = remoteState.value(QStringLiteral("labels"))    .toArray();
+        const auto filtersArr    = remoteState.value(QStringLiteral("filters"))   .toArray();
+        const auto remindersArr  = remoteState.value(QStringLiteral("reminders")) .toArray();
+        return tasksArr.isEmpty() && projectsArr.isEmpty()
+            && sectionsArr.isEmpty() && labelsArr.isEmpty()
+            && filtersArr.isEmpty() && remindersArr.isEmpty();
+    };
+
+    if (danglingHead) {
+        const QString reason = QStringLiteral(
+            "Remote HEAD '%1' references a commit not present in log/. "
+            "The remote is internally inconsistent — refusing to apply "
+            "remote state. Manually resync to recover.")
+            .arg(remoteHead);
+        qCWarning(lcSync) << "SyncEngine: dangling HEAD detected -" << reason;
+        if (m_telemetry) {
+            QVariantMap props;
+            props.insert(QStringLiteral("head"), remoteHead);
+            m_telemetry->trackEvent(QStringLiteral("sync_dangling_head"), props);
+        }
+        emit danglingHeadDetected(remoteHead);
+
+        if (isStateEmpty()) {
+            // No snapshot rescue path — abort to preserve local data.
+            m_danglingHead = true;
+            m_gdrive->releaseLock();
+            setLastError(reason);
+            setStatus(Error);
+            return;
+        }
+        // Snapshot carries real content — keep going. We still set the
+        // flag for telemetry consumers but do NOT block the merge: state.json
+        // wins when log and HEAD disagree with the snapshot. The flag is
+        // cleared after the merge succeeds so future push() can resume.
+    }
+
+    // ── Parse all log commits and chain-sort them ─────────────────────────
     QList<Commit *> remoteCommits;
     for (const QString &fileName : logFiles) {
         if (!fileName.endsWith(QStringLiteral(".json"))) continue;
+        // Derive the on-disk hash from the filename (drop ".json"). Used as
+        // the identifier in commitCorrupted() signals when the body fails
+        // to parse — the listing already proved the file exists.
+        const QString fileHash = fileName.left(fileName.size() - 5);
+
         QByteArray commitData;
-        if (!m_gdrive->downloadFile(QStringLiteral("log/") + fileName, commitData))
+        if (!m_gdrive->downloadFile(QStringLiteral("log/") + fileName, commitData,
+                                    /*notFoundIsOk=*/false,
+                                    /*maxBytes=*/MAX_COMMIT_SIZE)) {
+            const QString reason = QStringLiteral(
+                "download failed or body exceeded MAX_COMMIT_SIZE (%1 bytes)")
+                .arg(MAX_COMMIT_SIZE);
+            qCWarning(lcSync) << "SyncEngine: dropping corrupted commit"
+                              << fileHash << reason;
+            if (m_telemetry) {
+                QVariantMap props;
+                props.insert(QStringLiteral("hash"),   fileHash);
+                props.insert(QStringLiteral("reason"), reason);
+                m_telemetry->trackEvent(QStringLiteral("sync_corrupted_commit"), props);
+            }
+            emit commitCorrupted(fileHash, reason);
             continue;
-        const QJsonDocument doc = QJsonDocument::fromJson(commitData);
-        if (!doc.isObject()) continue;
+        }
+        QJsonParseError parseErr;
+        const QJsonDocument doc = QJsonDocument::fromJson(commitData, &parseErr);
+        if (!doc.isObject()) {
+            // Replace the previous silent `if (!doc.isObject()) continue;` —
+            // a malformed commit must surface to qWarning + telemetry + signal
+            // so operators can tell "data loss because remote was corrupt"
+            // from "data loss because we have a bug here". Neighbours still
+            // process normally.
+            const QString reason = parseErr.error == QJsonParseError::NoError
+                ? QStringLiteral("JSON root was not an object")
+                : parseErr.errorString();
+            qCWarning(lcSync) << "SyncEngine: dropping corrupted commit"
+                              << fileHash << reason;
+            if (m_telemetry) {
+                QVariantMap props;
+                props.insert(QStringLiteral("hash"),   fileHash);
+                props.insert(QStringLiteral("reason"), reason);
+                m_telemetry->trackEvent(QStringLiteral("sync_corrupted_commit"), props);
+            }
+            emit commitCorrupted(fileHash, reason);
+            continue;
+        }
         auto *c = Commit::fromJson(doc.object(), this);
+        // Defence in depth: a parsed commit whose UUID doesn't match the
+        // on-disk filename hash is treated as corrupted. The directory
+        // listing's filename IS the canonical identifier; mismatched or
+        // missing uuids inside the body indicate a malformed commit
+        // structure (e.g. valid JSON object that lacks the schema we
+        // expect, or that lies about its identity).
+        if (c->uuid() != fileHash) {
+            const QString reason = c->uuid().isEmpty()
+                ? QStringLiteral("commit body has empty 'uuid' field")
+                : QStringLiteral(
+                      "commit body's uuid '%1' does not match filename '%2'")
+                  .arg(c->uuid(), fileHash);
+            qCWarning(lcSync) << "SyncEngine: dropping corrupted commit"
+                              << fileHash << reason;
+            if (m_telemetry) {
+                QVariantMap props;
+                props.insert(QStringLiteral("hash"),   fileHash);
+                props.insert(QStringLiteral("reason"), reason);
+                m_telemetry->trackEvent(QStringLiteral("sync_corrupted_commit"), props);
+            }
+            emit commitCorrupted(fileHash, reason);
+            c->deleteLater();
+            continue;
+        }
         remoteCommits.append(c);
     }
 
@@ -236,42 +447,18 @@ void SyncEngine::pull()
         remoteCommits = sorted;
     }
 
-    // Apply commits that are newer than our current local head.
-    QString lastApplied = m_headCommitId;
-    for (auto *c : remoteCommits) {
-        // Skip commits already applied locally.
-        if (c->uuid() == m_headCommitId) continue;
-        // Skip commits whose parent we haven't seen (gap in chain): still apply
-        // them to be safe — full merge will reconcile.
-        applyCommit(c);
-        lastApplied = c->uuid();
-    }
-
-    // Download remote snapshot and merge / replace.
-    QByteArray stateData;
-    if (!m_gdrive->downloadFile(QStringLiteral("state.json"), stateData)) {
-        setLastError(QStringLiteral("Failed to download remote state"));
-        // Clean up temporary commit objects.
-        qDeleteAll(remoteCommits);
-        m_gdrive->releaseLock();
-        setStatus(Error);
-        return;
-    }
-
-    const QJsonDocument stateDoc = QJsonDocument::fromJson(stateData);
-    const QJsonObject remoteState = stateDoc.object();
-
-    // B-2.42: validate remote state before loading — an empty or structurally
-    // invalid JSON must never clear user data.
-    // (QJsonDocument::fromJson returns invalid doc on parse error → .object()
-    //  yields an empty QJsonObject, so isEmpty() covers both.)
-    if (remoteState.isEmpty() || !remoteState.contains(QStringLiteral("tasks"))) {
-        qCWarning(lcSync) << "pull(): remote state.json is invalid or empty — aborting pull";
-        qDeleteAll(remoteCommits);
-        m_gdrive->releaseLock();
-        setLastError(QStringLiteral("Remote state.json is invalid (missing 'tasks'). Pull aborted."));
-        setStatus(Error);
-        return;
+    // Apply commits that are newer than our current local head. Skip when we
+    // detected a dangling HEAD above — the chain can't be trusted to point
+    // at the right ancestor, so applying parallel commits could re-introduce
+    // already-superseded state. The snapshot below carries the merged truth.
+    if (!danglingHead) {
+        QString lastApplied = m_headCommitId;
+        for (auto *c : remoteCommits) {
+            // Skip commits already applied locally.
+            if (c->uuid() == m_headCommitId) continue;
+            applyCommit(c);
+            lastApplied = c->uuid();
+        }
     }
 
     // Merge remote snapshot with local state (pending commits keep local changes).
@@ -284,6 +471,10 @@ void SyncEngine::pull()
 
     qDeleteAll(remoteCommits);
     m_headCommitId = remoteHead;
+    // The merge succeeded — clear any prior dangling state. A subsequent
+    // successful pull resets the engine so push() can resume even if the
+    // current pull had to bypass the chain.
+    m_danglingHead = false;
     m_gdrive->releaseLock();
     m_lastSyncTime = QDateTime::currentDateTimeUtc();
     emit lastSyncTimeChanged();
@@ -314,6 +505,23 @@ void SyncEngine::setSyncInterval(int seconds)
 QList<Commit *> SyncEngine::pendingCommits() const
 {
     return m_pendingCommits;
+}
+
+QStringList SyncEngine::pendingEntityIds() const
+{
+    // Walk every operation in every pending commit and collect entity ids.
+    // Used by DataStore::vacuum to skip tombstones whose deletion hasn't
+    // reached peers yet — purging those would orphan the deletion at the
+    // remote, so we err on the side of keeping the tombstone alive.
+    QStringList ids;
+    for (const Commit *c : m_pendingCommits) {
+        if (!c) continue;
+        for (const SyncOperation &op : c->operations()) {
+            if (!op.entityId.isEmpty())
+                ids.append(op.entityId);
+        }
+    }
+    return ids;
 }
 
 void SyncEngine::addPendingCommit(Commit *commit)

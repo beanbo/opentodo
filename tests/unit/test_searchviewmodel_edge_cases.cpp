@@ -202,13 +202,16 @@ private slots:
     }
 
     // =====================================================================
-    // 3) Russian / Cyrillic case folding.
+    // 3) Russian / Cyrillic case folding + accent-insensitive default.
     //
-    // Qt's QString::toLower() lowercases Cyrillic characters correctly:
-    //   Е → е, Ё → ё, Й → й, А → а, etc.
+    // Q2.26-B: TextSearch normalizes via NFKC + Mn-strip + case fold, so:
+    //   * Mixed-case Cyrillic still folds correctly (Ёлка → ёлка → елка).
+    //   * Ё (U+0401) decomposes to Е + combining diaeresis (U+0308). The
+    //     diaeresis is dropped under default accent-insensitive mode, so
+    //     "елк" NOW matches "Ёлка" / "ЁЛКА" / "Купить ёлочные шары".
     //
-    // So a search for "ёлка" must match a task whose content is "Ёлка" and
-    // a task whose content is "ЁЛКА", and vice versa.
+    // Toggle SearchAccentSensitive=true to restore the strict Ё ≠ Е contract
+    // (separate slot below).
     // =====================================================================
     void cyrillic_case_folding_works_both_directions()
     {
@@ -245,33 +248,54 @@ private slots:
         QVERIFY(hasResult(vm.results(),
                           QStringLiteral("task"), t3->id()));
 
-        // "Е" (no diaeresis) must NOT match "Ё" (with diaeresis) —
-        // these are distinct codepoints. Pin that contract.
+        // Q2.26-B: "елк" (no diaeresis) NOW matches "Ёлка" / "ЁЛКА" because
+        // accent-insensitive matching is the default. (The combining
+        // diaeresis on Ё is stripped during normalization.)
         vm.setSearchQuery(QStringLiteral("елк"));
-        // None of the fixture tasks contain plain Е+л+к (they all use Ё).
-        // Document the actual result via a soft assertion + qInfo.
-        const int hits = countByType(vm.results(), QStringLiteral("task"));
-        if (hits != 0) {
-            qInfo("Note: 'елк' search produced %d task hits — Qt's toLower() "
-                  "may be performing folding between Е and Ё.", hits);
-        }
-        QCOMPARE(hits, 0);
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), t1->id()));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), t2->id()));
     }
 
     // =====================================================================
-    // 4) NFC vs NFD diacritic normalization is NOT performed.
+    // 3b) Q2.26-B: with SearchAccentSensitive=true, ё ≠ е once more.
+    // Pins that the opt-in escape hatch behaves like the pre-Q2.26-B
+    // contract for users who genuinely want strict matching.
+    // =====================================================================
+    void cyrillic_accent_sensitive_keeps_e_and_yo_distinct()
+    {
+        DataStore store;
+        store.setSetting(
+            QLatin1String(SettingsKeys::SearchAccentSensitive), true);
+
+        Project *p = store.addProject(QStringLiteral("Праздники"));
+        Task *t1 = store.addTask(QStringLiteral("Ёлка"), p->id());
+        Q_UNUSED(t1);
+
+        SearchViewModel vm(&store);
+
+        // "ёлк" still finds Ёлка (exact substring match).
+        vm.setSearchQuery(QStringLiteral("ёлк"));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), t1->id()));
+
+        // "елк" must NOT find Ёлка under sensitive mode.
+        vm.setSearchQuery(QStringLiteral("елк"));
+        QVERIFY(!hasResult(vm.results(),
+                           QStringLiteral("task"), t1->id()));
+    }
+
+    // =====================================================================
+    // 4) Q2.26-B: NFC vs NFD diacritic normalization NOW works.
     //
     // Precomposed "é" (U+00E9) and decomposed "e" + combining acute
-    // (U+0301) render identically and the user types them indistinguishably,
-    // but byte-wise they are different. Qt's toLower() does NOT normalize,
-    // so they compare unequal.
-    //
-    // This is a real edge case that affects French / Spanish / German /
-    // Vietnamese task content. Document via qInfo + a pinned assertion so
-    // a future fix (calling normalized(QString::NormalizationForm_C) on
-    // both sides) produces a visible test signal.
+    // (U+0301) render identically and the user types them indistinguishably.
+    // After TextSearch routes both sides through NFKC + Mn-strip + case
+    // fold, they compare EQUAL — and in default mode the diacritic itself
+    // is stripped so a plain-ASCII "cafe" query also matches.
     // =====================================================================
-    void nfc_vs_nfd_diacritics_do_not_match()
+    void nfc_vs_nfd_diacritics_match_via_textsearch()
     {
         DataStore store;
         Project *p = store.addProject(QStringLiteral("Café"));
@@ -286,30 +310,64 @@ private slots:
             QStringLiteral("Cafe") + QChar(0x0301) + QStringLiteral(" visit"),
             p->id());
 
-        Q_UNUSED(precomposed);
-        Q_UNUSED(decomposed);
+        SearchViewModel vm(&store);
+
+        // Query with precomposed é matches BOTH precomposed and decomposed.
+        vm.setSearchQuery(QString::fromUtf8("caf\xC3\xA9"));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), precomposed->id()));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), decomposed->id()));
+
+        // Query with decomposed é (Cafe + U+0301) also matches both.
+        vm.setSearchQuery(QStringLiteral("cafe") + QChar(0x0301));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), precomposed->id()));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), decomposed->id()));
+
+        // Plain ASCII "cafe" also matches under default (accent-insensitive).
+        vm.setSearchQuery(QStringLiteral("cafe"));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), precomposed->id()));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), decomposed->id()));
+    }
+
+    // =====================================================================
+    // 4b) Q2.26-B: accent-SENSITIVE mode keeps "cafe" from matching "café"
+    // while still equalising NFC/NFD (because both normalize to the same
+    // NFKC form, just without dropping the combining mark).
+    // =====================================================================
+    void nfc_nfd_match_but_ascii_misses_when_accent_sensitive()
+    {
+        DataStore store;
+        store.setSetting(
+            QLatin1String(SettingsKeys::SearchAccentSensitive), true);
+
+        Project *p = store.addProject(QStringLiteral("Café"));
+        Task *precomposed = store.addTask(
+            QString::fromUtf8("Caf\xC3\xA9 visit"), p->id());
+        Task *decomposed = store.addTask(
+            QStringLiteral("Cafe") + QChar(0x0301) + QStringLiteral(" visit"),
+            p->id());
 
         SearchViewModel vm(&store);
 
-        // Query with precomposed é
+        // Precomposed query matches both NFC and NFD haystacks
+        // (NFKC equalises them).
         vm.setSearchQuery(QString::fromUtf8("caf\xC3\xA9"));
-
-        // The precomposed task MUST match.
         QVERIFY(hasResult(vm.results(),
                           QStringLiteral("task"), precomposed->id()));
+        QVERIFY(hasResult(vm.results(),
+                          QStringLiteral("task"), decomposed->id()));
 
-        // The decomposed task should NOT match — byte sequences differ.
-        const bool decomposedMatches = hasResult(
-            vm.results(), QStringLiteral("task"), decomposed->id());
-        if (decomposedMatches) {
-            qInfo("Surprise: NFD-form task matched NFC-form query — Qt may "
-                  "have started normalizing in toLower(). Update test.");
-        } else {
-            qInfo("B2 pinned: NFC 'é' (U+00E9) and NFD 'é' (U+0065+U+0301) "
-                  "compare unequal in SearchViewModel — diacritic-equivalence "
-                  "normalization is not implemented.");
-        }
-        QVERIFY(!decomposedMatches);
+        // Plain "cafe" must NOT match either — diacritic is preserved.
+        vm.setSearchQuery(QStringLiteral("cafe"));
+        QVERIFY(!hasResult(vm.results(),
+                           QStringLiteral("task"), precomposed->id()));
+        QVERIFY(!hasResult(vm.results(),
+                           QStringLiteral("task"), decomposed->id()));
     }
 
     // =====================================================================

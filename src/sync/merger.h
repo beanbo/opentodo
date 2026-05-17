@@ -5,6 +5,8 @@
 #include <QJsonArray>
 #include <QQmlEngine>
 
+class Telemetry;
+
 /**
  * @brief Conflict resolution for sync states.
  *
@@ -27,9 +29,24 @@ class Merger : public QObject
 public:
     explicit Merger(QObject *parent = nullptr);
 
+    // Inject optional telemetry service. The merger uses it to surface
+    // tombstone-absorbs-edit events (CRDT-correct but otherwise invisible
+    // data loss). Null is acceptable (tests).
+    void setTelemetry(Telemetry *telemetry);
+
+    // Called by mergeEntity when a remote edit is dropped because the local
+    // side is tombstoned. Exposed for the entity-array merge to delegate
+    // observability decisions to a single hook. Public so external test
+    // doubles could intercept; production callers should not invoke directly.
+    void recordTombstoneAbsorbed(const QString &entityType,
+                                 const QString &entityId,
+                                 const QString &winningSide);
+
     QJsonObject mergeStates(const QJsonObject &local, const QJsonObject &remote);
-    QJsonArray  mergeEntityArrays(const QJsonArray &localArr, const QJsonArray &remoteArr);
-    QJsonObject mergeEntity(const QJsonObject &local, const QJsonObject &remote);
+    QJsonArray  mergeEntityArrays(const QJsonArray &localArr, const QJsonArray &remoteArr,
+                                  const QString &entityType = {});
+    QJsonObject mergeEntity(const QJsonObject &local, const QJsonObject &remote,
+                            const QString &entityType = {});
 
 private:
     // CRDT per-field merge (used when either entity has "_meta").
@@ -44,4 +61,6 @@ private:
     // Set of field names to skip when iterating "normal" fields
     // (handled separately: _meta, is_deleted).
     static bool isInternalField(const QString &key);
+
+    Telemetry *m_telemetry = nullptr;
 };

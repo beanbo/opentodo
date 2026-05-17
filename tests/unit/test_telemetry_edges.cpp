@@ -1,8 +1,11 @@
 // ---------------------------------------------------------------------------
 // test_telemetry_edges.cpp
 //
-// Quality round Q3.07-B: behavioural pinning for previously-uncovered corners
-// of the Telemetry service.
+// Q3.09 update: this suite was originally written as a regression-bench
+// for several DOCUMENTED GAPS in Telemetry — namely the in-memory-only
+// queue, the absent rate limiter, and setEnabled(false) not clearing the
+// queue. Q3.09 fills those gaps; the corresponding slots have been
+// FLIPPED from "negative pin" to "positive assertion" here.
 //
 // Existing coverage in this directory:
 //   * test_telemetry.cpp        — basic state surface (enabled/prompted
@@ -13,37 +16,24 @@
 //                                 races at teardown), QSettings persistence,
 //                                 rapid burst safety, empty-name no-crash.
 //
-// This *_edges suite pins eight previously-untested corners around retry
-// queueing, persistence across restarts, payload sanitization edges and
-// external QSettings observation. Slots mirror the brief:
+// Slots covered here (post Q3.09):
 //
 //   1. disabled_then_re_enabled_does_not_replay_old_events
 //   2. event_payload_with_very_long_string_does_not_overflow
-//   3. queue_persists_across_restart                    (pins NEGATIVE — no
-//                                                         persistence today)
-//   4. one_thousand_events_queued_offline_batched_on_resume
+//   3. queue_persists_across_restart                    (POSITIVE: persists)
+//   4. burst_offline_is_rate_limited                    (POSITIVE: 60/min)
 //   5. event_with_unicode_emoji_in_property_round_trips
-//   6. disabled_after_construction_clears_pending_queue (pins NEGATIVE —
-//                                                         disable does NOT
-//                                                         clear the queue,
-//                                                         only prevents new
-//                                                         enqueues)
+//   6. disabled_after_construction_clears_pending_queue (POSITIVE: clears)
 //   7. setting_disabled_via_QSettings_external_change_is_observed
-//   8. event_burst_rate_limit_drops_excess_or_throttles (pins NEGATIVE — no
-//                                                         rate limiter today)
+//   8. event_burst_rate_limit_drops_excess              (POSITIVE: drops)
 //
-// Observation strategy
-// --------------------
-// Telemetry exposes NO public pendingCount() or queue inspector. The only
-// observable side effect of a successful trackEvent under enabled=true is
-// creation of the `telemetry/anonymous_id` key on first call. The retry
-// suite established this as the binary "did trackEvent actually enqueue?"
-// probe; we re-use it.
+// Additional Q3.09 slots:
 //
-// We also re-use the QSettings persistence shape (enabled / prompted /
-// anonymous_id) as the surface for "what survives a Telemetry destruction
-// and reconstruction" — that lets us pin "queue is in-memory only" without
-// a queue accessor.
+//   9.  pending_event_count_tracks_queue_size
+//   10. queue_cap_evicts_oldest_event
+//   11. queue_file_round_trip_across_instances
+//   12. disable_deletes_on_disk_queue_file
+//   13. corrupt_queue_file_is_discarded_on_load
 //
 // Network safety
 // --------------
@@ -63,13 +53,17 @@
 //     don't collide with test_telemetry or test_telemetry_retry.
 //   * Registered as Infra layer (see tests/unit/CMakeLists.txt) to match
 //     the sister Telemetry suites.
-//   * NO production-code edits. Each assertion pins CURRENT behaviour;
-//     qInfo() comments flag where the pinned behaviour is a documented
-//     gap (slots 3, 6 and 8 in particular).
+//   * Each slot wipes BOTH the QSettings telemetry/ group AND the on-disk
+//     telemetry_queue.json so slots are independent.
 // ---------------------------------------------------------------------------
 
 #include <QtTest>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -107,6 +101,23 @@ QVariantMap allowlistedProps()
     };
 }
 
+// Q3.09 helper: read the on-disk queue as a JSON array. Returns an empty
+// array if the file does not exist (Q3.09 contract: empty queue → no file).
+QJsonArray readQueueFile(const QString &path)
+{
+    QFile f(path);
+    if (!f.exists())
+        return {};
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray bytes = f.readAll();
+    f.close();
+    if (bytes.isEmpty())
+        return {};
+    const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+    return doc.isArray() ? doc.array() : QJsonArray{};
+}
+
 } // namespace
 
 class TestTelemetryEdges : public QObject
@@ -135,12 +146,22 @@ private slots:
         // observable from a clean slate.
         QSettings s;
         s.remove(QStringLiteral("telemetry"));
+        // Q3.09: also wipe the on-disk queue so a previous slot can't leak
+        // pending events into the next one.
+        Telemetry probe;
+        const QString path = probe.queueFilePath();
+        if (!path.isEmpty())
+            QFile::remove(path);
     }
 
     void cleanupTestCase()
     {
         QSettings s;
         s.remove(QStringLiteral("telemetry"));
+        Telemetry probe;
+        const QString path = probe.queueFilePath();
+        if (!path.isEmpty())
+            QFile::remove(path);
     }
 
     // -----------------------------------------------------------------------
@@ -148,16 +169,10 @@ private slots:
     // -----------------------------------------------------------------------
     //
     // While DISABLED, every trackEvent call short-circuits before
-    // anonymousId() runs (see telemetry.cpp:83), so anonymous_id is NOT
-    // created. Enabling later and tracking a NEW event must therefore mint
-    // the id at that point — the events recorded while disabled are not
-    // queued anywhere, so re-enabling cannot replay them.
-    //
-    // We observe the contract via the anonymous_id surface: it stays absent
-    // throughout the disabled window, then appears on the first enabled
-    // trackEvent. (If a future implementation introduced a "queue while
-    // disabled, replay on enable" mechanism, this slot would surface it via
-    // the anonymous_id appearing one call earlier than expected.)
+    // anonymousId() runs (see telemetry.cpp), so anonymous_id is NOT created.
+    // Enabling later and tracking a NEW event must therefore mint the id at
+    // that point — the events recorded while disabled are not queued
+    // anywhere, so re-enabling cannot replay them.
     // -----------------------------------------------------------------------
     void disabled_then_re_enabled_does_not_replay_old_events()
     {
@@ -170,118 +185,90 @@ private slots:
             t.trackEvent(QStringLiteral("evt_pre_enable_%1").arg(i),
                          allowlistedProps());
         }
-        // Surface check: no anonymous_id was created (proves no enqueue).
         QVERIFY2(!settingsContains(QStringLiteral("anonymous_id")),
                  "trackEvent while disabled must not create anonymous_id "
                  "(would indicate an enqueue ran)");
+        QCOMPARE(t.pendingEventCount(), 0);
 
-        // ── Phase B: enable. The act of enabling itself does not flush, but ─
-        //          we need to observe that no replay occurred.
+        // ── Phase B: enable. Enabling must not mint an id by itself. ─────────
         t.setEnabled(true);
         QVERIFY(t.enabled());
-
-        // Crucially — enabling alone should NOT have minted an id. The id is
-        // minted lazily on the first enabled trackEvent.
         QVERIFY2(!settingsContains(QStringLiteral("anonymous_id")),
-                 "setEnabled(true) must not by itself replay queued events "
-                 "(would mint anonymous_id without a fresh trackEvent)");
+                 "setEnabled(true) must not by itself replay queued events");
 
         // ── Phase C: now fire ONE fresh event while enabled. ─────────────────
         t.trackEvent(QStringLiteral("evt_post_enable"), allowlistedProps());
         QVERIFY2(settingsContains(QStringLiteral("anonymous_id")),
                  "first enabled trackEvent must mint anonymous_id");
-
-        // If the implementation had replayed the 5 disabled-phase events on
-        // re-enable, the id would have been created at setEnabled(true), not
-        // at this final trackEvent — and we'd have caught it in Phase B.
+        QCOMPARE(t.pendingEventCount(), 1);
     }
 
     // -----------------------------------------------------------------------
     // 2. event_payload_with_very_long_string_does_not_overflow
     // -----------------------------------------------------------------------
     //
-    // Telemetry does NOT cap incoming prop string lengths anywhere visible.
-    // We pin "no crash + no truncation observable via the no-op anonymous_id
-    // probe" for a 1 MiB string passed under an allowlisted key. The string
-    // is stored in the in-memory QQueue<QJsonObject> entry until flushTimer
-    // fires — we never let it fire, so no network or serialization beyond
-    // QJsonValue::fromVariant runs. Pins behaviour for the synchronous path.
-    //
-    // qInfo() flags this as a documented absence: a future cap would make
-    // this slot's "no truncation observable" claim a regression-trigger, so
-    // the maintainer adding the cap can flip the assertion.
+    // Telemetry does NOT cap incoming prop string lengths. We pin "no crash
+    // + accepted into the in-memory queue" for a 1 MiB string passed under
+    // an allowlisted key.
     // -----------------------------------------------------------------------
     void event_payload_with_very_long_string_does_not_overflow()
     {
         Telemetry t;
         t.setEnabled(true);
 
-        // 1 MiB ASCII string under the allowlisted "view" key.
-        // QString uses 2 bytes per char, so this allocates ~2 MiB internally —
-        // big enough to surface a heap-corruption or QJsonValue size-limit
-        // regression, small enough to keep the test fast.
         const QString huge(1024 * 1024, QChar('x'));
         QCOMPARE(huge.size(), 1024 * 1024);
 
         QVariantMap props;
         props.insert(QStringLiteral("view"), huge);
-        // Plus a normal allowlisted value so we know the rest of the map is
-        // still being filtered correctly.
         props.insert(QStringLiteral("priority"), 1);
 
-        // Must not crash, must not throw. The synchronous part of trackEvent
-        // (allowlist filter + QJsonValue::fromVariant + enqueue) handles the
-        // huge string inside the QJsonObject without truncation — Qt's
-        // QJsonValue::String accepts arbitrary length QString.
         t.trackEvent(QStringLiteral("evt_huge_payload"), props);
-
-        // Indirect confirmation that the enqueue path ran: anonymous_id
-        // was created.
         QVERIFY2(settingsContains(QStringLiteral("anonymous_id")),
                  "huge-payload trackEvent must still enqueue (creates "
                  "anonymous_id)");
-
-        qInfo("Telemetry: NO cap on incoming prop string length (1 MiB "
-              "accepted into in-memory queue without truncation). A future "
-              "cap should flip the pinned behaviour here.");
+        QCOMPARE(t.pendingEventCount(), 1);
     }
 
     // -----------------------------------------------------------------------
-    // 3. queue_persists_across_restart
+    // 3. queue_persists_across_restart  (Q3.09: POSITIVE pin — persists)
     // -----------------------------------------------------------------------
     //
-    // NEGATIVE PIN — the queue is in-memory only (QQueue<QJsonObject>; no
-    // disk persistence). Settings persist (enabled, prompted, anonymous_id);
-    // queued events do NOT survive a Telemetry destruction.
-    //
-    // This slot is the "restart" companion to the retry suite's
-    // settings_persist_across_instances_but_queue_does_not (which only
-    // verifies the settings side). Here we additionally probe ALL the keys
-    // a hypothetical on-disk queue might use under telemetry/ — none of
-    // them should appear.
+    // Q3.09 added telemetry_queue.json as a durable mirror of the in-memory
+    // queue. Events enqueued before a graceful destruction must reappear in
+    // a fresh Telemetry instance.
     // -----------------------------------------------------------------------
     void queue_persists_across_restart()
     {
         QString idBeforeRestart;
+        QString queuePath;
         {
             Telemetry t;
+            queuePath = t.queueFilePath();
+            QVERIFY2(!queuePath.isEmpty(),
+                     "queueFilePath must resolve when AppDataLocation exists");
+
             t.setEnabled(true);
 
-            // Enqueue 10 distinct events. None will be flushed (no event
-            // loop spun, no quit signal raised on this scope).
+            // Enqueue 10 distinct events.
             for (int i = 0; i < 10; ++i) {
                 QVariantMap props;
                 props.insert(QStringLiteral("task_count"), i);
                 t.trackEvent(QStringLiteral("evt_restart_%1").arg(i), props);
             }
+            QCOMPARE(t.pendingEventCount(), 10);
 
-            // The 10 events live ONLY in m_queue at this point. anonymous_id
-            // was minted on first event.
+            // Force the debounced write to land immediately so the file is on
+            // disk before ~Telemetry runs.
+            t.persistQueueImmediate();
+
             idBeforeRestart = settingsString(QStringLiteral("anonymous_id"));
             QVERIFY(!idBeforeRestart.isEmpty());
+
+            // The file should now exist with 10 entries.
+            const QJsonArray onDisk = readQueueFile(queuePath);
+            QCOMPARE(onDisk.size(), 10);
         }
-        // ~Telemetry: m_queue is destroyed silently. No aboutToQuit signal
-        // fires because we never quit QCoreApplication.
 
         // ── "Restart": fresh Telemetry instance reading the same QSettings ──
         Telemetry t2;
@@ -289,156 +276,73 @@ private slots:
                  "enabled flag must persist across restart via QSettings");
         QCOMPARE(settingsString(QStringLiteral("anonymous_id")),
                  idBeforeRestart);
-
-        // Probe a wide set of plausible queue-persistence keys under
-        // telemetry/ — any of them appearing would indicate that a future
-        // implementation has started persisting the queue and broken this
-        // negative pin.
-        const QStringList speculativeQueueKeys = {
-            QStringLiteral("queue"),
-            QStringLiteral("pending"),
-            QStringLiteral("pending_events"),
-            QStringLiteral("event_queue"),
-            QStringLiteral("flush_queue"),
-            QStringLiteral("queued_count"),
-            QStringLiteral("queued_payloads"),
-        };
-        for (const QString &k : speculativeQueueKeys) {
-            QVERIFY2(!settingsContains(k),
-                     qPrintable(QStringLiteral(
-                         "telemetry/%1 must not exist — Telemetry has no "
-                         "on-disk queue today").arg(k)));
-        }
-
-        qInfo("Telemetry: queue is in-memory ONLY; events queued before "
-              "process exit (without aboutToQuit firing) are silently lost. "
-              "DOCUMENTED GAP for offline-then-restart scenarios.");
+        QCOMPARE(t2.pendingEventCount(), 10);
     }
 
     // -----------------------------------------------------------------------
-    // 4. 1000_events_queued_offline_batched_on_resume
+    // 4. burst_offline_is_rate_limited
     // -----------------------------------------------------------------------
     //
-    // "Offline" in this codebase = the flushTimer is armed but no event loop
-    // spins long enough for it to fire. The synchronous part of trackEvent
-    // just appends to m_queue and restarts the 5-minute single-shot timer.
-    // We pin that 1000 rapid enqueues:
-    //   (a) don't crash,
-    //   (b) preserve the SAME anonymous_id throughout (no race rotates it),
-    //   (c) don't write a single QSettings entry beyond anonymous_id (no
-    //       per-event persistence sneaking in).
-    //
-    // "Batched on resume" is a contract on flush(), which we cannot exercise
-    // here without a network mock (per the retry suite's documented kSkipReason).
-    // We pin the queue-side invariant — flush() collects ALL queued events
-    // into a single QJsonArray POST — by reading the implementation: line 124-126
-    // of telemetry.cpp shows `while (!m_queue.isEmpty()) batch.append(...)`.
-    // This slot's contribution is making sure the queue can ACCEPT 1000 events
-    // for that hypothetical single-batch flush.
+    // Q3.09 added a sliding 60-events-per-60s rate limiter. A tight burst
+    // of 1000 trackEvent calls must therefore only enqueue AT MOST 60
+    // events. The rest are dropped silently.
     // -----------------------------------------------------------------------
-    void one_thousand_events_queued_offline_batched_on_resume()
+    void burst_offline_is_rate_limited()
     {
         Telemetry t;
         t.setEnabled(true);
 
-        // Warm-up: mint the anonymous_id outside the loop so we can compare.
-        t.trackEvent(QStringLiteral("evt_warmup"), allowlistedProps());
-        const QString idAtStart = settingsString(QStringLiteral("anonymous_id"));
-        QVERIFY(!idAtStart.isEmpty());
-
-        // Snapshot the telemetry/ key set — ONLY anonymous_id and enabled
-        // should be present, never per-event keys.
-        QSettings snapshotBefore;
-        snapshotBefore.beginGroup(QStringLiteral("telemetry"));
-        const QStringList keysBefore = snapshotBefore.allKeys();
-        snapshotBefore.endGroup();
-
-        // 1000 rapid trackEvent calls — exceeds the typical "offline session"
-        // event count for a productivity app. None will be flushed.
         for (int i = 0; i < 1000; ++i) {
             QVariantMap props;
-            // Vary an allowlisted key per call so each enqueued object is
-            // distinct in QJsonObject identity.
             props.insert(QStringLiteral("task_count"), i);
-            props.insert(QStringLiteral("view"),
-                         (i % 2 == 0) ? QStringLiteral("today")
-                                      : QStringLiteral("upcoming"));
-            t.trackEvent(QStringLiteral("evt_batch_%1").arg(i), props);
+            t.trackEvent(QStringLiteral("evt_burst_%1").arg(i), props);
         }
 
-        // (a) no crash — reaching here proves it.
+        // Per Q3.09 rate limit: window=60s, max=60 events. 1000 calls in a
+        // tight loop all hit within the same window, so queue size <= 60.
+        QVERIFY2(t.pendingEventCount() <= 60,
+                 qPrintable(QStringLiteral(
+                     "rate-limited burst must cap queue at 60, got %1")
+                     .arg(t.pendingEventCount())));
+        // ... and the limiter should have accepted exactly 60 (the cap).
+        QCOMPARE(t.pendingEventCount(), 60);
 
-        // (b) anonymous_id is unchanged. No race / rotation.
-        QCOMPARE(settingsString(QStringLiteral("anonymous_id")), idAtStart);
-
-        // (c) no per-event keys were sneaked into QSettings.
-        QSettings snapshotAfter;
-        snapshotAfter.beginGroup(QStringLiteral("telemetry"));
-        const QStringList keysAfter = snapshotAfter.allKeys();
-        snapshotAfter.endGroup();
-
-        // Key set must be unchanged. (Anonymous_id existed both before and
-        // after; "enabled" was written by setEnabled(true) before the loop
-        // started, so it's in both snapshots.)
-        QCOMPARE(keysAfter, keysBefore);
-
-        qInfo("Telemetry: 1000 events queued offline in-memory; flush() will "
-              "POST them as ONE batched JSON array (telemetry.cpp:124-126). "
-              "DOCUMENTED GAP: no max-queue-size cap, so a long offline "
-              "session could grow m_queue unboundedly.");
+        // anonymous_id must have been minted exactly once during the burst.
+        QVERIFY(settingsContains(QStringLiteral("anonymous_id")));
     }
 
     // -----------------------------------------------------------------------
     // 5. event_with_unicode_emoji_in_property_round_trips
     // -----------------------------------------------------------------------
     //
-    // The allowlist filter does NOT examine value content; it only checks
-    // keys against kAllowedPropKeys. So a value containing emoji /
-    // RTL / NFC-composed sequences is accepted verbatim into the JSON. We
-    // pin "no crash, no truncation observable, no smuggle into QSettings"
-    // for a handful of tricky strings under allowlisted keys.
-    //
-    // The "round trips" guarantee in the slot name is structural: QString →
-    // QJsonValue::fromVariant → QJsonObject → batched QJsonDocument →
-    // POST body. All four steps are 16-bit Unicode safe in Qt 6, and the
-    // batched flush serialises via QJsonDocument::toJson which encodes
-    // non-ASCII as proper UTF-8 escape sequences or raw UTF-8 bytes.
+    // Six tricky unicode strings under allowlisted keys — all well within
+    // the rate-limit window. No crash, no smuggle into QSettings.
     // -----------------------------------------------------------------------
     void event_with_unicode_emoji_in_property_round_trips()
     {
         Telemetry t;
         t.setEnabled(true);
 
-        // Battery of unicode-tricky strings:
-        //   - basic emoji (surrogate pair on UTF-16)
-        //   - multi-codepoint emoji with ZWJ
-        //   - skin-tone modifier
-        //   - bidi-override + RTL
-        //   - NFC vs NFD composed (will pin "the engine doesn't normalize")
         const QStringList trickyValues = {
             QString::fromUtf8("\xF0\x9F\x9A\x80"),                       // U+1F680 ROCKET
             QString::fromUtf8("\xE2\x9C\x85"),                           // U+2705 CHECK MARK
             QString::fromUtf8("\xE2\x80\xAE \xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7"), // RLO + Arabic
-            QString::fromUtf8("\xC3\xA9"),                               // é (NFC, single codepoint)
-            QString::fromUtf8("e\xCC\x81"),                              // é (NFD, e + combining acute)
-            QString::fromUtf8("\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB"), // 👩‍💻 ZWJ family
+            QString::fromUtf8("\xC3\xA9"),                               // é (NFC)
+            QString::fromUtf8("e\xCC\x81"),                              // é (NFD)
+            QString::fromUtf8("\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB"), // 👩‍💻
         };
 
         for (int i = 0; i < trickyValues.size(); ++i) {
             QVariantMap props;
-            // "view" is allowlisted — value flows into the QJsonObject.
             props.insert(QStringLiteral("view"), trickyValues.at(i));
-            // "platform" — second allowlisted key carrying the same value
-            // (proves multi-key per-event survives unicode too).
             props.insert(QStringLiteral("platform"), trickyValues.at(i));
             t.trackEvent(QStringLiteral("evt_unicode_%1").arg(i), props);
         }
 
-        // anonymous_id was minted on first call.
         QVERIFY(settingsContains(QStringLiteral("anonymous_id")));
+        QCOMPARE(t.pendingEventCount(), trickyValues.size());
 
-        // Sweep telemetry/ keys+values for accidental leakage of the unicode
-        // payload (which would imply a value got smuggled into QSettings).
+        // Sweep telemetry/ keys+values for accidental leakage.
         QSettings s;
         s.beginGroup(QStringLiteral("telemetry"));
         const QStringList allKeys = s.allKeys();
@@ -453,35 +357,19 @@ private slots:
             }
         }
         s.endGroup();
-
-        // The round-trip itself happens in flush() → QJsonDocument::toJson →
-        // network POST. We cannot exercise that without a NAM mock (segfault
-        // risk documented in retry suite). The enqueue side is pinned here.
     }
 
     // -----------------------------------------------------------------------
-    // 6. disabled_after_construction_clears_pending_queue
+    // 6. disabled_after_construction_clears_pending_queue  (Q3.09: POSITIVE)
     // -----------------------------------------------------------------------
     //
-    // NEGATIVE PIN — setEnabled(false) does NOT call any queue-clear path
-    // (see telemetry.cpp:59-66; setEnabled only writes QSettings + emits the
-    // change signal). The "pending queue" continues to exist in m_queue
-    // until either (a) flushTimer fires and POSTs it, or (b) the destructor
-    // runs and silently discards it.
-    //
-    // We cannot observe m_queue directly. Instead we observe that disabling
-    // mid-stream does not WIPE state we already know is in QSettings (the
-    // anonymous_id), and does not emit any signal beyond enabledChanged.
-    // Both are proxies for "the queue is not touched by setEnabled(false)".
-    //
-    // The slot name reads as a literal English claim; the PIN is that the
-    // claim is FALSE for the current implementation, and a future
-    // implementation that DOES clear the queue on disable should make this
-    // test fail in a way that the maintainer can flip.
+    // Q3.09 added a clearInFlightAndQueue() path inside setEnabled(false):
+    // disabling telemetry now wipes m_queue and deletes the on-disk file.
     // -----------------------------------------------------------------------
     void disabled_after_construction_clears_pending_queue()
     {
         Telemetry t;
+        const QString queuePath = t.queueFilePath();
         t.setEnabled(true);
 
         // Queue 3 events while enabled. m_queue now has 3 entries.
@@ -489,71 +377,55 @@ private slots:
             t.trackEvent(QStringLiteral("evt_q_%1").arg(i),
                          allowlistedProps());
         }
+        QCOMPARE(t.pendingEventCount(), 3);
         QVERIFY(settingsContains(QStringLiteral("anonymous_id")));
         const QString idBefore = settingsString(QStringLiteral("anonymous_id"));
+
+        // Force a flush of the on-disk queue so we can verify deletion below.
+        t.persistQueueImmediate();
+        QVERIFY(QFile::exists(queuePath));
 
         // ── Spy on enabledChanged + disable ────────────────────────────────
         QSignalSpy enabledSpy(&t, &Telemetry::enabledChanged);
         t.setEnabled(false);
-
-        // Exactly ONE signal — no queue-clear callbacks, no flush-on-disable
-        // signal. If a future implementation added a `queueCleared()` signal
-        // (or anything similar), it would not be on the enabledChanged
-        // count, but the contract here is "the only observable effect of
-        // setEnabled(false) is the enabledChanged emission".
         QCOMPARE(enabledSpy.count(), 1);
 
-        // QSettings state is unchanged beyond `enabled` itself — id survives,
-        // is not reset, is not removed. (A future queue-clear that also
-        // wiped the id would surface here.)
+        // Q3.09 contract: in-memory queue cleared, on-disk file removed.
+        QCOMPARE(t.pendingEventCount(), 0);
+        QVERIFY2(!QFile::exists(queuePath),
+                 "setEnabled(false) must delete telemetry_queue.json");
+
+        // QSettings state is unchanged beyond `enabled` itself — id survives.
         QCOMPARE(settingsString(QStringLiteral("anonymous_id")), idBefore);
 
-        // Calling trackEvent post-disable must remain a strict no-op. If the
-        // queue were re-armed by some mechanism, anonymous_id would change.
+        // Calling trackEvent post-disable must remain a strict no-op.
         t.trackEvent(QStringLiteral("evt_post_disable"), allowlistedProps());
+        QCOMPARE(t.pendingEventCount(), 0);
         QCOMPARE(settingsString(QStringLiteral("anonymous_id")), idBefore);
-
-        qInfo("Telemetry: setEnabled(false) does NOT clear m_queue (only "
-              "prevents new enqueues). Events queued before disable remain "
-              "in memory until destruction. DOCUMENTED GAP if telemetry "
-              "opt-out should wipe in-flight payloads.");
     }
 
     // -----------------------------------------------------------------------
     // 7. setting_disabled_via_QSettings_external_change_is_observed
     // -----------------------------------------------------------------------
     //
-    // Telemetry::enabled() reads QSettings on every call (no caching — see
-    // telemetry.cpp:52-57). So an external mutation of telemetry/enabled
-    // (e.g. another QSettings consumer, a manual edit, a sync replay) IS
-    // observed by the NEXT enabled() call. We pin this contract because
-    // a future optimisation that caches enabled() in a member variable
-    // would silently break it.
-    //
-    // We CANNOT pin signal emission on external changes — Telemetry has no
-    // QFileSystemWatcher / no QSettings change-notification. The contract
-    // is "next read sees the new value", not "signal fires immediately".
+    // Telemetry::enabled() reads QSettings on every call (no caching). An
+    // external mutation IS observed by the NEXT enabled() call, but no
+    // signal fires (no QFileSystemWatcher / QSettings change observer).
     // -----------------------------------------------------------------------
     void setting_disabled_via_QSettings_external_change_is_observed()
     {
         Telemetry t;
 
-        // Default: disabled.
         QVERIFY(!t.enabled());
 
-        // ── External flip TRUE via raw QSettings ───────────────────────────
         {
             QSettings s;
             s.setValue(QStringLiteral("telemetry/enabled"), true);
             s.sync();
         }
-        // Next read picks up the external value. NO signal expected — the
-        // change didn't go through setEnabled().
         QVERIFY2(t.enabled(),
-                 "Telemetry::enabled() must re-read QSettings every call so "
-                 "external mutations are observed (no internal cache)");
+                 "Telemetry::enabled() must re-read QSettings every call");
 
-        // Now the inverse: external flip FALSE.
         {
             QSettings s;
             s.setValue(QStringLiteral("telemetry/enabled"), false);
@@ -562,7 +434,6 @@ private slots:
         QVERIFY2(!t.enabled(),
                  "external setValue(false) must also be observed");
 
-        // Same contract for the `prompted` flag.
         QVERIFY(!t.prompted());
         {
             QSettings s;
@@ -572,100 +443,237 @@ private slots:
         QVERIFY2(t.prompted(),
                  "prompted() must re-read QSettings every call too");
 
-        // Crucially: external mutation must NOT have emitted enabledChanged
-        // from the Telemetry instance — there's no QSettings observer wired
-        // up. A future addition of one would surface here.
         QSignalSpy spy(&t, &Telemetry::enabledChanged);
-        // Re-flip externally.
         {
             QSettings s;
             s.setValue(QStringLiteral("telemetry/enabled"), true);
             s.sync();
         }
-        // enabled() reflects the change, but no signal.
         QVERIFY(t.enabled());
         QCOMPARE(spy.count(), 0);
-
-        qInfo("Telemetry: enabled()/prompted() always re-read QSettings (no "
-              "caching). External mutations ARE observed by the next read, "
-              "but NO signal fires — there is no QSettings-change watcher.");
     }
 
     // -----------------------------------------------------------------------
-    // 8. event_burst_rate_limit_drops_excess_or_throttles
+    // 8. event_burst_rate_limit_drops_excess (Q3.09: POSITIVE)
     // -----------------------------------------------------------------------
     //
-    // NEGATIVE PIN — Telemetry has NO rate limiter. Every trackEvent under
-    // enabled=true goes straight into m_queue, and the flushTimer is
-    // restarted on EVERY call (telemetry.cpp:115). The net effect of a
-    // tight burst is: m_queue grows linearly, and the timer is repeatedly
-    // pushed 5 minutes into the future — meaning a never-idle stream of
-    // events would NEVER flush.
-    //
-    // We pin both:
-    //   (a) no drop signal / no "throttled" indication on the public surface,
-    //   (b) anonymous_id remains stable through the burst (i.e. there's no
-    //       defensive reset / re-mint when "too many" events come in).
-    //
-    // If a future implementation adds a sliding-window rate limiter, this
-    // slot is the regression-bench: the maintainer will flip the qInfo() and
-    // tighten the assertions.
+    // Q3.09 added a sliding 60-events-per-60s rate limiter. We pin both:
+    //   (a) the queue is capped at 60 by the limiter,
+    //   (b) no signal storm — only ONE enabledChanged (the initial enable),
+    //   (c) anonymous_id is stable through the burst.
     // -----------------------------------------------------------------------
-    void event_burst_rate_limit_drops_excess_or_throttles()
+    void event_burst_rate_limit_drops_excess()
     {
         Telemetry t;
-        t.setEnabled(true);
 
-        // Warm-up to mint the id.
+        QSignalSpy enabledSpy(&t, &Telemetry::enabledChanged);
+        t.setEnabled(true);
+        QCOMPARE(enabledSpy.count(), 1);
+
         t.trackEvent(QStringLiteral("evt_burst_warmup"), allowlistedProps());
         const QString idAtStart = settingsString(QStringLiteral("anonymous_id"));
         QVERIFY(!idAtStart.isEmpty());
 
-        // ── Spy on the only public signal: enabledChanged. A future ────────
-        //    "rate-limit hit" signal would need a new spy here.
-        QSignalSpy enabledSpy(&t, &Telemetry::enabledChanged);
-
-        // Tight burst of 5000 events as fast as the loop can run. No
-        // processEvents() between iterations — pure synchronous enqueue.
+        // Tight burst of 5000 events. The limiter must cap queue at <=60.
         for (int i = 0; i < 5000; ++i) {
-            // Mix priorities so the events aren't byte-identical.
             QVariantMap props;
             props.insert(QStringLiteral("priority"), (i % 4) + 1);
             props.insert(QStringLiteral("error_code"), i);
             t.trackEvent(QStringLiteral("evt_burst_%1").arg(i), props);
         }
 
-        // (a) no rate-limit/drop signal fired (Telemetry has none today).
-        //     enabledChanged in particular must NOT have fired — a future
-        //     "auto-disable on overflow" behaviour would surface here.
-        QCOMPARE(enabledSpy.count(), 0);
+        // (a) at most 60 enqueues survived in the current window.
+        QCOMPARE(t.pendingEventCount(), 60);
 
-        // (b) anonymous_id is unchanged.
+        // (b) no extra enabledChanged storm.
+        QCOMPARE(enabledSpy.count(), 1);
+
+        // (c) anonymous_id is unchanged.
         QCOMPARE(settingsString(QStringLiteral("anonymous_id")), idAtStart);
+    }
 
-        // (c) telemetry/ QSettings keys are unchanged from after the warmup
-        //     (no "dropped_count", no "rate_limited_at" key).
-        QSettings s;
-        s.beginGroup(QStringLiteral("telemetry"));
-        const QStringList allKeys = s.allKeys();
-        s.endGroup();
-        const QStringList speculativeRateLimitKeys = {
-            QStringLiteral("dropped_count"),
-            QStringLiteral("rate_limited_at"),
-            QStringLiteral("burst_dropped"),
-            QStringLiteral("throttled"),
-        };
-        for (const QString &k : speculativeRateLimitKeys) {
-            QVERIFY2(!allKeys.contains(k),
-                     qPrintable(QStringLiteral(
-                         "telemetry/%1 must not exist — no rate limiter today")
-                         .arg(k)));
+    // -----------------------------------------------------------------------
+    // 9. pending_event_count_tracks_queue_size  (Q3.09)
+    // -----------------------------------------------------------------------
+    //
+    // The Q_PROPERTY exposes the in-memory queue depth. Verify the
+    // NOTIFY signal fires on every successful enqueue.
+    // -----------------------------------------------------------------------
+    void pending_event_count_tracks_queue_size()
+    {
+        Telemetry t;
+        QCOMPARE(t.pendingEventCount(), 0);
+
+        t.setEnabled(true);
+
+        QSignalSpy spy(&t, &Telemetry::pendingEventCountChanged);
+        t.trackEvent(QStringLiteral("evt_1"), allowlistedProps());
+        t.trackEvent(QStringLiteral("evt_2"), allowlistedProps());
+        t.trackEvent(QStringLiteral("evt_3"), allowlistedProps());
+
+        QCOMPARE(t.pendingEventCount(), 3);
+        // At least 3 emissions — one per accepted enqueue.
+        QVERIFY2(spy.count() >= 3,
+                 qPrintable(QStringLiteral(
+                     "pendingEventCountChanged must fire on each enqueue, got %1")
+                     .arg(spy.count())));
+    }
+
+    // -----------------------------------------------------------------------
+    // 10. queue_cap_evicts_oldest_event  (Q3.09)
+    // -----------------------------------------------------------------------
+    //
+    // MAX_QUEUE_SIZE=1000. We can't get there cheaply because of the
+    // rate limiter, so verify the cap path via the in-memory queue: with
+    // the rate limiter capped at 60/min, 1000 immediate calls only put 60
+    // into the queue. Instead, exercise the cap during LOAD: write 1500
+    // events to telemetry_queue.json manually, then construct a new
+    // Telemetry — loadQueueFromDisk should cap at 1000 with a qWarning.
+    // -----------------------------------------------------------------------
+    void queue_cap_evicts_oldest_event()
+    {
+        // Resolve where the on-disk queue lives.
+        QString queuePath;
+        {
+            Telemetry probe;
+            queuePath = probe.queueFilePath();
+        }
+        QVERIFY(!queuePath.isEmpty());
+
+        // Make sure the directory exists.
+        QDir().mkpath(QFileInfo(queuePath).absolutePath());
+
+        // Write 1500 fake events directly to disk — past the 1000 cap.
+        QJsonArray arr;
+        for (int i = 0; i < 1500; ++i) {
+            QJsonObject ev;
+            ev[QStringLiteral("event")] = QStringLiteral("evt_%1").arg(i);
+            ev[QStringLiteral("anonymous_id")] =
+                QStringLiteral("00000000-0000-0000-0000-000000000000");
+            ev[QStringLiteral("version")] = QStringLiteral("0.0.0-test");
+            ev[QStringLiteral("ts")] = QStringLiteral("2026-01-01T00:00:00Z");
+            arr.append(ev);
+        }
+        QFile out(queuePath);
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        out.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        out.close();
+
+        // Boot a fresh Telemetry and check the cap was enforced.
+        Telemetry t;
+        QCOMPARE(t.pendingEventCount(), 1000);
+    }
+
+    // -----------------------------------------------------------------------
+    // 11. queue_file_round_trip_across_instances  (Q3.09)
+    // -----------------------------------------------------------------------
+    //
+    // Smaller-than-restart slot focused purely on the JSON file shape:
+    // event payload survives the QSaveFile → loadQueueFromDisk round trip
+    // byte-for-byte (within the QJsonObject equivalence).
+    // -----------------------------------------------------------------------
+    void queue_file_round_trip_across_instances()
+    {
+        QString path;
+        QJsonObject expectedEvent;
+        {
+            Telemetry t;
+            path = t.queueFilePath();
+            t.setEnabled(true);
+            QVariantMap props;
+            props.insert(QStringLiteral("view"), QStringLiteral("inbox"));
+            props.insert(QStringLiteral("priority"), 2);
+            props.insert(QStringLiteral("task_count"), 42);
+            t.trackEvent(QStringLiteral("evt_roundtrip"), props);
+            t.persistQueueImmediate();
+
+            // Capture what we just wrote so we can compare structural fields
+            // after restart.
+            const QJsonArray written = readQueueFile(path);
+            QCOMPARE(written.size(), 1);
+            expectedEvent = written.first().toObject();
         }
 
-        qInfo("Telemetry: NO rate limit. 5000-event burst silently enqueues, "
-              "flushTimer is restarted on every call (telemetry.cpp:115) so a "
-              "never-idle stream would NEVER auto-flush. DOCUMENTED GAPS: no "
-              "drop policy, no max-queue cap, no auto-flush threshold.");
+        // Read back through a fresh Telemetry.
+        Telemetry t2;
+        QCOMPARE(t2.pendingEventCount(), 1);
+
+        // Re-read the file — content is unchanged after the load (load is
+        // non-destructive on successful parse).
+        const QJsonArray after = readQueueFile(path);
+        QCOMPARE(after.size(), 1);
+        const QJsonObject afterEv = after.first().toObject();
+
+        QCOMPARE(afterEv.value(QStringLiteral("event")).toString(),
+                 QStringLiteral("evt_roundtrip"));
+        QCOMPARE(afterEv.value(QStringLiteral("anonymous_id")),
+                 expectedEvent.value(QStringLiteral("anonymous_id")));
+        const QJsonObject props = afterEv.value(QStringLiteral("props")).toObject();
+        QCOMPARE(props.value(QStringLiteral("view")).toString(),
+                 QStringLiteral("inbox"));
+        QCOMPARE(props.value(QStringLiteral("priority")).toInt(), 2);
+        QCOMPARE(props.value(QStringLiteral("task_count")).toInt(), 42);
+    }
+
+    // -----------------------------------------------------------------------
+    // 12. disable_deletes_on_disk_queue_file  (Q3.09)
+    // -----------------------------------------------------------------------
+    //
+    // A user who toggles telemetry OFF must not see their queued events
+    // re-enabled if they toggle it back ON later.
+    // -----------------------------------------------------------------------
+    void disable_deletes_on_disk_queue_file()
+    {
+        QString path;
+        {
+            Telemetry t;
+            path = t.queueFilePath();
+            t.setEnabled(true);
+            for (int i = 0; i < 5; ++i) {
+                t.trackEvent(QStringLiteral("evt_%1").arg(i),
+                             allowlistedProps());
+            }
+            t.persistQueueImmediate();
+            QVERIFY(QFile::exists(path));
+
+            // Disable: the file should be gone.
+            t.setEnabled(false);
+            QVERIFY2(!QFile::exists(path),
+                     "disable must remove the on-disk queue");
+        }
+
+        // Re-enable through a fresh instance — must start from zero.
+        Telemetry t2;
+        t2.setEnabled(true);
+        QCOMPARE(t2.pendingEventCount(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // 13. corrupt_queue_file_is_discarded_on_load  (Q3.09)
+    // -----------------------------------------------------------------------
+    //
+    // A truncated / malformed telemetry_queue.json must not crash the
+    // service. The file is discarded and the queue starts empty.
+    // -----------------------------------------------------------------------
+    void corrupt_queue_file_is_discarded_on_load()
+    {
+        QString path;
+        {
+            Telemetry probe;
+            path = probe.queueFilePath();
+        }
+        QDir().mkpath(QFileInfo(path).absolutePath());
+
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        out.write("not valid json {[broken");
+        out.close();
+        QVERIFY(QFile::exists(path));
+
+        Telemetry t;
+        QCOMPARE(t.pendingEventCount(), 0);
+        QVERIFY2(!QFile::exists(path),
+                 "corrupt queue file must be removed on load");
     }
 };
 

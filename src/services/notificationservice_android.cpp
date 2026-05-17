@@ -190,9 +190,12 @@ void AndroidNotificationService::cancelAll()
 bool AndroidNotificationService::hasPermission() const
 {
     // B-5.5: below API 33, POST_NOTIFICATIONS did not exist — always granted.
-    QJniObject sdkInt = QJniObject::getStaticField<jint>(
+    // QJniObject::getStaticField<jint>() returns a jint primitive directly;
+    // wrapping it in a QJniObject and then unpacking via object<jint>() is
+    // invalid (QJniObject::object<T> is jobject-only — Qt 6.11 enforces this
+    // with a static_cast that fails to compile for primitive T).
+    const jint apiLevel = QJniObject::getStaticField<jint>(
         "android/os/Build$VERSION", "SDK_INT");
-    const int apiLevel = sdkInt.object<jint>();
     if (apiLevel < 33)
         return true;
 

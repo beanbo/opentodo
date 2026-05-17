@@ -6,6 +6,8 @@
 #include "model/section.h"
 #include "model/label.h"
 #include "utils/datetime.h"
+#include "utils/settingskeys.h"
+#include "utils/textsearch.h"
 #include "nlp/dateparser.h"
 
 #include <QDate>
@@ -208,9 +210,15 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
     }
 
     case TokenType::Search: {
-        const QString searchTerm = token.text.toLower();
-        return task->content().toLower().contains(searchTerm) ||
-               task->description().toLower().contains(searchTerm);
+        // Q2.26-B: Unicode-aware substring match via TextSearch. Default is
+        // accent-INSENSITIVE so `search: cafe` finds tasks containing "café",
+        // "Café", and "café" (NFD). Toggle via SearchAccentSensitive.
+        const bool accentSensitive = m_store
+            ? m_store->setting(QLatin1String(SettingsKeys::SearchAccentSensitive))
+                      .toBool()
+            : false;
+        return TextSearch::contains(task->content(), token.text, !accentSensitive) ||
+               TextSearch::contains(task->description(), token.text, !accentSensitive);
     }
 
     case TokenType::CreatedBefore: {
@@ -306,9 +314,17 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
     case TokenType::NoLabels:
         return task->labels().isEmpty();
 
-    case TokenType::Identifier:
-        // Treat as search by content
-        return task->content().contains(token.text, Qt::CaseInsensitive);
+    case TokenType::Identifier: {
+        // Q2.26-B: Identifier predicates (bare words in the filter DSL) fall
+        // through to content substring match — route through TextSearch so
+        // they get the same NFC/NFD + accent folding as the explicit
+        // `search:` predicate.
+        const bool accentSensitive = m_store
+            ? m_store->setting(QLatin1String(SettingsKeys::SearchAccentSensitive))
+                      .toBool()
+            : false;
+        return TextSearch::contains(task->content(), token.text, !accentSensitive);
+    }
 
     default:
         return false;

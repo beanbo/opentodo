@@ -29,6 +29,30 @@ public:
     bool uploadFile(const QString &remotePath, const QByteArray &data);
 
     /**
+     * @brief Upload a file as a publicly-readable Drive object (anyone with the
+     *        link can VIEW it). Used by the ShareManager to publish a snapshot
+     *        of a project / selection of tasks via a shareable URL.
+     *
+     * Implementation walks three Drive REST calls:
+     *   1. POST /upload/drive/v3/files?uploadType=multipart — create file in
+     *      Drive root.
+     *   2. POST /drive/v3/files/<id>/permissions with
+     *      {"role":"reader","type":"anyone"} — flip the visibility to public.
+     *   3. GET /drive/v3/files/<id>?fields=webViewLink,id — fetch the URL.
+     */
+    bool uploadPublicFile(const QString &name,
+                          const QByteArray &data,
+                          const QString &mimeType,
+                          QString *outFileId,
+                          QString *outWebViewLink);
+
+    /**
+     * @brief Delete a Drive file by id. Used by ShareManager to revoke a
+     *        previously-published share link.
+     */
+    bool deletePublicFileById(const QString &fileId);
+
+    /**
      * @brief Download a remote file.
      *
      * @param remotePath  Path relative to root folder.
@@ -36,13 +60,21 @@ public:
      * @param notFoundIsOk  When true, a 404 (file does not exist yet) is not
      *                      treated as an error: returns true with empty data.
      *                      When false (default), 404 returns false.
+     * @param maxBytes    Hard upper bound on the body size in bytes.
+     *                    A response whose Content-Length declares (or whose
+     *                    streamed bytesReceived() exceeds) this value is
+     *                    aborted; downloadFile returns false. Pass 0 to opt
+     *                    out of the cap (legacy behaviour). The caller is
+     *                    expected to pass SyncEngine::MAX_STATE_SIZE or
+     *                    MAX_COMMIT_SIZE depending on the payload.
      * @return true on success (or 404 when notFoundIsOk=true), false on real error.
      *
      * B-2.13: callers that need to distinguish "no remote yet" from "network
      *         failure" should pass notFoundIsOk=true.
      */
     bool downloadFile(const QString &remotePath, QByteArray &data,
-                      bool notFoundIsOk = false);
+                      bool notFoundIsOk = false,
+                      qint64 maxBytes = 0);
     bool deleteFile(const QString &remotePath);
     QStringList listFiles(const QString &folderPath);
 

@@ -1,11 +1,13 @@
 #include "merger.h"
 #include "crdt_meta.h"
 #include "hlc.h"
+#include "services/telemetry.h"
 
 #include <QDateTime>
 #include <QLoggingCategory>
 #include <QMap>
 #include <QSet>
+#include <QVariantMap>
 
 Q_LOGGING_CATEGORY(lcMerger, "opentodo.merger")
 
@@ -85,6 +87,30 @@ Merger::Merger(QObject *parent)
 {
 }
 
+void Merger::setTelemetry(Telemetry *telemetry)
+{
+    m_telemetry = telemetry;
+}
+
+void Merger::recordTombstoneAbsorbed(const QString &entityType,
+                                     const QString &entityId,
+                                     const QString &winningSide)
+{
+    // CRDT-correct, but historically silent: a peer's later edit lands on an
+    // already-tombstoned entity and is dropped. Surface this so operators can
+    // distinguish "lost edits because peer was offline + we tombstoned" from
+    // "lost edits because of a sync bug".
+    qInfo() << "Merger: dropping later edit on tombstoned" << entityType
+            << entityId << "(winning side:" << winningSide << ")";
+    if (m_telemetry) {
+        QVariantMap props;
+        props.insert(QStringLiteral("entity_type"),   entityType);
+        props.insert(QStringLiteral("entity_id"),     entityId);
+        props.insert(QStringLiteral("winning_side"),  winningSide);
+        m_telemetry->trackEvent(QStringLiteral("merger_tombstone_absorbed"), props);
+    }
+}
+
 // ── Top-level state merge ────────────────────────────────────────────────────
 
 QJsonObject Merger::mergeStates(const QJsonObject &local, const QJsonObject &remote)
@@ -107,7 +133,9 @@ QJsonObject Merger::mergeStates(const QJsonObject &local, const QJsonObject &rem
     for (const auto &key : collections) {
         const QJsonArray localArr  = local.value(key).toArray();
         const QJsonArray remoteArr = remote.value(key).toArray();
-        merged[key] = mergeEntityArrays(localArr, remoteArr);
+        // Pass entityType through so tombstone-absorb events name the right
+        // collection in logs / telemetry.
+        merged[key] = mergeEntityArrays(localArr, remoteArr, key);
     }
 
     merged[QStringLiteral("completed_tasks")] = QJsonArray();
@@ -157,7 +185,8 @@ bool validateEntity(const QJsonObject &obj)
 
 // ── Entity array merge ────────────────────────────────────────────────────────
 
-QJsonArray Merger::mergeEntityArrays(const QJsonArray &localArr, const QJsonArray &remoteArr)
+QJsonArray Merger::mergeEntityArrays(const QJsonArray &localArr, const QJsonArray &remoteArr,
+                                     const QString &entityType)
 {
     QMap<QString, QJsonObject> localMap;
     for (const auto &v : localArr) {
@@ -181,7 +210,7 @@ QJsonArray Merger::mergeEntityArrays(const QJsonArray &localArr, const QJsonArra
         processed.insert(id);
 
         if (remoteMap.contains(id)) {
-            result.append(mergeEntity(it.value(), remoteMap.value(id)));
+            result.append(mergeEntity(it.value(), remoteMap.value(id), entityType));
         } else {
             result.append(it.value());
         }
@@ -198,13 +227,31 @@ QJsonArray Merger::mergeEntityArrays(const QJsonArray &localArr, const QJsonArra
 
 // ── Single entity merge ───────────────────────────────────────────────────────
 
-QJsonObject Merger::mergeEntity(const QJsonObject &local, const QJsonObject &remote)
+QJsonObject Merger::mergeEntity(const QJsonObject &local, const QJsonObject &remote,
+                                const QString &entityType)
 {
     // Tombstone always wins (either side deleted → keep deleted).
-    if (remote.value(QStringLiteral("is_deleted")).toBool())
+    //
+    // The bug being fixed here is observability, not semantics: when the OTHER
+    // side has a non-deleted entity (possibly with edits at a later HLC than
+    // the tombstone), those edits are absorbed by the tombstone and lost.
+    // CRDT-correct, but historically silent. Surface it via qInfo + telemetry
+    // so operators triaging "where did my edit go" have a trail.
+    const bool remoteDeleted = remote.value(QStringLiteral("is_deleted")).toBool();
+    const bool localDeleted  = local.value(QStringLiteral("is_deleted")).toBool();
+
+    if (remoteDeleted) {
+        if (!localDeleted) {
+            const QString id = remote.value(QStringLiteral("id")).toString();
+            recordTombstoneAbsorbed(entityType, id, QStringLiteral("remote"));
+        }
         return remote;
-    if (local.value(QStringLiteral("is_deleted")).toBool())
+    }
+    if (localDeleted) {
+        const QString id = local.value(QStringLiteral("id")).toString();
+        recordTombstoneAbsorbed(entityType, id, QStringLiteral("local"));
         return local;
+    }
 
     // Choose CRDT or legacy path based on presence of "_meta".
     if (CrdtMeta::hasMeta(local) || CrdtMeta::hasMeta(remote)) {

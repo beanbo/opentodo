@@ -393,6 +393,18 @@ opentodo_add_unit_test(test_taskexporter_robustness       Infra)
 # test isolated from other taskexporter suites under `ctest -j`.
 opentodo_add_unit_test(test_taskexporter_md_edges         Infra)
 
+# IcsExporter — RFC 5545 VCALENDAR / VTODO serialisation for calendar-app
+# subscriptions (Apple Calendar / Google Calendar / Outlook). 19 slots cover
+# envelope shape, per-task VTODO emission, UID stability across re-exports,
+# PRIORITY 1/3/5/9 mapping, STATUS COMPLETED/NEEDS-ACTION, DUE date-only vs
+# datetime, RRULE for "every day"/"every monday"/"every 2 weeks"/"every
+# weekday"/explicit RRULE pass-through, description fallback for
+# unrecognised recurrence, text escaping (comma/semicolon/backslash/newline),
+# CRLF line endings, 75-octet line folding with multi-byte UTF-8 safety,
+# QSaveFile round-trip, file:// URL handling for the Q_INVOKABLE entry
+# point, and an integration scenario combining all the above.
+opentodo_add_unit_test(test_icsexporter                   Infra)
+
 # Quality round 2.17-B: FilterParser adversarial / fuzz — 50-deep parens,
 # 1000-OR chains, NUL bytes, mixed Unicode, unmatched brackets, garbage
 # tokens. Confirmed: parser is genuinely robust — no crashes, no infinite
@@ -575,6 +587,13 @@ opentodo_add_unit_test(test_sidebar_expand                App)
 # installed via setNetworkManagerForTesting() to intercept outbound HTTP.
 opentodo_add_unit_test(test_aiassistant_safety            Infra)
 
+# ShareManager + uploadPublicFile happy paths and failure modes. Mocks the
+# Drive HTTP layer via DriveApi::setNetworkManagerForTesting (MockNAM —
+# same pattern as test_gdrive_resilience). Eight slots covering happy
+# paths, rollback on permission failure, unauthenticated/unknown-id quiet
+# rejection, revoke round-trip, and webViewLink fallback URL synthesis.
+opentodo_add_unit_test(test_sharemanager                  Infra)
+
 # Quality round 2.19-E: GDriveClient / DriveApi resilience audit. Uses a
 # MockNAM (file-scope QNetworkAccessManager subclass) installed via
 # DriveApi::setNetworkManagerForTesting() to simulate token refresh failure,
@@ -723,6 +742,14 @@ opentodo_add_unit_test(test_todoist_importer_robustness   Infra)
 # branch. Surfaces 3 gaps (section-id, dueRecurrenceRule, in-csv dedup) via
 # qInfo + pinned assertions, no production-code edits.
 opentodo_add_unit_test(test_todoist_importer_pro          Infra)
+
+# Q2.26-B: Unicode NFC/NFD normalization for search. Covers the pure
+# TextSearch helper (NFKC + Mn-strip + case fold) plus SearchViewModel and
+# FilterEvaluator `search:` integration. Acceptance contract: "café" finds
+# "café", "Москва" finds "москва", ё matches е under default accent-
+# insensitive mode, "fiance" finds "ﬁancé" via NFKC ligature fold, toggle
+# via SettingsKeys::SearchAccentSensitive.
+opentodo_add_unit_test(test_textsearch                    App)
 
 # Todoist import tests — needs fixture ZIP next to the binary.
 qt_add_executable(test_todoist_import test_todoist_import.cpp)

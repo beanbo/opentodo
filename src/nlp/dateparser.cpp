@@ -162,6 +162,33 @@ DateParseResult DateParser::parse(const QString &input, const QString &lang)
 
 DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult result)
 {
+    // Q3.02-E Bug 4 fix: word-form times ("noon", "midnight", "полдень",
+    // "полночь") preceded by "at"/"в". Map to the canonical HH:MM and then
+    // fall through to the numeric path so all existing validation / human
+    // string handling continues to work. Tried BEFORE the numeric regex
+    // so "yesterday at noon" doesn't fall through to the digit matcher.
+    {
+        static const QRegularExpression wordTimeRe(
+            QStringLiteral("(?:at|в)\\s+(noon|midnight|midday|полдень|полночь)\\b"),
+            QRegularExpression::CaseInsensitiveOption);
+        const auto wm = wordTimeRe.match(input);
+        if (wm.hasMatch()) {
+            const QString word = wm.captured(1).toLower();
+            int hour = 0;
+            if (word == QStringLiteral("noon")
+                || word == QStringLiteral("midday")
+                || word == QString::fromUtf8("полдень")) {
+                hour = 12;
+            } // midnight / полночь → hour stays 0
+            QDate date = QDate::fromString(result.date, QStringLiteral("yyyy-MM-dd"));
+            if (date.isValid()) {
+                QDateTime dt(date, QTime(hour, 0), QTimeZone::LocalTime);
+                result.datetime = formatDateTime(dt);
+            }
+            return result;
+        }
+    }
+
     // Look for time patterns explicitly introduced by "at" or "в". A bare
     // number tail (e.g. "tomorrow 5") is NOT considered a time here — the
     // simple-day handler wouldn't have left it dangling unless the user

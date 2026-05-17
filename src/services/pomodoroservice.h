@@ -2,6 +2,8 @@
 #include <QObject>
 #include <QTimer>
 #include <QDate>
+#include <QDateTime>
+#include <QString>
 #include <QQmlEngine>
 #include <climits>
 
@@ -18,6 +20,7 @@ class PomodoroService : public QObject
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(QString phase READ phase NOTIFY phaseChanged)        // "work" | "shortBreak" | "longBreak" | "idle"
     Q_PROPERTY(int completedCyclesToday READ completedCyclesToday NOTIFY completedCyclesTodayChanged)
+    Q_PROPERTY(QString currentTaskId READ currentTaskId WRITE setCurrentTaskId NOTIFY currentTaskIdChanged)
 
 public:
     explicit PomodoroService(NotificationService *notif, QObject *parent = nullptr);
@@ -39,6 +42,8 @@ public:
     bool running() const { return m_running; }
     QString phase() const { return m_phase; }
     int completedCyclesToday() const { return m_completedToday; }
+    QString currentTaskId() const { return m_currentTaskId; }
+    void setCurrentTaskId(const QString &taskId);
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void pause();
@@ -50,11 +55,30 @@ public:
     // the change is deferred until the next phase boundary.
     Q_INVOKABLE void reloadDurationsFromSettings();
 
+    // Flush in-memory session state to disk. Intended for QCoreApplication::
+    // aboutToQuit so the last second of a session reaches the file even when
+    // every state-mutation path already writes on its own. Public so main.cpp
+    // can wire it up; safe to call from any thread that owns the service.
+    Q_INVOKABLE void flushStateToDisk();
+
+    // Absolute path of the persisted session-state file. Exposed for tests so
+    // they can assert "the file exists/doesn't exist after operation X" without
+    // duplicating the QStandardPaths root resolution.
+    Q_INVOKABLE QString stateFilePath() const;
+
 signals:
     void remainingSecondsChanged();
     void runningChanged();
     void phaseChanged();
     void completedCyclesTodayChanged();
+    void currentTaskIdChanged();
+
+    // Emitted exactly once during construction if a running session was
+    // restored from disk. The argument is the number of seconds between the
+    // persisted started_at and the moment the service finished loading. UI can
+    // surface "Resumed Pomodoro from N minutes ago" via this. Not emitted for
+    // a clean idle restore (file says is_running=false) or when no file exists.
+    void sessionRestored(int elapsedSecondsAgo);
 
 private slots:
     void onTick();
@@ -66,6 +90,15 @@ private:
     void loadDurationsFromSettings();
     void applyPendingDurationChanges();
 
+    // Session-state persistence ─ writes a small JSON blob to
+    // $APPDATA/OpenTodo/pomodoro_state.json on every state mutation so a crash
+    // mid-session can be resumed at the correct remaining time on next launch.
+    // Atomic via QSaveFile (same pattern as FileManager::performSave).
+    void saveStateToDisk();
+    void loadStateFromDisk();
+    void clearStateFromDisk();
+    void ensureDataDirectory() const;
+
     NotificationService *m_notif;
     QTimer m_timer;
     int m_remainingSeconds = 25 * 60;
@@ -73,6 +106,26 @@ private:
     QString m_phase = QStringLiteral("idle");
     int m_completedToday = 0;
     QDate m_completedDate;
+
+    // Wall-clock at the moment the current phase was entered (or resumed). Used
+    // by the on-disk persistence layer: on next launch we compute
+    // (now - m_phaseStartedAt) and either resume mid-phase or advance through
+    // any phases that completed while the app was dead. Stored in UTC for
+    // DST-stability. Null QDateTime means "phase is idle, no anchor".
+    QDateTime m_phaseStartedAt;
+
+    // Optional caller-supplied task id the session is tied to. Persisted so a
+    // crash-recovered session still knows which task it was about. Empty when
+    // no task is associated. The UI may bind to this if/when it wires up
+    // "start a Pomodoro for THIS task" — current QML doesn't.
+    QString m_currentTaskId;
+
+    // Path computed in the constructor; matches FileManager's
+    // $APPDATA/OpenTodo (desktop) or $APPDATA (Android). Empty during
+    // construction on platforms where QStandardPaths returns "" — in that
+    // case persistence becomes a quiet no-op and the in-memory state machine
+    // works exactly as before.
+    QString m_dataPath;
 
     // User-configurable durations (read from QSettings, "pomodoro/...").
     int m_workMinutes = 25;

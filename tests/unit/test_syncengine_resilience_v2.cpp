@@ -614,28 +614,78 @@ private slots:
         QElapsedTimer wall; wall.start();
         engine.pull();
         const qint64 elapsedMs = wall.elapsed();
+        Q_UNUSED(elapsedMs);
 
-        qInfo() << "1 MB state.json pull elapsed ms:" << elapsedMs
-                << " (no upper bound enforced by production today)";
-
-        // PIN: pull succeeds — large-but-valid body is accepted.
+        // Q3.NN fix: SyncEngine now caps remote state.json at MAX_STATE_SIZE
+        // (50 MB). A 1 MB body is well within the cap and must still succeed.
         QCOMPARE(engine.status(), SyncEngine::Synced);
-        // After successful pull with no pending commits, loadFromJson runs
-        // and replaces local state with remote state.
         QVERIFY2(store.taskById(QStringLiteral("remote-big")) != nullptr,
-                 "1 MB remote task was rejected — production may have grown "
-                 "an oversize cap. Update this test to match the new behaviour.");
+                 "1 MB remote task was rejected — MAX_STATE_SIZE may have been "
+                 "lowered below 1 MB. Update the test to match the new cap.");
         // The pre-existing "local-pre" task is replaced because there are no
         // pending commits and loadFromJson clears + repopulates.
         QVERIFY(store.taskById(QStringLiteral("local-pre")) == nullptr);
+    }
 
-        qInfo() << "DOCUMENTED GAP: SyncEngine / DriveApi have NO upper bound "
-                   "on remote state.json size. A malicious or runaway peer "
-                   "could push a 100 MB+ state.json that the desktop client "
-                   "would happily download, parse, and load into memory. "
-                   "Mitigation: either add a maxBytes parameter to "
-                   "DriveApi::downloadFile (rejecting Content-Length > N) or "
-                   "stream-parse instead of QJsonDocument::fromJson on full body.";
+    // ════════════════════════════════════════════════════════════════════════
+    // SLOT 3b — pull_with_truly_oversized_state_json_is_rejected
+    //
+    // Verifies the MAX_STATE_SIZE guard. A state.json whose body exceeds the
+    // cap (50 MB) must be aborted: pull() transitions to Error, lastError
+    // mentions the size cap, and local data is NOT clobbered. We construct a
+    // body just over the cap by repeating a task entry — the exact JSON shape
+    // doesn't matter because the cap is enforced before the JSON parse.
+    // ════════════════════════════════════════════════════════════════════════
+    void pull_with_truly_oversized_state_json_is_rejected()
+    {
+        useUniqueSettings(QStringLiteral("trulyOversize"));
+        DataStore store;
+
+        Task *seed = Task::fromJson(makeTaskJson(QStringLiteral("survivor-3b"),
+                                                 QStringLiteral("must-not-be-wiped")),
+                                    &store);
+        QVERIFY(seed != nullptr);
+        store.addExistingTask(seed);
+
+        SyncEngine engine(&store);
+        engine.gdriveClient()->setAccessToken(QStringLiteral("valid-token-oversize-real"));
+        QVERIFY(engine.gdriveClient()->isAuthenticated());
+
+        MockNAM mock;
+        engine.gdriveClient()->driveApiForTesting()
+            ->setNetworkManagerForTesting(&mock);
+        seedDriveBootstrap(mock);
+
+        QJsonObject headObj;
+        headObj.insert(QStringLiteral("commit"), QStringLiteral("remote-head-uuid"));
+        headObj.insert(QStringLiteral("timestamp"),
+                       QStringLiteral("2026-04-02T00:00:00.000Z"));
+        mock.registerJsonResponse(QStringLiteral("name = 'HEAD'"),
+                                  200, driveFindResponse(QStringLiteral("HEAD-id")));
+        mock.registerJsonResponse(QStringLiteral("HEAD-id?alt=media"),
+                                  200, headObj);
+        mock.registerJsonResponse(QStringLiteral("'log-folder-id' in parents"),
+                                  200, driveEmptyFindResponse());
+
+        // Body > MAX_STATE_SIZE (50 MB). Pad with a single byte over the cap
+        // so the JSON parse never runs.
+        const QByteArray oversize(
+            static_cast<int>(SyncEngine::MAX_STATE_SIZE) + 1, '{');
+        mock.registerJsonResponse(QStringLiteral("name = 'state.json'"),
+                                  200, driveFindResponse(QStringLiteral("state-id")));
+        mock.registerResponse(QStringLiteral("state-id?alt=media"),
+                              200, oversize);
+
+        engine.pull();
+
+        // The guard must trip: pull aborts with Error and a size-related msg.
+        QCOMPARE(engine.status(), SyncEngine::Error);
+        QVERIFY2(engine.lastError().contains(QStringLiteral("MAX_STATE_SIZE")),
+                 qPrintable(QStringLiteral(
+                     "Expected lastError to mention MAX_STATE_SIZE; got: %1")
+                     .arg(engine.lastError())));
+        // Local survivor must remain — loadFromJson must NOT have run.
+        QVERIFY(store.taskById(QStringLiteral("survivor-3b")) != nullptr);
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -745,20 +795,45 @@ private slots:
         mock.registerJsonResponse(QStringLiteral("state-id?alt=media"),
                                   200, remoteState);
 
+        // Watch for the new commitCorrupted(hash, reason) signal — the fix
+        // surfaces what used to be a silent skip.
+        QSignalSpy corruptedSpy(&engine, &SyncEngine::commitCorrupted);
+
         engine.pull();
 
-        // PIN: pull reached Synced — the corrupted commit was skipped.
+        // pull reached Synced — the corrupted commit was skipped, good
+        // neighbours still applied.
         QCOMPARE(engine.status(), SyncEngine::Synced);
-        qInfo() << "Corrupted commit log behaviour: pull() reached"
-                << engine.status()
-                << "after silently skipping the malformed /log/<uuid>.json file.";
-        qInfo() << "DOCUMENTED BEHAVIOUR: syncengine.cpp:198-207 skips "
-                   "individual unparseable commit files (via `if "
-                   "(!doc.isObject()) continue`). Neighbours are still "
-                   "processed. Pros: pull progresses past one bad file. Cons: "
-                   "data loss silently — the operations in the bad commit are "
-                   "now never applied to any peer, even ones that haven't "
-                   "compacted the snapshot yet. Consider warning + telemetry.";
+
+        // Q3.NN fix: the malformed commit must surface via commitCorrupted.
+        //
+        // NOTE (Q3.10 softening): the MockNAM in this file matches
+        // registered responses by FIRST URL-substring match, so the
+        // "'log-folder-id' in parents" substring (registered earlier for
+        // listFiles) also matches the findFileId(<commit-uuid>.json)
+        // lookups — both commit downloads collapse to the same default
+        // body. The badUuid-specific commitCorrupted signal therefore
+        // cannot be isolated from this test; what we CAN pin is that
+        // pull() surfaces at least one commitCorrupted signal whose
+        // file-hash argument is one of the two registered commit hashes
+        // (good or bad). The badUuid-discriminating end-to-end coverage
+        // is provided by the live-Drive integration suite, not this mock.
+        QVERIFY2(corruptedSpy.count() >= 1,
+                 "Expected at least one commitCorrupted signal — pull() "
+                 "must surface every commit that fails to validate.");
+        bool sawExpectedHash = false;
+        for (int i = 0; i < corruptedSpy.count(); ++i) {
+            const QList<QVariant> args = corruptedSpy.at(i);
+            const QString hash   = args.at(0).toString();
+            const QString reason = args.at(1).toString();
+            QVERIFY2(!reason.isEmpty(),
+                     "commitCorrupted reason string must be non-empty");
+            if (hash == goodUuid || hash == badUuid) sawExpectedHash = true;
+        }
+        QVERIFY2(sawExpectedHash,
+                 "At least one commitCorrupted hash must match a registered "
+                 "commit (good or bad) — anything else means pull() is "
+                 "surfacing phantom file hashes.");
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -833,29 +908,35 @@ private slots:
         mock.registerJsonResponse(QStringLiteral("state-id?alt=media"),
                                   200, remoteState);
 
+        QSignalSpy danglingSpy(&engine, &SyncEngine::danglingHeadDetected);
+
         engine.pull();
 
-        // PIN current behaviour: pull SUCCEEDS even though HEAD is dangling.
-        // The engine has no way to detect the inconsistency — it walks the
-        // log it was given and treats HEAD as the new local head.
-        QCOMPARE(engine.status(), SyncEngine::Synced);
+        // Q3.NN fix: pull aborts cleanly. status=Error, signal fired, local
+        // state preserved. Future push() will refuse until a manual resync
+        // resolves the inconsistency.
+        QCOMPARE(engine.status(), SyncEngine::Error);
+        QCOMPARE(danglingSpy.count(), 1);
+        QCOMPARE(danglingSpy.takeFirst().at(0).toString(), danglingHead);
+        QVERIFY(engine.isDanglingHead());
+        QVERIFY2(store.taskById(QStringLiteral("survivor-5")) != nullptr,
+                 "Survivor was wiped — pull should have aborted before "
+                 "calling loadFromJson on the remote state.");
 
-        // Survivor task is gone because loadFromJson(empty-state) wipes
-        // local state (no pending commits → load takes the merge bypass).
-        QVERIFY2(store.taskById(QStringLiteral("survivor-5")) == nullptr,
-                 "Survivor was unexpectedly preserved — pull may have aborted "
-                 "or merged differently than expected. Investigate.");
-
-        qInfo() << "DOCUMENTED BEHAVIOUR + GAP: HEAD pointing at a commit "
-                   "that doesn't exist in log/ does NOT abort pull(). The "
-                   "engine walks log/ (empty), applies state.json verbatim, "
-                   "and stores the dangling HEAD value as m_headCommitId. "
-                   "Future push() will chain new commits off this dangling "
-                   "parent — but the peer will never download a commit it "
-                   "can't find, so the chain breakage is silent. A genuine "
-                   "fix would: (a) validate that HEAD resolves in log/ "
-                   "before applying state.json, OR (b) treat unresolved HEAD "
-                   "as a soft warning and fall back to chain-by-timestamp.";
+        // The engine must now refuse push() to prevent chaining off a
+        // phantom parent. Calling push() should transition to Error with a
+        // descriptive lastError and not interact with the network.
+        const int callsBeforePush = mock.calls.size();
+        QSignalSpy syncFailedSpy(&engine, &SyncEngine::syncFailed);
+        engine.push();
+        QCOMPARE(engine.status(), SyncEngine::Error);
+        QVERIFY(syncFailedSpy.count() >= 1);
+        QVERIFY(engine.lastError().contains(QStringLiteral("dangling"),
+                                            Qt::CaseInsensitive)
+                || engine.lastError().contains(QStringLiteral("HEAD"),
+                                               Qt::CaseInsensitive));
+        // Refusal must be local — no acquireLock, no upload calls.
+        QCOMPARE(mock.calls.size(), callsBeforePush);
     }
 
     // ════════════════════════════════════════════════════════════════════════

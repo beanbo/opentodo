@@ -103,8 +103,141 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
     return !result.isEmpty();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// uploadPublicFile — publish a file as "anyone with link can view"
+// Used by ShareManager to publish a snapshot to Drive root with a public URL.
+// Three sequential HTTP calls: multipart upload, permissions.create, optional
+// fields=webViewLink GET (falls back to the deterministic /file/d/<id>/view).
+// ─────────────────────────────────────────────────────────────────────────────
+bool DriveApi::uploadPublicFile(const QString &name,
+                                const QByteArray &data,
+                                const QString &mimeType,
+                                QString *outFileId,
+                                QString *outWebViewLink)
+{
+    if (!m_auth->isAuthenticated()) return false;
+    if (name.isEmpty()) return false;
+
+    // Step 1: create the file via multipart upload to Drive root.
+    QJsonObject metadata;
+    metadata[QStringLiteral("name")]     = name;
+    metadata[QStringLiteral("mimeType")] = mimeType.isEmpty()
+        ? QStringLiteral("application/json")
+        : mimeType;
+
+    const QByteArray boundary = "----OpenTodoShareBoundary";
+    QByteArray body;
+    body += "--" + boundary + "\r\n";
+    body += "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+    body += QJsonDocument(metadata).toJson(QJsonDocument::Compact) + "\r\n";
+    body += "--" + boundary + "\r\n";
+    body += "Content-Type: " + (mimeType.isEmpty()
+        ? QByteArrayLiteral("application/json")
+        : mimeType.toUtf8()) + "\r\n\r\n";
+    body += data + "\r\n";
+    body += "--" + boundary + "--";
+
+    QUrl uploadUrl(DriveEndpoints::UPLOAD_BASE +
+                   QStringLiteral("/files?uploadType=multipart&fields=id,webViewLink"));
+    QNetworkRequest req(uploadUrl);
+    req.setRawHeader("Authorization",
+                     QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
+    req.setHeader(QNetworkRequest::ContentTypeHeader,
+                  QStringLiteral("multipart/related; boundary=%1")
+                  .arg(QString::fromUtf8(boundary)));
+
+    auto *uploadReply = nam()->post(req, body);
+    uploadReply->setProperty("_method", QByteArray("POST"));
+    uploadReply->setProperty("_body", body);
+    const auto uploadResult = waitForReply(uploadReply);
+
+    const QString fileId = uploadResult.value(QStringLiteral("id")).toString();
+    if (fileId.isEmpty()) {
+        qCInfo(lcDriveApi) << "uploadPublicFile: create-file step failed";
+        return false;
+    }
+
+    // Step 2: add a public anonymous-reader permission.
+    QJsonObject permBody;
+    permBody[QStringLiteral("role")] = QStringLiteral("reader");
+    permBody[QStringLiteral("type")] = QStringLiteral("anyone");
+    const QByteArray permBytes = QJsonDocument(permBody).toJson(QJsonDocument::Compact);
+
+    QUrl permUrl(DriveEndpoints::API_BASE +
+                 QStringLiteral("/files/%1/permissions").arg(fileId));
+    QNetworkRequest permReq(permUrl);
+    permReq.setRawHeader("Authorization",
+                         QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
+    permReq.setHeader(QNetworkRequest::ContentTypeHeader,
+                      QStringLiteral("application/json"));
+    auto *permReply = nam()->post(permReq, permBytes);
+    permReply->setProperty("_method", QByteArray("POST"));
+    permReply->setProperty("_body", permBytes);
+    const auto permResult = waitForReply(permReply);
+
+    if (permResult.isEmpty()) {
+        qCInfo(lcDriveApi) << "uploadPublicFile: permission step failed — rolling back";
+        deletePublicFileById(fileId);
+        return false;
+    }
+
+    // Step 3: prefer the webViewLink we already got from step 1, else GET.
+    QString webViewLink = uploadResult.value(QStringLiteral("webViewLink")).toString();
+    if (webViewLink.isEmpty()) {
+        QUrl linkUrl(DriveEndpoints::API_BASE +
+                     QStringLiteral("/files/%1?fields=webViewLink,id").arg(fileId));
+        QNetworkRequest linkReq(linkUrl);
+        linkReq.setRawHeader("Authorization",
+                             QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
+        auto *linkReply = nam()->get(linkReq);
+        const auto linkResult = waitForReply(linkReply);
+        webViewLink = linkResult.value(QStringLiteral("webViewLink")).toString();
+    }
+
+    if (webViewLink.isEmpty()) {
+        // Deterministic Drive viewer URL fallback.
+        webViewLink = QStringLiteral("https://drive.google.com/file/d/%1/view")
+                          .arg(fileId);
+    }
+
+    if (outFileId)        *outFileId       = fileId;
+    if (outWebViewLink)   *outWebViewLink  = webViewLink;
+    return true;
+}
+
+bool DriveApi::deletePublicFileById(const QString &fileId)
+{
+    if (!m_auth->isAuthenticated()) return false;
+    if (fileId.isEmpty()) return false;
+
+    QUrl url(DriveEndpoints::API_BASE + QStringLiteral("/files/%1").arg(fileId));
+    QNetworkRequest req(url);
+    req.setRawHeader("Authorization",
+                     QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
+
+    auto *reply = nam()->deleteResource(req);
+    reply->setProperty("_method", QByteArray("DELETE"));
+
+    QEventLoop loop;
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    if (reply->error() == QNetworkReply::AuthenticationRequiredError) {
+        waitForReply(reply);
+        return true;
+    }
+
+    const bool ok = (reply->error() == QNetworkReply::NoError);
+    if (!ok) {
+        qCInfo(lcDriveApi) << "deletePublicFileById failed:" << fileId
+                           << reply->error() << reply->errorString();
+    }
+    reply->deleteLater();
+    return ok;
+}
+
 bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
-                             bool notFoundIsOk)
+                             bool notFoundIsOk, qint64 maxBytes)
 {
     if (!m_auth->isAuthenticated()) return false;
     ensureRootFolder();
@@ -140,9 +273,50 @@ bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
 
     auto *reply = nam()->get(req);
 
+    // Reliability cap: a malicious or runaway peer could ship a state.json /
+    // commit log entry that consumes hundreds of MB. Reject it at two points:
+    //  1. Up-front via Content-Length (if the server is honest about size).
+    //  2. During streaming via downloadProgress (if Content-Length is missing
+    //     or lying — abort once bytesReceived exceeds the cap).
+    bool sizeAborted = false;
+    if (maxBytes > 0) {
+        connect(reply, &QNetworkReply::downloadProgress, reply,
+                [reply, maxBytes, &sizeAborted](qint64 received, qint64 /*total*/) {
+            if (received > maxBytes && !sizeAborted) {
+                sizeAborted = true;
+                qCWarning(lcDriveApi)
+                    << "downloadFile aborting: bytesReceived" << received
+                    << "exceeded maxBytes" << maxBytes;
+                reply->abort();
+            }
+        });
+    }
+
     QEventLoop loop;
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
+
+    // Check Content-Length too — when the server is honest about size we can
+    // reject without even reading the body. Done after exec() so we still see
+    // the header that arrived with the response.
+    if (maxBytes > 0 && !sizeAborted) {
+        const QVariant contentLenVar = reply->header(QNetworkRequest::ContentLengthHeader);
+        if (contentLenVar.isValid()) {
+            const qint64 declared = contentLenVar.toLongLong();
+            if (declared > maxBytes) {
+                qCWarning(lcDriveApi)
+                    << "downloadFile rejecting oversize response: Content-Length"
+                    << declared << "exceeds maxBytes" << maxBytes;
+                sizeAborted = true;
+            }
+        }
+    }
+
+    if (sizeAborted) {
+        reply->deleteLater();
+        data.clear();
+        return false;
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
         qCInfo(lcDriveApi) << "downloadFile network error:" << reply->error() << reply->errorString();
@@ -151,8 +325,21 @@ bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
         return false;
     }
 
-    data = reply->readAll();
+    QByteArray body = reply->readAll();
     reply->deleteLater();
+
+    // Defence-in-depth: if neither Content-Length nor downloadProgress fired
+    // (synchronous mock replies that emit finished() immediately can skip both),
+    // re-check the actual buffered size here.
+    if (maxBytes > 0 && body.size() > maxBytes) {
+        qCWarning(lcDriveApi)
+            << "downloadFile rejecting oversize body after read:" << body.size()
+            << "exceeds maxBytes" << maxBytes;
+        data.clear();
+        return false;
+    }
+
+    data = body;
     return true;
 }
 

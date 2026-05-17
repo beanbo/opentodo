@@ -57,6 +57,95 @@ public:
     static int compareFieldMeta(const QJsonObject &a, const QJsonObject &b);
 
     // ── OR-Set (label_ids / ordered collections) ─────────────────────────────
+    //
+    // OR-Set (Observed-Remove Set) implementation. Used for ordered
+    // collections such as Task::labels where two devices may concurrently
+    // add or remove the same element id.
+    //
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ Storage shape (per element id):                                     │
+    // │   { id: "label-uuid", addedAt: "<hlc>", removedAt: "<hlc>"|"" }     │
+    // │                                                                     │
+    // │ Note: there is exactly ONE OrsElement per id — not a log of separate│
+    // │ add/remove events.  Both addedAt and removedAt are the HLC          │
+    // │ high-water-marks observed locally for that id.                      │
+    // └─────────────────────────────────────────────────────────────────────┘
+    //
+    // Semantics (see mergeOrSets() + orSetToList() for the implementation):
+    //
+    //   add(id, hlc):
+    //     Sets addedAt = max(addedAt, hlc) on the element with this id.
+    //     If no entry exists, creates one with addedAt = hlc.
+    //
+    //   remove(id, hlc):
+    //     Sets removedAt = max(removedAt, hlc) on the element with this id.
+    //
+    //   merge(local, remote):
+    //     For each id present on either side:
+    //       addedAt   = HLC-max of both sides' addedAt
+    //       removedAt = HLC-max of both sides' removedAt
+    //     Then: if addedAt STRICTLY > removedAt, clear removedAt
+    //           (the element is alive — "add-wins" / re-add resurrects).
+    //
+    //   orSetToList(merged):
+    //     An element is "live" iff
+    //         removedAt is empty
+    //       OR addedAt STRICTLY > removedAt        (`compare > 0`).
+    //     Otherwise it is treated as removed.
+    //
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │ ASYMMETRIC RE-ADD — IMPORTANT INVARIANT                             │
+    // │                                                                     │
+    // │ A re-add after a remove resurrects the element ONLY IF the re-add's │
+    // │ HLC is STRICTLY GREATER than the remove's HLC.  Equal HLC ⇒ remove  │
+    // │ wins.  Older (concurrent) add ⇒ remove wins.                        │
+    // │                                                                     │
+    // │ Examples (let HLC(t) abbreviate the HLC at logical-time t):         │
+    // │                                                                     │
+    // │   remove @ HLC(5)  ▸ add    @ HLC(6)   ⇒ live   (strict >)          │
+    // │   remove @ HLC(5)  ▸ add    @ HLC(5)   ⇒ REMOVED (equal — remove    │
+    // │                                          wins as the tiebreaker).   │
+    // │   remove @ HLC(5)  ▸ add    @ HLC(4)   ⇒ REMOVED (older add).       │
+    // │   add    @ HLC(3)  ▸ remove @ HLC(7)   ⇒ REMOVED (linear remove).   │
+    // │                                                                     │
+    // │ HLC equality across devices is rare but possible: two devices with  │
+    // │ skewed clocks may produce the same `physMs:counter` prefix.  In     │
+    // │ those rare ties, the OR-Set's internal use of                       │
+    // │ HybridLogicalClock::compare() further tiebreaks by deviceId — but   │
+    // │ ONLY when comparing addedAt-vs-addedAt or removedAt-vs-removedAt.   │
+    // │ When deciding live-vs-dead the comparison is addedAt vs removedAt,  │
+    // │ which sit on *the same* element record carrying *one* HLC each —    │
+    // │ so the deviceId-tiebreak only matters if those HLCs were produced   │
+    // │ on different devices.                                               │
+    // │                                                                     │
+    // │ Why strictly-greater rather than >=                                 │
+    // │   1. Convergence: every replica must reach the same answer for any  │
+    // │      merge order.  A strict total order on (addedAt, removedAt)     │
+    // │      gives a unique winner per element, which is essential for the  │
+    // │      OR-Set to be a true CRDT (commutative, associative, idempotent).│
+    // │   2. Safety bias on ties: when an add and a remove have identical   │
+    // │      HLCs the user's intent is ambiguous; biasing toward remove is  │
+    // │      the safer default — the user can always re-add (which will     │
+    // │      advance the HLC and unambiguously win).                        │
+    // │                                                                     │
+    // │ Practical implication: on a SINGLE device, remove-then-re-add       │
+    // │ ALWAYS resurrects, because the local HLC advances monotonically     │
+    // │ between calls to HybridLogicalClock::now() — the re-add's HLC is    │
+    // │ strictly greater than the remove's.  The "remove wins on tie" rule  │
+    // │ only ever surfaces in true cross-device concurrent edits, and even  │
+    // │ then only when the two devices' physMs:counter prefixes happen to   │
+    // │ collide exactly.                                                    │
+    // │                                                                     │
+    // │ Pinned by:                                                          │
+    // │   tests/unit/test_crdt.cpp                                          │
+    // │     · orset_concurrentRemoveThenLaterAdd_resurrects                 │
+    // │     · orset_concurrentRemoveThenEqualHlcAdd_doesNotResurrect        │
+    // │     · orset_concurrentRemoveThenEarlierAdd_doesNotResurrect         │
+    // │     · orset_localRemoveThenLocalReAdd_resurrects                    │
+    // │     · orset_sameHlcTie_deterministicAcrossDeviceIds                 │
+    // │   tests/unit/test_crdt_multidevice.cpp                              │
+    // │     · add_then_remove_then_re_add_orset_semantics                   │
+    // └─────────────────────────────────────────────────────────────────────┘
 
     struct OrsElement {
         QString id;

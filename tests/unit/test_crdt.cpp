@@ -316,6 +316,254 @@ private slots:
     }
 
     // =========================================================================
+    // OR-Set: Asymmetric re-add semantics (documents the strict-greater rule
+    // pinned at the doc-block above CrdtMeta::OrsElement in crdt_meta.h).
+    //
+    // The four slots below pin every quadrant of the (addedAt vs removedAt)
+    // comparison space directly against CrdtMeta::mergeOrSets — independent
+    // of the surrounding Merger pipeline, so any future drift in the OR-Set
+    // primitive itself surfaces here first.
+    //
+    //   1. add HLC strictly > remove HLC  ⇒ resurrected (add-wins).
+    //   2. add HLC == remove HLC          ⇒ NOT resurrected (remove wins on tie).
+    //   3. add HLC strictly < remove HLC  ⇒ NOT resurrected (linear remove).
+    //   4. single-device remove then re-add ⇒ always resurrected (HLC ticks).
+    //   5. same-HLC tie across two device-ids (CrdtMeta::OrsElement collision)
+    //      ⇒ deterministic outcome via HybridLogicalClock::compare's deviceId
+    //      tiebreak.
+    // =========================================================================
+
+    // ── 1. Concurrent remove then later add → resurrects ─────────────────────
+    //
+    // Device A removes "label1" at HLC(1, A).
+    // Device B adds   "label1" at HLC(2, B).      (HLC(2) > HLC(1) strict)
+    // Merge ⇒ "label1" is in the live set (add-wins).
+    void orset_concurrentRemoveThenLaterAdd_resurrects()
+    {
+        const QString tsRemove = makeHlc(1, 0, kDevA);
+        const QString tsAdd    = makeHlc(2, 0, kDevB); // strictly later HLC
+
+        // Local (A): observed an add at some prior point, then removed.
+        // The exact addedAt on A's side is older than B's re-add; mergeOrSets
+        // picks the max addedAt so we just supply a dummy older HLC here.
+        const QString tsOriginalAdd = makeHlc(0, 0, kDevA);
+        QList<CrdtMeta::OrsElement> local;
+        local.append(makeOrsElem(QStringLiteral("label1"),
+                                 tsOriginalAdd, tsRemove));
+
+        // Remote (B): re-adds the element with no removedAt.
+        QList<CrdtMeta::OrsElement> remote;
+        remote.append(makeOrsElem(QStringLiteral("label1"), tsAdd));
+
+        const auto merged = CrdtMeta::mergeOrSets(local, remote);
+        QCOMPARE(merged.size(), 1);
+
+        // Inspect merged record: addedAt should be the strict-max (tsAdd),
+        // removedAt should be cleared by the add-wins pass.
+        const CrdtMeta::OrsElement &elem = merged.first();
+        QCOMPARE(elem.id, QStringLiteral("label1"));
+        QCOMPARE(elem.addedAt, tsAdd);
+        QVERIFY2(elem.removedAt.isEmpty(),
+            "add-wins should clear removedAt when addedAt strictly > removedAt");
+
+        const QStringList live = CrdtMeta::orSetToList(merged);
+        QVERIFY2(live.contains(QStringLiteral("label1")),
+            "Re-add at HLC strictly > remove HLC must resurrect.");
+    }
+
+    // ── 2. Concurrent remove then equal-HLC add → does NOT resurrect ─────────
+    //
+    // Device A removes "label1" at HLC(2, A).
+    // Device B adds   "label1" at an HLC that COMPARES EQUAL to the remove.
+    // Equal HLC ⇒ "compare(addedAt, removedAt) > 0" is false ⇒ remove wins.
+    //
+    // Constructing an exact-equal HLC: use the same physMs+counter AND the
+    // same deviceId string, because HybridLogicalClock::compare() falls back
+    // to deviceId on equal (physMs, counter). To force a true equal-compare
+    // we use the same encoded HLC string on both sides.
+    void orset_concurrentRemoveThenEqualHlcAdd_doesNotResurrect()
+    {
+        const QString tsRemove = makeHlc(2, 0, kDevA);
+        // Re-encode the SAME HLC string for the re-add (this is the corner
+        // case the strict-> rule guards against). In practice HLC always
+        // ticks so producing the exact same string takes either a buggy
+        // generator or a hand-crafted edit; either way the merge must be
+        // deterministic.
+        const QString tsAddEqual = tsRemove;
+
+        const QString tsOriginalAdd = makeHlc(0, 0, kDevA);
+        QList<CrdtMeta::OrsElement> local;
+        local.append(makeOrsElem(QStringLiteral("label1"),
+                                 tsOriginalAdd, tsRemove));
+
+        QList<CrdtMeta::OrsElement> remote;
+        remote.append(makeOrsElem(QStringLiteral("label1"), tsAddEqual));
+
+        const auto merged = CrdtMeta::mergeOrSets(local, remote);
+        QCOMPARE(merged.size(), 1);
+
+        const CrdtMeta::OrsElement &elem = merged.first();
+        // addedAt becomes max(tsOriginalAdd, tsAddEqual) = tsAddEqual = tsRemove
+        QCOMPARE(elem.addedAt, tsAddEqual);
+        // removedAt stays — strict > requirement fails on equal HLCs.
+        QCOMPARE(elem.removedAt, tsRemove);
+
+        const QStringList live = CrdtMeta::orSetToList(merged);
+        QVERIFY2(!live.contains(QStringLiteral("label1")),
+            "Equal-HLC re-add must NOT resurrect — remove wins on tie.");
+    }
+
+    // ── 3. Concurrent remove then EARLIER add → does NOT resurrect ───────────
+    //
+    // Device A removes "label1" at HLC(5, A).
+    // Device B (which had not observed A's remove) re-adds at HLC(3, B).
+    // Re-add HLC < remove HLC ⇒ remove wins. The add IS recorded (it bumps
+    // addedAt up to the side it observed) but the live set still excludes
+    // the element. (See doc block in crdt_meta.h.)
+    void orset_concurrentRemoveThenEarlierAdd_doesNotResurrect()
+    {
+        const QString tsAddOriginal = makeHlc(1, 0, kDevA);
+        const QString tsRemove      = makeHlc(5, 0, kDevA);
+        const QString tsAddEarlier  = makeHlc(3, 0, kDevB);
+
+        // Local: original add at 1, then remove at 5.
+        QList<CrdtMeta::OrsElement> local;
+        local.append(makeOrsElem(QStringLiteral("label1"),
+                                 tsAddOriginal, tsRemove));
+
+        // Remote: re-add at 3 (concurrent — never saw the remove).
+        QList<CrdtMeta::OrsElement> remote;
+        remote.append(makeOrsElem(QStringLiteral("label1"), tsAddEarlier));
+
+        const auto merged = CrdtMeta::mergeOrSets(local, remote);
+        QCOMPARE(merged.size(), 1);
+
+        const CrdtMeta::OrsElement &elem = merged.first();
+        // addedAt is max(1, 3) = 3 (tsAddEarlier); removedAt is 5 (tsRemove).
+        QCOMPARE(elem.addedAt,   tsAddEarlier);
+        QCOMPARE(elem.removedAt, tsRemove);
+
+        const QStringList live = CrdtMeta::orSetToList(merged);
+        QVERIFY2(!live.contains(QStringLiteral("label1")),
+            "Re-add at HLC strictly < remove HLC must NOT resurrect.");
+    }
+
+    // ── 4. Single-device remove then re-add → always resurrects ──────────────
+    //
+    // On a single device the HLC ticks monotonically (HybridLogicalClock::now
+    // guarantees strict ordering across successive calls on the same process),
+    // so a remove-then-re-add sequence always produces re-add HLC strictly
+    // greater than remove HLC.
+    //
+    // We exercise the actual HybridLogicalClock::now() here (rather than
+    // hand-crafted timestamps) to pin the integration: HLC + OR-Set together
+    // make local re-add deterministic.
+    void orset_localRemoveThenLocalReAdd_resurrects()
+    {
+        // Three successive ticks on the SAME device, mimicking add → remove
+        // → re-add as the user would experience it on one machine.
+        const QString tsAdd1   = HybridLogicalClock::now(kDevA);
+        const QString tsRemove = HybridLogicalClock::now(kDevA);
+        const QString tsAdd2   = HybridLogicalClock::now(kDevA);
+
+        // The local ticks must be strictly increasing — otherwise the rest of
+        // the test is meaningless.
+        QVERIFY2(HybridLogicalClock::compare(tsAdd1,   tsRemove) < 0,
+            "HLC::now() must produce strictly increasing values on the same device.");
+        QVERIFY2(HybridLogicalClock::compare(tsRemove, tsAdd2)   < 0,
+            "HLC::now() must produce strictly increasing values on the same device.");
+
+        // Element state after the user's sequence of actions:
+        //   addedAt = tsAdd2 (the latest add high-water-mark)
+        //   removedAt = tsRemove
+        // mergeOrSets is idempotent on a single-side input, so we can pass
+        // the same list as both local and remote — the merge result is
+        // identical to running orSetToList on the input directly.
+        QList<CrdtMeta::OrsElement> elems;
+        elems.append(makeOrsElem(QStringLiteral("label1"),
+                                 tsAdd2, tsRemove));
+
+        const auto merged = CrdtMeta::mergeOrSets(elems, elems);
+        QCOMPARE(merged.size(), 1);
+
+        const CrdtMeta::OrsElement &elem = merged.first();
+        QCOMPARE(elem.addedAt, tsAdd2);
+        QVERIFY2(elem.removedAt.isEmpty(),
+            "Local re-add at a later HLC must clear removedAt (add-wins on strict >).");
+
+        const QStringList live = CrdtMeta::orSetToList(merged);
+        QVERIFY2(live.contains(QStringLiteral("label1")),
+            "Single-device remove-then-re-add must always resurrect — HLC ticks.");
+    }
+
+    // ── 5. Same-HLC tie across deviceIds → deterministic outcome ─────────────
+    //
+    // When two devices independently produce HLC strings with the same
+    // physMs+counter prefix, HybridLogicalClock::compare() tiebreaks by
+    // deviceId (lexicographic).  mergeOrSets exploits that comparator on
+    // EVERY pairwise addedAt/removedAt comparison, so the merge is
+    // deterministic in this corner case.
+    //
+    // Setup:
+    //   Both sides start with the SAME element id "label1".
+    //   Device "aaa" has addedAt = HLC(7, 0, "aaa"), no removedAt.
+    //   Device "zzz" has addedAt = HLC(7, 0, "zzz"), with removedAt
+    //                                       = HLC(7, 0, "zzz") (also).
+    //
+    // HLC comparison rules:
+    //   compare(HLC(7,0,"aaa"), HLC(7,0,"zzz")) < 0  (aaa < zzz)
+    //
+    // mergeOrSets picks max addedAt → HLC(7,0,"zzz") wins on addedAt.
+    // mergeOrSets picks max removedAt → only one side has one,
+    //                                     so HLC(7,0,"zzz") on removedAt.
+    // Then add-wins: compare(addedAt, removedAt) → both equal strings → 0
+    //                ⇒ removedAt NOT cleared ⇒ element is DEAD.
+    //
+    // We swap the device-id ordering to prove that whichever side wins the
+    // addedAt comparator, the merge result is deterministic (does not depend
+    // on argument order or device-id of the calling side).
+    void orset_sameHlcTie_deterministicAcrossDeviceIds()
+    {
+        const QString tsAaa = makeHlc(7, 0, QStringLiteral("aaa"));
+        const QString tsZzz = makeHlc(7, 0, QStringLiteral("zzz"));
+
+        // Sanity: compare must use deviceId on equal phys+counter.
+        QVERIFY(HybridLogicalClock::compare(tsAaa, tsZzz) < 0);
+
+        // Symmetric setup — both sides describe the same id with these HLCs
+        // in different slots. The merge must converge to a single answer
+        // regardless of which side is "local" vs "remote".
+        QList<CrdtMeta::OrsElement> sideA;
+        sideA.append(makeOrsElem(QStringLiteral("label1"), tsAaa, QString()));
+
+        QList<CrdtMeta::OrsElement> sideZ;
+        sideZ.append(makeOrsElem(QStringLiteral("label1"), tsZzz, tsZzz));
+
+        const auto m1 = CrdtMeta::mergeOrSets(sideA, sideZ);
+        const auto m2 = CrdtMeta::mergeOrSets(sideZ, sideA);
+
+        // Determinism: both orderings must agree on every field.
+        QCOMPARE(m1.size(), 1);
+        QCOMPARE(m2.size(), 1);
+        QCOMPARE(m1.first().id,        m2.first().id);
+        QCOMPARE(m1.first().addedAt,   m2.first().addedAt);
+        QCOMPARE(m1.first().removedAt, m2.first().removedAt);
+
+        // Outcome pinned: addedAt = max(tsAaa, tsZzz) = tsZzz.
+        QCOMPARE(m1.first().addedAt, tsZzz);
+        // removedAt = max(<none>, tsZzz) = tsZzz.
+        QCOMPARE(m1.first().removedAt, tsZzz);
+
+        // addedAt == removedAt (same string) ⇒ compare == 0 ⇒ NOT > 0
+        //  ⇒ removedAt is not cleared ⇒ element is DEAD.
+        QStringList live1 = CrdtMeta::orSetToList(m1);
+        QStringList live2 = CrdtMeta::orSetToList(m2);
+        QCOMPARE(live1, live2);
+        QVERIFY2(!live1.contains(QStringLiteral("label1")),
+            "Same-HLC addedAt/removedAt (cross-device tie) ⇒ remove wins.");
+    }
+
+    // =========================================================================
     // Merger CRDT Tests
     // =========================================================================
 

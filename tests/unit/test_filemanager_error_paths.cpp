@@ -70,12 +70,21 @@ private:
         QFile::remove(bak1Path());
         QFile::remove(bak2Path());
 
+        // Q3.10: dated rolling backups (state.json.bak.YYYYMMDDhhmmss) and
+        // the pre-vacuum safety snapshot also live in the same directory.
+        // load()'s auto-recovery path tries them when state.json is
+        // corrupted, so leaving leftovers from a prior test run silences
+        // the loadError signal that the corruption tests expect to fire.
+        QFile::remove(stateFilePath() + QStringLiteral(".pre-vacuum.bak"));
+
         // Auto-recovery renames bad state.json to state.json.corrupt-<ts>;
-        // sweep those between tests so they don't accumulate.
+        // sweep those between tests so they don't accumulate. Same pass
+        // also drops dated rolling backups.
         QDir dir(dataDirPath());
         if (dir.exists()) {
             const QStringList stale = dir.entryList(
-                QStringList{QStringLiteral("state.json.corrupt-*")},
+                QStringList{QStringLiteral("state.json.corrupt-*"),
+                            QStringLiteral("state.json.bak.*")},
                 QDir::Files);
             for (const QString &name : stale)
                 QFile::remove(dir.absoluteFilePath(name));

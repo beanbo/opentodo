@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QObject>
 #include <QString>
 #include <QQmlEngine>
@@ -38,12 +39,36 @@ class SettingsViewModel : public QObject
     // Task row density
     Q_PROPERTY(bool compactDensity READ compactDensity WRITE setCompactDensity NOTIFY compactDensityChanged)
 
+    // Q2.26-B: search accent sensitivity. Default false ⇒ "café" finds "cafe".
+    Q_PROPERTY(bool searchAccentSensitive READ searchAccentSensitive
+               WRITE setSearchAccentSensitive NOTIFY searchAccentSensitiveChanged)
+
+    // System tray icon (desktop only)
+    Q_PROPERTY(bool showTrayIcon READ showTrayIcon WRITE setShowTrayIcon NOTIFY showTrayIconChanged)
+
+    // Custom accent color override (mirrors ThemeManager.customAccentHex). When
+    // an empty string is stored the active theme palette's native accent wins;
+    // otherwise this "#RRGGBB" string overrides it across the whole UI and is
+    // also surfaced as a QColor (accentColor) so C++ services (e.g. the tray
+    // icon badge) can consume it without going through QML.
+    Q_PROPERTY(QString customAccentHex READ customAccentHex WRITE setCustomAccentHex NOTIFY accentColorChanged)
+    Q_PROPERTY(QColor  accentColor     READ accentColor     NOTIFY accentColorChanged)
+
     // Sync settings
     Q_PROPERTY(int syncInterval READ syncInterval WRITE setSyncInterval NOTIFY syncIntervalChanged)
 
     // Permissions / first-run gates
     Q_PROPERTY(bool notificationPermissionAsked READ notificationPermissionAsked
                WRITE setNotificationPermissionAsked NOTIFY notificationPermissionAskedChanged)
+
+    // Q3.10: storage-cap settings (backup retention + vacuum threshold).
+    // Defaults applied on first read when the underlying setting is unset.
+    Q_PROPERTY(int backupRetentionCount READ backupRetentionCount
+               WRITE setBackupRetentionCount NOTIFY backupRetentionCountChanged)
+    Q_PROPERTY(int backupRetentionDays  READ backupRetentionDays
+               WRITE setBackupRetentionDays  NOTIFY backupRetentionDaysChanged)
+    Q_PROPERTY(qint64 vacuumThresholdBytes READ vacuumThresholdBytes
+               WRITE setVacuumThresholdBytes NOTIFY vacuumThresholdBytesChanged)
 
 public:
     explicit SettingsViewModel(DataStore *store, QObject *parent = nullptr);
@@ -106,6 +131,26 @@ public:
     bool compactDensity() const;
     void setCompactDensity(bool compact);
 
+    // Q2.26-B
+    bool searchAccentSensitive() const;
+    void setSearchAccentSensitive(bool sensitive);
+
+    // System tray icon (desktop only) — default true.
+    bool showTrayIcon() const;
+    void setShowTrayIcon(bool show);
+
+    // Custom accent color override. customAccentHex() returns the stored
+    // "#RRGGBB" string (empty when no override is active). accentColor()
+    // resolves that to a QColor — when no override is set it falls back to
+    // a sensible default (#db4c3f, matching the todoist_light/dark palettes)
+    // so C++ consumers always have a valid color to paint with even before
+    // the user picks a custom one. The setter accepts only valid "#RRGGBB"
+    // strings (case-insensitive) plus the empty string for "reset to palette
+    // default"; anything else is silently ignored.
+    QString customAccentHex() const;
+    void setCustomAccentHex(const QString &hex);
+    QColor accentColor() const;
+
     // Sync
     int syncInterval() const;
     void setSyncInterval(int seconds);
@@ -113,6 +158,16 @@ public:
     // Permissions
     bool notificationPermissionAsked() const;
     void setNotificationPermissionAsked(bool asked);
+
+    // Q3.10: storage caps.
+    int backupRetentionCount() const;
+    void setBackupRetentionCount(int n);
+
+    int backupRetentionDays() const;
+    void setBackupRetentionDays(int days);
+
+    qint64 vacuumThresholdBytes() const;
+    void setVacuumThresholdBytes(qint64 bytes);
 
     // Methods
     Q_INVOKABLE void updateSetting(const QString &key, const QVariant &value);
@@ -145,8 +200,14 @@ signals:
     void autoArchiveDaysChanged();
     void dailyReviewEnabledChanged();
     void compactDensityChanged();
+    void searchAccentSensitiveChanged();
+    void showTrayIconChanged();
+    void accentColorChanged();
     void syncIntervalChanged();
     void notificationPermissionAskedChanged();
+    void backupRetentionCountChanged();
+    void backupRetentionDaysChanged();
+    void vacuumThresholdBytesChanged();
     void settingChanged(const QString &key);
 
 private slots:

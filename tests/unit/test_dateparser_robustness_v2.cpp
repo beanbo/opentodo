@@ -21,13 +21,12 @@
 // Surface-bug summary (each line corresponds to one slot below). "FIXED"
 // entries assert the post-fix correct behaviour; the rest still pin the
 // parser's current (buggy) output for future fix sessions to flip.
-//   B1  ru "через 2 недели в понедельник" — date is +14 days, NOT snapped
-//       to next Monday (parser ignores the "в понедельник" tail).
+//   B1  FIXED ru "через 2 недели в понедельник" — relative + weekday now
+//       snaps to the next named weekday on/after the offset date.
 //   B2  FIXED ru "каждый второй вторник" → INTERVAL=2;BYDAY=TU.
 //   B3  FIXED ru "по будням" → FREQ=WEEKLY;BYDAY=MO..FR.
 //   B4  FIXED ru "в выходные" → FREQ=WEEKLY;BYDAY=SA,SU.
-//   B5  ru "первого числа каждого месяца" — invalid; no monthly-anchored-
-//       to-day-1 handler.
+//   B5  FIXED ru "первого числа каждого месяца" → FREQ=MONTHLY;BYMONTHDAY=1.
 //   B6  ru "31 февраля" — current parser ACCEPTS this and silently bumps
 //       day to the last valid day of Feb (it doesn't via the date branch;
 //       actually returns invalid). Pinned.
@@ -37,27 +36,25 @@
 //       suffix is ignored; current behaviour is "9:00" (which happens to
 //       be correct for утра, but documenting the quirk: "9 вечера" would
 //       also produce 9:00, not 21:00).
-//   B10 ru "в субботу через 3 недели" — pinned as invalid; weekday handler
-//       runs first, "в субботу через 3 недели" doesn't match "в субботу"
-//       exactly so it falls through.
+//   B10 FIXED ru "в субботу через 3 недели" — weekday-first + "через N <unit>"
+//       tail is parsed; date snaps to the next Saturday then advances by the
+//       offset.
 //   COMMA FIXED ru "завтра, в 14:00" — comma-separator form now parses
 //       via [,;!?]→whitespace normalisation at the head of parseRussian.
-//   E1  en "in 2 weeks on monday" — only "in 2 weeks" matches, "on monday"
-//       is silently dropped.
+//   E1  FIXED en "in 2 weeks on monday" — compound relative + weekday now
+//       parses; date is the relative offset snapped forward to the named dow.
 //   E2  FIXED en "every other tuesday" → INTERVAL=2;BYDAY=TU. The "other"
 //       prefix is now recognised by the every-handler.
 //   E3  FIXED en "weekdays" → FREQ=WEEKLY;BYDAY=MO..FR (bare-noun rule).
 //   E4  FIXED en "weekends" → FREQ=WEEKLY;BYDAY=SA,SU (bare-noun rule).
-//   E5  en "first day of each month" — invalid; no support for
-//       monthly-anchored-to-day-1.
+//   E5  FIXED en "first day of each month" → FREQ=MONTHLY;BYMONTHDAY=1.
 //   E6  en "feb 31" — clamped to Feb 28 (parser's tryDate() clamps invalid
 //       day to last day of month) — actually a feature, but worth pinning.
 //   E7  FIXED en "tomorrow at 25:00" — same fix as B7 (out-of-range time
 //       rejects the whole expression).
-//   E8  en "yesterday at noon" — "noon" is not a recognised time word; the
-//       parser only accepts numeric times. Date is "yesterday", datetime
-//       is empty.
-//   E9  en "in 3 weeks on saturday" — only "in 3 weeks" matches.
+//   E8  FIXED en "yesterday at noon" — "noon" now maps to 12:00 (midnight
+//       and "midday" mapped similarly) via word-time handler in tryParseTime.
+//   E9  FIXED en "in 3 weeks on saturday" — same fix as E1.
 //
 // Constraints honoured:
 //   * No production code changes (src/nlp/ untouched).
@@ -97,25 +94,16 @@ private slots:
     // Russian
     // ───────────────────────────────────────────────────────────────────────
 
-    // B1: "через 2 недели в понедельник" — ideally should produce a date 14
-    // days out then snap to Monday (=> 2026-06-01). Currently the "через N
-    // недели" regex is anchored ^...$, so the trailing " в понедельник"
-    // makes the whole expression unrecognised by that handler. Then the
-    // weekday handler matches "в понедельник в ..." prefix logic ONLY if
-    // the entire string starts with "в понедельник"; it doesn't here. Net:
-    // the parser returns invalid.
+    // B1 FIXED (Q3.02-E): "через 2 недели в понедельник" — compound relative
+    // + weekday now parses. Computed as REF + 14 days, then snapped forward
+    // to the next Monday (inclusive of the offset day if it falls on Mon).
+    // REF=2026-05-15 + 14 days = 2026-05-29 (Friday) → next Mon = 2026-06-01.
     void ru_cherez_2_nedeli_v_ponedelnik()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("через 2 недели в понедельник"), REF);
-        qInfo() << "BUG B1 'через 2 недели в понедельник'"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "humanString=" << r.humanString
-                << "(ideal: date = 2026-06-01, Monday two weeks out)";
-        // Pin the current (broken) behaviour: parser doesn't understand
-        // the compound expression.
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, QStringLiteral("2026-06-01"));
     }
 
     // B2 FIXED (Q3.02-E): "каждый второй вторник" — "every other Tuesday".
@@ -159,20 +147,17 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2026-05-16"));
     }
 
-    // B5: "первого числа каждого месяца" — "first day of each month";
-    // ideal recurrence is FREQ=MONTHLY;BYMONTHDAY=1. The "кажд..." handler
-    // doesn't match because the prefix word is "первого", not "кажд...".
-    // No other handler fires → invalid.
+    // B5 FIXED (Q3.02-E): "первого числа каждого месяца" → monthly anchored
+    // on day 1. A new handler matches ordinal-or-digit + "числа каждого
+    // месяца" and emits FREQ=MONTHLY;BYMONTHDAY=1.
     void ru_pervogo_chisla_kazhdogo_mesyaca()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("первого числа каждого месяца"), REF);
-        qInfo() << "BUG B5 'первого числа каждого месяца'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=MONTHLY;BYMONTHDAY=1)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=1"));
     }
 
     // B6: "31 февраля" — invalid Gregorian date. The ru-date branch
@@ -237,23 +222,15 @@ private slots:
                  qPrintable(QStringLiteral("datetime = %1").arg(r.datetime)));
     }
 
-    // B10: "в субботу через 3 недели" — compound: a Saturday three weeks
-    // out. The weekday handler matches "в субботу" as a prefix, since the
-    // matcher accepts startsWith(key + " "). It returns REF + (Sat - Fri =
-    // 1 day) = 2026-05-16. The "через 3 недели" tail is silently dropped.
+    // B10 FIXED (Q3.02-E): "в субботу через 3 недели" — weekday-first +
+    // "через N <unit>" tail is parsed; date snaps to the nearest upcoming
+    // Saturday (2026-05-16), then advances by 3 weeks → 2026-06-06.
     void ru_v_subbotu_cherez_3_nedeli()
     {
         const auto r = DateParser::parseRussian(
             QString::fromUtf8("в субботу через 3 недели"), REF);
-        qInfo() << "BUG B10 'в субботу через 3 недели'"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "humanString=" << r.humanString
-                << "(ideal: 2026-06-06 — Saturday three weeks from this Saturday)";
-        // Current behaviour: matches just "в субботу" → nearest upcoming
-        // Saturday (2026-05-16). Trailing "через 3 недели" ignored.
         QVERIFY(r.valid);
-        QCOMPARE(r.date, QStringLiteral("2026-05-16"));
+        QCOMPARE(r.date, QStringLiteral("2026-06-06"));
     }
 
     // ── Capitalization variants for "завтра" ──────────────────────────────
@@ -316,21 +293,15 @@ private slots:
     // English
     // ───────────────────────────────────────────────────────────────────────
 
-    // E1: "in 2 weeks on monday" — ideally REF + 14 days snapped to next
-    // Monday (=> 2026-06-01). The "in N <unit>" regex is anchored ^...$;
-    // the trailing " on monday" makes the whole phrase fail to match.
-    // The "next monday" branch doesn't help either (it needs "next" at
-    // the start). Net: invalid.
+    // E1 FIXED (Q3.02-E): "in 2 weeks on monday" — compound relative +
+    // weekday now parses. Computed as REF + 14 days = 2026-05-29 (Fri),
+    // then snapped forward to next Monday = 2026-06-01.
     void en_in_2_weeks_on_monday()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("in 2 weeks on monday"), REF);
-        qInfo() << "BUG E1 'in 2 weeks on monday'"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "humanString=" << r.humanString
-                << "(ideal: 2026-06-01, Monday two weeks out)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, QStringLiteral("2026-06-01"));
     }
 
     // E2 FIXED (Q3.02-E): "every other tuesday" → INTERVAL=2 BYDAY=TU.
@@ -374,21 +345,17 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2026-05-16"));
     }
 
-    // E5: "first day of each month" — monthly recurrence anchored to the
-    // 1st. The "every " handler doesn't match (prefix word is "first",
-    // not "every"). The "Nth of Month" handler requires an ordinal-day
-    // followed by a NAMED MONTH, e.g. "1st of march", not "1st of each
-    // month". Invalid.
+    // E5 FIXED (Q3.02-E): "first day of each month" → monthly anchor on
+    // day 1. The new "<ordinal> [day] of (each|every) month" handler
+    // emits FREQ=MONTHLY;BYMONTHDAY=1.
     void en_first_day_of_each_month()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("first day of each month"), REF);
-        qInfo() << "BUG E5 'first day of each month'"
-                << "valid=" << r.valid
-                << "isRecurring=" << r.isRecurring
-                << "recurrenceRule=" << r.recurrenceRule
-                << "(ideal: FREQ=MONTHLY;BYMONTHDAY=1)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QCOMPARE(r.recurrenceRule,
+                 QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=1"));
     }
 
     // E6: "feb 31" — invalid Gregorian date. The English parser's
@@ -425,34 +392,34 @@ private slots:
     // simple-day branch matches "yesterday", populates result.date=
     // 2026-05-14. tryParseTime tries to match "at <digits>" but "noon"
     // is text, not digits, so datetime stays empty.
+    // E8 FIXED (Q3.02-E): "yesterday at noon" — word-time mapping added.
+    // tryParseTime now recognises "noon" / "midday" / "midnight" (and the
+    // Russian "полдень" / "полночь") preceded by "at"/"в", mapping them
+    // to 12:00 or 00:00 respectively.
     void en_yesterday_at_noon()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("yesterday at noon"), REF);
-        qInfo() << "BUG E8 'yesterday at noon' (word time not understood)"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "datetime=" << r.datetime
-                << "(ideal: valid=true, datetime=2026-05-14T12:00 — 'noon' should mean 12:00)";
-        // Pin current behaviour: date is correct, time silently dropped.
         QVERIFY(r.valid);
         QCOMPARE(r.date, QStringLiteral("2026-05-14"));
-        QVERIFY(r.datetime.isEmpty());
+        QVERIFY(!r.datetime.isEmpty());
+        QVERIFY2(r.datetime.startsWith(QStringLiteral("2026-05-14T12:00")),
+                 qPrintable(QStringLiteral("datetime = %1").arg(r.datetime)));
     }
 
-    // E9: "in 3 weeks on saturday" — should be REF + 21 days snapped to
-    // next Saturday (=> 2026-06-13). Same shape as E1: "in N <unit>" is
-    // anchored, trailing " on saturday" makes the regex fail → invalid.
+    // E9 FIXED (Q3.02-E): "in 3 weeks on saturday" — same fix as E1.
+    // REF + 21 days = 2026-06-05 (Fri), then snapped forward to next Sat
+    // = 2026-06-06. (NOTE: the original "ideal" comment mentioned
+    // 2026-06-13 i.e. a strict next-Saturday-AFTER-the-offset; the new
+    // handler snaps forward 0..6 days to the named dow, so when the offset
+    // already lands on the target we keep it. 2026-06-05 is Fri, so the
+    // snap target is the immediately following Sat: 2026-06-06.)
     void en_in_3_weeks_on_saturday()
     {
         const auto r = DateParser::parseEnglish(
             QStringLiteral("in 3 weeks on saturday"), REF);
-        qInfo() << "BUG E9 'in 3 weeks on saturday'"
-                << "valid=" << r.valid
-                << "date=" << r.date
-                << "humanString=" << r.humanString
-                << "(ideal: 2026-06-13, Saturday three weeks out)";
-        QVERIFY(!r.valid);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, QStringLiteral("2026-06-06"));
     }
 
     // ── English capitalization sanity (mirrors the ru capitalization slots) ──

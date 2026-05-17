@@ -1,0 +1,162 @@
+# Third-party Notices
+
+OpenTodo includes or links the following third-party components. This file
+documents licensing obligations for redistribution. OpenTodo's own license is
+the MIT License (see [LICENSE](LICENSE)).
+
+Last updated: 2026-05-17.
+
+
+## Qt 6 (6.11.0)
+
+License: GNU Lesser General Public License version 3 (LGPLv3) with the
+         Qt LGPL Exception version 1.1, OR commercial Qt license.
+
+Copyright: (C) The Qt Company Ltd. and other contributors.
+Project:   https://www.qt.io/
+Source:    https://www.qt.io/download-open-source
+LGPLv3:    https://www.gnu.org/licenses/lgpl-3.0.html
+GPLv3:     https://www.gnu.org/licenses/gpl-3.0.html
+Qt LGPL exception text and per-module licensing index:
+           https://doc.qt.io/qt-6/qtmodules.html
+           https://doc.qt.io/qt-6/licenses-used-in-qt.html
+
+Modules used by OpenTodo (linked at build time via `find_package(Qt6 …)`):
+
+  Required:
+    - QtCore
+    - QtGui
+    - QtQml
+    - QtQuick
+    - QtQuickControls2
+    - QtNetwork
+    - QtWidgets
+
+  Optional (linked only when present at configure time):
+    - QtCorePrivate          (developer headers; build-only)
+    - QtLabsSettings         (Qt.labs.settings QML plugin)
+    - QtPositioning          (geo-reminders / LocationService)
+    - QtLinguistTools        (lrelease; build-only, not redistributed)
+    - QtTest, QtQuickTest    (test suite only, not shipped in releases)
+
+Runtime QML plugins deployed alongside the executable (Windows desktop):
+
+    - qmlsettingsplugin      (Qt.labs.settings)
+    - qtqmlcoreplugin        (QtCore QML module)
+    - Material style runtime (QtQuick.Controls Material backend)
+
+### LGPLv3 compliance
+
+  - Desktop builds (Windows, Linux, macOS): Qt is linked dynamically as shared
+    libraries (Qt6Core.dll/.so/.dylib, Qt6Quick.dll/.so/.dylib, etc.). Users
+    can substitute their own modified Qt build by replacing those shared
+    libraries next to the executable, satisfying LGPLv3 sec. 4(d)(0).
+
+  - Android builds: Qt for Android is typically linked statically (this is the
+    default Qt for Android packaging model — the .apk bundles the Qt runtime).
+    Under LGPLv3 sec. 4(d)(1), users have the right to re-link the application
+    against a modified Qt. To honour this obligation when distributing
+    Android .apk / .aab artifacts, OpenTodo's release builds preserve the
+    object files (.o) so a user can request the re-linkable build artifacts;
+    contact the project maintainer.
+
+  - Web (WASM) builds: Qt for WebAssembly is linked statically into the
+    .wasm output. The same re-link obligation applies. The Qt source needed
+    to rebuild the WASM runtime is available at the URL above
+    (https://www.qt.io/download-open-source) and matches the version pinned
+    by this project's build configuration (Qt 6.11.0).
+
+  - To rebuild OpenTodo against a modified Qt, see [CLAUDE.md](CLAUDE.md)
+    and [docs/WASM.md](docs/WASM.md) for the build commands; Qt sources are
+    available at the URL above.
+
+
+## zlib
+
+License: zlib License (permissive, BSD-like, no notice retention required
+         beyond the source-form acknowledgement clause).
+
+Copyright: (C) 1995-2024 Jean-loup Gailly and Mark Adler.
+Project:   https://zlib.net/
+License:   https://zlib.net/zlib_license.html
+
+Used by OpenTodo's Todoist importer for in-process ZIP extraction
+(src/import/todoist_csv_parser.cpp). Linked dynamically as the system zlib
+(`ZLIB::ZLIB` via `find_package(ZLIB)`) where available; on MinGW Windows
+toolchains the `z` library is linked from the Qt-bundled MinGW distribution.
+
+
+## OpenSSL (transitive via QtNetwork)
+
+OpenSSL is not linked directly by OpenTodo. QtNetwork dynamically loads the
+system OpenSSL at runtime for HTTPS (used by Google Drive sync and the
+Anthropic API client).
+
+License: Apache License 2.0 (OpenSSL 3.0 and later) or
+         dual OpenSSL License + SSLeay License (OpenSSL 1.1.x and earlier).
+
+Project: https://www.openssl.org/
+Source:  https://www.openssl.org/source/
+License: https://www.openssl.org/source/license.html
+
+
+## Microsoft Windows SDK — dwmapi
+
+Linked on Windows desktop builds for `DwmSetWindowAttribute` (dark title bar
+support in `src/services/windowchrome.cpp`).
+
+License: Microsoft Windows SDK license — system component of the Windows
+         operating system, not redistributed by OpenTodo. OpenTodo links
+         against the user's installed Windows SDK; no Microsoft binaries
+         are bundled.
+
+Reference: https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/
+
+
+## Material design icon set (Qt Quick Controls 2 Material style)
+
+The Material style is shipped as part of Qt Quick Controls 2, covered by the
+Qt 6 license listed above. No additional notice is required beyond Qt's.
+
+
+## Remote services accessed at runtime (no code linked into OpenTodo)
+
+The following remote APIs are called over HTTPS but are not statically or
+dynamically linked into OpenTodo. They are listed here for transparency and
+are governed by their respective terms of service, not by code licenses.
+
+  - Google Drive REST API — used by the sync engine when the user opts in to
+    Google Drive synchronisation. Subject to Google API Services User Data
+    Policy. See `src/sync/drive_api.cpp`, `src/sync/oauth_client.cpp`.
+
+  - Anthropic Messages API (Claude) — used by the optional AI assistant for
+    subtask generation. Subject to Anthropic's Usage Policy and the user's
+    own API key. See `src/services/aiassistant.cpp`.
+
+
+## Build-only tooling (not redistributed)
+
+The following are used during the build but no resulting binary is shipped
+with OpenTodo. They appear here for completeness only.
+
+  - CMake (BSD 3-Clause)
+  - Ninja / GNU Make
+  - Emscripten / emsdk (MIT + University of Illinois NCSA Open Source License)
+    — used for WASM builds only
+  - Android SDK / NDK — used for Android builds only, governed by Google's
+    SDK terms of service
+  - Qt Linguist (lupdate, lrelease) — covered by Qt's license
+  - GNU windres — covered by GPL (binutils); only consumes resources/windows.rc
+    to embed the application icon, no GPL code is redistributed
+
+
+## OpenTodo
+
+License: MIT License — see [LICENSE](LICENSE) at the project root.
+
+Copyright (c) 2026 OpenTodo contributors.
+
+---
+
+If you believe a dependency is missing from this file, or you spot an
+inaccuracy, please open an issue on the project tracker.

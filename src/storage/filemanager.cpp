@@ -7,10 +7,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QSaveFile>
 #include <QUrl>
 #include <QVariant>
+#include <algorithm>
 
 FileManager::FileManager(DataStore *store, QObject *parent)
     : QObject(parent)
@@ -28,6 +30,40 @@ FileManager::FileManager(DataStore *store, QObject *parent)
 
     connect(&m_saveTimer, &QTimer::timeout, this, &FileManager::performSave);
     connect(m_store, &DataStore::dataChanged, this, &FileManager::onDataChanged);
+
+    // Q3.10: hydrate retention policy from settings AFTER load() runs.
+    // We can't read m_store->setting() here (settings are loaded later by
+    // load() → loadFromJson). settingsChanged fires once at the end of
+    // loadFromJson, so we sample the trio of keys at that point.
+    connect(m_store, &DataStore::settingsChanged, this, [this]() {
+        const QVariant cnt = m_store->setting(
+            QLatin1String(SettingsKeys::BackupRetentionCount));
+        if (cnt.isValid()) {
+            const int n = cnt.toInt();
+            if (n > 0 && n != m_backupRetentionCount) {
+                m_backupRetentionCount = n;
+                emit backupRetentionCountChanged();
+            }
+        }
+        const QVariant days = m_store->setting(
+            QLatin1String(SettingsKeys::BackupRetentionDays));
+        if (days.isValid()) {
+            const int n = days.toInt();
+            if (n >= 0 && n != m_backupRetentionDays) {
+                m_backupRetentionDays = n;
+                emit backupRetentionDaysChanged();
+            }
+        }
+        const QVariant thr = m_store->setting(
+            QLatin1String(SettingsKeys::VacuumThresholdBytes));
+        if (thr.isValid()) {
+            const qint64 n = thr.toLongLong();
+            if (n > 0 && n != m_vacuumThresholdBytes) {
+                m_vacuumThresholdBytes = n;
+                emit vacuumThresholdBytesChanged();
+            }
+        }
+    });
 }
 
 QString FileManager::dataPath() const
@@ -66,12 +102,23 @@ void FileManager::load()
     QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
 
     if (parseError.error != QJsonParseError::NoError || doc.isNull() || !doc.isObject()) {
-        // Auto-recovery: try .bak, .bak.1, .bak.2 in order before giving up.
-        const QStringList bakCandidates = {
+        // Auto-recovery: try .bak / .bak.1 / .bak.2 first (LRU-cheapest),
+        // then fall through to the dated rolling backups in mtime order.
+        // Q3.10: dated backups extend the recovery window beyond the 3-gen
+        // rolling chain, capped by the retention policy.
+        QStringList bakCandidates = {
             filePath + QStringLiteral(".bak"),
             filePath + QStringLiteral(".bak.1"),
             filePath + QStringLiteral(".bak.2"),
         };
+        QStringList dated = datedBackupPaths();
+        // Order dated backups newest → oldest so the freshest snapshot wins.
+        std::sort(dated.begin(), dated.end(),
+                  [](const QString &a, const QString &b) {
+                      return QFileInfo(a).lastModified()
+                             > QFileInfo(b).lastModified();
+                  });
+        bakCandidates << dated;
         for (const QString &candidate : bakCandidates) {
             QFile bakFile(candidate);
             if (!bakFile.open(QIODevice::ReadOnly))
@@ -173,16 +220,22 @@ bool FileManager::exportTo(const QString &filePathOrUrl) const
 QVariantList FileManager::listBackups() const
 {
     QVariantList result;
-    const QString statePath = stateFilePath();
-    const QStringList paths = {
-        statePath + QStringLiteral(".bak"),
-        statePath + QStringLiteral(".bak.1"),
-        statePath + QStringLiteral(".bak.2"),
-    };
+    // Q3.10: include BOTH rolling (.bak / .bak.1 / .bak.2) and dated
+    // (.bak.YYYYMMDDhhmmss) backups, sorted by mtime descending so the
+    // most-recent appears first regardless of naming flavor.
+    const QStringList paths = allBackupPaths();
+    QList<QFileInfo> infos;
+    infos.reserve(paths.size());
     for (const QString &p : paths) {
         const QFileInfo fi(p);
-        if (!fi.exists())
-            continue;
+        if (fi.exists())
+            infos.append(fi);
+    }
+    std::sort(infos.begin(), infos.end(),
+              [](const QFileInfo &a, const QFileInfo &b) {
+                  return a.lastModified() > b.lastModified();
+              });
+    for (const QFileInfo &fi : infos) {
         QVariantMap m;
         m[QStringLiteral("name")]  = fi.fileName();
         m[QStringLiteral("path")]  = fi.absoluteFilePath();
@@ -191,6 +244,165 @@ QVariantList FileManager::listBackups() const
         result.append(m);
     }
     return result;
+}
+
+QStringList FileManager::allBackupPaths() const
+{
+    QStringList out;
+    const QString statePath = stateFilePath();
+    // Rolling chain — always present in expected names.
+    out << statePath + QStringLiteral(".bak");
+    out << statePath + QStringLiteral(".bak.1");
+    out << statePath + QStringLiteral(".bak.2");
+    // Pre-vacuum safety backup (preserved across rotations).
+    out << statePath + QStringLiteral(".pre-vacuum.bak");
+    // Dated backups discovered on disk.
+    out << datedBackupPaths();
+    return out;
+}
+
+QStringList FileManager::datedBackupPaths() const
+{
+    // Dated backups follow the pattern: state.json.bak.YYYYMMDDhhmmss
+    // (14 trailing digits after ".bak.") so they don't collide with the
+    // rolling .bak.1 / .bak.2 names. We scan the data directory rather
+    // than reconstruct paths so a manual user-renamed backup is also
+    // visible (and subject to retention) — provided it matches the regex.
+    QStringList out;
+    QDir dir(m_dataPath);
+    if (!dir.exists())
+        return out;
+    const QFileInfoList list = dir.entryInfoList(
+        QStringList{} << QStringLiteral("state.json.bak.*"),
+        QDir::Files | QDir::NoSymLinks);
+    const QRegularExpression datedRx(
+        QStringLiteral("^state\\.json\\.bak\\.(\\d{14})$"));
+    for (const QFileInfo &fi : list) {
+        const auto match = datedRx.match(fi.fileName());
+        if (match.hasMatch())
+            out.append(fi.absoluteFilePath());
+    }
+    return out;
+}
+
+void FileManager::writeDatedBackup()
+{
+    // One dated backup per save. The 14-digit timestamp uses second
+    // precision; saves that fire within the same second simply skip
+    // (existence check below) — the rolling .bak chain already covers
+    // sub-second granularity. Pre-condition: state.json exists.
+    const QString statePath = stateFilePath();
+    if (!QFile::exists(statePath))
+        return;
+    const QString stamp = QDateTime::currentDateTimeUtc()
+        .toString(QStringLiteral("yyyyMMddHHmmss"));
+    const QString datedPath = statePath + QStringLiteral(".bak.") + stamp;
+    if (QFile::exists(datedPath))
+        return;   // same-second save, dedup
+    if (!QFile::copy(statePath, datedPath)) {
+        qWarning("FileManager: failed to write dated backup %s",
+                 qPrintable(datedPath));
+    }
+}
+
+int FileManager::sweepOldBackups()
+{
+    // Retention policy: keep at most m_backupRetentionCount dated backups
+    // AND drop any older than m_backupRetentionDays — whichever cap hits
+    // first. The rolling chain (.bak / .bak.1 / .bak.2) is excluded from
+    // sweep so the legacy recovery path is preserved unchanged. The
+    // single most-recent dated backup is ALWAYS preserved regardless of
+    // age, so the user is never left with zero recovery options.
+    QStringList dated = datedBackupPaths();
+    if (dated.isEmpty())
+        return 0;
+
+    // Sort by mtime descending (most-recent first). Capture file infos
+    // up-front because we'll delete via path later.
+    QList<QFileInfo> infos;
+    infos.reserve(dated.size());
+    for (const QString &p : dated) {
+        const QFileInfo fi(p);
+        if (fi.exists())
+            infos.append(fi);
+    }
+    std::sort(infos.begin(), infos.end(),
+              [](const QFileInfo &a, const QFileInfo &b) {
+                  return a.lastModified() > b.lastModified();
+              });
+
+    int removed = 0;
+    const QDateTime ageCutoff = m_backupRetentionDays > 0
+        ? QDateTime::currentDateTime().addDays(-m_backupRetentionDays)
+        : QDateTime();
+
+    // Walk newest → oldest so we delete the OLDEST files first when
+    // trimming for the count cap (we delete from the tail of `infos`),
+    // and we never delete index 0 (the most-recent — safety floor).
+    for (int i = infos.size() - 1; i > 0; --i) {
+        const QFileInfo &fi = infos.at(i);
+        bool shouldDelete = false;
+
+        // Count cap: indices [m_backupRetentionCount, end) are over the limit.
+        if (m_backupRetentionCount > 0 && i >= m_backupRetentionCount)
+            shouldDelete = true;
+
+        // Age cap: anything older than the cutoff is over the limit.
+        if (ageCutoff.isValid() && fi.lastModified() < ageCutoff)
+            shouldDelete = true;
+
+        if (!shouldDelete)
+            continue;
+
+        if (QFile::remove(fi.absoluteFilePath()))
+            ++removed;
+        else
+            qWarning("FileManager: sweepOldBackups failed to remove %s",
+                     qPrintable(fi.absoluteFilePath()));
+    }
+    return removed;
+}
+
+void FileManager::setBackupRetentionCount(int count)
+{
+    if (count < 0) count = 0;
+    if (m_backupRetentionCount == count) return;
+    m_backupRetentionCount = count;
+    emit backupRetentionCountChanged();
+}
+
+void FileManager::setBackupRetentionDays(int days)
+{
+    if (days < 0) days = 0;
+    if (m_backupRetentionDays == days) return;
+    m_backupRetentionDays = days;
+    emit backupRetentionDaysChanged();
+}
+
+void FileManager::setVacuumThresholdBytes(qint64 bytes)
+{
+    if (bytes < 0) bytes = 0;
+    if (m_vacuumThresholdBytes == bytes) return;
+    m_vacuumThresholdBytes = bytes;
+    emit vacuumThresholdBytesChanged();
+}
+
+QString FileManager::createPreVacuumBackup()
+{
+    const QString statePath = stateFilePath();
+    if (!QFile::exists(statePath)) {
+        qWarning("FileManager::createPreVacuumBackup: state.json does not exist");
+        return {};
+    }
+    const QString safetyPath = statePath + QStringLiteral(".pre-vacuum.bak");
+    // Overwrite any previous pre-vacuum backup — the user explicitly opted in.
+    QFile::remove(safetyPath);
+    if (!QFile::copy(statePath, safetyPath)) {
+        qWarning("FileManager::createPreVacuumBackup: copy failed for %s",
+                 qPrintable(safetyPath));
+        return {};
+    }
+    return safetyPath;
 }
 
 bool FileManager::restoreBackup(const QString &backupPath)
@@ -282,6 +494,13 @@ void FileManager::performSave()
             qWarning("FileManager: failed to copy state.json → .bak");
     }
 
+    // Q3.10: write a dated rolling backup before the new state lands. This
+    // augments the 3-generation chain with a longer history that respects
+    // m_backupRetentionCount / m_backupRetentionDays. Skipped on the very
+    // first save (statePath doesn't exist yet — same guard as above).
+    if (QFile::exists(statePath))
+        writeDatedBackup();
+
     const QJsonDocument doc(m_store->toJson());
     const QByteArray data = doc.toJson(QJsonDocument::Indented);
 
@@ -302,6 +521,19 @@ void FileManager::performSave()
     m_dirty = false;
     emit dirtyChanged();
     emit saved();
+
+    // Q3.10: post-save housekeeping. Order matters:
+    //   1. Sweep over-the-cap backups (safe: never touches most-recent).
+    //   2. Probe state.json size; if > threshold, signal the UI so the
+    //      user can decide whether to vacuum. We do NOT auto-vacuum
+    //      because vacuum is destructive (drops tombstones not yet seen
+    //      by peers) and the user may not want a silent mutation.
+    sweepOldBackups();
+    if (m_vacuumThresholdBytes > 0) {
+        const qint64 size = QFileInfo(statePath).size();
+        if (size > m_vacuumThresholdBytes)
+            emit vacuumRecommended(size);
+    }
 }
 
 void FileManager::ensureDataDirectory()

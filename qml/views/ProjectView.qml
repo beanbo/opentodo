@@ -347,6 +347,21 @@ Rectangle {
                         }
                     }
                 }
+                MenuItem {
+                    text: qsTr("Поделиться через Google Drive…")
+                    enabled: projectId !== "" && shareManager && shareManager.isAvailable()
+                    onTriggered: {
+                        if (!shareManager || !shareManager.isAvailable()) {
+                            const w = root.Window.window
+                            if (w && typeof w.showToast === "function")
+                                w.showToast(qsTr("Подключите Google Drive в настройках"), "info")
+                            return
+                        }
+                        const projectName = root.project ? root.project.name : qsTr("Проект")
+                        shareLinkDialog.startBusy(qsTr("Проект «%1»").arg(projectName))
+                        shareManager.shareProject(root.projectId)
+                    }
+                }
                 MenuSeparator {}
                 MenuItem {
                     text: qsTr("Удалить все завершённые")
@@ -1498,6 +1513,35 @@ Rectangle {
             const w = root.Window.window
             if (w && typeof w.showToast === "function")
                 w.showToast(qsTr("🎉 Цель проекта на неделю достигнута!"), "success")
+        }
+    }
+
+    // ── Share-link dialog wiring ─────────────────────────────────────────────
+    // The "Поделиться через Google Drive…" menu item above puts the dialog
+    // into the busy state and calls shareManager.shareProject(); the
+    // ShareManager fires shareLinkReady / shareError back here, which we
+    // forward into the dialog's state machine.
+    ShareLinkDialog {
+        id: shareLinkDialog
+    }
+
+    Connections {
+        target: shareManager
+        ignoreUnknownSignals: true
+
+        function onShareLinkReady(url, fileId) {
+            if (shareLinkDialog.visible)
+                shareLinkDialog.showLink(url, fileId)
+        }
+        function onShareError(reason) {
+            if (shareLinkDialog.visible)
+                shareLinkDialog.showError(reason)
+        }
+        function onShareRevoked(fileId) {
+            shareLinkDialog.close()
+            const w = root.Window.window
+            if (w && typeof w.showToast === "function")
+                w.showToast(qsTr("Ссылка отозвана"), "success")
         }
     }
 }

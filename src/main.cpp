@@ -19,6 +19,7 @@
 #include <QTranslator>
 #include <QLibraryInfo>
 #include <QMetaEnum>
+#include <QWindow>
 #include <memory>
 
 #include "utils/settingskeys.h"
@@ -27,6 +28,7 @@
 #include "storage/filemanager.h"
 #include "sync/syncengine.h"
 #include "sync/gdrive.h"
+#include "sync/sharemanager.h"
 #include "nlp/dateparser.h"
 #include "filter/filterparser.h"
 #include "filter/filtereval.h"
@@ -44,14 +46,19 @@
 // Platform services
 #include "services/notificationservice.h"
 #include "services/hotkeyservice.h"
+#if !defined(Q_OS_ANDROID) && !defined(__EMSCRIPTEN__)
+#include "services/trayicon.h"
+#endif
 #include "services/reminderscheduler.h"
 #include "services/windowchrome.h"
 #include "services/undostack.h"
 #include "services/aiassistant.h"
+#include "services/secretstore.h"
 #include "services/updatechecker.h"
 #include "services/crashlogger.h"
 #include "services/telemetry.h"
 #include "services/taskexporter.h"
+#include "services/icsexporter.h"
 #include "services/dailyreviewservice.h"
 #include "services/pomodoroservice.h"
 
@@ -460,8 +467,20 @@ int main(int argc, char *argv[])
                               taskVM->currentFilter());
     });
 
+    // Sec-1: SecretStore — backs the Claude API key with the OS keyring
+    // (Windows Credential Manager / macOS Keychain / libsecret / kwallet via
+    // QtKeychain). On Android/WASM falls back to QSettings under "secrets/"
+    // since no real OS keyring is available there. SecretStore is created
+    // before AIAssistant so the migration of any pre-existing plaintext key
+    // happens on the first setSecretStore() wiring below.
+    auto *secretStore = new SecretStore(&app);
+
     // AI Assistant
     auto *aiAssistant = new AIAssistant(dataStore, &app);
+    // Sec-1: wire the secret store. This also runs the one-time migration:
+    // any XOR-obfuscated key still living under "ai/k" in QSettings is
+    // decoded, pushed into the SecretStore, and removed from QSettings.
+    aiAssistant->setSecretStore(secretStore);
 
     // Todoist importer
     auto *todoistImporter = new TodoistImporter(dataStore, &app);
@@ -472,12 +491,33 @@ int main(int argc, char *argv[])
     // Task exporter (CSV / Markdown)
     auto *taskExporter = new TaskExporter(dataStore, &app);
 
+    // Share manager — publishes project / task snapshots to Google Drive
+    // as anonymous-reader public links. Uses the existing GDriveClient
+    // (drive.file scope already grants permission to share files this app
+    // created).
+    auto *shareManager = new ShareManager(dataStore, syncEngine->gdriveClient(), &app);
+
+    // iCalendar (.ics) exporter — lets users subscribe their tasks from
+    // Apple Calendar / Google Calendar / Outlook by saving the file and
+    // either importing it once or hosting it for "subscribe to URL" use.
+    auto *icsExporter = new IcsExporter(dataStore, &app);
+
     // Daily review reminder — fires at 18:00 local time if the user has any tasks today.
     // Reads daily_review_enabled setting directly from DataStore (no SettingsVM dep).
     new DailyReviewService(dataStore, notificationService, &app);
 
     // Pomodoro timer — classic 25/5 min work/break cycles with notifications.
     auto *pomodoroService = new PomodoroService(notificationService, &app);
+
+    // Flush the in-flight session to disk on clean shutdown so a paused-then-
+    // closed session restores at its exact countdown. The state-mutation paths
+    // (start/pause/resume/skip/reset/enterPhase) already persist, so this is
+    // belt-and-braces for the "user closed window while running" path — the
+    // anchor (started_at) is already on disk; this just refreshes updated_at.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit,
+                     pomodoroService, [pomodoroService] {
+        pomodoroService->flushStateToDisk();
+    });
 
     // Telemetry (opt-in; default disabled — nothing is sent until user explicitly consents)
     auto *telemetry = new Telemetry(&app);
@@ -488,6 +528,10 @@ int main(int argc, char *argv[])
     syncVM->setTelemetry(telemetry);
     projectVM->setTelemetry(telemetry);
     filterVM->setTelemetry(telemetry);
+    // Sync layer also emits telemetry for reliability events (corrupted
+    // commits, dangling HEAD, tombstone-absorbed edits) — propagate through
+    // the engine, which forwards to Merger as well.
+    syncEngine->setTelemetry(telemetry);
 
     // NotificationService: route notificationClicked(taskId) → open the task editor.
     // QML handles raising the window in its Connections block; the C++ side
@@ -589,9 +633,14 @@ int main(int argc, char *argv[])
     ctx->setContextProperty(QStringLiteral("notificationsViewModel"), notificationsVM);
     ctx->setContextProperty(QStringLiteral("undoStack"), undoStack);
     ctx->setContextProperty(QStringLiteral("aiAssistant"), aiAssistant);
+    // Sec-1: SecretStore exposed for future direct-from-QML secret access
+    // (currently unused — AIAssistant handles its own key internally).
+    ctx->setContextProperty(QStringLiteral("secretStore"), secretStore);
     ctx->setContextProperty(QStringLiteral("updateChecker"), updateChecker);
     ctx->setContextProperty(QStringLiteral("todoistImporter"), todoistImporter);
     ctx->setContextProperty(QStringLiteral("taskExporter"), taskExporter);
+    ctx->setContextProperty(QStringLiteral("shareManager"), shareManager);
+    ctx->setContextProperty(QStringLiteral("icsExporter"), icsExporter);
     ctx->setContextProperty(QStringLiteral("telemetry"), telemetry);
     ctx->setContextProperty(QStringLiteral("pomodoroService"), pomodoroService);
     ctx->setContextProperty(QStringLiteral("crashLogger"), crashLogger);
@@ -620,6 +669,109 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
     engine.loadFromModule("OpenTodoUI", "Main");
+
+#if !defined(Q_OS_ANDROID) && !defined(__EMSCRIPTEN__)
+    // ── System tray icon (desktop only) ─────────────────────────────────────
+    // The tray icon offers Open / Quick Add / Settings / Quit and survives
+    // the main window being hidden. It is constructed after engine.loadFromModule
+    // so that engine.rootObjects() already contains the QML ApplicationWindow,
+    // which the "Open" / DoubleClick handlers reach into via raise +
+    // requestActivate.
+    //
+    // Visibility is gated on settingsViewModel.showTrayIcon (default true);
+    // a toggle from the settings UI shows/hides the icon in real time without
+    // restart.
+    auto *trayIcon = new TrayIconService(&app);
+
+    if (trayIcon->isAvailable()) {
+        // Initial visibility honours the user's saved preference (default on).
+        trayIcon->setVisible(settingsVM->showTrayIcon());
+
+        // Reflect the live tray-icon toggle (Settings UI) without restart.
+        QObject::connect(settingsVM, &SettingsViewModel::showTrayIconChanged,
+                         trayIcon, [trayIcon, settingsVM]() {
+            trayIcon->setVisible(settingsVM->showTrayIcon());
+        });
+
+        // Helper: raise + activate the QML ApplicationWindow.
+        // The window may have been minimised, hidden, or buried behind other
+        // apps — show()/raise()/requestActivate() is the canonical Qt sequence
+        // for "bring me to the front, please".
+        auto raiseRootWindow = [&engine]() {
+            const auto roots = engine.rootObjects();
+            if (roots.isEmpty()) return;
+            auto *win = qobject_cast<QWindow *>(roots.first());
+            if (!win) return;
+            // showNormal() is necessary because a window minimised to the tray
+            // sits in WindowMinimized state; plain show() would not undo that.
+            win->showNormal();
+            win->raise();
+            win->requestActivate();
+        };
+
+        QObject::connect(trayIcon, &TrayIconService::openWindowRequested,
+                         &app, raiseRootWindow);
+
+        // Quick Add from the tray re-uses the existing hotkey wiring: emit
+        // the SAME signal that the Win32 RegisterHotKey path emits, so the
+        // QML side (qml/Main.qml) runs its raise + focusInput handler unchanged.
+        // No separate code path means no risk of the two entry points
+        // drifting apart (Quick Add modal opening differently from menu vs
+        // hotkey was the kind of bug we want to make structurally impossible).
+        QObject::connect(trayIcon, &TrayIconService::quickAddRequested,
+                         hotkeyService, [hotkeyService]() {
+            emit hotkeyService->quickAddRequested();
+        });
+
+        // Settings menu item — route through the sidebar so the side panel
+        // selection follows the navigation too (otherwise the user would land
+        // on settings with no sidebar item highlighted, which looks broken).
+        QObject::connect(trayIcon, &TrayIconService::settingsRequested,
+                         sidebarVM, [sidebarVM, raiseRootWindow]() {
+            raiseRootWindow();
+            sidebarVM->navigateTo(QStringLiteral("settings"));
+        });
+
+        // Quit: route through QCoreApplication::quit() so aboutToQuit fires
+        // (autosave flush + Drive push + last-view persistence all hang off
+        // it). A bare app.exit() would skip those.
+        QObject::connect(trayIcon, &TrayIconService::quitRequested,
+                         &app, &QCoreApplication::quit);
+
+        // Re-translate the tray menu when the user switches UI language at
+        // runtime. tr() captures the active translator at the time the
+        // action was constructed; without this hook the menu would keep the
+        // previous locale until restart.
+        QObject::connect(settingsVM, &SettingsViewModel::languageChanged,
+                         trayIcon, &TrayIconService::retranslate);
+
+        // ── Accent-tinted tray badge ────────────────────────────────────────
+        //
+        // The tray icon paints a small circular badge in the bottom-right
+        // corner whenever there are unread items in the notification centre.
+        // Color comes from SettingsViewModel::accentColor (which mirrors the
+        // QML ThemeManager.accentColor / customAccentHex), count comes from
+        // NotificationsViewModel::unreadCount. We seed both at startup so the
+        // very first paint already reflects current state, then keep them in
+        // sync via NOTIFY signals.
+        trayIcon->setBadgeAccentColor(settingsVM->accentColor());
+        trayIcon->setBadgeCount(notificationsVM->unreadCount());
+
+        QObject::connect(settingsVM, &SettingsViewModel::accentColorChanged,
+                         trayIcon, [trayIcon, settingsVM]() {
+            trayIcon->setBadgeAccentColor(settingsVM->accentColor());
+        });
+
+        QObject::connect(notificationsVM, &NotificationsViewModel::unreadCountChanged,
+                         trayIcon, [trayIcon, notificationsVM]() {
+            trayIcon->setBadgeCount(notificationsVM->unreadCount());
+        });
+    }
+
+    // Expose the tray service to QML too — used by the settings UI to read
+    // .available and bind the visibility switch.
+    ctx->setContextProperty(QStringLiteral("trayIcon"), trayIcon);
+#endif
 
     return app.exec();
 }

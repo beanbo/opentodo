@@ -2,6 +2,12 @@
 #include "services/notificationservice.h"
 #include <QSettings>
 #include <QtGlobal>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <climits>
 
 // Upper bound for any duration setting. A day's worth of minutes is the largest
@@ -57,6 +63,27 @@ PomodoroService::PomodoroService(NotificationService *notif, QObject *parent)
     // refactors that might skip the clamp on the load path.
     m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     loadCompletedToday();
+
+    // Resolve the persistence root. Same shape as FileManager: $APPDATA/OpenTodo
+    // on desktop, $APPDATA on Android (where QStandardPaths::AppDataLocation
+    // already points at the app's per-package directory). On the rare platforms
+    // where AppDataLocation returns an empty string (unconfigured Qt test
+    // environments), the disk-write paths short-circuit and the service falls
+    // back to in-memory-only behaviour.
+#ifdef Q_OS_ANDROID
+    m_dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+#else
+    m_dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                 + QStringLiteral("/OpenTodo");
+#endif
+
+    // Attempt to resurrect a session that was in flight when the previous
+    // process died. Order matters: loadStateFromDisk reads m_dataPath, so it
+    // must run AFTER the path is set; it also consults the configured
+    // durations, so it must run AFTER loadDurationsFromSettings. If a running
+    // session is restored the timer is armed inside loadStateFromDisk and
+    // sessionRestored() is emitted before this constructor returns.
+    loadStateFromDisk();
 }
 
 void PomodoroService::start()
@@ -65,6 +92,9 @@ void PomodoroService::start()
     m_running = true;
     emit runningChanged();
     m_timer.start();
+    // Persist the new running state. enterPhase already set m_phaseStartedAt
+    // via its tail-end save, but we still need to flush the running=true flag.
+    saveStateToDisk();
 }
 
 void PomodoroService::pause()
@@ -73,6 +103,12 @@ void PomodoroService::pause()
     m_running = false;
     emit runningChanged();
     m_timer.stop();
+    // On pause we collapse the elapsed-since-start time into the on-disk
+    // remainingSeconds (m_remainingSeconds was already decremented by onTick).
+    // Clearing m_phaseStartedAt prevents resume() from double-counting the
+    // wall-clock elapsed time. The next resume() will re-anchor.
+    m_phaseStartedAt = QDateTime();
+    saveStateToDisk();
 }
 
 void PomodoroService::resume()
@@ -83,8 +119,14 @@ void PomodoroService::resume()
         return;
     }
     m_running = true;
+    // Re-anchor the wall-clock start so on-disk planned_duration_ms still
+    // matches (now - started_at) = remainingSeconds. Without this, a paused
+    // session that resumes after N minutes would think it had been running
+    // for N minutes when the load path computed elapsed time on the next crash.
+    m_phaseStartedAt = QDateTime::currentDateTimeUtc();
     emit runningChanged();
     m_timer.start();
+    saveStateToDisk();
 }
 
 void PomodoroService::skip()
@@ -105,6 +147,9 @@ void PomodoroService::skip()
     // Keep the timer running if it was already running.
     if (m_running)
         m_timer.start();
+    // enterPhase wrote to disk already; re-write to capture the (possibly
+    // still-running) state alongside the new phase anchor.
+    saveStateToDisk();
 }
 
 void PomodoroService::reset()
@@ -113,12 +158,18 @@ void PomodoroService::reset()
     m_running = false;
     m_phase = QStringLiteral("idle");
     m_workCyclesSinceLongBreak = 0;
+    m_phaseStartedAt = QDateTime();
     // Apply any pending duration changes now that we're idle.
     applyPendingDurationChanges();
     m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
     emit runningChanged();
     emit phaseChanged();
     emit remainingSecondsChanged();
+    // Going idle is the right time to drop the persisted blob — a fresh next
+    // launch sees "no file" rather than a stale "running" record. This matches
+    // the spec acceptance for "Restart app after session ended cleanly → no
+    // stale 'running' state shown".
+    clearStateFromDisk();
 }
 
 void PomodoroService::enterPhase(const QString &phase)
@@ -135,8 +186,15 @@ void PomodoroService::enterPhase(const QString &phase)
         m_remainingSeconds = minutesToSecondsSafe(m_longBreakMinutes);
     else
         m_remainingSeconds = minutesToSecondsSafe(m_workMinutes);
+    // Re-anchor wall-clock at the phase boundary so the crash-recovery path
+    // can compute (now - started_at) against the new phase's
+    // planned_duration_ms. Done unconditionally here — even an idle enterPhase
+    // resets the anchor, and the persistence layer treats idle-phase rows
+    // specially anyway (is_running=false → display-only restore).
+    m_phaseStartedAt = QDateTime::currentDateTimeUtc();
     emit phaseChanged();
     emit remainingSecondsChanged();
+    saveStateToDisk();
 }
 
 void PomodoroService::onTick()
@@ -269,4 +327,276 @@ void PomodoroService::saveCompletedToday()
     QSettings s;
     s.setValue(QStringLiteral("pomodoro/completed_date"), m_completedDate.toString(Qt::ISODate));
     s.setValue(QStringLiteral("pomodoro/completed_count"), m_completedToday);
+}
+
+void PomodoroService::setCurrentTaskId(const QString &taskId)
+{
+    if (m_currentTaskId == taskId) return;
+    m_currentTaskId = taskId;
+    emit currentTaskIdChanged();
+    // The on-disk blob carries task_id so a crash-recovered session still
+    // knows what the user was focusing on. Persist immediately.
+    saveStateToDisk();
+}
+
+void PomodoroService::flushStateToDisk()
+{
+    // Public alias for the same writer the state-mutation paths already use.
+    // Provided so QCoreApplication::aboutToQuit can call it without exposing
+    // the private writer. Cheap to call repeatedly — QSaveFile rewrites the
+    // file atomically each time.
+    saveStateToDisk();
+}
+
+QString PomodoroService::stateFilePath() const
+{
+    if (m_dataPath.isEmpty()) return QString();
+    return m_dataPath + QStringLiteral("/pomodoro_state.json");
+}
+
+void PomodoroService::ensureDataDirectory() const
+{
+    if (m_dataPath.isEmpty()) return;
+    QDir dir(m_dataPath);
+    if (!dir.exists())
+        dir.mkpath(QStringLiteral("."));
+}
+
+void PomodoroService::saveStateToDisk()
+{
+    // Cheap no-op when persistence root couldn't be resolved (rare; happens
+    // only in QStandardPaths-less test environments). The in-memory state
+    // machine still works — we simply skip the disk hop.
+    const QString path = stateFilePath();
+    if (path.isEmpty()) return;
+
+    ensureDataDirectory();
+
+    // Build the JSON blob. Schema (snake_case to match the rest of the
+    // codebase's on-disk shape — see CLAUDE.md "Conventions"):
+    //
+    //   {
+    //     "is_running":          bool,
+    //     "phase":               "work" | "shortBreak" | "longBreak" | "idle",
+    //     "started_at":          ISO 8601 with ms in UTC ("" when idle/paused),
+    //     "planned_duration_ms": int (current phase's full length),
+    //     "remaining_seconds":   int (in-memory countdown — used for pause restore),
+    //     "task_id":             string ("" when none),
+    //     "work_cycles_since_long_break": int,
+    //     "updated_at":          ISO 8601 with ms in UTC
+    //   }
+    //
+    // remaining_seconds is included so a paused session restores at its exact
+    // countdown value (started_at is cleared on pause so wall-clock math would
+    // give the wrong answer). For a running session, the load path prefers
+    // wall-clock arithmetic over remaining_seconds.
+    QJsonObject root;
+    root[QStringLiteral("is_running")]          = m_running;
+    root[QStringLiteral("phase")]               = m_phase;
+    root[QStringLiteral("started_at")]          = m_phaseStartedAt.isValid()
+        ? m_phaseStartedAt.toString(Qt::ISODateWithMs)
+        : QString();
+    root[QStringLiteral("planned_duration_ms")] = qint64(cycleSeconds()) * 1000;
+    root[QStringLiteral("remaining_seconds")]   = m_remainingSeconds;
+    root[QStringLiteral("task_id")]             = m_currentTaskId;
+    root[QStringLiteral("work_cycles_since_long_break")] = m_workCyclesSinceLongBreak;
+    root[QStringLiteral("updated_at")] =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+
+    const QJsonDocument doc(root);
+    const QByteArray data = doc.toJson(QJsonDocument::Indented);
+
+    // QSaveFile = temp + atomic rename. Same pattern as FileManager. A
+    // commit() failure (out of disk space, perms changed) is logged but does
+    // NOT abort the caller — losing the disk write is preferable to dropping
+    // the in-memory state mutation that triggered it.
+    QSaveFile out(path);
+    if (!out.open(QIODevice::WriteOnly)) {
+        qWarning("PomodoroService: cannot open %s for writing: %s",
+                 qPrintable(path), qPrintable(out.errorString()));
+        return;
+    }
+    out.write(data);
+    if (!out.commit()) {
+        qWarning("PomodoroService: failed to commit %s: %s",
+                 qPrintable(path), qPrintable(out.errorString()));
+    }
+}
+
+void PomodoroService::clearStateFromDisk()
+{
+    const QString path = stateFilePath();
+    if (path.isEmpty()) return;
+    if (QFile::exists(path)) {
+        if (!QFile::remove(path))
+            qWarning("PomodoroService: failed to remove %s", qPrintable(path));
+    }
+}
+
+void PomodoroService::loadStateFromDisk()
+{
+    const QString path = stateFilePath();
+    if (path.isEmpty()) return;
+
+    QFile in(path);
+    if (!in.exists())
+        return; // No prior session — nothing to restore, normal first launch.
+    if (!in.open(QIODevice::ReadOnly)) {
+        qWarning("PomodoroService: cannot open %s for reading: %s",
+                 qPrintable(path), qPrintable(in.errorString()));
+        return;
+    }
+    const QByteArray data = in.readAll();
+    in.close();
+
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        qWarning("PomodoroService: %s is invalid JSON (%s); deleting and starting fresh",
+                 qPrintable(path), qPrintable(err.errorString()));
+        clearStateFromDisk();
+        return;
+    }
+
+    const QJsonObject root = doc.object();
+    const bool wasRunning = root.value(QStringLiteral("is_running")).toBool(false);
+    const QString phase   = root.value(QStringLiteral("phase")).toString(QStringLiteral("idle"));
+    const QString startedAtStr = root.value(QStringLiteral("started_at")).toString();
+    const qint64 plannedMs = qint64(root.value(QStringLiteral("planned_duration_ms")).toDouble(0));
+    const int storedRemaining = root.value(QStringLiteral("remaining_seconds")).toInt(0);
+    const QString taskId  = root.value(QStringLiteral("task_id")).toString();
+    const int workCycles  = root.value(QStringLiteral("work_cycles_since_long_break")).toInt(0);
+
+    // Restore caller-supplied bits regardless of running/idle path.
+    if (!taskId.isEmpty()) {
+        m_currentTaskId = taskId;
+        emit currentTaskIdChanged();
+    }
+    if (workCycles >= 0)
+        m_workCyclesSinceLongBreak = workCycles;
+
+    // Reject obviously-corrupt phase tokens. Falling back to idle is safer
+    // than constructing a session with an unknown phase string the state
+    // machine has no transition for.
+    const bool phaseValid = (phase == QStringLiteral("work")
+                          || phase == QStringLiteral("shortBreak")
+                          || phase == QStringLiteral("longBreak")
+                          || phase == QStringLiteral("idle"));
+    if (!phaseValid) {
+        qWarning("PomodoroService: %s contains unknown phase %s; ignoring",
+                 qPrintable(path), qPrintable(phase));
+        clearStateFromDisk();
+        return;
+    }
+
+    if (!wasRunning) {
+        // Clean / paused state: just restore the phase + remaining counter
+        // for display. No timer arm, no signal beyond the property updates.
+        // QML will show "Продолжить" because phase != idle.
+        m_phase = phase;
+        if (storedRemaining > 0)
+            m_remainingSeconds = storedRemaining;
+        emit phaseChanged();
+        emit remainingSecondsChanged();
+        return;
+    }
+
+    // Running case: figure out how much wall-clock time has elapsed since the
+    // session was last saved. If started_at is missing or unparseable, fall
+    // back to storedRemaining (we know the user was running, but we don't
+    // know for how long — give them the benefit of the doubt and resume at
+    // the recorded countdown rather than skipping the phase entirely).
+    const QDateTime startedAt = QDateTime::fromString(startedAtStr, Qt::ISODateWithMs);
+    const QDateTime nowUtc = QDateTime::currentDateTimeUtc();
+    qint64 elapsedMs = 0;
+    if (startedAt.isValid() && startedAt.timeSpec() == Qt::UTC) {
+        const qint64 deltaMs = startedAt.msecsTo(nowUtc);
+        // Negative delta = clock moved backwards (DST? user changed system
+        // clock?). Treat as zero-elapsed so we don't fast-forward incorrectly.
+        elapsedMs = deltaMs > 0 ? deltaMs : 0;
+    } else {
+        // No reliable anchor → resume at storedRemaining.
+        m_phase = phase;
+        if (storedRemaining > 0)
+            m_remainingSeconds = storedRemaining;
+        m_running = true;
+        m_phaseStartedAt = nowUtc; // re-anchor so future saves are sane
+        m_timer.start();
+        emit phaseChanged();
+        emit remainingSecondsChanged();
+        emit runningChanged();
+        saveStateToDisk();
+        emit sessionRestored(0);
+        return;
+    }
+
+    // Phase still in flight: arm the timer at the remaining duration and emit
+    // sessionRestored so UI can show "Pomodoro resumed (was running N seconds
+    // ago)". We re-anchor m_phaseStartedAt to (now - elapsedSoFar) so the
+    // on-disk planned_duration_ms vs started_at math stays consistent across
+    // any subsequent saves.
+    if (plannedMs > 0 && elapsedMs < plannedMs) {
+        m_phase = phase;
+        const qint64 remainingMs = plannedMs - elapsedMs;
+        // Clamp to int range; planned values are bounded by clampDurationMinutes
+        // so this is conservative, not actually reachable.
+        m_remainingSeconds = static_cast<int>(qMin<qint64>(remainingMs / 1000,
+                                                            INT_MAX));
+        if (m_remainingSeconds < 1) m_remainingSeconds = 1;
+        m_running = true;
+        m_phaseStartedAt = startedAt;
+        m_timer.start();
+        emit phaseChanged();
+        emit remainingSecondsChanged();
+        emit runningChanged();
+        // Rewrite to disk so updated_at reflects "we restored at T". Future
+        // crash recovery starts from this fresh anchor.
+        saveStateToDisk();
+        emit sessionRestored(static_cast<int>(elapsedMs / 1000));
+        return;
+    }
+
+    // Phase boundary already passed while the app was dead — replay the
+    // phase-end machinery (bump completion counter, transition to next phase)
+    // exactly as if onTick() had reached zero. We do NOT fire the user-facing
+    // notification (no point — the user wasn't there to see it land in real
+    // time, and a stale toast on startup would be annoying).
+    //
+    // If multiple phases have elapsed (user crashed 2h ago with 25-min cycles),
+    // we only advance ONE phase boundary. Walking the full chain would require
+    // simulating the entire onTick state machine; for simplicity we drop the
+    // user at the start of the next phase. Better than skipping them to
+    // mid-future-work.
+    if (phase == QStringLiteral("work")) {
+        // Replicate the completion accounting onTick does at remainingSeconds=0.
+        const QDate today = QDate::currentDate();
+        if (m_completedDate != today) {
+            m_completedDate = today;
+            m_completedToday = 1;
+        } else {
+            m_completedToday++;
+        }
+        saveCompletedToday();
+        emit completedCyclesTodayChanged();
+
+        m_workCyclesSinceLongBreak++;
+        const bool dueLong = (m_cyclesBeforeLongBreak > 0)
+            && (m_workCyclesSinceLongBreak % m_cyclesBeforeLongBreak == 0);
+        enterPhase(dueLong ? QStringLiteral("longBreak") : QStringLiteral("shortBreak"));
+        if (dueLong)
+            m_workCyclesSinceLongBreak = 0;
+    } else {
+        // shortBreak / longBreak / idle-but-marked-running (paranoia): roll
+        // into the next work phase, fresh anchor.
+        enterPhase(QStringLiteral("work"));
+    }
+    // Continuous mode — keep the timer running, same as onTick's tail.
+    m_running = true;
+    m_timer.start();
+    emit runningChanged();
+    saveStateToDisk();
+    // Tell the UI the previous phase ended while the app was gone. The
+    // argument is "how long ago we observe the session restarting" — the
+    // number of seconds the now-completed phase had been running for.
+    emit sessionRestored(static_cast<int>(elapsedMs / 1000));
 }

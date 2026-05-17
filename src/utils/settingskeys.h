@@ -38,6 +38,10 @@ inline constexpr auto KarmaTrend           = "karma_trend";
 
 // Search
 inline constexpr auto RecentSearches       = "recent_searches";
+// Q2.26-B: accent-insensitive search by default (NFKC + Mn-strip + case fold
+// in src/utils/textsearch). When true, search becomes accent-sensitive
+// (ё ≠ е, é ≠ e). Default false = "café" matches "café" matches "cafe".
+inline constexpr auto SearchAccentSensitive = "search_accent_sensitive";
 
 // Permissions / first-run gates
 inline constexpr auto NotificationPermissionAsked = "notification_permission_asked";
@@ -50,6 +54,33 @@ inline constexpr auto AutoArchiveOldProjectsDays  = "auto_archive_old_projects_d
 
 // Task row density: "comfortable" (44 px, default) | "compact" (32 px)
 inline constexpr auto TaskDensity                 = "task_density";
+
+// Windows / Linux / macOS system tray icon. true = show OpenTodo icon in the
+// notification area with the context menu (Open / Quick Add / Settings /
+// Quit). false = hide it. Default true on desktop. Ignored on Android/WASM
+// (no tray surface). Read by main.cpp at startup and on every settingChanged.
+inline constexpr auto ShowTrayIcon                = "show_tray_icon";
+
+// Custom accent color override as a "#RRGGBB" hex string. Empty means the
+// active theme palette's native accent is used; otherwise this value wins
+// across the whole app. Mirrored from the QML SettingsSectionAppearance
+// `Settings { category: "appearance" }` block so that C++ services (e.g.
+// TrayIconService for the badge tint) can read it without reaching into
+// QML, and so that it persists alongside the rest of the user's settings
+// in state.json (in addition to the platform QSettings backing of the QML
+// Settings element).
+inline constexpr auto CustomAccentHex             = "custom_accent_hex";
+
+// Q3.10: backup retention + vacuum policy.
+// BackupRetentionCount — max dated backups kept on disk (default 50).
+// BackupRetentionDays  — drop dated backups older than this many days
+//                        (default 30; safety floor keeps newest one regardless).
+// VacuumThresholdBytes — when state.json exceeds this on disk, FileManager
+//                        emits vacuumRecommended() so the UI can prompt
+//                        (default 10 * 1024 * 1024 = 10 MB).
+inline constexpr auto BackupRetentionCount  = "backup_retention_count";
+inline constexpr auto BackupRetentionDays   = "backup_retention_days";
+inline constexpr auto VacuumThresholdBytes  = "vacuum_threshold_bytes";
 
 // Last-viewed restoration — persisted on aboutToQuit, restored on next startup
 // before the QML engine loads. All keys are cleared to empty string when there

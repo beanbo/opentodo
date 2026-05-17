@@ -16,3 +16,10 @@ endfunction()
 
 add_subdirectory(unit)
 add_subdirectory(qml)
+
+# libFuzzer harnesses for the three user-input parsers (FilterParser,
+# DateParser, QuickAddParser).  Opt-in via -DOPENTODO_ENABLE_FUZZ=ON and
+# requires Clang + compiler-rt (-fsanitize=fuzzer,address,undefined).
+# The subdir's own CMakeLists.txt early-returns when the option is OFF,
+# so adding it unconditionally is harmless on MSVC/GCC builds.
+add_subdirectory(fuzz)

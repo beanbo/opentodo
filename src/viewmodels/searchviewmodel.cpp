@@ -5,6 +5,7 @@
 #include "model/label.h"
 #include "model/comment.h"
 #include "utils/settingskeys.h"
+#include "utils/textsearch.h"
 #include <QSettings>
 
 SearchViewModel::SearchViewModel(DataStore *store, QObject *parent)
@@ -41,7 +42,19 @@ SearchViewModel::SearchViewModel(DataStore *store, QObject *parent)
 
 QString SearchViewModel::searchQuery() const { return m_searchQuery; }
 void SearchViewModel::setSearchQuery(const QString &query) {
-    if (m_searchQuery != query) {
+    // Q2.26-B: re-run the search even when the new query equals the cached
+    // one, provided we don't already have results staged. This covers the
+    // post-startup case where the constructor restored m_searchQuery from
+    // QSettings WITHOUT performing the search — the user (or the test
+    // harness) re-submitting the same string must still trigger a fresh
+    // search rather than silently returning the empty initial state.
+    const bool changed = (m_searchQuery != query);
+    const bool needsBackfill = !changed && query.length() >= 2
+                               && m_results.isEmpty();
+    if (!changed && !needsBackfill)
+        return;
+
+    if (changed) {
         m_searchQuery = query;
 
         // Persist: skip transient mid-typing states (1–2 chars) to avoid
@@ -51,14 +64,14 @@ void SearchViewModel::setSearchQuery(const QString &query) {
             QSettings qs;
             qs.setValue(QStringLiteral("search/last_query"), query);
         }
-
         emit searchQueryChanged();
-        if (query.length() >= 2)
-            performSearch();
-        else if (query.isEmpty()) {
-            m_results.clear();
-            emit resultsChanged();
-        }
+    }
+
+    if (query.length() >= 2)
+        performSearch();
+    else if (query.isEmpty()) {
+        m_results.clear();
+        emit resultsChanged();
     }
 }
 
@@ -118,10 +131,25 @@ void SearchViewModel::performSearch()
     emit isSearchingChanged();
 
     m_results.clear();
-    const QString q = m_searchQuery.toLower();
 
-    // Search tasks
-    const auto tasks = m_store->searchTasks(m_searchQuery);
+    // Q2.26-B: Unicode-aware substring matching. Read the accent-sensitivity
+    // toggle once at search start so every entity scan in this pass shares
+    // the same normalization mode. Default false = "café"/"cafe"/"café" all
+    // match the same query.
+    const bool accentSensitive =
+        m_store->setting(QLatin1String(SettingsKeys::SearchAccentSensitive))
+                .toBool();
+    const bool stripDiacritics = !accentSensitive;
+
+    // Pre-normalize the needle exactly once. Project/label/comment loops below
+    // call containsNormalized(haystack, normalizedNeedle) so the per-row work
+    // is just normalize(haystack) + a single QString::contains.
+    const QString normalizedQuery =
+        TextSearch::normalize(m_searchQuery, stripDiacritics);
+
+    // Search tasks (DataStore does its own pre-normalization for symmetry
+    // with QML callers that don't go through SearchViewModel).
+    const auto tasks = m_store->searchTasks(m_searchQuery, accentSensitive);
     for (auto *t : tasks) {
         QVariantMap item;
         item[QStringLiteral("type")] = QStringLiteral("task");
@@ -134,9 +162,19 @@ void SearchViewModel::performSearch()
         m_results.append(item);
     }
 
+    // Pure-diacritic queries normalize to "" — skip the remaining scans so we
+    // don't return every entity (empty needle matches everything).
+    if (normalizedQuery.isEmpty()) {
+        m_isSearching = false;
+        emit isSearchingChanged();
+        emit resultsChanged();
+        return;
+    }
+
     // Search projects
     for (auto *p : m_store->allProjects()) {
-        if (p->name().toLower().contains(q)) {
+        if (TextSearch::containsNormalized(p->name(), normalizedQuery,
+                                           stripDiacritics)) {
             QVariantMap item;
             item[QStringLiteral("type")] = QStringLiteral("project");
             item[QStringLiteral("id")] = p->id();
@@ -150,7 +188,8 @@ void SearchViewModel::performSearch()
 
     // Search labels
     for (auto *l : m_store->allLabels()) {
-        if (l->name().toLower().contains(q)) {
+        if (TextSearch::containsNormalized(l->name(), normalizedQuery,
+                                           stripDiacritics)) {
             QVariantMap item;
             item[QStringLiteral("type")] = QStringLiteral("label");
             item[QStringLiteral("id")] = l->id();
@@ -167,7 +206,8 @@ void SearchViewModel::performSearch()
     for (auto *t : allTasks) {
         const auto comments = m_store->commentsForTask(t->id());
         for (auto *c : comments) {
-            if (c->content().toLower().contains(q)) {
+            if (TextSearch::containsNormalized(c->content(), normalizedQuery,
+                                               stripDiacritics)) {
                 QVariantMap item;
                 item[QStringLiteral("type")] = QStringLiteral("comment");
                 item[QStringLiteral("id")] = c->id();
