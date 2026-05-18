@@ -914,7 +914,6 @@ if(WIN32 AND NOT EMSCRIPTEN AND NOT ANDROID)
                     --no-translations
                     --no-system-d3d-compiler
                     --no-opengl-sw
-                    --no-quick-import
                     --qmldir \"${CMAKE_SOURCE_DIR}/qml\"
                     \"\${CMAKE_INSTALL_PREFIX}/OpenTodo.exe\"
                 RESULT_VARIABLE _wq_rc
