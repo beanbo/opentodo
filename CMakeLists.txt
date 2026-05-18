@@ -851,3 +851,163 @@ if(OPENTODO_ENABLE_COVERAGE AND BUILD_TESTING)
     endif()
 endif()
 
+# ── Q3.11: Packaging (CPack) ─────────────────────────────────────────────────
+# Build user-facing distributables — a portable .zip and (if NSIS is
+# installed) a Windows .exe installer.
+#
+# Quick run-down:
+#   1. Build release as usual:  cmake --build build/release
+#   2. Generate packages:        cd build/release ; cpack
+#   3. Outputs land in build/release/_CPack_Packages/ and at the build root.
+#
+# Driver script: tools/package.bat (Windows) — wraps the full flow.
+# See docs/PACKAGING.md for the cheat-sheet, NSIS install instructions,
+# and notes on the unsigned-binary SmartScreen warning users will see.
+#
+# Only Windows desktop is wired up right now. WASM and Android have their
+# own deployment paths (Qt for WebAssembly produces a static html bundle;
+# androiddeployqt produces an .apk via Gradle) — both out of scope here.
+if(WIN32 AND NOT EMSCRIPTEN AND NOT ANDROID)
+
+    # ── install() rules: lay the runtime out next to the exe ────────────────
+    # Everything goes to the install prefix root (DESTINATION ".") so the
+    # resulting tree is the same shape a portable .zip user would expect:
+    #
+    #   OpenTodo/
+    #     OpenTodo.exe
+    #     Qt6Core.dll  Qt6Gui.dll  Qt6Quick.dll  ...
+    #     platforms/qwindows.dll
+    #     styles/qmodernwindowsstyle.dll
+    #     qml/QtQuick/...
+    #     LICENSE  NOTICE  README.md
+    #
+    install(TARGETS OpenTodo
+        RUNTIME DESTINATION .
+        BUNDLE  DESTINATION .
+        LIBRARY DESTINATION .
+    )
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/LICENSE"
+        "${CMAKE_SOURCE_DIR}/NOTICE"
+        "${CMAKE_SOURCE_DIR}/README.md"
+        DESTINATION .
+    )
+
+    # windeployqt — bundles Qt6Core.dll, the platforms/ + styles/ plugins,
+    # the QML module tree under qml/, and (when relevant) the runtime
+    # MinGW DLLs. Without this the installed/zipped exe will not launch.
+    # We register an install(CODE) hook so windeployqt runs against the
+    # *staged* exe at install time — that way the same recipe drives both
+    # `cmake --install` (for local testing) and `cpack` (for distribution).
+    find_program(OPENTODO_WINDEPLOYQT
+        NAMES windeployqt
+        HINTS "${Qt6_DIR}/../../../bin"
+              "${Qt6_DIR}/../../../../bin"
+        DOC "Qt windeployqt — bundles Qt runtime DLLs and QML modules next to the exe.")
+    if(OPENTODO_WINDEPLOYQT)
+        message(STATUS "Packaging: windeployqt at ${OPENTODO_WINDEPLOYQT}")
+        install(CODE "
+            message(STATUS \"Running windeployqt against \${CMAKE_INSTALL_PREFIX}/OpenTodo.exe\")
+            execute_process(
+                COMMAND \"${OPENTODO_WINDEPLOYQT}\"
+                    --release
+                    --no-translations
+                    --no-system-d3d-compiler
+                    --no-opengl-sw
+                    --no-quick-import
+                    --qmldir \"${CMAKE_SOURCE_DIR}/qml\"
+                    \"\${CMAKE_INSTALL_PREFIX}/OpenTodo.exe\"
+                RESULT_VARIABLE _wq_rc
+            )
+            if(NOT _wq_rc EQUAL 0)
+                message(FATAL_ERROR \"windeployqt failed (rc=\${_wq_rc})\")
+            endif()
+        ")
+    else()
+        message(WARNING "Packaging: windeployqt not found — `cpack` will produce a "
+                        "package that probably cannot launch. Add \${Qt6_DIR}/../../../bin "
+                        "to PATH or set OPENTODO_WINDEPLOYQT explicitly.")
+    endif()
+
+    # ── CPack metadata ──────────────────────────────────────────────────────
+    set(CPACK_PACKAGE_NAME              "OpenTodo")
+    set(CPACK_PACKAGE_VENDOR            "OpenTodo contributors")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Cross-platform task manager — local-first, Drive-syncable, MIT-licensed")
+    set(CPACK_PACKAGE_VERSION_MAJOR     ${PROJECT_VERSION_MAJOR})
+    set(CPACK_PACKAGE_VERSION_MINOR     ${PROJECT_VERSION_MINOR})
+    set(CPACK_PACKAGE_VERSION_PATCH     ${PROJECT_VERSION_PATCH})
+    set(CPACK_PACKAGE_VERSION           "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenTodo")
+    set(CPACK_PACKAGE_FILE_NAME
+        "OpenTodo-${PROJECT_VERSION}-win64")
+    set(CPACK_RESOURCE_FILE_LICENSE     "${CMAKE_SOURCE_DIR}/LICENSE")
+    set(CPACK_RESOURCE_FILE_README      "${CMAKE_SOURCE_DIR}/README.md")
+    set(CPACK_PACKAGE_EXECUTABLES       "OpenTodo;OpenTodo")
+    # Generators: always ZIP (portable bundle works without third-party
+    # tools). NSIS is conditionally enabled below when makensis is on PATH.
+    set(CPACK_GENERATOR                 "ZIP")
+    set(CPACK_SOURCE_GENERATOR          "ZIP")
+    set(CPACK_SOURCE_PACKAGE_FILE_NAME
+        "OpenTodo-${PROJECT_VERSION}-source")
+    set(CPACK_SOURCE_IGNORE_FILES
+        "/\\\\.git/"
+        "/build/"
+        "/build-.*/"
+        "/\\\\.claude/"
+        "/\\\\.vscode/"
+        "/_CPack_Packages/"
+        "/cppcheck.*log"
+        "\\\\.user$"
+    )
+
+    # ── NSIS installer (Windows .exe) — opt-in via makensis on PATH ─────────
+    # NSIS produces a real Windows installer with a Start menu entry, an
+    # uninstaller, and a desktop-shortcut option. To enable:
+    #   winget install --id NSIS.NSIS  (recommended)
+    # then re-configure with `cmake -B build/release` and re-run cpack.
+    #
+    # The installer is unsigned — first-run users will see Microsoft
+    # SmartScreen's "Windows protected your PC" warning. Code-signing is
+    # tracked separately in the backlog; see docs/PACKAGING.md.
+    find_program(OPENTODO_MAKENSIS NAMES makensis
+        HINTS "C:/Program Files (x86)/NSIS"
+              "C:/Program Files/NSIS"
+        DOC "NSIS makensis — if present, cpack also produces a Windows .exe installer.")
+    if(OPENTODO_MAKENSIS)
+        message(STATUS "Packaging: NSIS at ${OPENTODO_MAKENSIS} — installer enabled")
+        list(APPEND CPACK_GENERATOR "NSIS")
+        set(CPACK_NSIS_DISPLAY_NAME            "OpenTodo")
+        set(CPACK_NSIS_PACKAGE_NAME            "OpenTodo")
+        set(CPACK_NSIS_HELP_LINK
+            "https://github.com/opentodo/opentodo")
+        set(CPACK_NSIS_URL_INFO_ABOUT
+            "https://github.com/opentodo/opentodo")
+        set(CPACK_NSIS_CONTACT                 "opentodo@example.invalid")
+        set(CPACK_NSIS_MODIFY_PATH             OFF)
+        set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+        # Start menu shortcut — name shown ; relative .exe path.
+        set(CPACK_NSIS_MENU_LINKS              "OpenTodo.exe" "OpenTodo")
+        set(CPACK_NSIS_CREATE_ICONS_EXTRA
+            "CreateShortCut '$DESKTOP\\\\OpenTodo.lnk' '$INSTDIR\\\\OpenTodo.exe'")
+        set(CPACK_NSIS_DELETE_ICONS_EXTRA
+            "Delete '$DESKTOP\\\\OpenTodo.lnk'")
+        # Installer + uninstaller icons.
+        set(_OPENTODO_NSIS_ICO
+            "${CMAKE_SOURCE_DIR}/resources/icons/icon.ico")
+        if(EXISTS "${_OPENTODO_NSIS_ICO}")
+            # CPack's NSIS generator wants Windows-style backslashes here.
+            file(TO_NATIVE_PATH "${_OPENTODO_NSIS_ICO}" _OPENTODO_NSIS_ICO_NATIVE)
+            string(REPLACE "\\" "\\\\" _OPENTODO_NSIS_ICO_ESCAPED
+                "${_OPENTODO_NSIS_ICO_NATIVE}")
+            set(CPACK_NSIS_MUI_ICON       "${_OPENTODO_NSIS_ICO_ESCAPED}")
+            set(CPACK_NSIS_MUI_UNIICON    "${_OPENTODO_NSIS_ICO_ESCAPED}")
+            set(CPACK_NSIS_INSTALLED_ICON_NAME "OpenTodo.exe")
+        endif()
+    else()
+        message(STATUS "Packaging: NSIS not on PATH — only ZIP will be produced. "
+                       "Install with `winget install NSIS.NSIS` for an .exe installer.")
+    endif()
+
+    include(CPack)
+endif()
