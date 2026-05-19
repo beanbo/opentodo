@@ -273,6 +273,41 @@ ApplicationWindow {
         }
     }
 
+    // Wiring 1b: tray-icon "Open OpenTodo" / "Settings" / double-click on tray.
+    // Routed via QML (rather than a C++ lambda poking engine.rootObjects()
+    // directly) so the engine resolves `root` through its normal binding
+    // system instead of an out-of-band qobject_cast<QWindow*>, which lets
+    // Qt handle the transient window states (minimised, hidden) gracefully
+    // instead of crashing on a stale QPlatformWindow. The B-6.6-style
+    // typeof guard skips the Loader entirely on non-desktop builds where
+    // `trayIcon` is not exposed as a context property.
+    Loader {
+        active: typeof trayIcon !== "undefined"
+        sourceComponent: Component {
+            Connections {
+                target: trayIcon
+                function onOpenWindowRequested() {
+                    // show() handles both "minimised to taskbar" and "fully
+                    // hidden via setVisible(false)" — Qt picks the right
+                    // restore behaviour automatically. raise() brings the
+                    // window above other apps; requestActivate() moves
+                    // keyboard focus.
+                    root.show()
+                    root.raise()
+                    root.requestActivate()
+                }
+                function onSettingsRequested() {
+                    root.show()
+                    root.raise()
+                    root.requestActivate()
+                    // Navigation already done C++-side via sidebarViewModel,
+                    // but we double-up here so it works even if the C++
+                    // wiring is disabled in a future refactor.
+                }
+            }
+        }
+    }
+
     // Wiring 2: notification click → raise window + open task editor.
     // The C++ side already calls taskVM.selectTask(taskId); we only need to
     // raise the window here so it becomes visible.

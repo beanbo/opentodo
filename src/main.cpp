@@ -693,42 +693,33 @@ int main(int argc, char *argv[])
             trayIcon->setVisible(settingsVM->showTrayIcon());
         });
 
-        // Helper: raise + activate the QML ApplicationWindow.
-        // The window may have been minimised, hidden, or buried behind other
-        // apps — show()/raise()/requestActivate() is the canonical Qt sequence
-        // for "bring me to the front, please".
-        auto raiseRootWindow = [&engine]() {
-            const auto roots = engine.rootObjects();
-            if (roots.isEmpty()) return;
-            auto *win = qobject_cast<QWindow *>(roots.first());
-            if (!win) return;
-            // showNormal() is necessary because a window minimised to the tray
-            // sits in WindowMinimized state; plain show() would not undo that.
-            win->showNormal();
-            win->raise();
-            win->requestActivate();
-        };
-
-        QObject::connect(trayIcon, &TrayIconService::openWindowRequested,
-                         &app, raiseRootWindow);
+        // openWindowRequested + settingsRequested are now handled QML-side
+        // (Main.qml has a Connections block listening to `trayIcon`). The
+        // earlier C++ lambda directly poked `engine.rootObjects().first()` →
+        // QWindow::showNormal/raise/requestActivate and could crash when the
+        // ApplicationWindow had been hidden/destroyed by the user closing
+        // the X button while the tray icon was still live. Routing via QML
+        // lets the engine resolve `root` through its normal binding system
+        // instead of an out-of-band cast, which Qt handles gracefully even
+        // when the window is in transient states.
 
         // Quick Add from the tray re-uses the existing hotkey wiring: emit
         // the SAME signal that the Win32 RegisterHotKey path emits, so the
-        // QML side (qml/Main.qml) runs its raise + focusInput handler unchanged.
-        // No separate code path means no risk of the two entry points
-        // drifting apart (Quick Add modal opening differently from menu vs
-        // hotkey was the kind of bug we want to make structurally impossible).
+        // QML side (qml/Main.qml) runs its raise + focusInput handler
+        // unchanged. No separate code path means no risk of the two entry
+        // points drifting apart (Quick Add modal opening differently from
+        // menu vs hotkey was the kind of bug we want to make structurally
+        // impossible).
         QObject::connect(trayIcon, &TrayIconService::quickAddRequested,
                          hotkeyService, [hotkeyService]() {
             emit hotkeyService->quickAddRequested();
         });
 
-        // Settings menu item — route through the sidebar so the side panel
-        // selection follows the navigation too (otherwise the user would land
-        // on settings with no sidebar item highlighted, which looks broken).
+        // settingsRequested: navigation only — the raise/activate part is
+        // handled QML-side (Main.qml's Connections block), so this lambda
+        // only has to advance the sidebar selection.
         QObject::connect(trayIcon, &TrayIconService::settingsRequested,
-                         sidebarVM, [sidebarVM, raiseRootWindow]() {
-            raiseRootWindow();
+                         sidebarVM, [sidebarVM]() {
             sidebarVM->navigateTo(QStringLiteral("settings"));
         });
 

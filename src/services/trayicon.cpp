@@ -55,7 +55,22 @@ TrayIconService::TrayIconService(QObject *parent)
     // and calls setVisible(true) when the user has it enabled.
 }
 
-TrayIconService::~TrayIconService() = default;
+TrayIconService::~TrayIconService()
+{
+    // m_menu was created with `new QMenu()` (no parent — QMenu is a QWidget
+    // and we have no widget context to anchor it to). Delete it explicitly
+    // so it doesn't leak across the app lifetime. QSystemTrayIcon does NOT
+    // take ownership of the menu it's handed via setContextMenu, so this
+    // is our responsibility. Order matters: clear the context menu on the
+    // tray icon first so it can't try to redraw while the menu is being
+    // torn down.
+    if (m_trayIcon) {
+        m_trayIcon->setContextMenu(nullptr);
+        m_trayIcon->hide();
+    }
+    delete m_menu;
+    m_menu = nullptr;
+}
 
 void TrayIconService::buildMenu()
 {
