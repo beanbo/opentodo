@@ -526,7 +526,7 @@ qt_add_qml_module(OpenTodoApp
 )
 
 # ── Executable ───────────────────────────────────────────────────────────────
-qt_add_executable(OpenTodo src/main.cpp)
+qt_add_executable(OpenTodo WIN32 src/main.cpp)
 
 # Link the App library (which now carries the QML module) and the generated
 # plugin target.  qt_add_qml_module on a library creates a companion plugin

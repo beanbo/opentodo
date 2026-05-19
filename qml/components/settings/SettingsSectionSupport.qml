@@ -54,12 +54,11 @@ Rectangle {
     }
 
     // ── Wallet addresses ──────────────────────────────────────────────────────
-    // TODO: replace with real wallet addresses before public release
-    readonly property string btcAddress:     "bc1qPLACEHOLDER-bitcoin-wallet-address-replace-me"
-    readonly property string ethAddress:     "0xPLACEHOLDER-ethereum-wallet-address-replace"
-    readonly property string tonAddress:     "UQAPLACEHOLDER-ton-wallet-address-replace-me_uq"
-    readonly property string usdtTrcAddress: "TPLACEHOLDER-usdt-trc20-tron-wallet-replace"
-    readonly property string usdtErcAddress: "0xPLACEHOLDER-usdt-erc20-eth-wallet-replace"
+    readonly property string btcAddress:     "bc1q7uq4s4j2ze0cqr8d00jgj4fqkry068zrfre56j"
+    readonly property string ethAddress:     "0xB613541324129f144DdE64C57E6332Ad813cA0e8"
+    readonly property string tonAddress:     "UQAdzBUGiQx5T3DFDNGLcImgzgZvyUumR5msZwLuQhjVrAag"
+    readonly property string usdtTrcAddress: "TRgzkiKdhLXiftfPNymreHMhio3vQJW9wf"
+    readonly property string usdtErcAddress: "0xB613541324129f144DdE64C57E6332Ad813cA0e8"
 
     // ── Header ────────────────────────────────────────────────────────────────
     Rectangle {
