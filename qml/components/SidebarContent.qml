@@ -772,35 +772,49 @@ Rectangle {
 
                     // Rebuild the rows array and re-assign it to force the Repeater
                     // to recreate delegates. We use a plain JS array as model.
+                    //
+                    // Q3.19: walker is now recursive (was 1-level: root +
+                    // children only). Bug report — "Не работает раскрытие
+                    // проекта который уже вложен в родительский". Previously
+                    // a sub-project's chevron was rendered (hasChildren()
+                    // queries `projectViewModel.childProjects` and that
+                    // works at any depth) but clicking it toggled the
+                    // expansion map without producing any new rows, because
+                    // the loop below stopped at depth=1. The recursive walker
+                    // pushes one row per visible node at its true depth, so
+                    // expansion now works for depth 2, 3, ...
+                    //
+                    // Recursion is fine: project trees in practice are 2-4
+                    // levels deep. The Project model has no built-in depth
+                    // cap, and we don't add one here — if a user hand-crafts
+                    // a 1000-level tree they'll discover the JS stack limit,
+                    // which is a far more useful "you've done something
+                    // weird" signal than a silently-truncated rebuild.
                     function rebuild() {
                         const rows = []
+
+                        function pushSubtree(node, depth) {
+                            if (!node || node.isInbox || node.isArchived) return
+                            rows.push({
+                                projectId:    node.id,
+                                projectName:  node.name,
+                                projectColor: node.color || sidebarContent.todoist_red,
+                                projectIcon:  node.icon  || "",
+                                depth:        depth
+                            })
+                            if (!sidebarContent.isExpanded(node.id)) return
+                            const children = projectViewModel.childProjects(node.id)
+                            if (!children) return
+                            for (let i = 0; i < children.length; ++i)
+                                pushSubtree(children[i], depth + 1)
+                        }
+
                         const count = projectViewModel.count
                         for (let i = 0; i < count; ++i) {
                             const p = projectViewModel.projectAt(i)
-                            if (!p || p.isInbox || p.isArchived) continue
-                            if (p.parentId === "" || p.parentId === null || p.parentId === undefined) {
-                                rows.push({
-                                    projectId:    p.id,
-                                    projectName:  p.name,
-                                    projectColor: p.color || sidebarContent.todoist_red,
-                                    projectIcon:  p.icon  || "",
-                                    depth:        0
-                                })
-                                if (sidebarContent.isExpanded(p.id)) {
-                                    const children = projectViewModel.childProjects(p.id)
-                                    for (let c = 0; c < children.length; ++c) {
-                                        const child = children[c]
-                                        if (!child || child.isArchived || child.isInbox) continue
-                                        rows.push({
-                                            projectId:    child.id,
-                                            projectName:  child.name,
-                                            projectColor: child.color || sidebarContent.todoist_red,
-                                            projectIcon:  child.icon  || "",
-                                            depth:        1
-                                        })
-                                    }
-                                }
-                            }
+                            if (!p) continue
+                            if (p.parentId === "" || p.parentId === null || p.parentId === undefined)
+                                pushSubtree(p, 0)
                         }
                         projectTreeColumnRepeater.model = rows
                     }
