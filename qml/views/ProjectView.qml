@@ -384,7 +384,7 @@ Rectangle {
             Layout.leftMargin: Spacing.md
             Layout.rightMargin: Spacing.md
             Layout.topMargin: Spacing.sm
-            visible: project && project.notes !== ""
+            visible: !!project && !!project.notes
             color: ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
             border.width: 1
@@ -394,7 +394,9 @@ Rectangle {
 
             ColumnLayout {
                 id: notesCardCol
-                anchors.fill: parent
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
                 anchors.margins: Spacing.md
                 spacing: Spacing.xs
 
@@ -1008,9 +1010,11 @@ Rectangle {
             ScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
+                clip: true
 
                 TextArea {
                     id: descriptionField
+                    width: parent.width
                     text: editDialog.editDescription
                     placeholderText: qsTr("Описание проекта (необязательно)")
                     wrapMode: Text.WordWrap
@@ -1038,9 +1042,11 @@ Rectangle {
             ScrollView {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 160
+                clip: true
 
                 TextArea {
                     id: notesField
+                    width: parent.width
                     text: editDialog.editNotes
                     placeholderText: qsTr("Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)")
                     wrapMode: Text.WordWrap
