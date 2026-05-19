@@ -56,8 +56,16 @@ NotificationsViewModel::NotificationsViewModel(DataStore *store,
     });
 
     // --- SyncEngine connections (optional) ---
+    // Q3.15: syncCompleted is intentionally NOT wired into the notification
+    // centre. Sync runs after every user action (and on a 5 s debounce timer);
+    // pushing a "Синхронизация выполнена" entry every time was pure noise that
+    // crowded out the useful notifications (reminders, overdue tasks,
+    // achievements). The status is still surfaced live via SyncIndicator in
+    // the desktop status bar — that's the right place to see it.
+    // syncFailed is kept because failures ARE actionable (network errors,
+    // auth expiry, etc.) and the user needs to know if their data isn't
+    // backed up.
     if (m_sync) {
-        connect(m_sync, &SyncEngine::syncCompleted, this, &NotificationsViewModel::onSyncCompleted);
         connect(m_sync, &SyncEngine::syncFailed,    this, &NotificationsViewModel::onSyncFailed);
     }
 
