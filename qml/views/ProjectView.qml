@@ -81,8 +81,56 @@ Rectangle {
     property string _activeSectionId:   ""
     property string _activeSectionName: ""
 
+    // ── Section reorder helpers ───────────────────────────────────────────────
+    // Returns visible (non-archived, non-deleted) sections for the current
+    // project sorted by their `order` value. Used by the Up/Down menu items.
+    function _siblingSections() {
+        const raw = dataStore.sectionsForProject(root.projectId) || []
+        // sectionsForProject already excludes deleted + archived; sort by order.
+        return raw.slice().sort(function(a, b) { return a.order - b.order })
+    }
+
+    // Swap the `order` field of the active section with its neighbour.
+    // direction: -1 = move up (swap with predecessor), +1 = move down.
+    function _moveSection(sectionId, direction) {
+        const siblings = root._siblingSections()
+        const idx = siblings.findIndex(function(s) { return s.id === sectionId })
+        if (idx < 0) return
+        const swapIdx = idx + direction
+        if (swapIdx < 0 || swapIdx >= siblings.length) return
+        const a = siblings[idx]
+        const b = siblings[swapIdx]
+        const tmp = a.order
+        a.order = b.order
+        b.order = tmp
+        // Stamp CRDT fields so the reorder survives sync.
+        dataStore.markSectionModified(a.id)
+        dataStore.markSectionModified(b.id)
+    }
+
     Menu {
         id: globalSectionMenu
+
+        // ── Reorder items ─────────────────────────────────────────────────────
+        MenuItem {
+            text: qsTr("Переместить вверх")
+            enabled: {
+                const siblings = root._siblingSections()
+                const idx = siblings.findIndex(function(s) { return s.id === root._activeSectionId })
+                return idx > 0
+            }
+            onTriggered: root._moveSection(root._activeSectionId, -1)
+        }
+        MenuItem {
+            text: qsTr("Переместить вниз")
+            enabled: {
+                const siblings = root._siblingSections()
+                const idx = siblings.findIndex(function(s) { return s.id === root._activeSectionId })
+                return idx >= 0 && idx < siblings.length - 1
+            }
+            onTriggered: root._moveSection(root._activeSectionId, +1)
+        }
+        MenuSeparator {}
 
         MenuItem {
             text: qsTr("Переименовать раздел…")
@@ -97,6 +145,22 @@ Rectangle {
             onTriggered: addSectionDialog.open()
         }
         MenuSeparator {}
+
+        // ── Hide section ──────────────────────────────────────────────────────
+        // Sets isArchived = true so the section disappears from the list view.
+        // TODO: add a "Показать скрытые разделы" toggle to un-hide sections.
+        MenuItem {
+            text: qsTr("Скрыть раздел")
+            onTriggered: {
+                const s = dataStore.sectionById(root._activeSectionId)
+                if (s) {
+                    s.isArchived = true
+                    dataStore.markSectionModified(root._activeSectionId)
+                }
+            }
+        }
+        MenuSeparator {}
+
         MenuItem {
             text: qsTr("Удалить раздел")
             Material.foreground: root.todoistRed

@@ -136,6 +136,14 @@ void DataStore::markLabelModified(const QString &id)
     emit dataChanged();
 }
 
+void DataStore::markSectionModified(const QString &id)
+{
+    if (!m_sectionIndex.contains(id)) return;
+    stampEntityField(id, m_sectionMeta, QStringLiteral("updated_at"));
+    emit sectionsChanged();
+    emit dataChanged();
+}
+
 // ── Inbound CRDT meta application (Q2.18-A) ──────────────────────────────────
 //
 // Per-field merge of an inbound _meta blob into a local entity meta map.
@@ -1009,7 +1017,7 @@ QList<Section *> DataStore::sectionsForProject(const QString &projectId) const
 {
     QList<Section *> result;
     for (auto *s : m_sections) {
-        if (!s->isDeleted() && s->projectId() == projectId)
+        if (!s->isDeleted() && !s->isArchived() && s->projectId() == projectId)
             result.append(s);
     }
     return result;

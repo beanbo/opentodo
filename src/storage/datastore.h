@@ -179,6 +179,9 @@ public:
     void markTaskModified(const QString &id);
     void markProjectModified(const QString &id);
     void markLabelModified(const QString &id);
+    // Stamps CRDT updated_at for a section mutated directly from QML (e.g.
+    // order swap or isArchived toggle) and emits sectionsChanged + dataChanged.
+    Q_INVOKABLE void markSectionModified(const QString &id);
 
     // --- Inbound CRDT meta application ---
     // Q2.18-A FIX: SyncEngine::applyCommit needs to push the merged per-field
