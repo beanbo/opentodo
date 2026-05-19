@@ -946,6 +946,7 @@ Rectangle {
         property string editIcon:        project ? project.icon        : ""
         property int    editWeeklyGoal:  project ? project.weeklyGoal  : 0
         property string editNotes:       project ? project.notes       : ""
+        property string editLinkedRepoPath: project ? project.linkedRepoPath : ""
         // Per-project default priority (1=P1, 2=P2, 3=P3, 4=P4/«no priority»).
         // Stored in QSettings, NOT on the Project model — see ProjectViewModel.
         property int    editDefaultPriority: 4
@@ -959,6 +960,7 @@ Rectangle {
             editIcon        = project ? project.icon        : ""
             editWeeklyGoal  = project ? project.weeklyGoal  : 0
             editNotes       = project ? project.notes       : ""
+            editLinkedRepoPath = project ? project.linkedRepoPath : ""
             editDefaultPriority = projectId !== ""
                 ? projectViewModel.defaultPriorityForProject(projectId)
                 : 4
@@ -970,6 +972,7 @@ Rectangle {
             iconField.text        = editIcon
             weeklyGoalSpin.value  = editWeeklyGoal
             notesField.text       = editNotes
+            linkedRepoPathField.text = editLinkedRepoPath
             // ComboBox layout: 0=«Без приоритета»(=P4), 1=P1, 2=P2, 3=P3.
             defaultPriorityCombo.currentIndex = editDefaultPriority === 4
                 ? 0
@@ -983,7 +986,8 @@ Rectangle {
                 projectViewModel.updateProject(projectId, "description", editDialog.editDescription)
                 projectViewModel.updateProject(projectId, "icon",        editDialog.editIcon)
                 projectViewModel.updateProject(projectId, "weeklyGoal",  editDialog.editWeeklyGoal)
-                projectViewModel.updateProject(projectId, "notes",       editDialog.editNotes)
+                projectViewModel.updateProject(projectId, "notes",          editDialog.editNotes)
+                projectViewModel.updateProject(projectId, "linkedRepoPath", editDialog.editLinkedRepoPath)
                 projectViewModel.setDefaultPriorityForProject(projectId, editDialog.editDefaultPriority)
                 projectViewModel.setDefaultLabelsForProject(projectId, editDialog.editDefaultLabels)
             }
@@ -1145,6 +1149,36 @@ Rectangle {
                         editDialog.editNotes = text
                     }
                 }
+            }
+
+            // ── Linked repository (Claude Code integration) ──────────────────
+            Label {
+                text: qsTr("Связанный репозиторий")
+                font.pixelSize: FontSize.small
+                color: root.textSecondary
+                Layout.topMargin: Spacing.sm
+            }
+            TextField {
+                id: linkedRepoPathField
+                Layout.fillWidth: true
+                text: editDialog.editLinkedRepoPath
+                placeholderText: qsTr("C:\\путь\\к\\репозиторию")
+                color: root.textPrimary
+                font.pixelSize: FontSize.body
+                background: Rectangle {
+                    color: ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
+                    border.width: 1
+                    radius: Radius.sm
+                }
+                onTextChanged: editDialog.editLinkedRepoPath = text
+            }
+            Label {
+                text: qsTr("Полный путь к локальной папке проекта. Если задан, в контекстном меню задач появится пункт «Запустить с Claude Code».")
+                font.pixelSize: FontSize.caption
+                color: root.textSecondary
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
 
             // ── Weekly goal ───────────────────────────────────────────────────

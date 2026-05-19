@@ -136,6 +136,7 @@ bool ProjectViewModel::updateProject(const QString &id, const QString &field, co
     else if (field == QStringLiteral("order")) p->setOrder(value.toInt());
     else if (field == QStringLiteral("icon")) p->setIcon(value.toString());
     else if (field == QStringLiteral("weeklyGoal")) p->setWeeklyGoal(value.toInt());
+    else if (field == QStringLiteral("linkedRepoPath")) p->setLinkedRepoPath(value.toString());
     else if (field == QStringLiteral("parentId")) {
         // Cycle check: walk the parent chain from the candidate; if we encounter
         // `id`, setting this parentId would create a cycle — reject.

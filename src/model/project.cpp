@@ -57,6 +57,9 @@ void Project::setWeeklyGoal(int goal) { if (m_weeklyGoal != goal) { m_weeklyGoal
 QString Project::notes() const { return m_notes; }
 void Project::setNotes(const QString &notes) { if (m_notes != notes) { m_notes = notes; emit notesChanged(); } }
 
+QString Project::linkedRepoPath() const { return m_linkedRepoPath; }
+void Project::setLinkedRepoPath(const QString &path) { if (m_linkedRepoPath != path) { m_linkedRepoPath = path; emit linkedRepoPathChanged(); } }
+
 QJsonObject Project::toJson() const
 {
     QJsonObject obj;
@@ -76,6 +79,7 @@ QJsonObject Project::toJson() const
     if (!m_icon.isEmpty()) obj[QStringLiteral("icon")] = m_icon;
     if (m_weeklyGoal > 0) obj[QStringLiteral("weekly_goal")] = m_weeklyGoal;
     if (!m_notes.isEmpty()) obj[QStringLiteral("notes")] = m_notes;
+    if (!m_linkedRepoPath.isEmpty()) obj[QStringLiteral("linked_repo_path")] = m_linkedRepoPath;
     return obj;
 }
 
@@ -100,5 +104,6 @@ Project *Project::fromJson(const QJsonObject &json, QObject *parent)
     p->m_icon = json[QStringLiteral("icon")].toString();
     p->m_weeklyGoal = json[QStringLiteral("weekly_goal")].toInt(0);
     p->m_notes = json[QStringLiteral("notes")].toString();
+    p->m_linkedRepoPath = json[QStringLiteral("linked_repo_path")].toString();
     return p;
 }

@@ -27,6 +27,7 @@ class Project : public QObject
     Q_PROPERTY(QString icon READ icon WRITE setIcon NOTIFY iconChanged)
     Q_PROPERTY(int weeklyGoal READ weeklyGoal WRITE setWeeklyGoal NOTIFY weeklyGoalChanged)
     Q_PROPERTY(QString notes READ notes WRITE setNotes NOTIFY notesChanged)
+    Q_PROPERTY(QString linkedRepoPath READ linkedRepoPath WRITE setLinkedRepoPath NOTIFY linkedRepoPathChanged)
 
 public:
     explicit Project(QObject *parent = nullptr);
@@ -79,6 +80,9 @@ public:
     QString notes() const;
     void setNotes(const QString &notes);
 
+    QString linkedRepoPath() const;
+    void setLinkedRepoPath(const QString &path);
+
     Q_INVOKABLE QJsonObject toJson() const;
     static Project *fromJson(const QJsonObject &json, QObject *parent = nullptr);
 
@@ -99,6 +103,7 @@ signals:
     void iconChanged();
     void weeklyGoalChanged();
     void notesChanged();
+    void linkedRepoPathChanged();
 
 private:
     QString m_id;
@@ -117,4 +122,5 @@ private:
     QString m_icon;
     int m_weeklyGoal = 0;
     QString m_notes;
+    QString m_linkedRepoPath;
 };

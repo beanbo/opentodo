@@ -227,6 +227,7 @@ set(INFRA_SOURCES
     src/services/telemetry.cpp
     src/services/taskexporter.cpp
     src/services/icsexporter.cpp
+    src/services/claudecodelauncher.cpp
     src/import/todoist_csv_parser.cpp
     src/import/todoist_api_client.cpp
     src/import/todoistimporter.cpp
@@ -260,6 +261,7 @@ set(INFRA_HEADERS
     src/services/telemetry.h
     src/services/taskexporter.h
     src/services/icsexporter.h
+    src/services/claudecodelauncher.h
     src/import/todoist_types.h
     src/import/todoist_csv_parser.h
     src/import/todoist_api_client.h

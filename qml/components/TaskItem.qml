@@ -1366,6 +1366,44 @@ Item {
                 text: qsTr("Удалить")
                 onTriggered: taskViewModel.deleteTask(root.id)
             }
+
+            // ── Claude Code integration ──────────────────────────────────────
+            // Visible only when the task's project has a linkedRepoPath set.
+            MenuSeparator {
+                visible: {
+                    if (typeof claudeCodeLauncher === "undefined" || !claudeCodeLauncher) return false
+                    const proj = dataStore.projectById(root.projectId)
+                    return !!proj && proj.linkedRepoPath !== ""
+                }
+                height: visible ? implicitHeight : 0
+            }
+            MenuItem {
+                text: qsTr("Запустить с Claude Code")
+                visible: {
+                    if (typeof claudeCodeLauncher === "undefined" || !claudeCodeLauncher) return false
+                    const proj = dataStore.projectById(root.projectId)
+                    return !!proj && proj.linkedRepoPath !== ""
+                }
+                height: visible ? implicitHeight : 0
+                onTriggered: {
+                    const proj = dataStore.projectById(root.projectId)
+                    if (!proj || proj.linkedRepoPath === "") return
+                    const ok = claudeCodeLauncher.launch(root.content, root.description, proj.linkedRepoPath)
+                    if (ok) {
+                        if (typeof notificationService !== "undefined" && notificationService)
+                            notificationService.showInAppBanner(
+                                qsTr("Claude Code"),
+                                qsTr("Запущено в новом окне"),
+                                "")
+                    } else {
+                        if (typeof notificationService !== "undefined" && notificationService)
+                            notificationService.showInAppBanner(
+                                qsTr("Claude Code не найден"),
+                                qsTr("Установите Claude Code: npm i -g @anthropic-ai/claude-code"),
+                                "")
+                    }
+                }
+            }
         }
     }
 

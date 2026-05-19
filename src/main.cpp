@@ -61,6 +61,7 @@
 #include "services/icsexporter.h"
 #include "services/dailyreviewservice.h"
 #include "services/pomodoroservice.h"
+#include "services/claudecodelauncher.h"
 
 #include "import/todoistimporter.h"
 
@@ -529,6 +530,11 @@ int main(int argc, char *argv[])
     // Pomodoro timer — classic 25/5 min work/break cycles with notifications.
     auto *pomodoroService = new PomodoroService(notificationService, &app);
 
+    // Claude Code launcher — spawns the claude CLI in a detached terminal
+    // rooted at the project's linkedRepoPath. Exposed to QML so task context
+    // menus can trigger it directly.
+    auto *claudeCodeLauncher = new ClaudeCodeLauncher(&app);
+
     // Flush the in-flight session to disk on clean shutdown so a paused-then-
     // closed session restores at its exact countdown. The state-mutation paths
     // (start/pause/resume/skip/reset/enterPhase) already persist, so this is
@@ -664,6 +670,7 @@ int main(int argc, char *argv[])
     ctx->setContextProperty(QStringLiteral("telemetry"), telemetry);
     ctx->setContextProperty(QStringLiteral("pomodoroService"), pomodoroService);
     ctx->setContextProperty(QStringLiteral("crashLogger"), crashLogger);
+    ctx->setContextProperty(QStringLiteral("claudeCodeLauncher"), claudeCodeLauncher);
 
     // Platform services exposed to QML
     if (notificationService)
