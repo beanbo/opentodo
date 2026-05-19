@@ -210,6 +210,23 @@ void SettingsViewModel::setShowUpcomingCount(bool show) { set(QLatin1String(Sett
 int SettingsViewModel::syncInterval() const { return setting(QLatin1String(SettingsKeys::SyncInterval)).toInt(); }
 void SettingsViewModel::setSyncInterval(int seconds) { set(QLatin1String(SettingsKeys::SyncInterval), seconds); emit syncIntervalChanged(); }
 
+QString SettingsViewModel::syncMode() const {
+    const QString v = setting(QLatin1String(SettingsKeys::SyncMode)).toString();
+    // Default to "after_action" for existing users who never set the key.
+    if (v.isEmpty()) return QStringLiteral("after_action");
+    return v;
+}
+void SettingsViewModel::setSyncMode(const QString &mode) {
+    // Validate against the three allowed values; silently ignore garbage.
+    if (mode != QStringLiteral("after_action") &&
+        mode != QStringLiteral("interval") &&
+        mode != QStringLiteral("manual"))
+        return;
+    if (mode == syncMode()) return;
+    set(QLatin1String(SettingsKeys::SyncMode), mode);
+    emit syncModeChanged();
+}
+
 // --- Permissions ---
 
 bool SettingsViewModel::notificationPermissionAsked() const {
@@ -277,6 +294,7 @@ QString canonicalSettingKey(const QString &key)
         {QStringLiteral("showTodayCount"),      QLatin1String(SettingsKeys::ShowTodayCount)},
         {QStringLiteral("showUpcomingCount"),   QLatin1String(SettingsKeys::ShowUpcomingCount)},
         {QStringLiteral("syncInterval"),        QLatin1String(SettingsKeys::SyncInterval)},
+        {QStringLiteral("syncMode"),            QLatin1String(SettingsKeys::SyncMode)},
         {QStringLiteral("dailyGoal"),           QLatin1String(SettingsKeys::DailyGoal)},
         {QStringLiteral("weeklyGoal"),          QLatin1String(SettingsKeys::WeeklyGoal)},
         {QStringLiteral("notificationPermissionAsked"),
@@ -321,6 +339,7 @@ void SettingsViewModel::updateSetting(const QString &key, const QVariant &value)
     if (canonical == QLatin1String(SettingsKeys::ShowTodayCount))         { setShowTodayCount(value.toBool()); return; }
     if (canonical == QLatin1String(SettingsKeys::ShowUpcomingCount))      { setShowUpcomingCount(value.toBool()); return; }
     if (canonical == QLatin1String(SettingsKeys::SyncInterval))           { setSyncInterval(value.toInt()); return; }
+    if (canonical == QLatin1String(SettingsKeys::SyncMode))               { setSyncMode(value.toString()); return; }
     if (canonical == QLatin1String(SettingsKeys::DailyGoal))              { setDailyGoal(value.toInt()); return; }
     if (canonical == QLatin1String(SettingsKeys::WeeklyGoal))             { setWeeklyGoal(value.toInt()); return; }
     if (canonical == QLatin1String(SettingsKeys::NotificationPermissionAsked))
@@ -481,6 +500,7 @@ void SettingsViewModel::onSettingsChanged()
     emit showTrayIconChanged();
     emit accentColorChanged();
     emit syncIntervalChanged();
+    emit syncModeChanged();
     emit notificationPermissionAskedChanged();
     emit backupRetentionCountChanged();
     emit backupRetentionDaysChanged();

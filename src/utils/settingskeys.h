@@ -26,6 +26,8 @@ inline constexpr auto ShowUpcomingCount    = "show_upcoming_count";
 
 // Sync
 inline constexpr auto SyncInterval         = "sync_interval";
+// "after_action" (default) | "interval" | "manual"
+inline constexpr auto SyncMode             = "sync_mode";
 
 // Karma / Productivity
 inline constexpr auto DailyGoal            = "daily_goal";

@@ -259,13 +259,110 @@ Rectangle {
             color: ThemeManager.secondaryTextColor
         }
 
+        // ── Sync mode picker ─────────────────────────────────────────────────────
+        // "after_action" | "interval" | "manual"
+        Rectangle {
+            id: syncModeContainer
+            Layout.fillWidth: true
+            Layout.preferredHeight: 52
+            color: "transparent"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 16
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: qsTr("Когда выполнять синхронизацию")
+                        font.pixelSize: 14
+                        color: ThemeManager.textColor
+                    }
+                    Text {
+                        text: qsTr("Режим автоматической синхронизации")
+                        font.pixelSize: 12
+                        color: ThemeManager.secondaryTextColor
+                    }
+                }
+
+                ComboBox {
+                    id: syncModeCombo
+                    implicitWidth: 200
+                    Layout.preferredWidth: 200
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+
+                    // Order must match _modeValues below
+                    model: [
+                        qsTr("После каждого действия"),
+                        qsTr("Раз в N минут"),
+                        qsTr("Только вручную")
+                    ]
+
+                    readonly property var _modeValues: ["after_action", "interval", "manual"]
+
+                    function _indexForMode(m) {
+                        for (var i = 0; i < _modeValues.length; ++i)
+                            if (_modeValues[i] === m) return i
+                        return 0  // default: after_action
+                    }
+
+                    Component.onCompleted: {
+                        currentIndex = _indexForMode(settingsViewModel.syncMode)
+                    }
+
+                    Connections {
+                        target: settingsViewModel
+                        function onSyncModeChanged() {
+                            syncModeCombo.currentIndex =
+                                syncModeCombo._indexForMode(settingsViewModel.syncMode)
+                        }
+                    }
+
+                    contentItem: Text {
+                        leftPadding: 8
+                        text: syncModeCombo.displayText
+                        font.pixelSize: 13
+                        color: ThemeManager.textColor
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+
+                    background: Rectangle {
+                        radius: 4
+                        color: ThemeManager.hoverColor
+                        border.color: ThemeManager.borderColor
+                        border.width: 1
+                    }
+
+                    onActivated: {
+                        settingsViewModel.syncMode = _modeValues[currentIndex]
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                height: 1
+                color: ThemeManager.borderColor
+            }
+        }
+
         // ITER1 #11: Sync interval selector — named options (never / 5 / 15 / 30 / 60 min)
         // ITER3 #8: give this Rectangle an id so the Connections block below can reference
         // _indexForSeconds() directly instead of using the fragile parent.parent chain.
+        // Visible only when syncMode == "interval".
         Rectangle {
             id: syncIntervalContainer
             Layout.fillWidth: true
-            Layout.preferredHeight: 52
+            Layout.preferredHeight: syncIntervalContainer.visible ? 52 : 0
+            visible: settingsViewModel.syncMode === "interval"
             color: "transparent"
 
             // Map index → seconds: 0=never, 1=5 min, 2=15 min, 3=30 min, 4=60 min
@@ -276,6 +373,10 @@ Rectangle {
                 for (var i = 0; i < _intervalSeconds.length; ++i)
                     if (_intervalSeconds[i] === s) return i
                 return 2   // default: 15 minutes
+            }
+
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 160 }
             }
 
             RowLayout {
@@ -347,9 +448,6 @@ Rectangle {
                         // ITER3 #8: use syncIntervalContainer id instead of parent.parent
                         const secs = syncIntervalContainer._intervalSeconds[currentIndex]
                         settingsViewModel.syncInterval = secs
-                        if (typeof syncViewModel !== "undefined"
-                                && typeof syncViewModel.setSyncInterval === "function")
-                            syncViewModel.setSyncInterval(secs)
                     }
                 }
             }
@@ -362,6 +460,7 @@ Rectangle {
                 anchors.rightMargin: 20
                 height: 1
                 color: ThemeManager.borderColor
+                visible: syncIntervalContainer.visible
             }
         }
 

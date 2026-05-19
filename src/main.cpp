@@ -393,48 +393,68 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Sync interval from settings — keep the timer in sync with the saved
-    // value, AND start it once at boot. Without the boot kick, the first
-    // sync would only happen if the user opened Settings and changed the
-    // interval (which fires the signal). New users never saw anything
-    // appear on Google Drive because the auto-sync timer never started.
-    QObject::connect(settingsVM, &SettingsViewModel::syncIntervalChanged, syncVM,
-                     [syncVM, settingsVM]() {
-        syncVM->setSyncInterval(settingsVM->syncInterval());
-    });
-    {
-        const int initialInterval = settingsVM->syncInterval();
-        // B-9.34: respect 0 as "auto-sync disabled" — pass it through as-is.
-        // The SyncViewModel treats 0 (or negative) as "stop the sync timer".
-        // Only override when the setting has never been written (returns -1 or
-        // some sentinel); a deliberate 0 from the user must be honoured.
-        // If the saved value is negative (truly unset), default to 300 s.
-        syncVM->setSyncInterval(initialInterval >= 0 ? initialInterval : 300);
-    }
+    // ── Sync scheduling — gated on syncMode ─────────────────────────────────
+    //
+    // Three modes (stored in settings as "sync_mode"):
+    //   "after_action" (default) — 5 s debounce after every dataChanged;
+    //                              periodic timer is disabled (interval = 0).
+    //   "interval"               — periodic timer per syncInterval seconds;
+    //                              debounce is disabled.
+    //   "manual"                 — no automatic sync at all.
+    //
+    // Migration: existing users have only syncInterval set (no syncMode).
+    // SettingsViewModel::syncMode() returns "after_action" for them, so their
+    // experience is unchanged — 5 s debounce still fires, periodic timer stops.
 
-    // Push to Drive whenever data changes — debounced 5 s so a burst of
-    // edits collapses into one upload. Without this the user had to
-    // manually click "Синхронизировать" after every change.
-    {
-        auto *driveSyncTimer = new QTimer(&app);
-        driveSyncTimer->setSingleShot(true);
-        driveSyncTimer->setInterval(5000);
-        // B-9.13: don't re-arm the drive-sync debounce while syncEngine is
-        // actively pulling/applying a remote state — that would create a
-        // feedback loop where an inbound sync triggers an immediate push
-        // of the just-applied state.
-        QObject::connect(dataStore, &DataStore::dataChanged, driveSyncTimer,
-                         [driveSyncTimer, syncEngine]() {
-            if (syncEngine->status() == SyncEngine::Syncing)
-                return;
-            driveSyncTimer->start();
-        });
-        QObject::connect(driveSyncTimer, &QTimer::timeout, syncVM, [syncVM] {
-            // No-op when the user hasn't connected Drive — push() exits
-            // with status=Offline.
-            syncVM->push();
-        });
-    }
+    // 5-second debounced after-action push. Only armed when syncMode ==
+    // "after_action". The connection to dataChanged is always live; we check
+    // the mode at the moment the timer fires so mode changes take effect
+    // immediately without disconnecting/reconnecting signals.
+    auto *driveSyncTimer = new QTimer(&app);
+    driveSyncTimer->setSingleShot(true);
+    driveSyncTimer->setInterval(5000);
+
+    // B-9.13: don't re-arm the drive-sync debounce while syncEngine is
+    // actively pulling/applying a remote state — that would create a
+    // feedback loop where an inbound sync triggers an immediate push
+    // of the just-applied state.
+    QObject::connect(dataStore, &DataStore::dataChanged, driveSyncTimer,
+                     [driveSyncTimer, syncEngine, settingsVM]() {
+        if (settingsVM->syncMode() != QStringLiteral("after_action"))
+            return;
+        if (syncEngine->status() == SyncEngine::Syncing)
+            return;
+        driveSyncTimer->start();
+    });
+    QObject::connect(driveSyncTimer, &QTimer::timeout, syncVM, [syncVM] {
+        // No-op when the user hasn't connected Drive — push() exits
+        // with status=Offline.
+        syncVM->push();
+    });
+
+    // Helper: apply the current mode + interval to the SyncViewModel periodic timer.
+    // Called at startup and whenever syncMode or syncInterval changes.
+    auto applyIntervalTimer = [syncVM, settingsVM]() {
+        const QString mode = settingsVM->syncMode();
+        if (mode == QStringLiteral("interval")) {
+            // Use the saved interval; fall back to 300 s if never set.
+            const int secs = settingsVM->syncInterval();
+            syncVM->setSyncInterval(secs >= 0 ? secs : 300);
+        } else {
+            // "after_action" or "manual": disable the periodic timer.
+            syncVM->setSyncInterval(0);
+        }
+    };
+
+    // Keep the periodic timer in sync when the user changes syncMode or syncInterval.
+    QObject::connect(settingsVM, &SettingsViewModel::syncModeChanged,
+                     &app, applyIntervalTimer);
+    QObject::connect(settingsVM, &SettingsViewModel::syncIntervalChanged,
+                     &app, applyIntervalTimer);
+
+    // Boot kick — apply once at startup so neither a fresh install nor an
+    // existing user requires the Settings screen to be opened first.
+    applyIntervalTimer();
 
     // Force a flush to Drive on quit too, so changes made just before
     // closing aren't lost in the 5-second debounce.

@@ -56,6 +56,8 @@ class SettingsViewModel : public QObject
 
     // Sync settings
     Q_PROPERTY(int syncInterval READ syncInterval WRITE setSyncInterval NOTIFY syncIntervalChanged)
+    // "after_action" | "interval" | "manual"
+    Q_PROPERTY(QString syncMode READ syncMode WRITE setSyncMode NOTIFY syncModeChanged)
 
     // Permissions / first-run gates
     Q_PROPERTY(bool notificationPermissionAsked READ notificationPermissionAsked
@@ -155,6 +157,9 @@ public:
     int syncInterval() const;
     void setSyncInterval(int seconds);
 
+    QString syncMode() const;
+    void setSyncMode(const QString &mode);
+
     // Permissions
     bool notificationPermissionAsked() const;
     void setNotificationPermissionAsked(bool asked);
@@ -204,6 +209,7 @@ signals:
     void showTrayIconChanged();
     void accentColorChanged();
     void syncIntervalChanged();
+    void syncModeChanged();
     void notificationPermissionAskedChanged();
     void backupRetentionCountChanged();
     void backupRetentionDaysChanged();
