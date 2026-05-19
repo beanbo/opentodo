@@ -847,9 +847,18 @@ Rectangle {
                         height: projTreeItem.height
 
                         // ── Drag-and-drop для перестановки проектов ────────────
-                        // Работает только для корневых проектов (depth === 0).
-
-                        Drag.active:          depth === 0 && dragHandleArea.drag.active
+                        // Q3.22: работает для проектов любой глубины.
+                        // Ранее был жёсткий гейт depth === 0 (только root),
+                        // потому что cross-parent reparent сложен. Сейчас
+                        // снимаем ограничение: drop вызывает
+                        // projectViewModel.reorderProject(fromIdx, toIdx),
+                        // который работает на плоском списке и не меняет
+                        // parentId — то есть same-parent reorder работает
+                        // корректно, а cross-parent просто меняет позицию
+                        // в плоском списке (визуальная перестановка без
+                        // reparent'а). Чтобы изменить родителя, есть
+                        // отдельный пункт меню «Родительский проект…».
+                        Drag.active:          dragHandleArea.drag.active
                         Drag.dragType:        Drag.Automatic
                         Drag.supportedActions: Qt.MoveAction
                         Drag.mimeData:        ({ "application/x-opentodo-project": projectId })
@@ -1303,12 +1312,15 @@ Rectangle {
                                 return drag.y < (projTreeDelegate.height / 2)
                             }
 
-                            // Горизонтальная линия-индикатор вставки
+                            // Горизонтальная линия-индикатор вставки.
+                            // Q3.22: показываем при перетаскивании проектов
+                            // любой глубины (не только root). Смещение по x
+                            // отражает уровень вложенности — линия начинается
+                            // под иконкой проекта.
                             Rectangle {
-                                visible: projReorderDropArea.containsDrag &&
-                                         projTreeDelegate.depth === 0
-                                width: parent.width - 24
-                                x: 12
+                                visible: projReorderDropArea.containsDrag
+                                width: parent.width - 24 - projTreeDelegate.depth * 14
+                                x: 12 + projTreeDelegate.depth * 14
                                 height: 2
                                 radius: 1
                                 color: ThemeManager.accentColor
@@ -1317,9 +1329,12 @@ Rectangle {
                             }
 
                             onDropped: function(drop) {
-                                // Только для корневых проектов
-                                if (projTreeDelegate.depth !== 0) return
-
+                                // Q3.22: снят гейт depth !== 0. Reorder
+                                // работает на плоском списке проектов; для
+                                // same-parent перестановки результат корректен,
+                                // для cross-parent — позиция в плоском списке
+                                // меняется без reparent'а (это OK для UX,
+                                // reparent делается через меню).
                                 const draggedId = drop.getDataAsString("application/x-opentodo-project")
                                 if (!draggedId || draggedId === projTreeDelegate.projectId) return
 
