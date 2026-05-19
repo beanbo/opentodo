@@ -24,8 +24,19 @@
     <!-- Required by AlarmManager.setExactAndAllowWhileIdle() on API 31+ -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!--
+        Q3.24: android:name removed. Qt 5's
+        org.qtproject.qt.android.bindings.QtApplication was the launcher
+        Application class; that ENTIRE bindings subpackage was deleted in
+        Qt 6 (see also MainActivity.java extending QtActivityBase, not the
+        old bindings.QtActivity). Specifying a non-existent class as
+        android:name on <application> makes Android's PackageManager fail to
+        instantiate the app on launch — instant crash with no UI thread
+        ever starting. Qt 6 doesn't need android:name on <application>; the
+        default android.app.Application loads, and androiddeployqt's
+        bootstrap inside MainActivity.onCreate() does the rest.
+    -->
     <application
-        android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:label="OpenTodo"
         android:icon="@drawable/ic_launcher"
         android:theme="@style/AppTheme"
