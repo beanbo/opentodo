@@ -1,59 +1,103 @@
 #!/usr/bin/env python3
-"""Build a multi-resolution Windows .ico from existing PNG icons.
+"""Build a multi-resolution Windows .ico from the master SVG.
 
-Windows uses different sizes from the .ico in different contexts:
-  - 16x16 / 20x20 — system tray, title bar
-  - 24x24 / 32x32 — small taskbar, alt-tab thumbnails
-  - 48x48 — explorer "medium" icons
-  - 64x64 / 96x96 — explorer "large"
-  - 128x128 / 256x256 — explorer "extra large" + jump-list
+Renders directly from resources/icon.svg via Qt's QSvgRenderer (the
+same engine the app itself uses) so what ships in the .exe matches
+what the QML side renders. No bicubic/Lanczos downsampling artefacts
+that hand-generated PNG ladders sometimes carry.
 
-A single-size .ico (which the current 666-byte file is) renders blurry
-everywhere except its native size. Embed all common sizes so each context
-gets the crispest image.
+The .ico embeds these sizes so every Windows context (system tray /
+taskbar / alt-tab / Explorer "small | medium | large | extra large" /
+installer chrome / jump-list) gets a native-rendered, crisp image:
+
+   16  -> tray icon, title bar
+   20  -> taskbar at 125% DPI
+   24  -> small taskbar
+   32  -> standard taskbar
+   40  -> taskbar at 150% DPI
+   48  -> Explorer "medium" / large taskbar
+   64  -> Explorer "large"
+   96  -> Explorer at high DPI
+   128 -> Explorer "extra large"
+   256 -> jump-list / Cortana / extracted thumbnails
+
+The per-size PNGs under resources/icons/ are ALSO regenerated so any
+QML / QRC reference (":/icons/icons/icon_48.png" etc.) picks up the
+same crisp render the .exe embeds.
 """
 from pathlib import Path
-from PIL import Image
+import io
+import sys
 
-ROOT = Path(__file__).resolve().parent
+from PIL import Image as PILImage
+from PySide6.QtCore import QBuffer, QByteArray, Qt
+from PySide6.QtGui import QGuiApplication, QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
+
+# tools/build_icon.py -> project root is one level up.
+ROOT = Path(__file__).resolve().parent.parent
+SVG = ROOT / "resources" / "icon.svg"
 ICONS_DIR = ROOT / "resources" / "icons"
-OUT = ICONS_DIR / "icon.ico"
+ICO = ICONS_DIR / "icon.ico"
 
-# Use the per-size PNGs we already have when available; downsample from
-# the largest for the missing sizes (24). PIL Image.save(format='ICO',
-# sizes=[...]) packs a multi-resolution container.
-SIZES = [16, 24, 32, 48, 64, 128, 256]
+# Bare-minimum QGuiApplication so QImage / QPainter work off-screen.
+_app = QGuiApplication.instance() or QGuiApplication(sys.argv)
 
-# Pick the largest PNG as the master source so the few sizes we'll
-# downsample (only 24) still come from a crisp original.
-master = Image.open(ICONS_DIR / "icon_512.png").convert("RGBA")
+ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256]
+PNG_SIZES_KEEP = [16, 32, 48, 64, 128, 192, 256, 512, 1024]
 
-# Load per-size sources where they exist; fall back to high-quality
-# Lanczos downsample of the master for missing ones.
-images = []
-for size in SIZES:
-    p = ICONS_DIR / f"icon_{size}.png"
-    if p.exists():
-        img = Image.open(p).convert("RGBA")
-        if img.size != (size, size):
-            img = img.resize((size, size), Image.LANCZOS)
-    else:
-        img = master.resize((size, size), Image.LANCZOS)
-    images.append(img)
+renderer = QSvgRenderer(str(SVG))
+if not renderer.isValid():
+    sys.exit(f"QSvgRenderer rejected {SVG} — invalid SVG?")
 
-# Pillow's ICO writer requires sizes <= the first image. Order largest
-# first so the writer accepts everything; it builds the multi-image
-# container correctly.
-images.sort(key=lambda im: im.size[0], reverse=True)
 
-# Save: the first image plus `append_images` is the most reliable
-# multi-size .ico recipe across Pillow versions.
-images[0].save(
-    OUT,
+def render(size: int) -> QImage:
+    """Render the SVG at exact size x size with premultiplied alpha so
+    transparency composites correctly when the .ico is alpha-blended
+    over Windows' taskbar / Explorer backgrounds."""
+    img = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
+    img.fill(Qt.transparent)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    renderer.render(p)
+    p.end()
+    return img
+
+
+def qimage_to_pil(qimg: QImage) -> "PILImage.Image":
+    """Convert via PNG-in-memory. Cheap for <=256x256. QImage.save needs
+    a Qt IO device (QBuffer), not a Python BytesIO — so wrap the bytes
+    in QBuffer first, then hand the resulting QByteArray to Pillow."""
+    ba = QByteArray()
+    qbuf = QBuffer(ba)
+    qbuf.open(QBuffer.WriteOnly)
+    qimg.save(qbuf, "PNG")
+    qbuf.close()
+    return PILImage.open(io.BytesIO(bytes(ba))).convert("RGBA")
+
+
+# 1) Regenerate per-size PNGs (overwrites existing).
+print("Per-size PNGs (from SVG via QSvgRenderer):")
+for size in PNG_SIZES_KEEP:
+    img = render(size)
+    out = ICONS_DIR / f"icon_{size}.png"
+    img.save(str(out), "PNG")
+    print(f"  PNG   {out.name:18} {size}x{size:<4} {out.stat().st_size:>7,} bytes")
+
+# 2) Build the multi-image .ico. Each size is independently SVG-rendered
+#    (NOT downsampled from a master PNG), so 32x32 / 48x48 etc. land at
+#    their native crispness.
+print()
+print("ICO container:")
+ico_pils = [qimage_to_pil(render(s)) for s in ICO_SIZES]
+ico_pils.sort(key=lambda im: im.size[0], reverse=True)  # largest first
+
+ico_pils[0].save(
+    str(ICO),
     format="ICO",
-    sizes=[img.size for img in images],
-    append_images=images[1:],
+    sizes=[im.size for im in ico_pils],
+    append_images=ico_pils[1:],
 )
-
-print(f"Wrote {OUT} ({OUT.stat().st_size:,} bytes, {len(images)} sizes: "
-      f"{sorted([im.size[0] for im in images])})")
+print(f"  ICO   {ICO.name} {ICO.stat().st_size:,} bytes — "
+      f"{len(ico_pils)} sizes: {sorted(im.size[0] for im in ico_pils)}")
