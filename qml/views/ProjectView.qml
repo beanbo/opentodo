@@ -278,6 +278,25 @@ Rectangle {
                     ToolTip.delay: 500
                 }
 
+                // Q3.16: Edit-project shortcut. Previously "Редактировать
+                // проект" was hidden inside the ⋯ menu, which made it
+                // discoverable only after a click; users with custom colours,
+                // notes or weekly goals to tweak had to open the menu every
+                // time. Surfacing a pencil button at toolbar level cuts that
+                // to one click. The menu item below stays so keyboard-menu
+                // users and "find via dropdown" muscle memory still work.
+                ToolButton {
+                    id:      editProjectBtn
+                    text:    "✏"
+                    font.pixelSize: 16
+                    onClicked: editDialog.open()
+                    Material.foreground: textSecondary
+
+                    ToolTip.text: qsTr("Редактировать проект")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                }
+
                 // More-options menu button
                 ToolButton {
                     id:      moreBtn
