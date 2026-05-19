@@ -4,7 +4,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.0'
+        classpath 'com.android.tools.build:gradle:8.7.2'
     }
 }
 
@@ -49,8 +49,26 @@ android {
     }
 }
 
+configurations.all {
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        def requested = details.requested
+        // kotlin-stdlib 1.8+ bundles jdk7 and jdk8 classes. Redirect the old
+        // split jdk7/jdk8 jars to the unified stdlib to remove duplicate classes.
+        if (requested.group == 'org.jetbrains.kotlin' &&
+                requested.module.name in ['kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8']) {
+            details.useTarget group: requested.group,
+                name: 'kotlin-stdlib',
+                version: '1.8.22'
+            details.because 'kotlin-stdlib 1.8+ includes jdk7/jdk8 classes'
+        }
+    }
+}
+
 dependencies {
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.gms:play-services-location:21.0.1'
+    // Qt 6 Android runtime — provides org.qtproject.qt.android.QtActivityBase
+    // and all other Qt Java bindings used by MainActivity et al.
+    implementation files('C:/Qt/6.11.0/android_arm64_v8a/jar/Qt6Android.jar')
 }

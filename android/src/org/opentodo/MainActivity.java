@@ -1,17 +1,16 @@
 package org.opentodo;
 
 import android.content.pm.PackageManager;
-import org.qtproject.qt.android.bindings.QtActivity;
+import org.qtproject.qt.android.QtActivityBase;
 
 /**
- * Q-Android-Audit #2.1: subclass of QtActivity that forwards the runtime
+ * Q-Android-Audit #2.1: subclass of QtActivityBase that forwards the runtime
  * permission result for POST_NOTIFICATIONS (API 33+) back to
  * {@link NotificationHelper#onPermissionsResult(boolean)}.
  *
- * The stock QtActivity does not implement onRequestPermissionsResult in a way
- * that reaches our Java code, so the JNI permission bridge in
- * src/services/notificationservice_android.cpp never fires after the user taps
- * "Allow" or "Deny" in the system dialog.
+ * Qt 6 replaced the old org.qtproject.qt.android.bindings.QtActivity with
+ * org.qtproject.qt.android.QtActivityBase. The bindings package no longer
+ * exists; extend QtActivityBase instead.
  *
  * The request code 42 is hard-coded in
  * {@link NotificationHelper#requestNotificationPermission(android.content.Context)}
@@ -21,7 +20,7 @@ import org.qtproject.qt.android.bindings.QtActivity;
  * AndroidManifest.xml must declare this class as the launcher activity:
  *   <activity android:name="org.opentodo.MainActivity" ...>
  */
-public class MainActivity extends QtActivity {
+public class MainActivity extends QtActivityBase {
 
     // Mirrors PERM_REQUEST_CODE in NotificationHelper.java. Kept package-private
     // there; duplicated as a literal here so both files compile independently.
