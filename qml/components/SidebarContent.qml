@@ -556,35 +556,164 @@ Rectangle {
                     Repeater {
                         model: sidebarViewModel.favorites
 
-                        delegate: SidebarItem {
+                        // Wrapping delegate in Item (not bare SidebarItem) so we
+                        // can carry sibling MouseArea + Menus next to the row —
+                        // same pattern the regular Projects tree delegate uses
+                        // for its right-click context menu. Without the wrapper
+                        // a bare SidebarItem delegate has nowhere to host the
+                        // RightButton MouseArea, which is why right-click
+                        // silently did nothing on favorites.
+                        delegate: Item {
+                            id: favRow
                             required property var modelData
 
                             width: parent.width
-                            // For project favorites: show emoji icon when set, otherwise color dot.
-                            iconText: modelData.type === "label"
-                                      ? "🏷"
-                                      : (modelData.type === "project" && modelData.icon
-                                         ? modelData.icon : "#")
-                            iconIsText: modelData.type === "project" && (!modelData.icon || modelData.icon === "")
-                            dotColor: modelData.color || sidebarContent.todoist_red
-                            label: modelData.name || ""
-                            active: {
-                                if (modelData.type === "project")
-                                    return isActive("project", modelData.id)
-                                if (modelData.type === "label")
-                                    return isActive("label", modelData.name)
-                                if (modelData.type === "filter")
-                                    return isActive("filter", modelData.id)
-                                return false
+                            height: favItem.height
+
+                            SidebarItem {
+                                id: favItem
+                                width: parent.width
+                                // For project favorites: show emoji icon when set, otherwise color dot.
+                                iconText: favRow.modelData.type === "label"
+                                          ? "🏷"
+                                          : (favRow.modelData.type === "project" && favRow.modelData.icon
+                                             ? favRow.modelData.icon : "#")
+                                iconIsText: favRow.modelData.type === "project"
+                                            && (!favRow.modelData.icon || favRow.modelData.icon === "")
+                                dotColor: favRow.modelData.color || sidebarContent.todoist_red
+                                label: favRow.modelData.name || ""
+                                active: {
+                                    if (favRow.modelData.type === "project")
+                                        return isActive("project", favRow.modelData.id)
+                                    if (favRow.modelData.type === "label")
+                                        return isActive("label", favRow.modelData.name)
+                                    if (favRow.modelData.type === "filter")
+                                        return isActive("filter", favRow.modelData.id)
+                                    return false
+                                }
+                                isDarkTheme: sidebarContent.isDarkTheme
+                                onClicked: {
+                                    if (favRow.modelData.type === "project")
+                                        sidebarViewModel.navigateToProject(favRow.modelData.id)
+                                    else if (favRow.modelData.type === "label")
+                                        sidebarViewModel.navigateToLabel(favRow.modelData.name)
+                                    else if (favRow.modelData.type === "filter")
+                                        sidebarViewModel.navigateToFilter(favRow.modelData.id)
+                                }
                             }
-                            isDarkTheme: sidebarContent.isDarkTheme
-                            onClicked: {
-                                if (modelData.type === "project")
-                                    sidebarViewModel.navigateToProject(modelData.id)
-                                else if (modelData.type === "label")
-                                    sidebarViewModel.navigateToLabel(modelData.name)
-                                else if (modelData.type === "filter")
-                                    sidebarViewModel.navigateToFilter(modelData.id)
+
+                            // Right-click context menu — routes by favorite
+                            // type. Only Qt.RightButton, so left-click + hover
+                            // continue to fall through to SidebarItem.
+                            MouseArea {
+                                anchors.fill: favItem
+                                acceptedButtons: Qt.RightButton
+                                onClicked: function(mouse) {
+                                    if (favRow.modelData.type === "project") {
+                                        favProjectCtxMenu.projectId   = favRow.modelData.id
+                                        favProjectCtxMenu.projectName = favRow.modelData.name || ""
+                                        favProjectCtxMenu.popup()
+                                    } else if (favRow.modelData.type === "filter") {
+                                        favFilterCtxMenu.filterId   = favRow.modelData.id
+                                        favFilterCtxMenu.filterName = favRow.modelData.name || ""
+                                        favFilterCtxMenu.popup()
+                                    } else if (favRow.modelData.type === "label") {
+                                        favLabelCtxMenu.labelName = favRow.modelData.name || ""
+                                        favLabelCtxMenu.popup()
+                                    }
+                                }
+                            }
+
+                            // Per-type context menus. Project menu is feature
+                            // parity with the Projects-tree projCtxMenu (open,
+                            // add section, parent picker, toggle favorite,
+                            // archive, delete). Filter menu uses
+                            // filterViewModel.setFavorite for un-favoriting.
+                            // Label menu only offers "open" + "remove from
+                            // favorites" because labels expose isFavorite on
+                            // the model but no QML-callable setter — the
+                            // remove action falls back to sidebarViewModel.
+                            Menu {
+                                id: favProjectCtxMenu
+                                property string projectId:   ""
+                                property string projectName: ""
+
+                                MenuItem {
+                                    text: qsTr("Открыть")
+                                    onTriggered: sidebarViewModel.navigateToProject(favProjectCtxMenu.projectId)
+                                }
+                                MenuItem {
+                                    text: qsTr("Добавить раздел…")
+                                    onTriggered: {
+                                        addSectionFromMenuDialog.projectId = favProjectCtxMenu.projectId
+                                        addSectionFromMenuDialog.open()
+                                    }
+                                }
+                                MenuItem {
+                                    text: qsTr("Родительский проект…")
+                                    onTriggered: {
+                                        parentPickerDialog.projectId   = favProjectCtxMenu.projectId
+                                        parentPickerDialog.projectName = favProjectCtxMenu.projectName
+                                        parentPickerDialog.open()
+                                    }
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    text: qsTr("Убрать из избранного")
+                                    onTriggered: projectViewModel.setFavorite(favProjectCtxMenu.projectId, false)
+                                }
+                                MenuItem {
+                                    text: qsTr("Архивировать")
+                                    onTriggered: projectViewModel.archiveProject(favProjectCtxMenu.projectId)
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    text: qsTr("Удалить проект")
+                                    onTriggered: {
+                                        deleteProjectDialog.projectId   = favProjectCtxMenu.projectId
+                                        deleteProjectDialog.projectName = favProjectCtxMenu.projectName
+                                        deleteProjectDialog.open()
+                                    }
+                                }
+                            }
+
+                            Menu {
+                                id: favFilterCtxMenu
+                                property string filterId:   ""
+                                property string filterName: ""
+
+                                MenuItem {
+                                    text: qsTr("Открыть")
+                                    onTriggered: sidebarViewModel.navigateToFilter(favFilterCtxMenu.filterId)
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    text: qsTr("Убрать из избранного")
+                                    onTriggered: filterViewModel.setFavorite(favFilterCtxMenu.filterId, false)
+                                }
+                            }
+
+                            Menu {
+                                id: favLabelCtxMenu
+                                property string labelName: ""
+
+                                MenuItem {
+                                    text: qsTr("Открыть")
+                                    onTriggered: sidebarViewModel.navigateToLabel(favLabelCtxMenu.labelName)
+                                }
+                                MenuSeparator {}
+                                MenuItem {
+                                    text: qsTr("Убрать из избранного")
+                                    enabled: typeof sidebarViewModel.setLabelFavorite === "function"
+                                    onTriggered: {
+                                        // sidebarViewModel may not expose the
+                                        // label-favorite setter yet — leave a
+                                        // graceful no-op if so. enabled-binding
+                                        // above already grays the item out.
+                                        if (typeof sidebarViewModel.setLabelFavorite === "function")
+                                            sidebarViewModel.setLabelFavorite(favLabelCtxMenu.labelName, false)
+                                    }
+                                }
                             }
                         }
                     }
