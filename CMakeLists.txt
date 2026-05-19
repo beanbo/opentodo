@@ -447,6 +447,7 @@ set(QML_FILES
     qml/components/editor/EditorCommentsSection.qml
     qml/components/editor/EditorActionBar.qml
     qml/components/QuickAdd.qml
+    qml/components/UpcomingCalendarPanel.qml
     qml/components/DatePicker.qml
     qml/components/PriorityPicker.qml
     qml/components/LabelChip.qml

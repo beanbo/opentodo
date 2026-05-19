@@ -299,6 +299,40 @@ Item {
             }
         }
 
+        // ── Upcoming calendar strip (mobile) ─────────────────────────────────
+        // Shows the compact monthly calendar above the quick-add bar when the
+        // user is in Upcoming mode.  Collapsible via the chevron in the header.
+        UpcomingCalendarPanel {
+            id: mobileCalendarStrip
+            Layout.fillWidth: true
+            Layout.preferredHeight: implicitHeight
+
+            visible: taskViewModel.filterMode === TaskViewModel.Upcoming
+                     && !root.isFullPageView
+
+            widePanel: false
+
+            onDayPicked: function(picked) {
+                // Scroll the mobile task list to the picked date
+                var iso = Qt.formatDate(picked, "yyyy-MM-dd")
+                for (var i = 0; i < taskViewModel.count; i++) {
+                    var t = taskViewModel.taskAt(i)
+                    if (t && t.dueDate === iso) {
+                        taskListView.positionViewAtIndex(i, ListView.Beginning)
+                        return
+                    }
+                }
+                // Fallback: first task on or after picked date
+                for (var j = 0; j < taskViewModel.count; j++) {
+                    var tj = taskViewModel.taskAt(j)
+                    if (tj && tj.dueDate >= iso) {
+                        taskListView.positionViewAtIndex(j, ListView.Beginning)
+                        return
+                    }
+                }
+            }
+        }
+
         // ── Quick-add bar ─────────────────────────────────────────────────────
         // ITER3 #14: mirror DesktopLayout — bind Layout.preferredHeight to the
         // QuickAdd component's actual height so expanded toolbar is not clipped.

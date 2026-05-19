@@ -46,6 +46,12 @@ Item {
     // both compact bands (anything < 800 px).
     readonly property bool isNarrow:              width > 0 && width < narrowBreakpoint
 
+    // ── Upcoming calendar panel breakpoint ───────────────────────────────────
+    // At ≥ 900 px the calendar is a fixed right-side panel; below that it
+    // collapses to a strip above the task list.
+    readonly property int  calendarPanelBreakpoint: 900
+    readonly property bool _calendarWide: width >= calendarPanelBreakpoint
+
     // ITER2 #8: track whether the last sidebar close was auto-triggered by
     // entering narrow mode. Only restore on exit if WE closed it — not if the
     // user closed it manually on a wide screen before resizing down and back.
@@ -160,6 +166,31 @@ Item {
             _clearChip()
         else
             _applyChip(chipId)
+    }
+
+    // ── Upcoming calendar → task list scroll ──────────────────────────────────
+    // Called when the user picks a day in the UpcomingCalendarPanel.
+    // Finds the first row in taskListView whose section matches the ISO date
+    // and positions the list to that row.  If no task falls on that date the
+    // day is still highlighted in the panel (no scroll needed).
+    function _scrollToUpcomingDate(picked) {
+        var iso = Qt.formatDate(picked, "yyyy-MM-dd")
+        // Walk the visible model rows looking for a matching dueDate.
+        for (var i = 0; i < taskViewModel.count; i++) {
+            var t = taskViewModel.taskAt(i)
+            if (t && t.dueDate === iso) {
+                taskListView.positionViewAtIndex(i, ListView.Beginning)
+                return
+            }
+        }
+        // No exact match — try the first task on or after the picked date.
+        for (var j = 0; j < taskViewModel.count; j++) {
+            var tj = taskViewModel.taskAt(j)
+            if (tj && tj.dueDate >= iso) {
+                taskListView.positionViewAtIndex(j, ListView.Beginning)
+                return
+            }
+        }
     }
 
     // When the sidebar (or any other external code) drives a navigation, the
@@ -629,6 +660,27 @@ Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 0
+
+                        // ── Upcoming calendar strip (narrow mode, < 900 px) ───
+                        // In wide mode the calendar is a right-side panel (added
+                        // further down in this RowLayout).  In narrow mode it
+                        // sits here as a collapsible horizontal strip above the
+                        // quick-add bar.
+                        UpcomingCalendarPanel {
+                            id: upcomingCalendarStrip
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+
+                            // Only visible in Upcoming + narrow mode
+                            visible: taskViewModel.filterMode === TaskViewModel.Upcoming
+                                     && !root._calendarWide
+
+                            widePanel: false
+
+                            onDayPicked: function(picked) {
+                                root._scrollToUpcomingDate(picked)
+                            }
+                        }
 
                         // Quick-add bar — height is reactive: tracks the
                         // QuickAdd's animated height (56 collapsed → 176
@@ -2072,6 +2124,55 @@ Item {
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    // ── Upcoming calendar panel (wide mode, ≥ 900 px) ────────
+                    // Left separator + fixed-width panel.  Rendered only in
+                    // Upcoming mode; animates in/out with the same pattern used
+                    // by the task editor panel on the right.
+                    Rectangle {
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: (_calPanelVisible && root._calendarWide) ? 1 : 0
+                        color: borderColor
+                        clip:  true
+
+                        readonly property bool _calPanelVisible:
+                            taskViewModel.filterMode === TaskViewModel.Upcoming
+
+                        Behavior on Layout.preferredWidth {
+                            NumberAnimation {
+                                duration: animationDuration
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: upcomingCalendarPanelContainer
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: (_upcomingCalendarPanel.visible && root._calendarWide) ? 280 : 0
+                        clip: true
+
+                        Behavior on Layout.preferredWidth {
+                            NumberAnimation {
+                                duration: animationDuration
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+
+                        UpcomingCalendarPanel {
+                            id: _upcomingCalendarPanel
+                            anchors.fill: parent
+
+                            visible: taskViewModel.filterMode === TaskViewModel.Upcoming
+                                     && root._calendarWide
+
+                            widePanel: true
+
+                            onDayPicked: function(picked) {
+                                root._scrollToUpcomingDate(picked)
                             }
                         }
                     }
