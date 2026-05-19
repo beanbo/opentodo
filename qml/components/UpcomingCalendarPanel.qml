@@ -138,18 +138,28 @@ Rectangle {
         return root._taskCache[iso] || 0
     }
 
-    // Rebuild on model changes (same gate pattern as CalendarView).
+    // Coalescing timer — any number of signals within 50 ms collapses to
+    // one _rebuildCache() call. This prevents the double-fire that was
+    // causing O(N) full-list scans on every single task mutation:
+    // DataStore emits tasksChanged + dataChanged together; taskViewModel
+    // reacts to tasksChanged and then emits its own dataChanged + modelReset,
+    // so without coalescing each edit triggered 3-4 consecutive rebuilds.
+    Timer {
+        id: _rebuildTimer
+        interval: 50
+        repeat:   false
+        onTriggered: if (root.visible) root._rebuildCache()
+    }
+
+    // Rebuild on model changes. taskViewModel covers all task mutations
+    // (DataStore.tasksChanged → taskViewModel reload → modelReset/dataChanged).
+    // We do NOT also listen on dataStore.dataChanged — that would double-fire.
     Connections {
         target: taskViewModel
-        function onDataChanged()  { if (root.visible) root._rebuildCache() }
-        function onRowsInserted() { if (root.visible) root._rebuildCache() }
-        function onRowsRemoved()  { if (root.visible) root._rebuildCache() }
-        function onModelReset()   { if (root.visible) root._rebuildCache() }
-    }
-    // Also rebuild when dataStore changes (tasks added/deleted directly)
-    Connections {
-        target: dataStore
-        function onDataChanged() { if (root.visible) root._rebuildCache() }
+        function onDataChanged()  { _rebuildTimer.restart() }
+        function onRowsInserted() { _rebuildTimer.restart() }
+        function onRowsRemoved()  { _rebuildTimer.restart() }
+        function onModelReset()   { _rebuildTimer.restart() }
     }
     // Rebuild when month changes and on initial load
     onCurrentMonthChanged: _rebuildCache()

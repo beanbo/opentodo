@@ -744,13 +744,16 @@ Rectangle {
                 width: parent.width
 
                 // Rebuild when expanded state or the underlying model changes.
-                // We use Connections on projectViewModel to trigger a re-evaluation.
+                // Qt.callLater coalesces same-tick bursts (e.g. countChanged +
+                // projectChanged both firing from a single project edit) into
+                // one rebuild instead of two, cutting delegate-recreation cost
+                // in half for the common case.
                 Connections {
                     target: projectViewModel
-                    function onCountChanged()   { projectTreeColumnRepeater.rebuild() }
-                    function onProjectChanged() { projectTreeColumnRepeater.rebuild() }
-                    function onProjectAdded()   { projectTreeColumnRepeater.rebuild() }
-                    function onProjectRemoved() { projectTreeColumnRepeater.rebuild() }
+                    function onCountChanged()   { Qt.callLater(projectTreeColumnRepeater.rebuild) }
+                    function onProjectChanged() { Qt.callLater(projectTreeColumnRepeater.rebuild) }
+                    function onProjectAdded()   { Qt.callLater(projectTreeColumnRepeater.rebuild) }
+                    function onProjectRemoved() { Qt.callLater(projectTreeColumnRepeater.rebuild) }
                 }
 
                 // Connections to sidebarContent — MUST be at Column scope, NOT
