@@ -15,8 +15,20 @@ SidebarViewModel::SidebarViewModel(DataStore *store, ProjectViewModel *projectVM
     , m_store(store)
     , m_projectVM(projectVM)
 {
-    connect(m_store, &DataStore::tasksChanged, this, &SidebarViewModel::onDataChanged);
-    connect(m_store, &DataStore::projectsChanged, this, &SidebarViewModel::onDataChanged);
+    // Q3.24: debounce rapid tasksChanged bursts so updateCounts() (O(N) loop)
+    // runs at most once per 50 ms instead of once per individual task mutation.
+    m_countsDebounce.setInterval(50);
+    m_countsDebounce.setSingleShot(true);
+    connect(&m_countsDebounce, &QTimer::timeout, this, &SidebarViewModel::onDataChanged);
+
+    connect(m_store, &DataStore::tasksChanged, this, [this]() { m_countsDebounce.start(); });
+    // Q3.24: projectsChanged needs updateCounts() + favoritesChanged (project rename
+    // or reorder changes the sidebar favorites list).  Splitting from onDataChanged
+    // so we can keep onDataChanged lean (no unconditional favoritesChanged emission).
+    connect(m_store, &DataStore::projectsChanged, this, [this]() {
+        updateCounts();
+        emit favoritesChanged();
+    });
     connect(m_store, &DataStore::labelsChanged, this, [this]() {
         emit favoritesChanged();
         emit labelsChanged();
@@ -220,9 +232,14 @@ void SidebarViewModel::navigateToFilter(const QString &filterId)
 
 void SidebarViewModel::onDataChanged()
 {
+    // Q3.24: updateCounts() already emits countsChanged() when counts differ.
+    // favoritesChanged/labelsChanged are only needed when projects or labels
+    // mutate, not on every task edit.  They are now emitted from the dedicated
+    // projectsChanged / labelsChanged / filtersChanged connections in the ctor
+    // (see below), so we do NOT emit them here unconditionally.  Previously this
+    // fired on EVERY tasksChanged and projectsChanged — i.e. every task edit —
+    // forcing the entire sidebar favorites list to re-render each keystroke.
     updateCounts();
-    emit favoritesChanged();
-    emit labelsChanged();
 }
 
 void SidebarViewModel::updateCounts()

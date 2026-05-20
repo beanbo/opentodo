@@ -25,6 +25,22 @@ Rectangle {
     // Agenda refresh kick: incrementing this invalidates all agenda day bindings.
     property int _agendaKick: 0
 
+    // Q3.24: Single root-level kick for month/week grid cells.
+    // Replaces the previous design of one Connections block per cell
+    // (35 cells × 4 handlers = 140 live connections) which triggered
+    // 35 × O(N) _tasksForDate() scans on every model change.
+    // Now one Connections fires once, increments _calendarKick, and each
+    // cell's `dayTasks` binding re-evaluates lazily via the kick dependency.
+    property int _calendarKick: 0
+
+    Connections {
+        target: taskViewModel
+        function onDataChanged()  { if (root.visible) root._calendarKick = (root._calendarKick + 1) % 100000 }
+        function onRowsInserted() { if (root.visible) root._calendarKick = (root._calendarKick + 1) % 100000 }
+        function onRowsRemoved()  { if (root.visible) root._calendarKick = (root._calendarKick + 1) % 100000 }
+        function onModelReset()   { if (root.visible) root._calendarKick = (root._calendarKick + 1) % 100000 }
+    }
+
     color: bgColor
 
     // F-6.63 — keyboard navigation: arrow keys move selected day, Enter opens popup
@@ -416,7 +432,12 @@ Rectangle {
                     // B-6.54 — use _sameDay() instead of toDateString() locale compare
                     property bool isToday:        root._sameDay(cellDate, new Date())
                     property bool isSelected:     root._sameDay(cellDate, root.selectedDate)
-                    property var  dayTasks:        root._tasksForDate(cellDate)
+                    // Q3.24: depend on root._calendarKick instead of maintaining a
+                    // per-cell Connections block.  One root Connections fires once per
+                    // model change; reading _calendarKick here makes every cell's
+                    // dayTasks binding re-evaluate lazily in the next engine microtask.
+                    // This removes 35 × 4 = 140 live signal connections from the graph.
+                    property var  dayTasks: { root._calendarKick; return root._tasksForDate(cellDate) }
 
                     color: {
                         if (isSelected)
@@ -435,18 +456,6 @@ Rectangle {
 
                     border.color: isToday ? root.todoistRed : root.borderColor
                     border.width: isToday ? 2 : 1
-
-                    // ITER3 #4: Refresh task previews when model changes.
-                    // Gate with root.visible so the 35×4 connections are no-ops
-                    // when CalendarView is not the active view, preventing 17 500+
-                    // iterations per change when the user is on another screen.
-                    Connections {
-                        target: taskViewModel
-                        function onDataChanged()  { if (root.visible) cell.dayTasks = root._tasksForDate(cell.cellDate) }
-                        function onRowsInserted() { if (root.visible) cell.dayTasks = root._tasksForDate(cell.cellDate) }
-                        function onRowsRemoved()  { if (root.visible) cell.dayTasks = root._tasksForDate(cell.cellDate) }
-                        function onModelReset()   { if (root.visible) cell.dayTasks = root._tasksForDate(cell.cellDate) }
-                    }
 
                     ColumnLayout {
                         anchors.fill:    parent
@@ -553,14 +562,10 @@ Rectangle {
             spacing: 1
             clip:    true
 
-            // Refresh when tasks change (same gate pattern as month cells)
-            Connections {
-                target: taskViewModel
-                function onDataChanged()  { if (root.visible && root.viewMode === "week") weekListView.model = root._weekDates() }
-                function onRowsInserted() { if (root.visible && root.viewMode === "week") weekListView.model = root._weekDates() }
-                function onRowsRemoved()  { if (root.visible && root.viewMode === "week") weekListView.model = root._weekDates() }
-                function onModelReset()   { if (root.visible && root.viewMode === "week") weekListView.model = root._weekDates() }
-            }
+            // Q3.24: week-view task refresh now driven by root._calendarKick
+            // (set by the single root Connections above). Removed the per-week-view
+            // Connections that rebuilt the entire model list on every change.
+            // Model reassignment on navigation still handled by Connections below.
 
             // Recompute model whenever selectedDate changes (week navigation)
             model: root._weekDates()
@@ -586,8 +591,9 @@ Rectangle {
                 border.color: root._sameDay(modelData, new Date()) ? root.todoistRed : root.borderColor
                 border.width: root._sameDay(modelData, new Date()) ? 2 : 1
 
-                // Per-cell task list (evaluated once; refreshed via ListView model reassignment)
-                readonly property var dayTasks: root._tasksForDate(modelData)
+                // Q3.24: depend on _calendarKick so task list refreshes on model
+                // change without a separate per-cell Connections.
+                readonly property var dayTasks: { root._calendarKick; return root._tasksForDate(modelData) }
                 readonly property bool isToday: root._sameDay(modelData, new Date())
 
                 ColumnLayout {

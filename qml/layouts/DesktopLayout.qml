@@ -272,14 +272,20 @@ Item {
     }
 
     // ── Today-goal refresh kick ───────────────────────────────────────────────
-    // Incremented on every tasksChanged signal so the todayGoalIndicator's
-    // computed property re-evaluates without polling.
+    // Q3.24: debounced via a 50 ms Timer so that rapid task edits (e.g. bulk
+    // complete, drag-reorder) coalesce into a single _completedToday recompute.
+    // Previously this fired on every tasksChanged, causing an O(N) dataStore
+    // scan on each individual keystroke / checkbox tap.
     property int todayGoalKick: 0
+    Timer {
+        id: todayGoalDebounce
+        interval: 50
+        repeat:   false
+        onTriggered: root.todayGoalKick = (root.todayGoalKick + 1) % 10000
+    }
     Connections {
         target: dataStore
-        function onTasksChanged() {
-            root.todayGoalKick = (root.todayGoalKick + 1) % 10000
-        }
+        function onTasksChanged() { todayGoalDebounce.restart() }
     }
 
     // ── Keyboard navigation state ─────────────────────────────────────────────

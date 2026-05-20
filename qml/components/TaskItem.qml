@@ -433,8 +433,11 @@ Item {
         function onTaskChanged(id) { Qt.callLater(_refreshSubtaskCounts) }
         function onTaskAdded(id)   { Qt.callLater(_refreshSubtaskCounts) }
         function onTaskRemoved(id) { Qt.callLater(_refreshSubtaskCounts) }
-        // dataChanged covers bulk refreshes (e.g. after sync)
-        function onDataChanged()   { Qt.callLater(_refreshSubtaskCounts) }
+        // Q3.24: onDataChanged removed — it fired for ALL delegates on every
+        // single task mutation (TaskViewModel::refresh emits dataChanged(0,N-1)).
+        // onTaskChanged/Added/Removed already cover every relevant mutation;
+        // bulk sync reloads emit onModelReset which destroys and recreates
+        // delegates so Component.onCompleted → _refreshSubtaskCounts fires anyway.
     }
 
     // ── Bulk expand/collapse triggers ─────────────────────────────────────

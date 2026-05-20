@@ -102,4 +102,8 @@ private:
     // calendar date changes.
     QDate m_lastSeenDate;
     QTimer m_midnightCheckTimer;
+
+    // Q3.24: debounce rapid tasksChanged bursts (e.g. bulk complete, sync import)
+    // so updateCounts() runs at most once per 50 ms instead of once per task.
+    QTimer m_countsDebounce;
 };

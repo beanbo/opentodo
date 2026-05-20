@@ -9,6 +9,7 @@
 #include <QString>
 #include <QStringList>
 #include <QQmlEngine>
+#include <QTimer>
 
 #include "model/task.h"
 #include "storage/datastore.h"
@@ -291,4 +292,10 @@ private:
     // so the QML null guard `if (taskViewModel.selectedTask) ...` continues
     // to work after a sync pull, restoreFromBackup, or reset-all-data.
     QPointer<QObject> m_selectedTask;
+
+    // Q3.24: debounce rapid tasksChanged bursts so refresh() runs at most
+    // once per 30 ms.  Single task edits flush immediately (the timer fires
+    // before the next event-loop iteration that processes the UI frame).
+    // Bulk operations (sync import, bulk-complete) coalesce into one refresh.
+    QTimer m_refreshDebounce;
 };

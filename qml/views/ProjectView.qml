@@ -62,11 +62,19 @@ Rectangle {
         return done
     }
 
-    // Incremented on every tasksChanged signal so dependent bindings re-evaluate
+    // Q3.24: debounced — _completedThisWeek() is O(project tasks); firing it on
+    // every tasksChanged (even for unrelated tasks in other projects) was wasteful.
+    // 50 ms debounce coalesces rapid edits into a single recompute.
     property int _kick: 0
+    Timer {
+        id: weeklyGoalDebounce
+        interval: 50
+        repeat:   false
+        onTriggered: root._kick = (root._kick + 1) % 1000
+    }
     Connections {
         target: dataStore
-        function onTasksChanged() { root._kick = (root._kick + 1) % 1000 }
+        function onTasksChanged() { weeklyGoalDebounce.restart() }
     }
 
     // ── Layout ────────────────────────────────────────────────────────────────
