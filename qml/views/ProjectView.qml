@@ -1212,11 +1212,25 @@ Rectangle {
             // cycle: TextArea.width is driven by the ScrollView's external
             // width, the content wraps to that, and the ScrollView never
             // tries to grow horizontally.
+            // Q3.25 / task 5fd93bed: bordered Rectangle goes on the ScrollView,
+            // not on the inner TextArea. When text overflows the preferredHeight
+            // the TextArea grows and scrolls inside the ScrollView's clip area
+            // — if the Rectangle is on the TextArea, its top/bottom borders
+            // scroll out of view with the content, and the visible "frame"
+            // around the field falls apart. Anchoring the frame to the
+            // ScrollView keeps it pinned to the visible bounds.
             ScrollView {
                 id: descScroll
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
                 clip: true
+
+                background: Rectangle {
+                    color: ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
+                    border.width: 1
+                    radius: Radius.sm
+                }
 
                 TextArea {
                     id: descriptionField
@@ -1225,12 +1239,10 @@ Rectangle {
                     placeholderText: qsTr("Описание проекта (необязательно)")
                     wrapMode: TextEdit.Wrap
                     color: root.textPrimary
-                    background: Rectangle {
-                        color: ThemeManager.surfaceColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
-                        radius: Radius.sm
-                    }
+                    // Transparent so the ScrollView's bordered background shows
+                    // through; the field still gets the TextArea default
+                    // padding (6 px) so the text doesn't kiss the border.
+                    background: null
                     onTextChanged: {
                         if (text.length > 500) text = text.substring(0, 500)
                         editDialog.editDescription = text
@@ -1245,11 +1257,19 @@ Rectangle {
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
             }
+            // Q3.25 / task 5fd93bed: same frame-pin fix as descScroll above.
             ScrollView {
                 id: notesScroll
                 Layout.fillWidth: true
                 Layout.preferredHeight: 160
                 clip: true
+
+                background: Rectangle {
+                    color: ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
+                    border.width: 1
+                    radius: Radius.sm
+                }
 
                 TextArea {
                     id: notesField
@@ -1258,12 +1278,7 @@ Rectangle {
                     placeholderText: qsTr("Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)")
                     wrapMode: TextEdit.Wrap
                     color: root.textPrimary
-                    background: Rectangle {
-                        color: ThemeManager.surfaceColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
-                        radius: Radius.sm
-                    }
+                    background: null
                     onTextChanged: {
                         if (text.length > 5000) text = text.substring(0, 5000)
                         editDialog.editNotes = text
