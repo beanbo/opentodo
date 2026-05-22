@@ -1417,6 +1417,65 @@ Rectangle {
                         }
                     } // delegate
                 } // Repeater projectTreeColumnRepeater
+
+                // Iter-task a1a57171: a "root" drop zone below the tree so the
+                // user can drag any nested project out of its parent and back
+                // to the top level. Without this there was no UI gesture to
+                // un-nest a project — the user could go deeper (drag-as-child)
+                // and could re-order siblings, but never escape to root.
+                Item {
+                    id: rootDropArea
+                    width: parent.width
+                    // Slim by default to avoid wasting sidebar space; grows
+                    // to 24 px while a drag is hovering so the user has an
+                    // obvious target.
+                    height: rootDrop.containsDrag ? 24 : 12
+
+                    DropArea {
+                        id: rootDrop
+                        anchors.fill: parent
+                        keys: ["application/x-opentodo-project"]
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            anchors.topMargin: 4
+                            anchors.bottomMargin: 4
+                            visible: rootDrop.containsDrag
+                            radius: 4
+                            color: Qt.rgba(ThemeManager.accentColor.r,
+                                           ThemeManager.accentColor.g,
+                                           ThemeManager.accentColor.b, 0.18)
+                            border.color: ThemeManager.accentColor
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("К корню")
+                                color: ThemeManager.accentColor
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                        }
+
+                        onDropped: function(drop) {
+                            const draggedId = drop.getDataAsString("application/x-opentodo-project")
+                            if (!draggedId) return
+                            const proj = projectViewModel.projectById(draggedId)
+                            // No-op if already root (parentId empty) or Inbox.
+                            if (!proj || proj.isInbox || !proj.parentId) {
+                                drop.accept(Qt.MoveAction)
+                                return
+                            }
+                            // Backend updateProject(parentId="") clears the
+                            // parent. Cycle/Inbox guards in updateProject
+                            // accept empty as a valid "no parent" sentinel.
+                            projectViewModel.updateProject(draggedId, "parentId", "")
+                            drop.accept(Qt.MoveAction)
+                        }
+                    }
+                }
             } // Column projectTreeColumn
 
             // -----------------------------------------------------------------

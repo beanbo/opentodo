@@ -320,18 +320,48 @@ bool ProjectViewModel::reorderProjectById(const QString &draggedId,
     if (!dragged || !target) return false;
     if (dragged->isInbox()) return false; // Inbox is pinned to top
 
-    // Iter-13: only reorder siblings of the SAME parent. The QML walker is
-    // free to drag a nested child over a sibling-of-cousin visually, but
-    // moving it under a different parent is a separate operation (set
-    // parentId), not a reorder. Reject cross-parent drags here.
-    if (dragged->parentId() != target->parentId()) return false;
+    const QString destParent = target->parentId();
 
-    // Collect every visible sibling under this parent, in current order.
+    // Iter-task a1a57171: allow cross-parent reorder — the user dragging a
+    // child of A onto the visible sibling line of a child of B clearly wants
+    // both effects: reparent + slot into B's children. Previously this
+    // returned false and the drag silently no-op'd. We now reuse the local
+    // updateProject guards (Inbox-as-parent, cycle walk MAX_DEPTH=1000) to
+    // validate the move before renumbering.
+    if (dragged->parentId() != destParent) {
+        // Block: dragging UNDER Inbox.
+        if (target->isInbox()) {
+            qWarning("reorderProjectById: refused — Inbox cannot be a parent");
+            return false;
+        }
+        // Block: would create a cycle (dragging A under its own descendant).
+        constexpr int MAX_DEPTH = 1000;
+        QString cur = destParent;
+        for (int i = 0; i < MAX_DEPTH && !cur.isEmpty(); ++i) {
+            if (cur == draggedId) {
+                qWarning("reorderProjectById: refused — would create cycle");
+                return false;
+            }
+            const Project *anc = m_store->projectById(cur);
+            if (!anc) break;
+            const QString next = anc->parentId();
+            if (next == cur) break;
+            cur = next;
+        }
+        // OK — set the new parent. The renumber below ignores dragged's old
+        // siblings (their order stays valid as a gap-free sequence), so we
+        // only touch the destination level.
+        dragged->setParentId(destParent);
+    }
+
+    // Collect every visible sibling under the destination parent, in current
+    // order. Including `dragged` is fine — we sort, remove it, then re-insert
+    // at the requested slot.
     QList<Project *> siblings;
     for (Project *p : std::as_const(m_projects)) {
         if (!p || p->isInbox() || p->isDeleted() || p->isArchived())
             continue;
-        if (p->parentId() == dragged->parentId())
+        if (p->parentId() == destParent || p == dragged)
             siblings.append(p);
     }
     std::sort(siblings.begin(), siblings.end(),
@@ -360,8 +390,18 @@ bool ProjectViewModel::reorderProjectById(const QString &draggedId,
         ++orderCounter;
     }
 
-    for (const QString &id : std::as_const(toMark))
+    // If dragged switched parent, stamp parent_id explicitly. The new parent
+    // is now its real parent_id, and the merger must see the per-field stamp
+    // — otherwise a concurrent peer's edit on the OLD parent wins by empty-
+    // meta fallback after sync.
+    if (toMark.contains(draggedId))
+        m_store->markProjectFieldsModified(draggedId,
+            {QStringLiteral("order"), QStringLiteral("parent_id")});
+
+    for (const QString &id : std::as_const(toMark)) {
+        if (id == draggedId) continue; // already stamped above
         m_store->markProjectFieldsModified(id, {QStringLiteral("order")});
+    }
 
     // refresh() runs on m_store->projectsChanged via markProjectFieldsModified,
     // re-sorting m_projects and emitting our model signals — no manual reset.
