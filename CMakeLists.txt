@@ -437,6 +437,7 @@ set(QML_FILES
     qml/Main.qml
     qml/layouts/DesktopLayout.qml
     qml/layouts/MobileLayout.qml
+    qml/components/IconSvg.qml
     qml/components/SidebarContent.qml
     qml/components/TaskItem.qml
     qml/components/TaskListView.qml
@@ -684,6 +685,30 @@ qt_add_resources(OpenTodo "icons"
         resources/icons/icon_128.png
         resources/icons/icon_256.png
         resources/icons/icon_512.png
+)
+
+# Task 17cea65b: UI icon set used via qml/components/IconSvg.qml.
+# Adding new icons here is the only registration needed — IconSvg loads
+# them as "qrc:/icons/ui/<name>.svg".
+qt_add_resources(OpenTodo "ui_icons"
+    PREFIX "/icons"
+    FILES
+        resources/icons/ui/calendar.svg
+        resources/icons/ui/check.svg
+        resources/icons/ui/chevron-down.svg
+        resources/icons/ui/chevron-right.svg
+        resources/icons/ui/close.svg
+        resources/icons/ui/drag-handle.svg
+        resources/icons/ui/filter.svg
+        resources/icons/ui/inbox.svg
+        resources/icons/ui/label.svg
+        resources/icons/ui/more-horizontal.svg
+        resources/icons/ui/pin.svg
+        resources/icons/ui/plus.svg
+        resources/icons/ui/search.svg
+        resources/icons/ui/star-filled.svg
+        resources/icons/ui/star.svg
+        resources/icons/ui/trash.svg
 )
 
 # Windows: embed the multi-resolution .ico as the EXE's file icon (visible in

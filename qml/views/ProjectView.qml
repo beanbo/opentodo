@@ -561,7 +561,6 @@ Rectangle {
                     }
                     Item { Layout.fillWidth: true }
                     ToolButton {
-                        text: notesCard._expanded ? "▾" : "▸"
                         flat: true
                         Layout.preferredWidth: 24
                         Layout.preferredHeight: 24
@@ -571,6 +570,13 @@ Rectangle {
                                       : qsTr("Развернуть заметки")
                         ToolTip.visible: hovered
                         onClicked: notesCard._expanded = !notesCard._expanded
+                        // Task 17cea65b iter-2: was unicode "▾"/"▸".
+                        contentItem: IconSvg {
+                            name: notesCard._expanded ? "chevron-down" : "chevron-right"
+                            size: 16
+                            color: ThemeManager.secondaryTextColor
+                            anchors.centerIn: parent
+                        }
                     }
                 }
 
@@ -738,12 +744,9 @@ Rectangle {
                                 // Section model to toggle on.
                                 ToolButton {
                                     visible:        sectionHeaderRect.sectionId !== ""
-                                    text:           sectionHeaderRect.isCollapsed ? "▸" : "▾"
-                                    font.pixelSize: FontSize.body
                                     flat:           true
                                     Layout.preferredWidth:  24
                                     Layout.preferredHeight: 24
-                                    Material.foreground: root.textSecondary
                                     ToolTip.text: sectionHeaderRect.isCollapsed
                                                       ? qsTr("Развернуть раздел")
                                                       : qsTr("Свернуть раздел")
@@ -755,6 +758,13 @@ Rectangle {
                                                 sectionHeaderRect.sectionId,
                                                 !s.isCollapsed)
                                         }
+                                    }
+                                    // Task 17cea65b iter-2: was unicode "▸"/"▾".
+                                    contentItem: IconSvg {
+                                        name: sectionHeaderRect.isCollapsed ? "chevron-right" : "chevron-down"
+                                        size: 16
+                                        color: root.textSecondary
+                                        anchors.centerIn: parent
                                     }
                                 }
 

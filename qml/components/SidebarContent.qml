@@ -250,18 +250,17 @@ Rectangle {
 
                         Behavior on color { ColorAnimation { duration: 120 } }
 
-                        // Шеврон
-                        Text {
+                        // Шеврон — task 17cea65b iter-2: было unicode "▾"/"▸".
+                        IconSvg {
                             id: pinnedChevron
                             anchors {
                                 left: parent.left
                                 leftMargin: 10
                                 verticalCenter: parent.verticalCenter
                             }
-                            text: pinnedSettings.pinnedExpanded ? "▾" : "▸"
-                            font.pixelSize: 10
+                            name: pinnedSettings.pinnedExpanded ? "chevron-down" : "chevron-right"
+                            size: 12
                             color: sidebarContent.secondaryTextColor
-                            width: 12
                         }
 
                         // Иконка-эмодзи
@@ -997,10 +996,11 @@ Rectangle {
                                    ? (sidebarContent.isDarkTheme ? "#444444" : "#e0e0e0")
                                    : "transparent"
 
-                            Text {
+                            // Task 17cea65b iter-2: было unicode "▾"/"▸".
+                            IconSvg {
                                 anchors.centerIn: parent
-                                text: sidebarContent.isExpanded(projTreeDelegate.projectId) ? "▾" : "▸"
-                                font.pixelSize: 10
+                                name: sidebarContent.isExpanded(projTreeDelegate.projectId) ? "chevron-down" : "chevron-right"
+                                size: 12
                                 color: sidebarContent.secondaryTextColor
                             }
                         }
