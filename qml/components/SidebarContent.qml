@@ -10,7 +10,7 @@ Rectangle {
     property bool isDarkTheme: ThemeManager.isDark
 
     // Colors
-    readonly property color todoist_red: ThemeManager.accentColor
+    readonly property color accentRed: ThemeManager.accentColor
     readonly property color bgColor: ThemeManager.backgroundColor
     readonly property color hoverColor: ThemeManager.hoverColor
     readonly property color activeColor: ThemeManager.sidebarActiveColor
@@ -580,7 +580,7 @@ Rectangle {
                                              ? favRow.modelData.icon : "#")
                                 iconIsText: favRow.modelData.type === "project"
                                             && (!favRow.modelData.icon || favRow.modelData.icon === "")
-                                dotColor: favRow.modelData.color || sidebarContent.todoist_red
+                                dotColor: favRow.modelData.color || sidebarContent.accentRed
                                 label: favRow.modelData.name || ""
                                 active: {
                                     if (favRow.modelData.type === "project")
@@ -743,6 +743,64 @@ Rectangle {
                 id: projectTreeColumn
                 width: parent.width
 
+                // Q3.25: centralized task-counts cache for the project tree.
+                // Previously each delegate held its own Connections{ onTasksChanged }
+                // and called dataStore.tasksForProject() — an O(N) scan per
+                // project per signal. With 20 projects and 500 tasks that was
+                // 10 000 ops on every single task edit (synced storm during
+                // startup + ongoing UI lag).  We now compute counts for ALL
+                // projects in a single O(N) pass, debounced to 50 ms, and the
+                // delegates read O(1) entries out of the resulting map.
+                property var projectCountsMap: ({})
+
+                function _rebuildProjectCounts() {
+                    const map = {}
+                    if (typeof dataStore === "undefined" || !dataStore) {
+                        projectTreeColumn.projectCountsMap = map
+                        return
+                    }
+                    const tasks = dataStore.allTasks() || []
+                    const todayStr = Qt.formatDate(new Date(), "yyyy-MM-dd")
+                    for (let i = 0; i < tasks.length; i++) {
+                        const t = tasks[i]
+                        if (!t || t.isDeleted) continue
+                        // Mirror DataStore::tasksForProject filtering: top-level
+                        // (no parent) tasks only — subtasks are not counted as
+                        // first-class project rows.
+                        if (t.parentId) continue
+                        const pid = t.projectId
+                        if (!pid) continue
+                        let e = map[pid]
+                        if (!e) { e = { total: 0, done: 0, overdue: 0, today: 0 }; map[pid] = e }
+                        e.total++
+                        if (t.isCompleted) { e.done++; continue }
+                        if (t.dueDate && t.dueDate < todayStr) e.overdue++
+                        if (t.dueDate === todayStr) e.today++
+                    }
+                    projectTreeColumn.projectCountsMap = map
+                }
+
+                Timer {
+                    id: projectCountsDebounce
+                    interval: 50
+                    repeat: false
+                    onTriggered: projectTreeColumn._rebuildProjectCounts()
+                }
+
+                Component.onCompleted: projectTreeColumn._rebuildProjectCounts()
+
+                // Single Connections at the column level; the dataStore signal
+                // fans out to all delegates via the projectCountsMap binding
+                // below instead of N independent O(N) handlers.
+                Connections {
+                    target: dataStore
+                    function onTasksChanged() { projectCountsDebounce.restart() }
+                    // onDataChanged not needed — tasksChanged is already emitted
+                    // alongside dataChanged from every task mutation path in
+                    // DataStore.cpp, so listening to both would double-fire the
+                    // debounce restart for the same logical event.
+                }
+
                 // Rebuild when expanded state or the underlying model changes.
                 // Qt.callLater coalesces same-tick bursts (e.g. countChanged +
                 // projectChanged both firing from a single project edit) into
@@ -795,13 +853,22 @@ Rectangle {
                     // weird" signal than a silently-truncated rebuild.
                     function rebuild() {
                         const rows = []
+                        // Iter-7: defence-in-depth cycle guard. SyncEngine
+                        // now rejects parent_id cycles on the inbound path,
+                        // but if a state.json ever ships with a pre-existing
+                        // cycle (older builds, hand-edited file) the walker
+                        // would JS-stack-overflow on expand. Track visited
+                        // ids and bail on revisits.
+                        const visited = ({})
 
                         function pushSubtree(node, depth) {
                             if (!node || node.isInbox || node.isArchived) return
+                            if (visited[node.id]) return
+                            visited[node.id] = true
                             rows.push({
                                 projectId:    node.id,
                                 projectName:  node.name,
-                                projectColor: node.color || sidebarContent.todoist_red,
+                                projectColor: node.color || sidebarContent.accentRed,
                                 projectIcon:  node.icon  || "",
                                 depth:        depth
                             })
@@ -839,7 +906,7 @@ Rectangle {
 
                         readonly property string projectId:    modelData.projectId    || ""
                         readonly property string projectName:  modelData.projectName  || ""
-                        readonly property string projectColor: modelData.projectColor || sidebarContent.todoist_red
+                        readonly property string projectColor: modelData.projectColor || sidebarContent.accentRed
                         readonly property string projectIcon:  modelData.projectIcon  || ""
                         readonly property int    depth:        modelData.depth        || 0
 
@@ -939,52 +1006,17 @@ Rectangle {
                         }
 
                         // ── Task-count cache for the completion badge ─────────
-                        property int _totalTasks:     0
-                        property int _completedTasks: 0
-                        property int _overdueTasks:   0
-                        property int _todayTasks:     0
-
-                        function _refreshTaskCounts() {
-                            // Same race as TaskItem._refreshSubtaskCounts:
-                            // Qt.callLater may fire AFTER the delegate is
-                            // detached (project tree rebuild on rename/move),
-                            // and `dataStore` becomes undefined in the dead
-                            // QML context. Without this guard the projectTree
-                            // delegate threw silently and the X/Y completion
-                            // badge never repopulated.
-                            if (typeof dataStore === "undefined" || !dataStore) {
-                                _totalTasks     = 0
-                                _completedTasks = 0
-                                _overdueTasks   = 0
-                                _todayTasks     = 0
-                                return
-                            }
-                            if (!projTreeDelegate.projectId) {
-                                _totalTasks     = 0
-                                _completedTasks = 0
-                                _overdueTasks   = 0
-                                _todayTasks     = 0
-                                return
-                            }
-                            const tasks = dataStore.tasksForProject(projTreeDelegate.projectId)
-                            let total = 0, done = 0, overdue = 0, today = 0
-                            const todayStr = Qt.formatDate(new Date(), "yyyy-MM-dd")
-                            for (let i = 0; i < tasks.length; i++) {
-                                const t = tasks[i]
-                                if (!t || t.isDeleted) continue
-                                total++
-                                if (t.isCompleted) {
-                                    done++
-                                    continue
-                                }
-                                if (t.dueDate && t.dueDate < todayStr) overdue++
-                                if (t.dueDate === todayStr) today++
-                            }
-                            _totalTasks     = total
-                            _completedTasks = done
-                            _overdueTasks   = overdue
-                            _todayTasks     = today
-                        }
+                        // Q3.25: was per-delegate O(N) dataStore.tasksForProject()
+                        // scan on every tasksChanged/dataChanged signal — i.e.
+                        // for 20 projects × 500 tasks = 10 000 ops per single
+                        // task edit, contributing to global UI lag.  Now read
+                        // from the column-level projectCountsMap which is built
+                        // ONCE per debounced 50 ms window in a single O(N) pass.
+                        readonly property var _projCounts: projectTreeColumn.projectCountsMap[projTreeDelegate.projectId]
+                        readonly property int _totalTasks:     _projCounts ? _projCounts.total   : 0
+                        readonly property int _completedTasks: _projCounts ? _projCounts.done    : 0
+                        readonly property int _overdueTasks:   _projCounts ? _projCounts.overdue : 0
+                        readonly property int _todayTasks:     _projCounts ? _projCounts.today   : 0
 
                         // Russian plural form for "задача/задачи/задач"
                         function _projectTaskWord(n) {
@@ -994,15 +1026,6 @@ Rectangle {
                             if (m10 === 1)                 return qsTr("задача")
                             if (m10 >= 2 && m10 <= 4)      return qsTr("задачи")
                             return qsTr("задач")
-                        }
-
-                        Component.onCompleted: _refreshTaskCounts()
-                        onProjectIdChanged:    _refreshTaskCounts()
-
-                        Connections {
-                            target: dataStore
-                            function onTasksChanged()  { Qt.callLater(projTreeDelegate._refreshTaskCounts) }
-                            function onDataChanged()   { Qt.callLater(projTreeDelegate._refreshTaskCounts) }
                         }
 
                         // ── Hover-handler: нужен для показа ручки перетаскивания ──
@@ -1256,11 +1279,19 @@ Rectangle {
                             }
                         }
 
-                        // ── Ручка перетаскивания (⠿) — видна при наведении, только
-                        //    для корневых проектов (depth === 0) ──────────────────────
+                        // ── Ручка перетаскивания (⠿) — видна при наведении ─────────
+                        // Q3.28: снят гейт depth === 0. Q3.22 разрешил Drag.active
+                        // для любой глубины, но забыл снять гейт на dragHandle.visible
+                        // — без видимой ручки MouseArea внутри не получает события
+                        // (родительский Item с visible:false блокирует delivery),
+                        // так что фактически дочерние проекты по-прежнему было
+                        // нельзя начать перетаскивать. Теперь ручка показывается
+                        // на всех глубинах. Inbox в дерево не попадает уже на
+                        // уровне модели (pushSubtree фильтрует isInbox), так
+                        // что отдельная защита здесь не нужна.
                         Item {
                             id: dragHandle
-                            visible: projTreeDelegate.depth === 0 && rowHoverHandler.hovered
+                            visible: rowHoverHandler.hovered
                             // Если у проекта НЕТ дочерних — занимаем штатные 16px (x=0..16),
                             // показываем иконку ⠇ как раньше.
                             // Если у проекта ЕСТЬ дочерние — шеврон занимает x=4..20, и
@@ -1299,72 +1330,87 @@ Rectangle {
                             }
                         }
 
-                        // ── DropArea для перестановки проектов ────────────────
-                        // Принимает только top-level проекты; дочерние (depth>0)
-                        // перетаскивать нельзя — сложнее, вынесено за рамки задачи.
+                        // ── DropArea для перестановки / вложения проектов ─────
+                        // Q3.28: добавили зону «по центру строки» для смены
+                        // родителя (drag-to-reparent). Раньше drop работал
+                        // только как reorder в плоском списке, поэтому
+                        // изменить вложенность через drag было нельзя —
+                        // приходилось лезть в меню «Родительский проект…».
+                        // Теперь:
+                        //   • верхние 30% строки   → вставить ВЫШЕ как sibling
+                        //   • нижние 30% строки    → вставить НИЖЕ как sibling
+                        //   • средние 40%          → сделать ДОЧЕРНИМ для строки
+                        // Indikатор у sibling-режимов — горизонтальная линия,
+                        // у режима reparent — подсветка всей строки.
                         DropArea {
                             id: projReorderDropArea
                             anchors.fill: parent
                             keys: ["application/x-opentodo-project"]
 
-                            // Подсветка-линия: появляется вверху или внизу ряда
-                            // в зависимости от позиции перетаскиваемого элемента.
-                            readonly property bool dragIsAbove: {
-                                if (!containsDrag) return false
-                                // drag.y доступен только когда containsDrag=true
-                                return drag.y < (projTreeDelegate.height / 2)
+                            // 0 = верхняя треть (выше), 1 = средняя (внутрь),
+                            // 2 = нижняя треть (ниже).
+                            readonly property int dropZone: {
+                                if (!containsDrag) return -1
+                                const h = projTreeDelegate.height
+                                if (drag.y < h * 0.30) return 0
+                                if (drag.y > h * 0.70) return 2
+                                return 1
                             }
+                            readonly property bool dragIsAbove: dropZone === 0
+                            readonly property bool dragAsChild: dropZone === 1
 
-                            // Горизонтальная линия-индикатор вставки.
-                            // Q3.22: показываем при перетаскивании проектов
-                            // любой глубины (не только root). Смещение по x
-                            // отражает уровень вложенности — линия начинается
-                            // под иконкой проекта.
+                            // Горизонтальная линия-индикатор вставки (sibling).
                             Rectangle {
                                 visible: projReorderDropArea.containsDrag
+                                         && !projReorderDropArea.dragAsChild
                                 width: parent.width - 24 - projTreeDelegate.depth * 14
                                 x: 12 + projTreeDelegate.depth * 14
                                 height: 2
                                 radius: 1
                                 color: ThemeManager.accentColor
-                                // Показываем линию сверху или снизу ряда
                                 y: projReorderDropArea.dragIsAbove ? 0 : (parent.height - 2)
                             }
 
+                            // Подсветка строки при наведении в режиме «сделать дочерним».
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: projReorderDropArea.containsDrag
+                                         && projReorderDropArea.dragAsChild
+                                color: Qt.rgba(ThemeManager.accentColor.r,
+                                               ThemeManager.accentColor.g,
+                                               ThemeManager.accentColor.b, 0.20)
+                                radius: 4
+                                z: -1
+                            }
+
                             onDropped: function(drop) {
-                                // Q3.22: снят гейт depth !== 0. Reorder
-                                // работает на плоском списке проектов; для
-                                // same-parent перестановки результат корректен,
-                                // для cross-parent — позиция в плоском списке
-                                // меняется без reparent'а (это OK для UX,
-                                // reparent делается через меню).
                                 const draggedId = drop.getDataAsString("application/x-opentodo-project")
                                 if (!draggedId || draggedId === projTreeDelegate.projectId) return
 
-                                // Ищем исходный индекс в плоском JS-массиве модели Repeater.
-                                // m_projects во ViewModel могут иметь другой порядок из-за
-                                // развёрнутых дочерних строк — ищем именно по repeater-индексу.
-                                let fromIdx = -1
-                                const rows = projectTreeColumnRepeater.model
-                                if (Array.isArray(rows)) {
-                                    for (let i = 0; i < rows.length; ++i) {
-                                        if (rows[i].projectId === draggedId) {
-                                            fromIdx = i
-                                            break
-                                        }
-                                    }
+                                if (projReorderDropArea.dragAsChild) {
+                                    // Drag-to-reparent. Бэкенд (updateProject
+                                    // с field=parentId) сам отбивает циклы и
+                                    // попытки переродительствовать Inbox, так
+                                    // что доп. проверок здесь не делаем.
+                                    projectViewModel.updateProject(
+                                        draggedId, "parentId", projTreeDelegate.projectId)
+                                    drop.accept(Qt.MoveAction)
+                                    return
                                 }
 
-                                // toIdx — индекс текущего ряда; корректируем
-                                // на единицу если вставляем ниже середины строки.
-                                let toIdx = projTreeDelegate.index
-                                if (!projReorderDropArea.dragIsAbove && toIdx < fromIdx)
-                                    toIdx = Math.min(toIdx + 1, (Array.isArray(rows) ? rows.length - 1 : toIdx))
-                                else if (projReorderDropArea.dragIsAbove && toIdx > fromIdx)
-                                    toIdx = Math.max(toIdx - 1, 0)
-
-                                if (fromIdx >= 0)
-                                    projectViewModel.reorderProject(fromIdx, toIdx)
+                                // Sibling reorder — iter-13 fix.
+                                // Q3.22 used reorderProject(rowsIdx, rowsIdx),
+                                // but rowsIdx is a position in the tree-walker
+                                // array (skips Inbox+archived, depth-first),
+                                // while reorderProject expected indices into
+                                // the flat m_projects list. Off-by-one drove
+                                // root projects around when dragging children.
+                                // reorderProjectById renumbers only same-parent
+                                // siblings — drag stays local to the level.
+                                projectViewModel.reorderProjectById(
+                                    draggedId,
+                                    projTreeDelegate.projectId,
+                                    projReorderDropArea.dragIsAbove)
 
                                 drop.accept(Qt.MoveAction)
                             }
@@ -1407,7 +1453,7 @@ Rectangle {
                             sourceComponent: Item {
                                 readonly property string projectId:    archDelegateLoader.model.id    || ""
                                 readonly property string projectName:  archDelegateLoader.model.name  || ""
-                                readonly property string projectColor: archDelegateLoader.model.color || sidebarContent.todoist_red
+                                readonly property string projectColor: archDelegateLoader.model.color || sidebarContent.accentRed
 
                                 width: archivedRepeater.width
                                 height: archItem.height
@@ -1516,7 +1562,7 @@ Rectangle {
 
                     readonly property string filterId:    model.id    || ""
                     readonly property string filterName:  model.name  || ""
-                    readonly property string filterColor: model.color || sidebarContent.todoist_red
+                    readonly property string filterColor: model.color || sidebarContent.accentRed
                     readonly property int    filterOrder: model.order || 0
 
                     width: parent.width
@@ -1637,7 +1683,7 @@ Rectangle {
 
                     readonly property string labelId:    modelData.id    || ""
                     readonly property string labelName:  modelData.name  || ""
-                    readonly property color  labelColor: modelData.color || sidebarContent.todoist_red
+                    readonly property color  labelColor: modelData.color || sidebarContent.accentRed
 
                     width: parent.width
                     height: labelItem.height

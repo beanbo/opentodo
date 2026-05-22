@@ -7,7 +7,7 @@ Item {
     id: root
 
     readonly property bool  isDarkTheme:    ThemeManager.isDark
-    readonly property color todoistRed:     ThemeManager.accentColor
+    readonly property color accentRed:     ThemeManager.accentColor
     readonly property color bgColor:        ThemeManager.backgroundColor
     readonly property color contentColor:   ThemeManager.surfaceColor
     readonly property color borderColor:    ThemeManager.borderColor
@@ -297,6 +297,21 @@ Item {
                 if (!active)
                     root.notificationsViewItem = null
             }
+
+            // Q3.27: forward BoardView.taskClicked (board mode on mobile) into
+            // the editor stack. Mirrors the inline list delegate at line ~450
+            // so a card tap opens the same full-screen editor page.
+            Connections {
+                target: fullPageLoader.item
+                ignoreUnknownSignals: true
+                function onTaskClicked(taskId) {
+                    if (!taskId || taskId.length === 0) return
+                    const t = dataStore.taskById(taskId)
+                    if (!t) return
+                    taskViewModel.selectedTask = t
+                    taskEditorStack.push(taskEditorPage)
+                }
+            }
         }
 
         // ── Upcoming calendar strip (mobile) ─────────────────────────────────
@@ -486,7 +501,7 @@ Item {
                 width:  fabSize
                 height: fabSize
                 radius: fabSize / 2
-                color: todoistRed
+                color: accentRed
                 z: 10
                 clip: true  // B-6.27: clip ripple to FAB radius
 
@@ -767,7 +782,7 @@ Item {
                     required property int index
 
                     color: rowHover.containsMouse
-                           ? Qt.rgba(todoistRed.r, todoistRed.g, todoistRed.b,
+                           ? Qt.rgba(accentRed.r, accentRed.g, accentRed.b,
                                      isDarkTheme ? 0.10 : 0.06)
                            : "transparent"
 

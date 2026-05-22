@@ -324,11 +324,27 @@ Rectangle {
             rowSpacing:   1
             columnSpacing: 1
 
-            // Minimum cell height so the grid is always visible in strip mode
+            // Q3.25: cell height MUST come from the panel root (root.height),
+            // not from the GridLayout's own `height`.  When `_cellH` reads
+            // `calGrid.height` and every cell's Layout.preferredHeight is
+            // bound back to `_cellH`, the layout engine sees the GridLayout's
+            // implicitHeight (sum of cell preferredHeights) re-derive from the
+            // GridLayout's actual height every polish pass — a one-pixel
+            // rounding wobble re-triggers updatePolish() forever.  The error
+            // log was filling with thousands of "ColumnLayout called polish()
+            // inside updatePolish()" + "GridLayout: Detected recursive
+            // rearrange. Aborting after two iterations." warnings (2 085 of
+            // them per session before this fix), with the Upcoming view
+            // burning a full CPU core continuously while visible.
+            //
+            // `root` is the panel Rectangle; its height is set externally by
+            // the UpcomingView container (anchors / Layout.preferredHeight),
+            // so reading `root.height` here does NOT feed back into the inner
+            // Layout system and the polish chain converges in one pass.
+            //
+            // 56 = header (36) + weekday-row (20).
             readonly property real _cellH: {
-                if (root.widePanel) return (height / root._rows)
-                // In strip mode the remaining height after header (36+20=56) is
-                // 240-56=184 for expanded, divided by rows
+                if (root.widePanel) return Math.max(24, (root.height - 56) / root._rows)
                 return Math.max(24, (184 - 2) / root._rows)
             }
 

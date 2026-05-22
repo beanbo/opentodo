@@ -61,7 +61,7 @@ inline bool isOverdue(const QString &dateStr)
 }
 
 // B-1.28: overload that accepts both a date string and a datetime string.
-// If dateStr is set it takes precedence (matching Todoist semantics).
+// If dateStr is set it takes precedence (matching OpenTodo semantics).
 // If only datetimeStr is set, compares against the current moment.
 inline bool isOverdue(const QString &dateStr, const QString &datetimeStr)
 {

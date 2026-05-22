@@ -108,12 +108,37 @@ void SyncEngine::push()
     }
 
     // Upload each pending commit (CRDT operation log).
-    for (auto *commit : m_pendingCommits) {
+    // Iter-13: track + drop each uploaded commit before moving on. The old
+    // code only purged pending commits after the *entire* loop succeeded,
+    // so a mid-cycle failure (network drop, 429, quota) left already-
+    // uploaded commits stuck in m_pendingCommits + on disk. The next push
+    // would re-upload them (idempotent by uuid) AND re-bump
+    // incrementCommitCount, causing shouldCompact() to fire prematurely.
+    QList<Commit *> uploadedThisPass;
+    uploadedThisPass.reserve(m_pendingCommits.size());
+    auto purgeUploaded = [this, &uploadedThisPass]() {
+        for (auto *commit : uploadedThisPass) {
+            const QString filePath = pendingCommitsPath()
+                + QStringLiteral("/") + commit->uuid() + QStringLiteral(".json");
+            QFile::remove(filePath);
+            m_pendingCommits.removeOne(commit);
+            commit->deleteLater();
+        }
+        uploadedThisPass.clear();
+    };
+
+    // Walk by index because we are mutating m_pendingCommits.
+    while (!m_pendingCommits.isEmpty()) {
+        auto *commit = m_pendingCommits.first();
         const QJsonDocument doc(commit->toJson());
         const QString fileName = QStringLiteral("log/%1.json").arg(commit->uuid());
 
         if (!m_gdrive->uploadFile(fileName, doc.toJson())) {
             setLastError(QStringLiteral("Failed to upload commit %1").arg(commit->uuid()));
+            // Drop only the commits actually delivered; leave the failing one
+            // and any that follow it on disk so the next push picks up where
+            // we stopped.
+            purgeUploaded();
             m_gdrive->releaseLock();
             setStatus(Error);
             return;
@@ -122,6 +147,36 @@ void SyncEngine::push()
         m_headCommitId = commit->uuid();
         m_snapshot->setHeadCommitId(m_headCommitId);
         m_snapshot->incrementCommitCount();
+        uploadedThisPass.append(commit);
+        // Detach from m_pendingCommits but don't delete yet — purgeUploaded
+        // at the end (or on failure return) handles the actual delete +
+        // pending-file removal so the cleanup path stays in one place.
+        m_pendingCommits.removeOne(commit);
+    }
+
+    // Iter-14: upload state.json BEFORE HEAD. Previously HEAD landed first,
+    // so a state.json failure (Drive quota / 429) left peers seeing a HEAD
+    // that pointed to a commit not yet reflected in the snapshot. The
+    // recovery path through log/ usually closes the gap, but if
+    // SnapshotManager compacted log/ before the partial-failure peer
+    // pulled, the snapshot referenced by HEAD would be permanently gone.
+    // state.json first means a peer never sees a HEAD it can't justify
+    // from the snapshot.
+    const QJsonDocument stateDoc(m_store->toJson());
+    if (!m_gdrive->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
+        setLastError(QStringLiteral("Failed to upload state.json"));
+        // Iter-15 regress-fix for iter-14: the upload loop already removed
+        // every uploaded commit from m_pendingCommits and put them in
+        // uploadedThisPass. If we return here without purging, the Commit*
+        // objects leak (deleteLater never called) and their pending-log
+        // files stay on disk — on next launch they reload as pending,
+        // re-upload (idempotent), and re-increment commitCount, which can
+        // trip shouldCompact prematurely. The commits were successfully
+        // delivered to Drive, so dropping them is the right move.
+        purgeUploaded();
+        m_gdrive->releaseLock();
+        setStatus(Error);
+        return;
     }
 
     // Update HEAD pointer (no-op if there are no commits, but cheap).
@@ -133,30 +188,18 @@ void SyncEngine::push()
         m_gdrive->uploadFile(QStringLiteral("HEAD"), headDoc.toJson());
     }
 
-    // Always upload the current state snapshot. This is the main payload
-    // for the user — without it the previous early-return ("no pending
-    // commits → exit") meant state.json never reached Drive even though
-    // the user clicked Sync, so nothing was visible on Google Drive.
-    const QJsonDocument stateDoc(m_store->toJson());
-    if (!m_gdrive->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
-        setLastError(QStringLiteral("Failed to upload state.json"));
-        m_gdrive->releaseLock();
-        setStatus(Error);
-        return;
-    }
-
     // X-2.10: create snapshot BEFORE releasing lock so peers can't race in.
     if (m_snapshot->shouldCompact()) {
         m_snapshot->createSnapshot();
     }
 
-    // Clear pending commits
-    for (auto *commit : m_pendingCommits) {
-        const QString filePath = pendingCommitsPath() + QStringLiteral("/") + commit->uuid() + QStringLiteral(".json");
-        QFile::remove(filePath);
-    }
-    qDeleteAll(m_pendingCommits);
-    m_pendingCommits.clear();
+    // Iter-13: purgeUploaded was already called incrementally during the
+    // upload loop (and on the failure return path). At this point both
+    // uploadedThisPass and m_pendingCommits should be empty — but call
+    // purgeUploaded once more to handle any commit that slipped in via
+    // addPendingCommit between the loop ending and HEAD/state.json upload
+    // (the lock prevents peers but our own code may queue mid-push).
+    purgeUploaded();
 
     m_gdrive->releaseLock();
 
@@ -701,6 +744,44 @@ void SyncEngine::applyCommit(Commit *commit)
                     task->setDayOrder(patched[QStringLiteral("day_order")].toInt());
                 if (patched.contains(QStringLiteral("is_pinned")))
                     task->setIsPinned(patched[QStringLiteral("is_pinned")].toBool());
+                // iter-6 fix: previously this dispatch covered ~11 fields and
+                // silently skipped the rest. The follow-up loadFromJson(merged)
+                // in pull() papered over it, but any QML binding consumed by a
+                // taskChanged emit between applyCommit and loadFromJson saw a
+                // stale field. Now the live Task object actually mirrors the
+                // patched JSON for every key Task::toJson emits.
+                if (patched.contains(QStringLiteral("due")))
+                    task->setDue(DueObject::fromJson(
+                        patched[QStringLiteral("due")].toObject()));
+                if (patched.contains(QStringLiteral("deadline"))) {
+                    // Task::toJson wraps deadline as {"date": ...}; Task::fromJson
+                    // pulls .date from the wrapper. Mirror both shapes here so a
+                    // raw-string future-emit doesn't quietly break.
+                    const QJsonValue dv = patched[QStringLiteral("deadline")];
+                    if (dv.isObject())
+                        task->setDeadline(dv.toObject().value(QStringLiteral("date")).toString());
+                    else
+                        task->setDeadline(dv.toString());
+                }
+                if (patched.contains(QStringLiteral("labels"))) {
+                    QStringList labels;
+                    for (const auto &v : patched[QStringLiteral("labels")].toArray())
+                        labels.append(v.toString());
+                    task->setLabels(labels);
+                }
+                if (patched.contains(QStringLiteral("completed_at"))) {
+                    const QString iso = patched[QStringLiteral("completed_at")].toString();
+                    task->setCompletedAt(iso.isEmpty()
+                        ? QDateTime()
+                        : QDateTime::fromString(iso, Qt::ISODateWithMs));
+                }
+                if (patched.contains(QStringLiteral("color")))
+                    task->setColor(patched[QStringLiteral("color")].toString());
+                if (patched.contains(QStringLiteral("duration")))
+                    task->setDuration(DurationObject::fromJson(
+                        patched[QStringLiteral("duration")].toObject()));
+                if (patched.contains(QStringLiteral("estimate_minutes")))
+                    task->setEstimateMinutes(patched[QStringLiteral("estimate_minutes")].toInt());
                 // Q2.18-A FIX: push the inbound per-field _meta back into the
                 // DataStore's m_taskMeta map. Previously we dropped it on the
                 // floor and then called markTaskModified, which re-stamped
@@ -738,6 +819,62 @@ void SyncEngine::applyCommit(Commit *commit)
                     project->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
                 if (patched.contains(QStringLiteral("order")))
                     project->setOrder(patched[QStringLiteral("order")].toInt());
+                // iter-6 fix: previously this dispatch only covered the 7 fields
+                // above. The follow-up loadFromJson(merged) covered most callers,
+                // but parent_id, description, notes, icon, weekly_goal,
+                // linked_repo_path never reached the live Project object between
+                // applyCommit and loadFromJson — QML bindings emitted with stale
+                // values, and iter-5 added parent_id stamping in addProject which
+                // expects the inverse path to actually apply on inbound.
+                if (patched.contains(QStringLiteral("parent_id"))) {
+                    const QString candidate =
+                        patched[QStringLiteral("parent_id")].toString();
+                    // Iter-7: cycle + Inbox guard for inbound project parent_id.
+                    // ProjectViewModel::updateProject has the equivalent local
+                    // guard, and task_update has the equivalent inbound guard
+                    // (syncengine.cpp ~657). Without a guard here a peer can
+                    // ship a commit that creates A→B→A — the recursive
+                    // sidebar walker in SidebarContent.qml (Q3.19) would
+                    // overflow the JS stack on expand, freezing the UI.
+                    constexpr int MAX_DEPTH = 1000;
+                    bool wouldCycle = (candidate == op.entityId); // self-parent
+                    if (!wouldCycle && !candidate.isEmpty()) {
+                        QString cursor = candidate;
+                        for (int i = 0; i < MAX_DEPTH; ++i) {
+                            Project *ancestor = m_store->projectById(cursor);
+                            if (!ancestor) break;
+                            const QString next = ancestor->parentId();
+                            if (next.isEmpty()) break;
+                            if (next == op.entityId) { wouldCycle = true; break; }
+                            if (next == cursor) break; // pre-existing self-loop; stop
+                            cursor = next;
+                        }
+                    }
+                    if (wouldCycle) {
+                        qCWarning(lcSync)
+                            << "applyCommit: rejected project parent_id cycle for"
+                            << op.entityId << "→" << candidate;
+                    } else if (project->isInbox() && !candidate.isEmpty()) {
+                        // Inbox must stay root — sidebar / inbox filter mode
+                        // assume it lives at the top level. Mirrors the local
+                        // guard in ProjectViewModel::updateProject.
+                        qCWarning(lcSync)
+                            << "applyCommit: rejected parent_id for Inbox project"
+                            << op.entityId;
+                    } else {
+                        project->setParentId(candidate);
+                    }
+                }
+                if (patched.contains(QStringLiteral("description")))
+                    project->setDescription(patched[QStringLiteral("description")].toString());
+                if (patched.contains(QStringLiteral("notes")))
+                    project->setNotes(patched[QStringLiteral("notes")].toString());
+                if (patched.contains(QStringLiteral("icon")))
+                    project->setIcon(patched[QStringLiteral("icon")].toString());
+                if (patched.contains(QStringLiteral("weekly_goal")))
+                    project->setWeeklyGoal(patched[QStringLiteral("weekly_goal")].toInt());
+                if (patched.contains(QStringLiteral("linked_repo_path")))
+                    project->setLinkedRepoPath(patched[QStringLiteral("linked_repo_path")].toString());
                 // Q2.18-A FIX: push inbound _meta back (see task_update for rationale).
                 m_store->applyInboundProjectMeta(project->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
@@ -766,6 +903,16 @@ void SyncEngine::applyCommit(Commit *commit)
                     section->setOrder(patched[QStringLiteral("order")].toInt());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     section->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                // Q3.27: is_collapsed + is_archived were missing from the
+                // dispatch — inbound commits that toggled either field were
+                // silently dropped. Both are listed in DataStore's per-field
+                // meta keys (datastore.cpp:971), so they participate in CRDT
+                // merging at the snapshot layer; without the apply path
+                // they never reach the in-memory Section.
+                if (patched.contains(QStringLiteral("is_collapsed")))
+                    section->setIsCollapsed(patched[QStringLiteral("is_collapsed")].toBool());
+                if (patched.contains(QStringLiteral("is_archived")))
+                    section->setIsArchived(patched[QStringLiteral("is_archived")].toBool());
                 m_store->applyInboundSectionMeta(section->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -792,6 +939,11 @@ void SyncEngine::applyCommit(Commit *commit)
                     label->setOrder(patched[QStringLiteral("order")].toInt());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     label->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                // Iter-15: is_favorite was in Label::toJson but not applied
+                // on inbound — peer's ★ toggle was invisible in the sidebar
+                // Favorites section until the next full loadFromJson cycle.
+                if (patched.contains(QStringLiteral("is_favorite")))
+                    label->setIsFavorite(patched[QStringLiteral("is_favorite")].toBool());
                 m_store->applyInboundLabelMeta(label->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -844,6 +996,20 @@ void SyncEngine::applyCommit(Commit *commit)
                     reminder->setType(patched[QStringLiteral("type")].toString());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     reminder->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                // Iter-15: Reminder::toJson also writes minute_offset (for
+                // relative reminders), location (for geofenced ones), and
+                // recurrence_rule. All three were dropped on inbound — peer
+                // edits to "remind me 15 min before" / geofence coords /
+                // RRULE silently revert until the next loadFromJson cycle.
+                // ReminderScheduler uses these inputs directly, so the gap
+                // can also misfire OS toasts at the old offset.
+                if (patched.contains(QStringLiteral("minute_offset")))
+                    reminder->setMinuteOffset(patched[QStringLiteral("minute_offset")].toInt());
+                if (patched.contains(QStringLiteral("location")))
+                    reminder->setLocation(LocationObject::fromJson(
+                        patched[QStringLiteral("location")].toObject()));
+                if (patched.contains(QStringLiteral("recurrence_rule")))
+                    reminder->setRecurrenceRule(patched[QStringLiteral("recurrence_rule")].toString());
                 m_store->applyInboundReminderMeta(reminder->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -872,6 +1038,11 @@ void SyncEngine::applyCommit(Commit *commit)
                     filter->setOrder(patched[QStringLiteral("order")].toInt());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     filter->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                // Iter-15: same as label — is_favorite was in toJson but
+                // unhandled on inbound, so a peer's ★ on a filter wasn't
+                // visible until the next loadFromJson cycle.
+                if (patched.contains(QStringLiteral("is_favorite")))
+                    filter->setIsFavorite(patched[QStringLiteral("is_favorite")].toBool());
                 m_store->applyInboundFilterMeta(filter->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }

@@ -14,7 +14,7 @@ QuickAddResult QuickAddParser::parse(const QString &input)
     QString working = input;
 
     // ── 1. Extract #Project (first #token only) ───────────────────────────
-    // Match #Word — single-word tokens (Todoist convention).
+    // Match #Word — single-word tokens (OpenTodo convention).
     // Unicode word characters are supported.
     {
         static const QRegularExpression projectRe(
@@ -34,7 +34,7 @@ QuickAddResult QuickAddParser::parse(const QString &input)
 
     // ── F-4.26 FIX: Extract subsequent #label tokens ─────────────────────
     // After the first #Project has been removed, any remaining #tokens are
-    // treated as labels (Todoist convention for inbox-less projects).
+    // treated as labels (OpenTodo convention for inbox-less projects).
     {
         static const QRegularExpression extraLabelRe(
             QStringLiteral("(?:^|\\s)#([^\\s#@!]+)"));

@@ -280,7 +280,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: qsTr("Приостановить отслеживание кармы во время отпуска")
+                        text: qsTr("Приостановить отслеживание очков во время отпуска")
                         font.pixelSize: 12
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap

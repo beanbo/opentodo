@@ -832,7 +832,7 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {
-                        text: qsTr("Карма · %1").arg(karmaViewModel.karmaLevel)
+                        text: qsTr("Продуктивность · %1").arg(karmaViewModel.karmaLevel)
                         font.pixelSize: 16
                         color: Qt.rgba(1, 1, 1, 0.85)
                         Layout.alignment: Qt.AlignHCenter
@@ -849,7 +849,7 @@ Item {
                             Layout.fillWidth: true
 
                             Text {
-                                text: qsTr("До %1 кармы:").arg(karmaViewModel.nextMilestone)
+                                text: qsTr("До %1 очков:").arg(karmaViewModel.nextMilestone)
                                 font.pixelSize: 12
                                 color: Qt.rgba(1, 1, 1, 0.75)
                             }
@@ -1081,7 +1081,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: qsTr("Динамика кармы (30 дней)")
+                        text: qsTr("Динамика продуктивности (30 дней)")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary
@@ -1823,7 +1823,7 @@ Item {
                     spacing: 8
 
                     Text {
-                        text: qsTr("Карма за 30 дней")
+                        text: qsTr("Очки за 30 дней")
                         font.pixelSize: 14
                         font.bold: true
                         color: textPrimary

@@ -144,7 +144,7 @@ public:
     // Custom accent color override. customAccentHex() returns the stored
     // "#RRGGBB" string (empty when no override is active). accentColor()
     // resolves that to a QColor — when no override is set it falls back to
-    // a sensible default (#db4c3f, matching the todoist_light/dark palettes)
+    // a sensible default (#db4c3f, matching the classic_light/dark palettes)
     // so C++ consumers always have a valid color to paint with even before
     // the user picks a custom one. The setter accepts only valid "#RRGGBB"
     // strings (case-insensitive) plus the empty string for "reset to palette
@@ -215,6 +215,11 @@ signals:
     void backupRetentionDaysChanged();
     void vacuumThresholdBytesChanged();
     void settingChanged(const QString &key);
+    // Emitted from restartApp() when QProcess::startDetached fails (antivirus
+    // / SmartScreen quarantine, permission denied, missing executable). QML
+    // can show a banner instead of letting the user think the app silently
+    // died — the current process is still alive at this point.
+    void restartFailed(const QString &reason);
 
 private slots:
     void onSettingsChanged();

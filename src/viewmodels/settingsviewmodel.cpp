@@ -42,6 +42,10 @@ QString SettingsViewModel::theme() const {
     // Legacy "light" was the default in older builds before "system" existed;
     // upgrade it so existing installs pick up the OS color scheme.
     if (t == QStringLiteral("light")) return QStringLiteral("system");
+    // The light palette key was renamed from "todoist_light" to "classic_light"
+    // for trademark hygiene. Migrate transparently so installs that persisted
+    // the old key still resolve to the same palette without a forced reset.
+    if (t == QStringLiteral("todoist_light")) return QStringLiteral("classic_light");
     return t;
 }
 void SettingsViewModel::setTheme(const QString &theme) { set(QLatin1String(SettingsKeys::Theme), theme); emit themeChanged(); }
@@ -168,7 +172,7 @@ QColor SettingsViewModel::accentColor() const
 {
     // Resolve to a concrete QColor for C++ consumers (e.g. TrayIconService).
     // When the user hasn't set an override we fall back to #db4c3f — the
-    // accent of both the todoist_light and dark palettes, which together
+    // accent of both the classic_light and dark palettes, which together
     // cover the default ("system") theme path. This is intentional: making
     // the tray badge always paintable means we don't have to special-case
     // "no override" in every consumer.
@@ -402,7 +406,7 @@ QStringList SettingsViewModel::availableThemes() const
 {
     return {
         QStringLiteral("system"),
-        QStringLiteral("todoist_light"),
+        QStringLiteral("classic_light"),
         QStringLiteral("dark"),
         QStringLiteral("kale"),
         QStringLiteral("blueberry"),
@@ -453,7 +457,22 @@ void SettingsViewModel::restartApp()
     // flush pending writes (DataStore auto-save runs via QSaveFile on a
     // 1 s debounce; we depend on settings/language already being persisted
     // by the synchronous QSettings write in setLanguage).
-    QProcess::startDetached(program, args);
+    //
+    // Iter-11: check startDetached's bool return. If the replacement process
+    // refused to launch (antivirus quarantined the EXE post-update,
+    // SmartScreen flagged it, the path no longer points at a real file,
+    // permission denied) we MUST NOT quit — the user would lose the
+    // running window with no way back. Surface the failure via a signal so
+    // QML can show a banner instead.
+    if (!QProcess::startDetached(program, args)) {
+        const QString reason = QStringLiteral(
+            "Не удалось запустить новый процесс '%1'. Перезапустите вручную.")
+            .arg(program);
+        qWarning() << "[SettingsViewModel] startDetached failed for"
+                   << program << "— skipping quit, restart aborted.";
+        emit restartFailed(reason);
+        return;
+    }
 
     // qApp could be null in degenerate test contexts; guard.
     if (QCoreApplication::instance()) {

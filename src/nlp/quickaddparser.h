@@ -7,16 +7,16 @@ struct QuickAddResult {
     QString content;        // remaining text after extracting all tokens
     QString dueString;      // date/time phrase for DateParser
     int priority = 4;       // p1..p4 → 1..4 (default 4)
-    QStringList labels;     // from @-tokens (and subsequent #label tokens per Todoist convention)
+    QStringList labels;     // from @-tokens (and subsequent #label tokens per OpenTodo convention)
     QString projectName;    // from first #-token (name, not id)
-    // F-4.26 FIX: additional #tags after the first are treated as labels (Todoist convention).
+    // F-4.26 FIX: additional #tags after the first are treated as labels (OpenTodo convention).
     QStringList extraLabels; // from second and subsequent #-tokens
 };
 
 class QuickAddParser
 {
 public:
-    // Parse a free-form Todoist-style quick-add string.
+    // Parse a free-form shorthand-style quick-add string.
     // Strategy:
     //   1. Extract #Project (first occurrence) → projectName
     //   2. Extract subsequent #label tokens → extraLabels  (F-4.26)

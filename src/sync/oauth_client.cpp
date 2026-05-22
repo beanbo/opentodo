@@ -8,6 +8,8 @@
 #include <QLoggingCategory>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QProcessEnvironment>
+#include <QRandomGenerator>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -22,24 +24,51 @@ static const QString TOKEN_URL    = QStringLiteral("https://oauth2.googleapis.co
 static const QString AUTH_URL     = QStringLiteral("https://accounts.google.com/o/oauth2/v2/auth");
 static const QString USERINFO_URL = QStringLiteral("https://openidconnect.googleapis.com/v1/userinfo");
 
-// Google Cloud OAuth client (Desktop application type — client_secret is
-// public per Google's own docs for installed apps).
-static const QString DEFAULT_CLIENT_ID =
-    QStringLiteral("REDACTED_CLIENT_ID.apps.googleusercontent.com");
-static const QString DEFAULT_CLIENT_SECRET =
-    QStringLiteral("REDACTED_GOOGLE_CLIENT_SECRET");
 static const QString DRIVE_SCOPE =
     QStringLiteral("https://www.googleapis.com/auth/drive.file email profile");
+
+// Iter-task #36: previously the Desktop-OAuth client_id and client_secret were
+// hard-coded into the source. Even though Google's own docs note that the
+// "client_secret" for installed apps is not a real secret (PKCE-less Desktop
+// flow makes it effectively a public value), embedding it in a public
+// open-source repository has two real consequences:
+//   1. Every fork of the project inherits ONE shared Google Cloud project's
+//      quota — a single misbehaving fork can get the upstream client banned.
+//   2. Abuse complaints route back to the original Google account owner.
+//
+// Resolution: ship empty defaults. The user / packager supplies their own
+// client_id+secret via either:
+//   - environment variables OPENTODO_GOOGLE_CLIENT_ID / _SECRET (preferred for
+//     CI builds and per-machine installs), or
+//   - the existing QSettings keys sync/client_id and sync/client_secret
+//     (preferred for end users who want to point an existing instance at
+//     a different Cloud project).
+// When neither is provided, authenticate() short-circuits with a clear
+// "not configured" error and Sync is disabled — the rest of the app works
+// fine without Google Drive.
+static QString resolveClientId(const QSettings &settings)
+{
+    const QString env = QProcessEnvironment::systemEnvironment()
+        .value(QStringLiteral("OPENTODO_GOOGLE_CLIENT_ID"));
+    if (!env.isEmpty()) return env;
+    return settings.value(QStringLiteral("sync/client_id")).toString();
+}
+
+static QString resolveClientSecret(const QSettings &settings)
+{
+    const QString env = QProcessEnvironment::systemEnvironment()
+        .value(QStringLiteral("OPENTODO_GOOGLE_CLIENT_SECRET"));
+    if (!env.isEmpty()) return env;
+    return settings.value(QStringLiteral("sync/client_secret")).toString();
+}
 } // namespace GoogleEndpoints
 
 OAuthClient::OAuthClient(QObject *parent)
     : QObject(parent)
 {
     QSettings settings;
-    m_clientId     = settings.value(QStringLiteral("sync/client_id"),
-                                    GoogleEndpoints::DEFAULT_CLIENT_ID).toString();
-    m_clientSecret = settings.value(QStringLiteral("sync/client_secret"),
-                                    GoogleEndpoints::DEFAULT_CLIENT_SECRET).toString();
+    m_clientId     = GoogleEndpoints::resolveClientId(settings);
+    m_clientSecret = GoogleEndpoints::resolveClientSecret(settings);
     loadTokens();
 }
 
@@ -64,7 +93,13 @@ void OAuthClient::authenticate()
 
     if (m_clientId.isEmpty() || m_clientSecret.isEmpty()) {
         emit authenticationFailed(
-            QStringLiteral("Не настроены OAuth-креды (sync/client_id, sync/client_secret)."));
+            QStringLiteral(
+                "Google OAuth не настроен. Создайте OAuth-клиент типа «Desktop» "
+                "в Google Cloud Console (включите Drive API + Identity Services), "
+                "затем укажите его данные одним из способов:\n"
+                "  1) Переменные окружения OPENTODO_GOOGLE_CLIENT_ID и "
+                "OPENTODO_GOOGLE_CLIENT_SECRET, ИЛИ\n"
+                "  2) Ключи QSettings sync/client_id и sync/client_secret."));
         return;
     }
 
@@ -97,6 +132,16 @@ void OAuthClient::startAuthFlow()
             abortAuthFlow(QStringLiteral("Истекло время ожидания авторизации (5 мин)."));
     });
 
+    // Iter-15: per-flow CSRF nonce. Without it an attacker with a
+    // pre-issued code could ferry victim's loopback callback into the
+    // attacker's Drive account (RFC 6749 §10.12). 192 bits of randomness
+    // from the OS CSPRNG is well beyond brute-force.
+    QByteArray stateRaw(24, Qt::Uninitialized);
+    QRandomGenerator::system()->fillRange(
+        reinterpret_cast<quint32 *>(stateRaw.data()), stateRaw.size() / 4);
+    m_authState = QString::fromLatin1(stateRaw.toBase64(
+        QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+
     const QString redirectUri = QStringLiteral("http://127.0.0.1:%1").arg(m_authPort);
     QUrl url(GoogleEndpoints::AUTH_URL);
     QUrlQuery q;
@@ -106,6 +151,7 @@ void OAuthClient::startAuthFlow()
     q.addQueryItem(QStringLiteral("scope"),         GoogleEndpoints::DRIVE_SCOPE);
     q.addQueryItem(QStringLiteral("access_type"),   QStringLiteral("offline"));
     q.addQueryItem(QStringLiteral("prompt"),        QStringLiteral("consent"));
+    q.addQueryItem(QStringLiteral("state"),         m_authState);
     url.setQuery(q);
 
     qCInfo(lcOAuth) << "OAuth: listening on" << redirectUri
@@ -132,13 +178,26 @@ void OAuthClient::handleAuthCallback(QTcpSocket *socket)
     const QByteArray firstLine = (eol >= 0) ? request.left(eol) : request;
     const QList<QByteArray> parts = firstLine.split(' ');
 
-    QString code, error;
+    QString code, error, state;
     if (parts.size() >= 2) {
         const QUrl callbackUrl(QStringLiteral("http://127.0.0.1") +
                                QString::fromLatin1(parts.at(1)));
         const QUrlQuery q(callbackUrl);
         code  = q.queryItemValue(QStringLiteral("code"));
         error = q.queryItemValue(QStringLiteral("error"));
+        state = q.queryItemValue(QStringLiteral("state"));
+    }
+
+    // Iter-15: validate state nonce. Mismatch ⇒ this callback isn't from
+    // the flow we started; treat as a CSRF attempt and refuse to exchange
+    // the code. Compares only when we actually have a non-empty
+    // m_authState (legacy callbacks from earlier sessions where m_authState
+    // was never populated should still error out cleanly).
+    if (!m_authState.isEmpty() && state != m_authState) {
+        qCWarning(lcOAuth) << "OAuth: state mismatch in callback — rejecting "
+                           << "(expected nonce did not match)";
+        code.clear();
+        error = QStringLiteral("Несовпадение state — авторизация отклонена.");
     }
 
     const QString successHtml = QStringLiteral(
@@ -147,10 +206,19 @@ void OAuthClient::handleAuthCallback(QTcpSocket *socket)
         "h1{color:#db4c3f}</style></head><body>"
         "<h1>OpenTodo</h1><p>Авторизация прошла успешно.</p>"
         "<p>Можно закрыть это окно и вернуться в приложение.</p></body></html>");
+    // Iter-15 sec fix: HTML-escape the error parameter before interpolating.
+    // It comes from the URL query (queryItemValue is already URL-decoded),
+    // so a crafted callback like /?error=<script>... would otherwise execute
+    // in the loopback origin. Impact is limited (loopback has no app cookies
+    // / no shared origin with anything sensitive), but it's an unnecessary
+    // injection point.
+    const QString errorText = error.isEmpty()
+        ? QStringLiteral("Код авторизации не получен.")
+        : error.toHtmlEscaped();
     const QString errorHtml = QStringLiteral(
         "<!doctype html><html><head><meta charset='utf-8'><title>OpenTodo</title></head>"
         "<body><h1>Ошибка</h1><p>%1</p></body></html>")
-        .arg(error.isEmpty() ? QStringLiteral("Код авторизации не получен.") : error);
+        .arg(errorText);
 
     const QString &body = (!code.isEmpty()) ? successHtml : errorHtml;
     const QByteArray bytes = body.toUtf8();
@@ -185,6 +253,11 @@ void OAuthClient::handleAuthCallback(QTcpSocket *socket)
 
     fetchUserInfo();
     saveTokens();
+
+    // Iter-15: clear the CSRF nonce once we've finished exchanging the code.
+    // A second callback re-using the same nonce should not silently accept
+    // a fresh code.
+    m_authState.clear();
 
     m_authenticated = true;
     emit authenticatedChanged();
@@ -251,6 +324,9 @@ void OAuthClient::abortAuthFlow(const QString &reason)
         m_authServer->deleteLater();
         m_authServer = nullptr;
     }
+    // Iter-15: clear the CSRF nonce so a stale callback that arrives after
+    // abort can't sneak through.
+    m_authState.clear();
     if (!reason.isEmpty())
         emit authenticationFailed(reason);
 }

@@ -9,7 +9,7 @@ Rectangle {
     anchors.fill: parent
 
     // ── Design constants ──────────────────────────────────────────────────────
-    readonly property color todoistRed:    ThemeManager.accentColor
+    readonly property color accentRed:    ThemeManager.accentColor
     readonly property bool  isDarkTheme:   ThemeManager.isDark
     readonly property color bgColor:       ThemeManager.backgroundColor
     readonly property color contentColor:  ThemeManager.surfaceColor
@@ -307,7 +307,7 @@ Rectangle {
                         checked: root.viewMode === "month"
                         onClicked: root.viewMode = "month"
                         Material.foreground: root.viewMode === "month"
-                                             ? root.todoistRed : root.textSecondary
+                                             ? root.accentRed : root.textSecondary
                         ToolTip.text: qsTr("Вид: месяц")
                         ToolTip.visible: hovered
                     }
@@ -318,7 +318,7 @@ Rectangle {
                         checked: root.viewMode === "week"
                         onClicked: root.viewMode = "week"
                         Material.foreground: root.viewMode === "week"
-                                             ? root.todoistRed : root.textSecondary
+                                             ? root.accentRed : root.textSecondary
                         ToolTip.text: qsTr("Вид: неделя")
                         ToolTip.visible: hovered
                     }
@@ -334,7 +334,7 @@ Rectangle {
                             root.viewMode = "agenda"
                         }
                         Material.foreground: root.viewMode === "agenda"
-                                             ? root.todoistRed : root.textSecondary
+                                             ? root.accentRed : root.textSecondary
                         ToolTip.text: qsTr("Вид: список (агенда)")
                         ToolTip.visible: hovered
                     }
@@ -347,7 +347,7 @@ Rectangle {
                         root.currentMonth = new Date()
                         root.selectedDate = new Date()
                     }
-                    Material.foreground: root.todoistRed
+                    Material.foreground: root.accentRed
                 }
             }
 
@@ -447,14 +447,14 @@ Rectangle {
                         // ~8 % accent tint on days that have at least one task
                         // (subtle hint of activity, doesn't fight today's red border).
                         if (dayTasks.length > 0)
-                            return Qt.rgba(root.todoistRed.r,
-                                           root.todoistRed.g,
-                                           root.todoistRed.b,
+                            return Qt.rgba(root.accentRed.r,
+                                           root.accentRed.g,
+                                           root.accentRed.b,
                                            0.08)
                         return root.contentColor
                     }
 
-                    border.color: isToday ? root.todoistRed : root.borderColor
+                    border.color: isToday ? root.accentRed : root.borderColor
                     border.width: isToday ? 2 : 1
 
                     ColumnLayout {
@@ -468,7 +468,7 @@ Rectangle {
                             font.pixelSize: 13
                             font.bold:  isToday
                             color: {
-                                if (isToday)         return root.todoistRed
+                                if (isToday)         return root.accentRed
                                 if (!isCurrentMonth) return root.textSecondary
                                 return root.textPrimary
                             }
@@ -512,7 +512,7 @@ Rectangle {
                             visible:        cell.dayTasks.length > 3
                             text:           qsTr("+ ещё %1").arg(cell.dayTasks.length - 3)
                             font.pixelSize: 10
-                            color:          root.todoistRed
+                            color:          root.accentRed
                         }
 
                         // Vertical spacer so day-number stays at top
@@ -588,7 +588,7 @@ Rectangle {
                         return root.isDarkTheme ? "#3a2020" : "#fff0ee"
                     return root.contentColor
                 }
-                border.color: root._sameDay(modelData, new Date()) ? root.todoistRed : root.borderColor
+                border.color: root._sameDay(modelData, new Date()) ? root.accentRed : root.borderColor
                 border.width: root._sameDay(modelData, new Date()) ? 2 : 1
 
                 // Q3.24: depend on _calendarKick so task list refreshes on model
@@ -611,7 +611,7 @@ Rectangle {
                             text: Qt.locale("ru_RU").dayName(weekCell.modelData.getDay(), Locale.LongFormat)
                             font.pixelSize: 13
                             font.bold:      weekCell.isToday
-                            color:          weekCell.isToday ? root.todoistRed : root.textPrimary
+                            color:          weekCell.isToday ? root.accentRed : root.textPrimary
                             // Capitalize first letter
                             Component.onCompleted: {
                                 var s = text
@@ -633,7 +633,7 @@ Rectangle {
                             visible: weekCell.dayTasks.length > 0
                             width:   chipText.implicitWidth + 10
                             height:  18; radius: 9
-                            color:   root.todoistRed
+                            color:   root.accentRed
 
                             Text {
                                 id: chipText
@@ -676,7 +676,7 @@ Rectangle {
                         visible:        weekCell.dayTasks.length > 3
                         text:           qsTr("+ ещё %1").arg(weekCell.dayTasks.length - 3)
                         font.pixelSize: 10
-                        color:          root.todoistRed
+                        color:          root.accentRed
                     }
 
                     Item { Layout.fillHeight: true }
@@ -793,7 +793,7 @@ Rectangle {
                                     }
                                     font.pixelSize: 14
                                     font.bold: true
-                                    color: agendaDayItem.isToday ? root.todoistRed : root.textPrimary
+                                    color: agendaDayItem.isToday ? root.accentRed : root.textPrimary
                                 }
 
                                 Label {
@@ -980,7 +980,7 @@ Rectangle {
                         visible: popupTaskList.count > 0
                         width:   badgeText.implicitWidth + 10
                         height:  20; radius: 10
-                        color:   root.todoistRed
+                        color:   root.accentRed
 
                         Text {
                             id:             badgeText
@@ -1118,7 +1118,7 @@ Rectangle {
 
                     Text {
                         text:           "+"
-                        color:          root.todoistRed
+                        color:          root.accentRed
                         font.pixelSize: 16
                         font.bold:      true
                     }
@@ -1170,6 +1170,10 @@ Rectangle {
         title: qsTr("Новая задача")
         modal: true
         anchors.centerIn: Overlay.overlay
+        // Q3.26: explicit width — without it Material Dialog falls back to
+        // contentItem.implicitWidth, which is too narrow for the TextField
+        // and crops the dialog frame.
+        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property date   targetDate: new Date()

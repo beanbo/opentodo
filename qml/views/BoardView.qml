@@ -11,7 +11,7 @@ Rectangle {
     anchors.fill: parent
 
     // ── Design constants ──────────────────────────────────────────────────────
-    readonly property color todoistRed:    ThemeManager.accentColor
+    readonly property color accentRed:    ThemeManager.accentColor
     readonly property bool  isDarkTheme:   ThemeManager.isDark
     readonly property color bgColor:       ThemeManager.backgroundColor
     readonly property color contentColor:  ThemeManager.surfaceColor
@@ -181,7 +181,7 @@ Rectangle {
                                 MenuSeparator {}
                                 MenuItem {
                                     text: qsTr("Удалить раздел")
-                                    Material.foreground: root.todoistRed
+                                    Material.foreground: root.accentRed
                                     onTriggered: {
                                         // B-6.40 — canonical API is removeSection (not deleteSection)
                                         if (modelData.id !== "")
@@ -313,7 +313,7 @@ Rectangle {
                                                                 : modelData.dueDate
                                                 font.pixelSize: 11
                                                 color:          root._isOverdue(modelData.dueDate)
-                                                                ? root.todoistRed
+                                                                ? root.accentRed
                                                                 : root.textSecondary
                                             }
                                         }
@@ -367,7 +367,7 @@ Rectangle {
                                     anchors.right: parent.right
                                     height: 3
                                     radius: 1.5
-                                    color:  root.todoistRed
+                                    color:  root.accentRed
                                     visible: parent.containsDrag
                                     opacity: 0.85
                                 }
@@ -462,11 +462,18 @@ Rectangle {
     }
 
     // ── Add card dialog ───────────────────────────────────────────────────────
+    // Q3.26: explicit Dialog width + anchors.fill on the inner ColumnLayout.
+    // Without an explicit width on the Dialog itself, Material Dialog computes
+    // its width from contentItem.implicitWidth (often the title bar width),
+    // and the inner ColumnLayout's `width: 280` does NOT propagate up — so the
+    // TextField rendered outside the visible frame ("dialog cropped"). Mirror
+    // the working pattern from ProjectView.qml's addSectionDialog.
     Dialog {
         id:    addCardDialog
         title: qsTr("Добавить задачу")
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetSectionId: ""
@@ -487,8 +494,8 @@ Rectangle {
         }
 
         ColumnLayout {
+            anchors.fill: parent
             spacing: 8
-            width:   280
 
             Label { text: qsTr("Название задачи"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
@@ -506,6 +513,7 @@ Rectangle {
         title: qsTr("Добавить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         // ITER1 #39: clear text and focus the field when the dialog opens
@@ -522,8 +530,8 @@ Rectangle {
         }
 
         ColumnLayout {
+            anchors.fill: parent
             spacing: 8
-            width:   280
 
             Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
@@ -541,6 +549,7 @@ Rectangle {
         title: qsTr("Переименовать раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string sectionId:   ""
@@ -560,8 +569,8 @@ Rectangle {
         }
 
         ColumnLayout {
+            anchors.fill: parent
             spacing: 8
-            width:   280
 
             Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {

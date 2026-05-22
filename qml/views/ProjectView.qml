@@ -10,7 +10,7 @@ Rectangle {
     anchors.fill: parent
 
     // ── Design constants ──────────────────────────────────────────────────────
-    readonly property color todoistRed:     ThemeManager.accentColor
+    readonly property color accentRed:     ThemeManager.accentColor
     readonly property bool  isDarkTheme:    ThemeManager.isDark
     readonly property color bgColor:        ThemeManager.backgroundColor
     readonly property color contentColor:   ThemeManager.surfaceColor
@@ -108,12 +108,13 @@ Rectangle {
         if (swapIdx < 0 || swapIdx >= siblings.length) return
         const a = siblings[idx]
         const b = siblings[swapIdx]
-        const tmp = a.order
-        a.order = b.order
-        b.order = tmp
-        // Stamp CRDT fields so the reorder survives sync.
-        dataStore.markSectionModified(a.id)
-        dataStore.markSectionModified(b.id)
+        const aOrder = a.order
+        const bOrder = b.order
+        // Route through DataStore so each side gets a per-field _meta.order
+        // stamp — a swap that only mutates the model leaves the merger blind
+        // to the change after sync.
+        dataStore.setSectionOrder(a.id, bOrder)
+        dataStore.setSectionOrder(b.id, aOrder)
     }
 
     Menu {
@@ -160,18 +161,14 @@ Rectangle {
         MenuItem {
             text: qsTr("Скрыть раздел")
             onTriggered: {
-                const s = dataStore.sectionById(root._activeSectionId)
-                if (s) {
-                    s.isArchived = true
-                    dataStore.markSectionModified(root._activeSectionId)
-                }
+                dataStore.setSectionArchived(root._activeSectionId, true)
             }
         }
         MenuSeparator {}
 
         MenuItem {
             text: qsTr("Удалить раздел")
-            Material.foreground: root.todoistRed
+            Material.foreground: root.accentRed
             onTriggered: {
                 deleteSectionDialog.sectionId   = root._activeSectionId
                 deleteSectionDialog.sectionName = root._activeSectionName
@@ -296,7 +293,7 @@ Rectangle {
                     onClicked: root.setView("list")
                     ToolTip.text: qsTr("Список")
                     ToolTip.visible: hovered
-                    Material.foreground: checked ? todoistRed : textSecondary
+                    Material.foreground: checked ? accentRed : textSecondary
                 }
                 ToolButton {
                     // Iteration 3 of the board-icon glyph:
@@ -317,7 +314,7 @@ Rectangle {
                     onClicked: root.setView("board")
                     ToolTip.text: qsTr("Доска")
                     ToolTip.visible: hovered
-                    Material.foreground: checked ? todoistRed : textSecondary
+                    Material.foreground: checked ? accentRed : textSecondary
                 }
                 ToolButton {
                     text:    "📅"
@@ -326,7 +323,7 @@ Rectangle {
                     onClicked: root.setView("calendar")
                     ToolTip.text: qsTr("Календарь")
                     ToolTip.visible: hovered
-                    Material.foreground: checked ? todoistRed : textSecondary
+                    Material.foreground: checked ? accentRed : textSecondary
                 }
 
                 // Separator
@@ -343,7 +340,7 @@ Rectangle {
                     font.pixelSize: FontSize.body
                     visible: viewStyle === "list"
                     onClicked: addSectionDialog.open()
-                    Material.foreground: todoistRed
+                    Material.foreground: accentRed
 
                     ToolTip.text: qsTr("Добавить раздел в проект")
                     ToolTip.visible: hovered
@@ -462,37 +459,75 @@ Rectangle {
                 MenuSeparator {}
                 MenuItem {
                     text: qsTr("Удалить проект")
-                    Material.foreground: todoistRed
+                    Material.foreground: accentRed
                     onTriggered: deleteConfirmDialog.open()
                 }
             }
         }
 
         // ── Notes card — visible only when the project has notes ─────────────
+        // Q3.29: third rewrite — the Q3.28 implicit-height pipeline still
+        // produced overlap with the «Добавить задачу» bar in list mode.
+        // Symptom: the card's drawn area extended past its allocated layout
+        // box, covering the top of the quick-add row underneath.
+        //
+        // Root cause: with `clip:true` plus a Column anchored top/left/right
+        // (no bottom anchor) plus `Layout.preferredHeight` bound to that
+        // Column's implicitHeight, Qt 6's layout engine occasionally settled
+        // on a Rectangle height that was *smaller* than the Column's actual
+        // drawn extent. That happened reliably when the project view was
+        // first opened (Column laid out before Rectangle width was final) or
+        // when the right-pane editor's width animation changed the available
+        // width mid-flight. clip:true masked the inside but the OUTER layout
+        // still allocated the stale (smaller) preferredHeight, so the next
+        // Layout child (the Loader → list view → quick-add bar) was painted
+        // a few pixels too high — visually under the notes card border.
+        //
+        // The bulletproof fix is to stop deriving Rectangle.height from a
+        // dynamic implicitHeight chain at all. We give the card a fixed
+        // Layout.preferredHeight (compact: 56 px header-only, expanded:
+        // 220 px header + scrollable body) and put the long-text body
+        // inside a Flickable. No matter how long the notes are, the
+        // Rectangle's drawn height equals its allocated layout height —
+        // no overlap is geometrically possible.
         Rectangle {
+            id: notesCard
             Layout.fillWidth: true
-            Layout.preferredHeight: notesCardCol.implicitHeight + Spacing.md * 2
             Layout.leftMargin: Spacing.md
             Layout.rightMargin: Spacing.md
             Layout.topMargin: Spacing.sm
+            // Compact when collapsed (header strip only); expanded gives
+            // 220 px which is room for ~10 lines at body font size — long
+            // enough to be useful, short enough to leave the task list
+            // breathing room.
+            Layout.preferredHeight: _expanded ? 220 : 44
+            Layout.maximumHeight:   _expanded ? 220 : 44
             visible: !!project && !!project.notes
             color: ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
             border.width: 1
             radius: Radius.md
+            clip: true
 
-            property bool _expanded: false
+            // Expanded by default for short notes (the whole point of having
+            // a notes card is to see them); collapsed by default for long
+            // notes so they don't dominate the project view.
+            property bool _expanded: !!project && !!project.notes
+                                     && project.notes.length < 200
+
+            Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+            }
 
             ColumnLayout {
-                id: notesCardCol
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
+                anchors.fill: parent
                 anchors.margins: Spacing.md
                 spacing: Spacing.xs
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 24
+                    spacing: Spacing.sm
 
                     Label {
                         text: qsTr("📝 Заметки")
@@ -502,38 +537,45 @@ Rectangle {
                     }
                     Item { Layout.fillWidth: true }
                     ToolButton {
-                        text: notesCardCol.parent._expanded ? "▾" : "▸"
+                        text: notesCard._expanded ? "▾" : "▸"
                         flat: true
-                        onClicked: notesCardCol.parent._expanded = !notesCardCol.parent._expanded
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        padding: 0
+                        ToolTip.text: notesCard._expanded
+                                      ? qsTr("Свернуть заметки")
+                                      : qsTr("Развернуть заметки")
+                        ToolTip.visible: hovered
+                        onClicked: notesCard._expanded = !notesCard._expanded
                     }
                 }
 
-                // Full markdown text — always shown when notes are short,
-                // or when the user has expanded the card.
-                Text {
-                    visible: notesCardCol.parent._expanded || (project && project.notes.length < 200)
-                    text: project ? project.notes : ""
-                    textFormat: Text.MarkdownText
-                    wrapMode: Text.WordWrap
-                    color: ThemeManager.textColor
-                    linkColor: ThemeManager.accentColor
-                    onLinkActivated: function(url) { Qt.openUrlExternally(url) }
-                    Layout.fillWidth: true
-                }
+                // Scrollable body — the Text inside can be arbitrarily long;
+                // Flickable handles the overflow without affecting the card's
+                // outer height.
+                Flickable {
+                    id: notesFlick
+                    Layout.fillWidth:  true
+                    Layout.fillHeight: true
+                    visible: notesCard._expanded
+                    clip: true
+                    contentWidth:  width
+                    contentHeight: notesBodyText.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {
+                        policy: notesFlick.contentHeight > notesFlick.height
+                                ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                    }
 
-                // Collapsed preview — first 200 chars, clickable to expand.
-                Text {
-                    visible: !notesCardCol.parent._expanded && (project && project.notes.length >= 200)
-                    text: project ? project.notes.substring(0, 197) + "…" : ""
-                    wrapMode: Text.WordWrap
-                    color: ThemeManager.secondaryTextColor
-                    font.pixelSize: FontSize.caption
-                    Layout.fillWidth: true
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: notesCardCol.parent._expanded = true
+                    Text {
+                        id: notesBodyText
+                        width: notesFlick.width
+                        text: project ? project.notes : ""
+                        textFormat: Text.MarkdownText
+                        wrapMode: Text.WordWrap
+                        color: ThemeManager.textColor
+                        linkColor: ThemeManager.accentColor
+                        onLinkActivated: function(url) { Qt.openUrlExternally(url) }
                     }
                 }
             }
@@ -576,7 +618,7 @@ Rectangle {
 
                         Rectangle {
                             width: 18; height: 18; radius: 9
-                            border.color: todoistRed; border.width: 1.5
+                            border.color: accentRed; border.width: 1.5
                             color: "transparent"
                         }
 
@@ -636,14 +678,23 @@ Rectangle {
                             readonly property string sectionId:
                                 section === "__none__" ? "" : section
 
+                            // Q3.27: track the underlying Section model so the
+                            // chevron + bound bindings (e.g. task delegate
+                            // visibility) re-evaluate when isCollapsed flips.
+                            readonly property var sectionModel:
+                                sectionId === "" ? null
+                                                 : dataStore.sectionById(sectionId)
+                            readonly property bool isCollapsed:
+                                !!sectionModel && sectionModel.isCollapsed
+
                             width:  ListView.view.width
                             implicitWidth: width
                             height: 36
                             implicitHeight: height
                             color:  sectionDrop.containsDrag
-                                    ? Qt.rgba(root.todoistRed.r,
-                                              root.todoistRed.g,
-                                              root.todoistRed.b, 0.18)
+                                    ? Qt.rgba(root.accentRed.r,
+                                              root.accentRed.g,
+                                              root.accentRed.b, 0.18)
                                     : (root.isDarkTheme ? "#222" : "#f5f5f5")
 
                             property string sectionName: {
@@ -657,6 +708,31 @@ Rectangle {
                                 anchors.leftMargin:  Spacing.md
                                 anchors.rightMargin: Spacing.sm
                                 spacing: 6
+
+                                // Q3.27: collapse/expand chevron. Hidden for the
+                                // synthetic "(Без раздела)" header — there's no
+                                // Section model to toggle on.
+                                ToolButton {
+                                    visible:        sectionHeaderRect.sectionId !== ""
+                                    text:           sectionHeaderRect.isCollapsed ? "▸" : "▾"
+                                    font.pixelSize: FontSize.body
+                                    flat:           true
+                                    Layout.preferredWidth:  24
+                                    Layout.preferredHeight: 24
+                                    Material.foreground: root.textSecondary
+                                    ToolTip.text: sectionHeaderRect.isCollapsed
+                                                      ? qsTr("Развернуть раздел")
+                                                      : qsTr("Свернуть раздел")
+                                    ToolTip.visible: hovered
+                                    onClicked: {
+                                        const s = sectionHeaderRect.sectionModel
+                                        if (s) {
+                                            dataStore.setSectionCollapsed(
+                                                sectionHeaderRect.sectionId,
+                                                !s.isCollapsed)
+                                        }
+                                    }
+                                }
 
                                 Text {
                                     text:           sectionHeaderRect.sectionName
@@ -724,7 +800,21 @@ Rectangle {
                         delegate: Item {
                             id: delegateRoot
                             width:  taskListView.width
-                            height: projectTaskItem.implicitHeight
+                            // Q3.27: collapse support. When the parent section's
+                            // isCollapsed flips true, hide every task row in
+                            // that section (height 0 + visible false). Tasks
+                            // outside any section ("(Без раздела)") always
+                            // show. Re-evaluates automatically because
+                            // sectionModel is a QObject* and isCollapsed has a
+                            // change signal.
+                            readonly property var _sectionModel:
+                                sectionId === "" ? null
+                                                 : dataStore.sectionById(sectionId)
+                            readonly property bool _sectionCollapsed:
+                                !!_sectionModel && _sectionModel.isCollapsed
+                            visible: !_sectionCollapsed
+                            height: _sectionCollapsed ? 0
+                                                       : projectTaskItem.implicitHeight
 
                             required property int    index
                             required property string id
@@ -907,7 +997,7 @@ Rectangle {
 
                         Text {
                             text:           "+"
-                            color:          root.todoistRed
+                            color:          root.accentRed
                             font.pixelSize: FontSize.subtitle
                         }
                         Text {
@@ -929,9 +1019,19 @@ Rectangle {
     }
 
     // ── Board component ───────────────────────────────────────────────────────
+    // Q3.27: hook BoardView's taskClicked signal so that clicking a card in
+    // board mode opens the right-pane TaskEditor — matching the list-mode
+    // behaviour. Previously the signal was emitted into a void and clicks
+    // appeared to do nothing.
     Component {
         id: boardComponent
-        BoardView { projectId: root.projectId }
+        BoardView {
+            projectId: root.projectId
+            onTaskClicked: function(taskId) {
+                const t = dataStore.taskById(taskId)
+                if (t) taskViewModel.selectedTask = t
+            }
+        }
     }
 
     // ── Calendar component ────────────────────────────────────────────────────
@@ -1102,17 +1202,28 @@ Rectangle {
                 color: root.textSecondary
                 Layout.topMargin: Spacing.sm
             }
+            // Q3.28: TextArea-in-ScrollView width fix.
+            // Previously `width: parent.width` referred to ScrollView's
+            // internal Flickable.contentItem, whose width is computed from
+            // the content (TextArea itself) — a circular dependency that
+            // re-allowed the "one word per line, then overflow" behaviour
+            // the Q3.13 fix tried to address. Pinning `width` to the
+            // ScrollView's `availableWidth` (via explicit id) breaks the
+            // cycle: TextArea.width is driven by the ScrollView's external
+            // width, the content wraps to that, and the ScrollView never
+            // tries to grow horizontally.
             ScrollView {
+                id: descScroll
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
                 clip: true
 
                 TextArea {
                     id: descriptionField
-                    width: parent.width
+                    width: descScroll.availableWidth
                     text: editDialog.editDescription
                     placeholderText: qsTr("Описание проекта (необязательно)")
-                    wrapMode: Text.WordWrap
+                    wrapMode: TextEdit.Wrap
                     color: root.textPrimary
                     background: Rectangle {
                         color: ThemeManager.surfaceColor
@@ -1135,16 +1246,17 @@ Rectangle {
                 Layout.topMargin: Spacing.sm
             }
             ScrollView {
+                id: notesScroll
                 Layout.fillWidth: true
                 Layout.preferredHeight: 160
                 clip: true
 
                 TextArea {
                     id: notesField
-                    width: parent.width
+                    width: notesScroll.availableWidth
                     text: editDialog.editNotes
                     placeholderText: qsTr("Длинные заметки, ссылки, ToDo по проекту… (Markdown поддерживается)")
-                    wrapMode: Text.WordWrap
+                    wrapMode: TextEdit.Wrap
                     color: root.textPrimary
                     background: Rectangle {
                         color: ThemeManager.surfaceColor

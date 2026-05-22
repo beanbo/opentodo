@@ -559,7 +559,11 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         Project *proj = m_store->projectById(projIdMap[tp.id]);
         if (proj) {
             proj->setParentId(projIdMap[tp.parentId]);
-            m_store->markProjectModified(proj->id());
+            // parent_id isn't in addProject's initialFields, so the per-field
+            // CRDT stamp is required here — without it a concurrent reorg on
+            // another device wins by empty-meta fallback and the imported
+            // project hierarchy is silently lost after sync.
+            m_store->markProjectFieldsModified(proj->id(), {QStringLiteral("parent_id")});
         }
     }
 

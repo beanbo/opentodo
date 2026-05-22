@@ -629,13 +629,24 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             if (month > 0) {
                 QDate date(year, month, day);
                 if (date.isValid()) {
-                    if (m.captured(3).isEmpty() && date < reference)
-                        date = QDate(year + 1, month, day);
-                    result.date = formatDate(date);
-                    result.humanString = QStringLiteral("%1 %2").arg(day).arg(monthStr);
-                    result.valid = true;
-                    // Pass original input (not stripped datePart) so time is extracted.
-                    return tryParseTime(input, result);
+                    bool ok = true;
+                    if (m.captured(3).isEmpty() && date < reference) {
+                        // Bump to next year. Defend against Feb 29 → non-leap
+                        // year producing an invalid QDate (formatDate would
+                        // return "", yet result.valid was being set to true).
+                        const QDate bumped(year + 1, month, day);
+                        if (bumped.isValid())
+                            date = bumped;
+                        else
+                            ok = false; // fall through to next parser
+                    }
+                    if (ok) {
+                        result.date = formatDate(date);
+                        result.humanString = QStringLiteral("%1 %2").arg(day).arg(monthStr);
+                        result.valid = true;
+                        // Pass original input (not stripped datePart) so time is extracted.
+                        return tryParseTime(input, result);
+                    }
                 }
             }
         }

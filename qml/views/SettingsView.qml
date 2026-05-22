@@ -41,6 +41,7 @@ Item {
             SettingsSectionLanguage     { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionAppearance   { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionSync         { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
+            SettingsSectionAI           { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionProductivity { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionReminders    { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
             SettingsSectionDefer        { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }

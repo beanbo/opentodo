@@ -20,7 +20,7 @@
 //   4. Each palette switch emits the corresponding colour-property NOTIFY
 //      signal exactly once per switch (via the `_listenerActive`-attached
 //      change spy in QML).
-//   5. `effectiveThemeName` resolves "system" to either todoist_light or
+//   5. `effectiveThemeName` resolves "system" to either classic_light or
 //      dark depending on `Application.styleHints.colorScheme`.
 //   6. Custom accent override (`setCustomAccent`) wins over the palette's
 //      native accentColor; `resetCustomAccent` restores it.
@@ -183,7 +183,7 @@ private:
         // Clear any custom accent override first so accentColor reflects the
         // palette, not the override, after we change currentTheme.
         QMetaObject::invokeMethod(m_tm, "resetCustomAccent");
-        m_tm->setProperty("currentTheme", QStringLiteral("todoist_light"));
+        m_tm->setProperty("currentTheme", QStringLiteral("classic_light"));
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     }
 
@@ -316,7 +316,7 @@ private slots:
         // ThemeManager.qml. "highcontrast" is the accessibility variant
         // included alongside the eight named palettes.
         const QSet<QString> kExpectedPalettes = {
-            QStringLiteral("todoist_light"),
+            QStringLiteral("classic_light"),
             QStringLiteral("dark"),
             QStringLiteral("kale"),
             QStringLiteral("blueberry"),
@@ -368,7 +368,7 @@ private slots:
         // each consecutive pair is verified to produce DIFFERENT colour
         // values for at least one canonical property.
         const QStringList orderedPalettes = {
-            QStringLiteral("todoist_light"),
+            QStringLiteral("classic_light"),
             QStringLiteral("dark"),
             QStringLiteral("kale"),
             QStringLiteral("blueberry"),
@@ -475,9 +475,9 @@ private slots:
     // -------------------------------------------------------------------------
     void switching_themes_emits_color_change_signals_once_per_switch()
     {
-        // Start at todoist_light so the first explicit switch to "dark"
+        // Start at classic_light so the first explicit switch to "dark"
         // produces a guaranteed-different palette.
-        m_tm->setProperty("currentTheme", QStringLiteral("todoist_light"));
+        m_tm->setProperty("currentTheme", QStringLiteral("classic_light"));
         QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
 
         QSignalSpy bgSpy(m_tm, SIGNAL(backgroundColorChanged()));
@@ -496,7 +496,7 @@ private slots:
         QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
 
         // backgroundColor, surfaceColor and isDark all genuinely differ
-        // between todoist_light and dark, so their NOTIFYs MUST fire.
+        // between classic_light and dark, so their NOTIFYs MUST fire.
         QVERIFY2(bgSpy.count() >= 1,
                  "backgroundColorChanged must fire when switching from light to dark palette.");
         QVERIFY2(surfaceSpy.count() >= 1,
@@ -504,10 +504,10 @@ private slots:
         QVERIFY2(isDarkSpy.count() >= 1,
                  "isDarkChanged must fire when switching from light to dark palette.");
 
-        // accentColor: todoist_light and dark BOTH use #db4c3f (the Todoist
-        // brand red), so this NOTIFY can legitimately be 0 emissions for
-        // this specific switch. We don't assert here -- the kale switch
-        // below covers the accent reactivity contract instead.
+        // accentColor: classic_light and dark BOTH use #db4c3f, so this
+        // NOTIFY can legitimately be 0 emissions for this specific switch.
+        // We don't assert here -- the kale switch below covers the accent
+        // reactivity contract instead.
 
         // Switch to a palette with a verifiably different accent colour
         // (kale uses #7fba7a). This locks the accentColorChanged path even
@@ -527,7 +527,7 @@ private slots:
     }
 
     // -------------------------------------------------------------------------
-    // 6. effectiveThemeName resolves "system" to either todoist_light or
+    // 6. effectiveThemeName resolves "system" to either classic_light or
     //    dark depending on Application.styleHints.colorScheme. We can't
     //    force the OS color scheme from a unit test, but we can at least
     //    pin that "system" -> one of the two valid resolutions, and that
@@ -539,11 +539,11 @@ private slots:
         QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
 
         const QString effective = m_tm->property("effectiveThemeName").toString();
-        const bool isLightOrDark = effective == QStringLiteral("todoist_light") ||
+        const bool isLightOrDark = effective == QStringLiteral("classic_light") ||
                                    effective == QStringLiteral("dark");
         QVERIFY2(isLightOrDark,
                  qPrintable(QStringLiteral("effectiveThemeName for 'system' must resolve "
-                                            "to 'todoist_light' or 'dark', got '%1'.")
+                                            "to 'classic_light' or 'dark', got '%1'.")
                                 .arg(effective)));
 
         // currentTheme stays "system" (the resolution is read-only via

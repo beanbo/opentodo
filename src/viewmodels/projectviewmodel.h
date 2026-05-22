@@ -68,6 +68,21 @@ public:
     // Перезаписывает поле order у всех проектов и сохраняет изменения.
     Q_INVOKABLE bool reorderProject(int sourceIndex, int targetIndex);
 
+    // Iter-13: drag-and-drop in the sidebar tree uses positions in a
+    // depth-first walker that skips Inbox and archived projects. Calling
+    // reorderProject() with those indices off-by-ones against m_projects
+    // (which keeps Inbox at [0] and a flat sort by order) — Q3.22 shipped
+    // this broken: dragging a nested child onto its sibling rearranges the
+    // root projects above instead. This version moves by ID and renumbers
+    // only siblings of the same parent_id, so subprojects can be reordered
+    // independently of their parent's relative position.
+    //
+    // `above`: when true, dragged ends up immediately before target (in
+    // ascending-order terms); false → immediately after.
+    Q_INVOKABLE bool reorderProjectById(const QString &draggedId,
+                                         const QString &targetId,
+                                         bool above);
+
     // Мягко удаляет все завершённые задачи в указанном проекте.
     // Возвращает количество затронутых задач.
     Q_INVOKABLE int removeCompletedTasksInProject(const QString &projectId);

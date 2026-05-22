@@ -130,7 +130,15 @@ ColumnLayout {
             // (QVariantMap key) so it remains stable even while dragging.
             property string subtaskId: modelData.id || ""
 
-            width:  subtaskRow.width
+            // Previously: `width: subtaskRow.width` while subtaskRow had
+            // `width: parent.width` — a circular binding that pinned both to
+            // 0, so the Text inside (Layout.fillWidth + ElideRight) collapsed
+            // to an empty render. The fixed-width children (drag handle,
+            // completion circle) still showed because they don't depend on
+            // the row width, which is why the bug looked like "subtasks
+            // have circles but no text." Take the width from the ColumnLayout
+            // parent instead.
+            Layout.fillWidth: true
             height: 32
 
             // Drag configuration — we use Drag.Automatic so Qt handles the
@@ -148,8 +156,7 @@ ColumnLayout {
             // ── Row content ────────────────────────────────────────────────────
             RowLayout {
                 id:     subtaskRow
-                width:  parent.width   // fill the Item's width
-                height: 32
+                anchors.fill: parent
                 spacing: 8
 
                 // Drag handle — shown on hover, sits to the left of the

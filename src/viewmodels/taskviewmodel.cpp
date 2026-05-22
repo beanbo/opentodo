@@ -289,11 +289,21 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
     Task *task = m_store->addTask(content, pid);
     if (!task) return {};
 
+    // Track which fields VM mutated past addTask's initialFields so the
+    // per-field _meta stamp covers them too. Without this a concurrent peer
+    // edit on labels/section_id/due wins by empty-local-meta fallback in
+    // Merger (the freshly-added side has no stamp for the field).
+    QStringList mutatedFields;
+    mutatedFields << QStringLiteral("priority"); // setPriority always runs
+
     task->setPriority(priority);
     task->setLabels(labels);
+    mutatedFields << QStringLiteral("labels");
 
-    if (!m_currentSectionId.isEmpty())
+    if (!m_currentSectionId.isEmpty()) {
         task->setSectionId(m_currentSectionId);
+        mutatedFields << QStringLiteral("section_id");
+    }
 
     if (!dueString.isEmpty()) {
         const QString lang = m_store->setting(QLatin1String(SettingsKeys::Language)).toString();
@@ -307,12 +317,11 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
             // B-4.60 follow-up: persist RRULE so RecurrenceEngine can use the
             // primary RRULE path instead of the legacy humanString fallback.
             task->setDueRecurrenceRule(result.recurrenceRule);
+            mutatedFields << QStringLiteral("due");
         }
     }
 
-    // Stamp CRDT meta for all fields set after addTask() (priority, labels,
-    // sectionId, due, etc.) so the sync merger treats these as intentional.
-    m_store->markTaskModified(task->id());
+    m_store->markTaskFieldsModified(task->id(), mutatedFields);
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_add"),
@@ -328,18 +337,29 @@ bool TaskViewModel::updateTask(const QString &id, const QString &field, const QV
     Task *task = m_store->taskById(id);
     if (!task) return false;
 
-    if (field == QStringLiteral("content")) task->setContent(value.toString());
-    else if (field == QStringLiteral("description")) task->setDescription(value.toString());
-    else if (field == QStringLiteral("priority")) task->setPriority(value.toInt());
-    else if (field == QStringLiteral("labels")) task->setLabels(value.toStringList());
-    else if (field == QStringLiteral("order")) task->setOrder(value.toInt());
-    else if (field == QStringLiteral("dayOrder")) task->setDayOrder(value.toInt());
-    else if (field == QStringLiteral("deadline")) task->setDeadline(value.toString());
-    else if (field == QStringLiteral("durationAmount")) task->setDurationAmount(value.toInt());
-    else if (field == QStringLiteral("durationUnit")) task->setDurationUnit(value.toString());
-    else if (field == QStringLiteral("color")) task->setColor(value.toString());
-    else if (field == QStringLiteral("isPinned")) task->setIsPinned(value.toBool());
-    else if (field == QStringLiteral("estimateMinutes")) task->setEstimateMinutes(value.toInt());
+    // The JSON (snake_case) name of the field actually mutated, for the
+    // per-field CRDT stamp below. Keep in sync with each branch.
+    QString jsonField;
+
+    if (field == QStringLiteral("content"))                 { task->setContent(value.toString());            jsonField = QStringLiteral("content"); }
+    else if (field == QStringLiteral("description"))        { task->setDescription(value.toString());        jsonField = QStringLiteral("description"); }
+    else if (field == QStringLiteral("priority"))           { task->setPriority(value.toInt());              jsonField = QStringLiteral("priority"); }
+    // labels is an OR-Set field; per-field LWW stamping is a degraded fallback
+    // until DataStore::setTaskLabels uses CrdtMeta::setOrSetElements directly.
+    // For now stamping the top-level "labels" key still beats not stamping at
+    // all — the Merger's OR-Set branch only fires when local/remote already
+    // carry OrsElement payloads, otherwise it falls back to per-field LWW.
+    else if (field == QStringLiteral("labels"))             { task->setLabels(value.toStringList());         jsonField = QStringLiteral("labels"); }
+    else if (field == QStringLiteral("order"))              { task->setOrder(value.toInt());                 jsonField = QStringLiteral("order"); }
+    else if (field == QStringLiteral("dayOrder"))           { task->setDayOrder(value.toInt());              jsonField = QStringLiteral("day_order"); }
+    else if (field == QStringLiteral("deadline"))           { task->setDeadline(value.toString());           jsonField = QStringLiteral("deadline"); }
+    // duration_amount / duration_unit are NOT separate JSON keys — Task::toJson
+    // emits `"duration": {...}` as one nested object. Stamp the parent key.
+    else if (field == QStringLiteral("durationAmount"))     { task->setDurationAmount(value.toInt());        jsonField = QStringLiteral("duration"); }
+    else if (field == QStringLiteral("durationUnit"))       { task->setDurationUnit(value.toString());       jsonField = QStringLiteral("duration"); }
+    else if (field == QStringLiteral("color"))              { task->setColor(value.toString());              jsonField = QStringLiteral("color"); }
+    else if (field == QStringLiteral("isPinned"))           { task->setIsPinned(value.toBool());             jsonField = QStringLiteral("is_pinned"); }
+    else if (field == QStringLiteral("estimateMinutes"))    { task->setEstimateMinutes(value.toInt());       jsonField = QStringLiteral("estimate_minutes"); }
     // ITER2 #1: projectId/sectionId moves were silently dropped by the editor.
     // Delegate to moveTask which also stamps CRDT meta and refreshes the model.
     else if (field == QStringLiteral("projectId")) {
@@ -351,7 +371,7 @@ bool TaskViewModel::updateTask(const QString &id, const QString &field, const QV
     else return false;
 
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(id);
+    m_store->markTaskFieldsModified(id, {jsonField});
     emit taskChanged(id);
 
     int idx = m_tasks.indexOf(task);
@@ -403,13 +423,15 @@ bool TaskViewModel::completeTask(const QString &id)
 
             task->setUpdatedAt(QDateTime::currentDateTimeUtc());
 
-            // Notify the data store so that the file manager autosaves and
-            // the reminder scheduler re-evaluates this task's reminders for
-            // the new due date.
+            // Stamp the per-field CRDT meta for "due" so a concurrent peer
+            // edit doesn't silently revert the advanced date in Merger LWW
+            // fallback. markTaskFieldsModified emits dataChanged + tasksChanged
+            // for autosave + UI; remindersChanged is still needed separately so
+            // the scheduler picks up the new due_date.
             const auto reminders = m_store->remindersForTask(id);
             if (!reminders.isEmpty())
                 emit m_store->remindersChanged();
-            emit m_store->dataChanged();
+            m_store->markTaskFieldsModified(id, {QStringLiteral("due")});
 
             emit taskChanged(id);
 
@@ -426,7 +448,8 @@ bool TaskViewModel::completeTask(const QString &id)
     // Mutating Task fields directly bypasses DataStore's CRUD signals — the
     // store offers an explicit "I touched this entity" notifier so we don't
     // have to break encapsulation by emitting its private signals.
-    m_store->markTaskModified(id);
+    m_store->markTaskFieldsModified(id, {QStringLiteral("is_completed"),
+                                          QStringLiteral("completed_at")});
     emit taskChanged(id);
 
     if (m_telemetry)
@@ -448,7 +471,8 @@ bool TaskViewModel::uncompleteTask(const QString &id)
 
     task->setIsCompleted(false);
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(id);
+    m_store->markTaskFieldsModified(id, {QStringLiteral("is_completed"),
+                                          QStringLiteral("completed_at")});
     emit taskChanged(id);
     return true;
 }
@@ -466,7 +490,7 @@ bool TaskViewModel::deleteTask(const QString &id)
                 if (t) {
                     t->setIsDeleted(false);
                     t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                    m_store->markTaskModified(t->id());
+                    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
                 }
             });
         }
@@ -496,7 +520,8 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
     task->setProjectId(projectId);
     task->setSectionId(sectionId);
     task->setUpdatedAt(now);
-    m_store->markTaskModified(id);
+    m_store->markTaskFieldsModified(id, {QStringLiteral("project_id"),
+                                          QStringLiteral("section_id")});
     emit taskChanged(id);
 
     // Q3.08-C: when moving across projects, cascade the new projectId across
@@ -529,7 +554,8 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
                     child->setProjectId(projectId);
                     child->setSectionId(QString());
                     child->setUpdatedAt(now);
-                    m_store->markTaskModified(cid);
+                    m_store->markTaskFieldsModified(cid, {QStringLiteral("project_id"),
+                                                           QStringLiteral("section_id")});
                     emit taskChanged(cid);
 
                     nextFrontier.append(cid);
@@ -578,7 +604,11 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
     }
 
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(id);
+    // Task::toJson emits the whole due-object under a single "due" key —
+    // stamping each sub-key (due_date / due_datetime / ...) writes _meta
+    // entries that never line up with a real JSON key, so the Merger never
+    // consults them and falls back to whole-entity LWW. Stamp the parent.
+    m_store->markTaskFieldsModified(id, {QStringLiteral("due")});
     emit taskChanged(id);
 
     int idx = m_tasks.indexOf(task);
@@ -629,6 +659,9 @@ bool TaskViewModel::moveTaskOrder(const QString &id, int newIndex)
             Task *t = m_tasks.at(i);
             t->setDayOrder((i + 1) * 10);
             t->setUpdatedAt(now);
+            // Per-field stamp so a peer doing the same day_order shuffle
+            // doesn't silently lose either side's reorder in Merger fallback.
+            m_store->markTaskFieldsModified(t->id(), {QStringLiteral("day_order")});
         }
     } else {
         // For non-Today views, use spaced order values (10, 20, 30, ...) for
@@ -644,6 +677,7 @@ bool TaskViewModel::moveTaskOrder(const QString &id, int newIndex)
             Task *t = m_tasks.at(i);
             t->setOrder((i + 1) * 10);
             t->setUpdatedAt(now);
+            m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order")});
         }
 
         // Fix up non-visible tasks with the same projectId so their order
@@ -662,6 +696,7 @@ bool TaskViewModel::moveTaskOrder(const QString &id, int newIndex)
                 t->setOrder(invisibleOffset);
                 invisibleOffset += 10;
                 t->setUpdatedAt(now);
+                m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order")});
             }
         }
     }
@@ -722,14 +757,26 @@ QString TaskViewModel::duplicateTask(const QString &id)
     // Mirrors the slot-claim logic in addTaskBelow().
     const int anchorOrder = original->order();
     dup->setOrder(anchorOrder + 1);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     const auto siblings = _siblingsOfAnchor(original);
     for (Task *sibling : siblings) {
         if (sibling == dup || sibling == original) continue;
-        if (sibling->order() > anchorOrder)
+        if (sibling->order() > anchorOrder) {
             sibling->setOrder(sibling->order() + 1);
+            sibling->setUpdatedAt(now);
+            m_store->markTaskFieldsModified(sibling->id(), {QStringLiteral("order")});
+        }
     }
 
-    m_store->markTaskModified(dup->id());
+    // dup is a freshly added task; stamping the fields we mutated past
+    // addTask's default ones so the merger can resolve concurrent edits.
+    m_store->markTaskFieldsModified(dup->id(),
+        {QStringLiteral("description"), QStringLiteral("section_id"),
+         QStringLiteral("parent_id"), QStringLiteral("labels"),
+         QStringLiteral("deadline"), QStringLiteral("duration"),
+         QStringLiteral("color"), QStringLiteral("estimate_minutes"),
+         QStringLiteral("due"), QStringLiteral("is_pinned"),
+         QStringLiteral("order")});
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_duplicated"),
@@ -783,14 +830,23 @@ QString TaskViewModel::addTaskAbove(const QString &anchorId, const QString &cont
     const int anchorOrder = anchor->order();
     t->setOrder(anchorOrder);
 
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     const auto siblings = _siblingsOfAnchor(anchor);
     for (Task *sibling : siblings) {
         if (sibling == t) continue;
-        if (sibling->order() >= anchorOrder)
+        if (sibling->order() >= anchorOrder) {
             sibling->setOrder(sibling->order() + 1);
+            sibling->setUpdatedAt(now);
+            // Per-field stamp so the shifted order survives merge — without
+            // this the peer keeps its old order and the inserted task ends
+            // up at a conflicting slot after sync.
+            m_store->markTaskFieldsModified(sibling->id(), {QStringLiteral("order")});
+        }
     }
 
-    m_store->markTaskModified(t->id());
+    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order"),
+                                               QStringLiteral("section_id"),
+                                               QStringLiteral("parent_id")});
     emit taskAdded(t->id());
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_add_above"), {});
@@ -814,14 +870,20 @@ QString TaskViewModel::addTaskBelow(const QString &anchorId, const QString &cont
     const int anchorOrder = anchor->order();
     t->setOrder(anchorOrder + 1);
 
+    const QDateTime now = QDateTime::currentDateTimeUtc();
     const auto siblings = _siblingsOfAnchor(anchor);
     for (Task *sibling : siblings) {
         if (sibling == t) continue;
-        if (sibling->order() > anchorOrder)
+        if (sibling->order() > anchorOrder) {
             sibling->setOrder(sibling->order() + 1);
+            sibling->setUpdatedAt(now);
+            m_store->markTaskFieldsModified(sibling->id(), {QStringLiteral("order")});
+        }
     }
 
-    m_store->markTaskModified(t->id());
+    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order"),
+                                               QStringLiteral("section_id"),
+                                               QStringLiteral("parent_id")});
     emit taskAdded(t->id());
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_add_below"), {});
@@ -857,7 +919,7 @@ bool TaskViewModel::moveTaskToTop(const QString &taskId)
     if (t->order() <= minOrder) return true;
 
     t->setOrder(minOrder - 1);
-    m_store->markTaskModified(t->id());
+    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order")});
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_move_to_top"),
@@ -889,7 +951,7 @@ bool TaskViewModel::moveTaskToBottom(const QString &taskId)
     if (t->order() >= maxOrder) return true;
 
     t->setOrder(maxOrder + 1);
-    m_store->markTaskModified(t->id());
+    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("order")});
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_move_to_bottom"),
@@ -912,7 +974,11 @@ QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
         return {};
     tpl->setColor(src->color());
     tpl->setViewStyle(src->viewStyle());
-    m_store->markProjectModified(tpl->id());
+    // color/view_style are already in addProject's initialFields, but stamping
+    // again refreshes the HLC so a concurrent peer edit of these fields on
+    // the (just-created) template doesn't race the addProject baseline.
+    m_store->markProjectFieldsModified(tpl->id(), {QStringLiteral("color"),
+                                                    QStringLiteral("view_style")});
 
     const auto srcTasks = m_store->tasksForProject(projectId);
     for (Task *orig : srcTasks) {
@@ -932,7 +998,12 @@ QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
         copy->setLabels(orig->labels());
         // Intentionally NOT copying due/deadline/completedAt — templates
         // shouldn't carry stale schedules.
-        m_store->markTaskModified(copy->id());
+        // description/section_id/labels aren't in addTask's initialFields —
+        // stamp them explicitly so a concurrent peer edit on the freshly-
+        // duplicated copy doesn't auto-win via empty-meta fallback.
+        m_store->markTaskFieldsModified(copy->id(),
+            {QStringLiteral("description"), QStringLiteral("section_id"),
+             QStringLiteral("priority"),    QStringLiteral("labels")});
     }
 
     emit dataChanged(QModelIndex(), QModelIndex());
@@ -1122,7 +1193,8 @@ QString TaskViewModel::addSubtask(const QString &parentId, const QString &conten
     task->setParentId(parentId);
     task->setSectionId(parent->sectionId());
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(task->id());
+    m_store->markTaskFieldsModified(task->id(), {QStringLiteral("parent_id"),
+                                                  QStringLiteral("section_id")});
 
     emit taskAdded(task->id());
     return task->id();
@@ -1144,7 +1216,7 @@ bool TaskViewModel::convertToSubtask(const QString &taskId, const QString &newPa
 
     task->setParentId(newParentId);
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(taskId);
+    m_store->markTaskFieldsModified(taskId, {QStringLiteral("parent_id")});
     emit taskChanged(taskId);
 
     if (m_telemetry)
@@ -1160,7 +1232,7 @@ bool TaskViewModel::promoteToTopLevel(const QString &taskId)
 
     task->setParentId(QString());
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(taskId);
+    m_store->markTaskFieldsModified(taskId, {QStringLiteral("parent_id")});
     emit taskChanged(taskId);
     return true;
 }
@@ -1172,7 +1244,7 @@ bool TaskViewModel::promoteTask(const QString &taskId)
 
     task->setParentId(QString());
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(taskId);
+    m_store->markTaskFieldsModified(taskId, {QStringLiteral("parent_id")});
     emit taskChanged(taskId);
 
     if (m_telemetry) {
@@ -1229,7 +1301,7 @@ bool TaskViewModel::demoteTask(const QString &taskId, const QString &parentId)
 
     task->setParentId(parentId);
     task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskModified(taskId);
+    m_store->markTaskFieldsModified(taskId, {QStringLiteral("parent_id")});
     emit taskChanged(taskId);
 
     if (m_telemetry) {
@@ -1460,14 +1532,36 @@ QList<Task *> TaskViewModel::fetchTasks() const
             }
         }
     } else if (m_filterMode == FilterMode::Project
-               || m_filterMode == FilterMode::Board
-               || m_filterMode == FilterMode::Calendar) {
-        // Board and Calendar show the same tasks as Project mode; rendering
-        // differences are handled by the QML views that bind to filterMode.
+               || m_filterMode == FilterMode::Board) {
+        // Board and Project share the same task source; rendering differences
+        // are handled by the QML views that bind to filterMode.
         if (!m_currentSectionId.isEmpty())
             result = m_store->tasksForSection(m_currentSectionId);
         else if (!m_currentProjectId.isEmpty())
             result = m_store->tasksForProject(m_currentProjectId);
+    } else if (m_filterMode == FilterMode::Calendar) {
+        // Q3.27: when a project is active, calendar shows that project's tasks
+        // (legacy per-project calendar view from ProjectView). When NO project
+        // is active, Calendar is the "calendar display of Upcoming" — same
+        // dataset as FilterMode::Upcoming. This lets the Upcoming top bar
+        // toggle between list (Upcoming) and calendar (Calendar) without
+        // losing the task set.
+        if (!m_currentProjectId.isEmpty()) {
+            if (!m_currentSectionId.isEmpty())
+                result = m_store->tasksForSection(m_currentSectionId);
+            else
+                result = m_store->tasksForProject(m_currentProjectId);
+        } else {
+            const auto all = m_store->allTasks();
+            const QDate today = QDate::currentDate();
+            for (auto *t : all) {
+                if (!t->isCompleted() && !t->dueDate().isEmpty()) {
+                    QDate d = QDate::fromString(t->dueDate(),
+                                                 QStringLiteral("yyyy-MM-dd"));
+                    if (d >= today) result.append(t);
+                }
+            }
+        }
     } else if (m_filterMode == FilterMode::Label) {
         const auto all = m_store->allTasks();
         const QString labelFilter = m_currentFilter.toLower();
@@ -1650,7 +1744,8 @@ void TaskViewModel::bulkComplete()
                     if (!t) continue;
                     t->setIsCompleted(false);
                     t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                    m_store->markTaskModified(id);
+                    m_store->markTaskFieldsModified(id, {QStringLiteral("is_completed"),
+                                          QStringLiteral("completed_at")});
                     emit taskChanged(id);
                 }
             });
@@ -1670,7 +1765,8 @@ void TaskViewModel::bulkComplete()
             } else {
                 t->setIsCompleted(true);
                 t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                m_store->markTaskModified(id);
+                m_store->markTaskFieldsModified(id, {QStringLiteral("is_completed"),
+                                          QStringLiteral("completed_at")});
                 emit taskChanged(id);
             }
         }
@@ -1710,7 +1806,7 @@ void TaskViewModel::bulkDelete()
                     if (t) {
                         t->setIsDeleted(false);
                         t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                        m_store->markTaskModified(t->id());
+                        m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
                     }
                 }
             });
@@ -1746,7 +1842,7 @@ void TaskViewModel::bulkSetPriority(int priority)
         if (!task) continue;
         task->setPriority(priority);
         task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("priority")});
         emit taskChanged(id);
     }
     clearSelection();
@@ -1763,7 +1859,7 @@ void TaskViewModel::bulkAddLabel(const QString &label)
             labels.append(label);
         task->setLabels(labels);
         task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("labels")});
         emit taskChanged(id);
     }
     clearSelection();
@@ -1780,7 +1876,7 @@ void TaskViewModel::bulkSetPinned(bool pinned)
         if (t->isPinned() == pinned) continue;
         t->setIsPinned(pinned);
         t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("is_pinned")});
         emit taskChanged(id);
         count++;
     }
@@ -1802,7 +1898,7 @@ void TaskViewModel::bulkSetColor(const QString &color)
         if (t->color() == color) continue;
         t->setColor(color);
         t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("color")});
         emit taskChanged(id);
         count++;
     }
@@ -1845,7 +1941,7 @@ void TaskViewModel::bulkSetDue(const QString &dueString)
             continue;
         }
         t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("due")});
         emit taskChanged(id);
         count++;
     }
@@ -1874,7 +1970,7 @@ void TaskViewModel::bulkSetDeadline(const QDate &date)
         if (t->deadline() == isoDate) continue;
         t->setDeadline(isoDate);
         t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(id);
+        m_store->markTaskFieldsModified(id, {QStringLiteral("deadline")});
         emit taskChanged(id);
         count++;
     }
@@ -1917,7 +2013,7 @@ void TaskViewModel::bulkArchive()
                 if (t) {
                     t->setIsDeleted(false);
                     t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                    m_store->markTaskModified(t->id());
+                    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
                 }
             }
         });

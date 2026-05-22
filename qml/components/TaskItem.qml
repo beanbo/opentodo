@@ -430,9 +430,37 @@ Item {
 
     Connections {
         target: taskViewModel
-        function onTaskChanged(id) { Qt.callLater(_refreshSubtaskCounts) }
-        function onTaskAdded(id)   { Qt.callLater(_refreshSubtaskCounts) }
-        function onTaskRemoved(id) { Qt.callLater(_refreshSubtaskCounts) }
+        // Q3.25: filter signals by task id so the badge only refreshes when the
+        // changed task is THIS row, one of its current subtasks, or any task in
+        // a row that already shows a subtask badge (handles re-parenting AWAY
+        // from this row).  Previously every TaskItem delegate listened to every
+        // signal and called taskViewModel.subtasksOf(root.id) — an O(N)
+        // DataStore::subtasks scan.  With 100 visible delegates and 500 tasks
+        // that was 50,000 ops per single edit, the bulk of the residual UI lag
+        // after Q3.24.  The "_subtaskTotal > 0" guard is the cheap heuristic
+        // that keeps the badge correct under re-parenting: rows with no subtask
+        // badge can only be AFFECTED by a change if the changed task's new
+        // parent is this row (the second clause handles that).
+        function onTaskChanged(id) {
+            if (root.isSubtask || !root.id) return
+            if (id === root.id) { Qt.callLater(_refreshSubtaskCounts); return }
+            if (root._subtaskTotal > 0) { Qt.callLater(_refreshSubtaskCounts); return }
+            const t = dataStore.taskById(id)
+            if (t && t.parentId === root.id) Qt.callLater(_refreshSubtaskCounts)
+        }
+        function onTaskAdded(id) {
+            if (root.isSubtask || !root.id) return
+            const t = dataStore.taskById(id)
+            if (t && t.parentId === root.id) Qt.callLater(_refreshSubtaskCounts)
+        }
+        function onTaskRemoved(id) {
+            // The removed task is gone from DataStore, so we can't look up
+            // its parentId. Refresh only if this row currently shows a
+            // subtask badge — otherwise the removed task can't have been one
+            // of ours and the counts can't have changed.
+            if (root.isSubtask || !root.id) return
+            if (root._subtaskTotal > 0) Qt.callLater(_refreshSubtaskCounts)
+        }
         // Q3.24: onDataChanged removed — it fired for ALL delegates on every
         // single task mutation (TaskViewModel::refresh emits dataChanged(0,N-1)).
         // onTaskChanged/Added/Removed already cover every relevant mutation;

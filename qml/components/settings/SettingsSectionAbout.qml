@@ -749,14 +749,14 @@ Rectangle {
                     spacing: 2
 
                     Label {
-                        text: qsTr("Сбросить карму")
+                        text: qsTr("Сбросить прогресс")
                         font.pixelSize: 14
                         font.bold: true
                         color: ThemeManager.textColor
                     }
 
                     Label {
-                        text: qsTr("Очистить очки, уровень, серии, достижения и историю кармы.")
+                        text: qsTr("Очистить очки, уровень, серии, достижения и историю прогресса.")
                         font.pixelSize: 11
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
@@ -774,7 +774,7 @@ Rectangle {
 
             Dialog {
                 id: resetKarmaDialog
-                title: qsTr("Сбросить карму?")
+                title: qsTr("Сбросить прогресс?")
                 modal: true
                 anchors.centerIn: Overlay.overlay
                 width: 360
@@ -788,7 +788,7 @@ Rectangle {
                 }
 
                 contentItem: Label {
-                    text: qsTr("Это сбросит очки кармы, уровень, ежедневную и недельную серии, а также все достижения и историю. Действие необратимо.")
+                    text: qsTr("Это сбросит очки, уровень, ежедневную и недельную серии, а также все достижения и историю. Действие необратимо.")
                     wrapMode: Text.WordWrap
                     color: ThemeManager.textColor
                     width: 320

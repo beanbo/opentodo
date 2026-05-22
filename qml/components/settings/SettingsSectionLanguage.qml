@@ -244,6 +244,64 @@ Rectangle {
                     }
                 }
             }
+
+            // Iter-12 / iter-13: surface restartFailed back to the user.
+            // The banner sits INSIDE the sectionContent ColumnLayout so it
+            // contributes to implicitHeight — placing it as a sibling under
+            // root with anchors.bottom (iter-12) made it geometrically
+            // overlap the Restart button when shown.
+            Rectangle {
+                id: restartErrorBanner
+                visible: false
+                property string message: ""
+
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 36 : 0
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.topMargin: visible ? 8 : 0
+                Layout.bottomMargin: visible ? 8 : 0
+                radius: 4
+                color: Qt.rgba(0.9, 0.3, 0.3, 0.15)
+                border.color: Qt.rgba(0.9, 0.3, 0.3, 0.6)
+                border.width: 1
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.right: bannerClose.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 10
+                    text: restartErrorBanner.message
+                    color: ThemeManager.textColor
+                    font.pixelSize: 12
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+
+                Text {
+                    id: bannerClose
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.rightMargin: 10
+                    text: "✕"
+                    color: ThemeManager.secondaryTextColor
+                    font.pixelSize: 14
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: restartErrorBanner.visible = false
+                    }
+                }
+            }
+
+            Connections {
+                target: typeof settingsViewModel !== "undefined" ? settingsViewModel : null
+                ignoreUnknownSignals: true
+                function onRestartFailed(reason) {
+                    restartErrorBanner.message = reason
+                    restartErrorBanner.visible = true
+                }
+            }
         }
     }
 }

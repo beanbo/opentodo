@@ -299,7 +299,7 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
         const int n = token.value.toInt();
         if (n < 0) return true;
         const QDate end = today.addDays(n);
-        // Inclusive of today and today+N (Todoist semantics).
+        // Inclusive of today and today+N (OpenTodo semantics).
         return due >= today && due <= end;
     }
 

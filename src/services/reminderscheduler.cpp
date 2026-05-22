@@ -6,10 +6,13 @@
 #include "model/task.h"
 
 #include <QDateTime>
+#include <QSet>
+#include <QSettings>
 #include <QTime>
 #include <QTimeZone>
 
 static constexpr int DEBOUNCE_MS = 500;
+static constexpr auto kLastScheduledForGroup = "reminder/lastScheduledFor";
 
 ReminderScheduler::ReminderScheduler(DataStore *dataStore,
                                      NotificationService *notifService,
@@ -20,6 +23,20 @@ ReminderScheduler::ReminderScheduler(DataStore *dataStore,
 {
     if (!m_dataStore || !m_notif)
         return;
+
+    // Iter-9: load persisted m_lastScheduledFor so the iter-8 emit-once-per-
+    // reminder guard survives app restart. Without this, every cold start
+    // would treat all already-scheduled reminders as "first scheduling" and
+    // re-emit reminderFired, duplicating entries in the in-app notification
+    // centre on every launch.
+    {
+        QSettings s;
+        s.beginGroup(QLatin1String(kLastScheduledForGroup));
+        const auto keys = s.allKeys();
+        for (const QString &key : keys)
+            m_lastScheduledFor.insert(key, s.value(key).toString());
+        s.endGroup();
+    }
 
     // B-5.10: Replace the old aggregate dataChanged() connection with specific
     // signals only. dataChanged() fires for every single field mutation, causing
@@ -139,10 +156,39 @@ void ReminderScheduler::rescheduleAll()
     // toast would fire for a task that no longer exists. Walk the full
     // list (including tombstones) once up-front and cancel each deleted
     // reminder explicitly. Survivors are re-armed by the main loop below.
+    // Iter-9: collect drops so QSettings is touched once per rescheduleAll
+    // rather than once per tombstoned reminder.
+    QStringList persistDrops;
+    // Iter-10: track every reminder id we observed in this pass — survivors
+    // are added in the main loop below; the rest is the orphan set we drop
+    // from QSettings to avoid the lastScheduledFor blob growing forever when
+    // a reminder vanishes by a path that doesn't go through removeReminder
+    // (e.g. state.json restore from an older backup, or sync apply hard-
+    // tombstone followed by vacuum).
+    QSet<QString> knownIds;
     const auto allReminders = m_dataStore->allRemindersIncludingDeleted();
     for (auto *r : allReminders) {
-        if (r && r->isDeleted())
+        if (!r) continue;
+        knownIds.insert(r->id());
+        if (r->isDeleted()) {
             m_notif->cancelNotification(r->id());
+            // Iter-8: also drop the per-reminder tracking entry so the map
+            // doesn't grow unbounded as users create + delete reminders
+            // over a long session.
+            if (m_lastScheduledFor.remove(r->id()) > 0)
+                persistDrops.append(r->id());
+        }
+    }
+    // Drop in-memory entries for reminders no longer present in DataStore
+    // at all. Collect dropped ids into persistDrops so the QSettings
+    // group reflects reality at the end of this pass.
+    for (auto it = m_lastScheduledFor.begin(); it != m_lastScheduledFor.end(); ) {
+        if (!knownIds.contains(it.key())) {
+            persistDrops.append(it.key());
+            it = m_lastScheduledFor.erase(it);
+        } else {
+            ++it;
+        }
     }
 
     const auto tasks = m_dataStore->allTasks();
@@ -182,14 +228,43 @@ void ReminderScheduler::rescheduleAll()
                                           triggerTime,
                                           reminder->id());
 
-            // Notify the in-app notification centre that a reminder was just
-            // dispatched. The actual OS toast may fire later (e.g. Windows uses
-            // a QTimer), but from the app's POV the reminder event has occurred
-            // and should be logged so the user can review it later.
-            emit m_notif->reminderFired(task->id(), task->content(), task->description());
+            // Iter-8: only log to the in-app notification centre on the FIRST
+            // scheduling of this reminder, or when a recurring task's due date
+            // advances. rescheduleAll() runs on every tasksChanged /
+            // remindersChanged tick — emitting unconditionally was producing
+            // duplicate "Напоминание: …" entries in the centre on every keypress
+            // edit of any task. The OS-side toast (real "fired" event) is
+            // already tracked separately when the QTimer actually expires;
+            // the per-platform showNotification() is the right surface for a
+            // "true fired" signal.
+            const bool isFirstScheduling = !m_lastScheduledFor.contains(reminder->id());
+            const bool recurringAdvance  = task->dueIsRecurring()
+                && !lastScheduled.isEmpty()
+                && currentDueDate != lastScheduled;
+            if (isFirstScheduling || recurringAdvance) {
+                emit m_notif->reminderFired(task->id(),
+                                            task->content(),
+                                            task->description());
+            }
 
             // B-5.13: Record the due date for which this reminder was scheduled.
             m_lastScheduledFor.insert(reminder->id(), currentDueDate);
         }
+    }
+
+    // Iter-9: persist m_lastScheduledFor changes so the iter-8 emit-once-per-
+    // reminder guard survives app restart. We re-write the whole group rather
+    // than tracking deltas — the map is small (one entry per active reminder)
+    // and rescheduleAll is already debounced for tasksChanged bursts.
+    if (!m_lastScheduledFor.isEmpty() || !persistDrops.isEmpty()) {
+        QSettings s;
+        s.beginGroup(QLatin1String(kLastScheduledForGroup));
+        for (const QString &id : persistDrops)
+            s.remove(id);
+        for (auto it = m_lastScheduledFor.constBegin();
+             it != m_lastScheduledFor.constEnd(); ++it) {
+            s.setValue(it.key(), it.value());
+        }
+        s.endGroup();
     }
 }

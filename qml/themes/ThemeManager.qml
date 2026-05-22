@@ -68,7 +68,7 @@ QtObject {
 
     // All concrete palettes available to the user.
     readonly property var themes: ({
-        "todoist_light": todoist_light,
+        "classic_light": classic_light,
         "dark":          dark,
         "kale":          kale,
         "blueberry":     blueberry,
@@ -85,11 +85,11 @@ QtObject {
     // a standard binding source.
     readonly property bool systemPrefersDark: Application.styleHints.colorScheme === Qt.Dark
 
-    // Resolves "system" → either todoist_light or dark; everything else is
+    // Resolves "system" → either classic_light or dark; everything else is
     // a literal palette key.
     readonly property string effectiveThemeName:
         currentTheme === "system"
-            ? (systemPrefersDark ? "dark" : "todoist_light")
+            ? (systemPrefersDark ? "dark" : "classic_light")
             : currentTheme
 
     // Active theme colors — these are what QML components should bind to.
@@ -132,7 +132,7 @@ QtObject {
     readonly property bool  isDark:             activeTheme.isDark
 
     // Resolve the active theme object via effectiveThemeName.
-    readonly property QtObject activeTheme: themes[effectiveThemeName] || todoist_light
+    readonly property QtObject activeTheme: themes[effectiveThemeName] || classic_light
 
     // List of theme names for settings UI. Derived from palette keys so it
     // stays in sync automatically. "system" is prepended as a special first
@@ -142,12 +142,12 @@ QtObject {
     // ─────────────────────────────────────────────────────────────────────────
     // Individual theme definitions
     //
-    // NOTE: Standalone palette files (TodoistLight.qml, TodoistDark.qml, etc.)
-    // were deleted in the F-8.1 / B-8.1 cleanup — they were unreferenced dead
-    // code. All palette data lives here.
+    // NOTE: Standalone palette files for each theme were deleted in the
+    // F-8.1 / B-8.1 cleanup — they were unreferenced dead code. All palette
+    // data lives here.
     // ─────────────────────────────────────────────────────────────────────────
 
-    readonly property QtObject todoist_light: QtObject {
+    readonly property QtObject classic_light: QtObject {
         readonly property bool  isDark:             false
         readonly property color backgroundColor:    "#fafafa"
         readonly property color surfaceColor:       "#ffffff"

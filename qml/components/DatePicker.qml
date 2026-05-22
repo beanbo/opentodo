@@ -13,7 +13,7 @@ Popup {
     // ─── Internals ─────────────────────────────────────────────────────────────
     readonly property bool isDark: ThemeManager.isDark
 
-    readonly property color todoist:   ThemeManager.accentColor
+    readonly property color accentRed:   ThemeManager.accentColor
     readonly property color bgColor:   ThemeManager.backgroundColor
     readonly property color borderCol: ThemeManager.borderColor
     readonly property color textCol:   ThemeManager.textColor
@@ -238,13 +238,13 @@ Popup {
                         // B-7.23: binding-safe hover — no imperative onEntered/onExited
                         // color mutation; all state derived from dayMA.containsMouse.
                         color: {
-                            if (dayInfo.isSelected) return root.todoist
+                            if (dayInfo.isSelected) return root.accentRed
                             if (dayMA.containsMouse) return root.hoverCol
                             return "transparent"
                         }
                         border.color: {
-                            if (dayInfo.isSelected) return root.todoist
-                            if (dayInfo.isToday)    return root.todoist
+                            if (dayInfo.isSelected) return root.accentRed
+                            if (dayInfo.isToday)    return root.accentRed
                             return "transparent"
                         }
                         border.width: dayInfo.isToday && !dayInfo.isSelected ? 1 : 0
@@ -256,7 +256,7 @@ Popup {
                         color: {
                             if (!dayInfo.inMonth)  return "transparent"
                             if (dayInfo.isSelected) return "#ffffff"
-                            if (dayInfo.isToday)    return root.todoist
+                            if (dayInfo.isToday)    return root.accentRed
                             return root.textCol
                         }
                         font.pixelSize: 13

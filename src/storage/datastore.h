@@ -110,6 +110,19 @@ public:
     Q_INVOKABLE bool removeSection(const QString &id);
     Q_INVOKABLE QList<Section *> sectionsForProject(const QString &projectId) const;
     Q_INVOKABLE bool renameSection(const QString &id, const QString &newName);
+    // Toggle is_collapsed / is_archived with a per-field CRDT stamp. Calling
+    // s->setIsCollapsed() directly from QML and then markSectionModified() only
+    // stamps updated_at; both peers end up with identical _meta.is_collapsed
+    // (from addSection) and the merge falls back to deviceId tie-break, which
+    // can silently revert the toggle after sync. Routing the mutation through
+    // these methods ensures the per-field stamp advances on every flip.
+    Q_INVOKABLE bool setSectionCollapsed(const QString &id, bool collapsed);
+    Q_INVOKABLE bool setSectionArchived(const QString &id, bool archived);
+    // QML reorder helper: writes the new order value AND stamps the order
+    // field. Calling section.order = N from QML by itself only updates the
+    // model — _meta.order keeps its addSection-time stamp, so the merger
+    // can't tell the swap apart from a concurrent edit on another device.
+    Q_INVOKABLE bool setSectionOrder(const QString &id, int order);
     void addExistingSection(Section *section);
 
     // Tell listeners that some data changed (autosave + UI).
@@ -182,6 +195,23 @@ public:
     // Stamps CRDT updated_at for a section mutated directly from QML (e.g.
     // order swap or isArchived toggle) and emits sectionsChanged + dataChanged.
     Q_INVOKABLE void markSectionModified(const QString &id);
+
+    // Stamps CRDT per-field _meta for the listed field names AND updated_at,
+    // emits the entity-type signal + dataChanged.
+    //
+    // Use these from ViewModels after directly mutating one or more fields on
+    // a Task/Project/Label. The plain markXxxModified above only stamps
+    // updated_at — sufficient for tombstones-only changes, but NOT for actual
+    // field edits, because the per-field _meta stays at its addXxx-time stamp.
+    // After sync, both peers end up with identical lFm/rFm for the field and
+    // the Merger's whole-entity LWW fallback silently reverts one side's edit.
+    // See setSectionCollapsed/Archived/Order for the section equivalent.
+    //
+    // `fields` must contain the JSON field names (snake_case — `is_completed`,
+    // `project_id`, etc.), NOT the C++ property names.
+    void markTaskFieldsModified(const QString &id, const QStringList &fields);
+    void markProjectFieldsModified(const QString &id, const QStringList &fields);
+    void markLabelFieldsModified(const QString &id, const QStringList &fields);
 
     // --- Inbound CRDT meta application ---
     // Q2.18-A FIX: SyncEngine::applyCommit needs to push the merged per-field

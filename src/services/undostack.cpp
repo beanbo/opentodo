@@ -58,8 +58,13 @@ void UndoStack::pushDelete(const QString &description,
         task->setContent(snapshot.value(QStringLiteral("content")).toString());
         task->setDescription(snapshot.value(QStringLiteral("description")).toString());
         task->setIsCompleted(snapshot.value(QStringLiteral("is_completed")).toBool());
-        // Notify the store that this task was externally modified.
-        store->markTaskModified(taskId);
+        // Stamp every restored field — description in particular isn't in
+        // addTask's initialFields, so without an explicit per-field stamp a
+        // concurrent description edit on another device would auto-win via
+        // empty-meta fallback and silently wipe the restored description.
+        store->markTaskFieldsModified(taskId,
+            {QStringLiteral("is_deleted"), QStringLiteral("content"),
+             QStringLiteral("description"), QStringLiteral("is_completed")});
     });
 }
 

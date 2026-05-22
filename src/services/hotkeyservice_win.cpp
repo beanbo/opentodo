@@ -142,18 +142,19 @@ QString win32ErrorText(DWORD err)
     return reason;
 }
 
-// Returns the HWND we should attach the hotkey to. Empty when there is no
-// top-level window yet (e.g. main.cpp calls registerQuickAdd() before the
-// QML engine has created its window). RegisterHotKey works with nullptr
-// just fine — WM_HOTKEY is then posted to the calling thread's queue,
-// which our native event filter sees regardless.
-HWND topLevelHwnd()
-{
-    const auto windows = QGuiApplication::topLevelWindows();
-    if (!windows.isEmpty() && windows.first())
-        return reinterpret_cast<HWND>(windows.first()->winId());
-    return nullptr;
-}
+// All RegisterHotKey / UnregisterHotKey calls use HWND = nullptr (thread-
+// scoped). This sidesteps an asymmetry bug discovered in iter-10: main.cpp
+// calls registerQuickAdd() before the QML engine creates its window, so the
+// initial RegisterHotKey landed at HWND=nullptr. Later setShortcut() called
+// UnregisterHotKey(topLevelHwnd(), HOTKEY_ID) with the now-real HWND —
+// which fails (Win32 keys (hwnd, id) pairs are distinct) and leaves the
+// nullptr-scoped registration alive. The user then sees the old combo still
+// firing in parallel with the new one, plus "shortcut taken by another app"
+// on next launch (orphan still owns it).
+//
+// Thread-scoped registration works because WM_HOTKEY is posted to the
+// CALLING THREAD's message queue — our QAbstractNativeEventFilter on
+// QCoreApplication sees it regardless of which top-level HWND exists.
 
 constexpr auto kSettingsKey = "hotkeys/quickAdd";
 constexpr auto kDefaultShortcut = "Ctrl+Alt+A";
@@ -207,8 +208,7 @@ bool HotkeyService::registerQuickAdd()
         return false;
     }
 
-    HWND hwnd = topLevelHwnd();
-    BOOL ok = RegisterHotKey(hwnd, HOTKEY_ID, mods, vk);
+    BOOL ok = RegisterHotKey(nullptr, HOTKEY_ID, mods, vk);
 
     if (ok) {
         m_registered = true;
@@ -240,7 +240,7 @@ void HotkeyService::unregister()
 {
 #ifdef Q_OS_WIN
     if (m_registered) {
-        UnregisterHotKey(topLevelHwnd(), HOTKEY_ID);
+        UnregisterHotKey(nullptr, HOTKEY_ID);
         m_registered = false;
         emit registeredChanged();
     }
@@ -325,10 +325,11 @@ bool HotkeyService::wouldConflict(const QString &shortcut)
     // Probe under a dedicated id so we never collide with our own live
     // binding. RegisterHotKey is per-(hwnd, id), so even if the live
     // binding is on the same combo, the probe id discriminates them.
-    HWND hwnd = topLevelHwnd();
-    const BOOL probe = RegisterHotKey(hwnd, CONFLICT_PROBE_ID, mods, vk);
+    // Iter-10: use nullptr (thread-scoped) for symmetry with the live
+    // registration — see comment above topLevelHwnd removal.
+    const BOOL probe = RegisterHotKey(nullptr, CONFLICT_PROBE_ID, mods, vk);
     if (probe) {
-        UnregisterHotKey(hwnd, CONFLICT_PROBE_ID);
+        UnregisterHotKey(nullptr, CONFLICT_PROBE_ID);
         return false;  // free
     }
     return true;       // taken
@@ -346,9 +347,18 @@ bool HotkeyService::nativeEventFilter(const QByteArray &eventType, void *message
     if (eventType == "windows_generic_MSG" || eventType == "windows_dispatcher_MSG") {
         MSG *msg = static_cast<MSG *>(message);
         if (msg->message == WM_HOTKEY) {
-            if (static_cast<int>(msg->wParam) == HOTKEY_ID) {
+            const int hotkeyId = static_cast<int>(msg->wParam);
+            if (hotkeyId == HOTKEY_ID) {
                 emit quickAddRequested();
                 return true; // Event consumed
+            }
+            // Iter-10: a WM_HOTKEY for CONFLICT_PROBE_ID can race in between
+            // RegisterHotKey/UnregisterHotKey in wouldConflict() if the user
+            // hits the key at exactly the wrong moment. Consume it silently
+            // so it doesn't fall through to the focused control (e.g. typing
+            // Ctrl+Alt+A into a text field would otherwise leak the chord).
+            if (hotkeyId == CONFLICT_PROBE_ID) {
+                return true;
             }
         }
     }

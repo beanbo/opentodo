@@ -79,4 +79,12 @@ private:
 
     QTcpServer *m_authServer = nullptr;
     quint16     m_authPort   = 0;
+
+    // Iter-15: per-flow CSRF nonce. RFC 6749 §10.12 requires `state` so an
+    // attacker can't ferry their own authorization code into our loopback
+    // callback (it would silently bind the victim's app to the attacker's
+    // Drive account). Generated cryptographically on startAuthFlow,
+    // compared against `state` in handleAuthCallback, cleared on either
+    // success, abort, or timeout.
+    QString m_authState;
 };

@@ -10,6 +10,11 @@
 #include <QQmlEngine>
 #include <QTimer>
 
+#include <memory>
+#include <vector>
+
+#include "services/llmprovider.h"
+
 class DataStore;
 class QNetworkReply;
 class SecretStore;
@@ -26,8 +31,22 @@ class AIAssistant : public QObject
     Q_PROPERTY(bool isGeneratingDescription READ isGeneratingDescription NOTIFY isGeneratingDescriptionChanged)
     Q_PROPERTY(bool isSuggestingPriority READ isSuggestingPriority NOTIFY isSuggestingPriorityChanged)
 
+    // Multi-provider settings, persisted via QSettings (the API key itself
+    // goes into the SecretStore — see secretKey() on each LlmProvider).
+    Q_PROPERTY(QString currentProviderId READ currentProviderId
+                                          WRITE setCurrentProviderId
+                                          NOTIFY currentProviderChanged)
+    Q_PROPERTY(QString currentModel       READ currentModel
+                                          WRITE setCurrentModel
+                                          NOTIFY currentModelChanged)
+    Q_PROPERTY(QString openAiCompatBaseUrl READ openAiCompatBaseUrl
+                                           WRITE setOpenAiCompatBaseUrl
+                                           NOTIFY openAiCompatBaseUrlChanged)
+    Q_PROPERTY(QStringList providerIds READ providerIds CONSTANT)
+
 public:
     explicit AIAssistant(DataStore *store, QObject *parent = nullptr);
+    ~AIAssistant() override;
 
     // Sec-1: inject a SecretStore so the API key lives in the OS keyring
     // instead of QSettings. When unset (legacy / tests that don't wire it),
@@ -41,20 +60,46 @@ public:
     // QSettings.
     void setSecretStore(SecretStore *store);
 
-    // Sec-1: the key under which we stash the Claude API key in the
-    // SecretStore. Exposed as a public constant so the migration code in
-    // main.cpp can reference it without duplicating the literal.
+    // Sec-1: the key under which we stash the *Anthropic* API key in the
+    // SecretStore. Kept as a public constant so the migration code in
+    // main.cpp (and the legacy single-provider tests) can reference it
+    // without duplicating the literal. Multi-provider code prefers
+    // LlmProvider::secretKey() on each provider instance.
     static const char *secretKey();
 
     bool isResponding() const { return m_isResponding; }
-    bool isConfigured() const;  // true if API key is set
+    bool isConfigured() const;
     bool isGeneratingSubtasks() const { return m_isGeneratingSubtasks; }
     bool isGeneratingDescription() const { return m_isGeneratingDescription; }
     bool isSuggestingPriority() const { return m_isSuggestingPriority; }
 
+    // ── Multi-provider management ─────────────────────────────────────────
+    QString currentProviderId() const { return m_currentProviderId; }
+    void setCurrentProviderId(const QString &id);
+
+    QString currentModel() const;
+    void setCurrentModel(const QString &model);
+
+    QString openAiCompatBaseUrl() const;
+    void setOpenAiCompatBaseUrl(const QString &url);
+
+    QStringList providerIds() const;
+
+    Q_INVOKABLE QString  providerDisplayName(const QString &id) const;
+    Q_INVOKABLE QString  providerDefaultModel(const QString &id) const;
+    Q_INVOKABLE QStringList providerSuggestedModels(const QString &id) const;
+    Q_INVOKABLE QString  providerConsoleUrl(const QString &id) const;
+    Q_INVOKABLE QString  providerApiKeyPlaceholder(const QString &id) const;
+    Q_INVOKABLE bool     providerHasKey(const QString &id) const;
+
     Q_INVOKABLE void sendMessage(const QString &userMessage);
     Q_INVOKABLE void clearConversation();
-    Q_INVOKABLE void setApiKey(const QString &key);  // saves to QSettings (XOR-obfuscated)
+
+    // Sets the API key for the *current* provider. Kept for QML/test
+    // backward compat. Prefer setApiKeyFor(id, key) when targeting a
+    // specific provider from the Settings UI.
+    Q_INVOKABLE void setApiKey(const QString &key);
+    Q_INVOKABLE void setApiKeyFor(const QString &providerId, const QString &key);
 
     // Subtask generation — independent of the chat flow.
     // Emits subtasksGenerated or subtaskGenerationFailed when done.
@@ -117,6 +162,9 @@ signals:
     void isGeneratingSubtasksChanged();
     void isGeneratingDescriptionChanged();
     void isSuggestingPriorityChanged();
+    void currentProviderChanged();
+    void currentModelChanged();
+    void openAiCompatBaseUrlChanged();
     void responseReceived(const QString &text);
     void errorReceived(const QString &error);
     // Subtask-specific signals
@@ -157,7 +205,38 @@ private:
     static QString obfuscate(const QString &plain);
     static QString deobfuscate(const QString &cipher);
 
-    QString loadApiKey() const;
+    // QSettings key for the legacy XOR-obfuscated fallback path (used only
+    // when no SecretStore is wired, e.g. in older test fixtures). The
+    // Anthropic provider keeps the bare "ai/k" so legacy tests stay green;
+    // newer providers use the namespaced "ai/k_<id>".
+    static QString legacyQSettingsKey(const LlmProvider &p);
+
+    LlmProvider *currentProvider() const;
+    LlmProvider *providerById(const QString &id) const;
+
+    // Per-provider key load/save. SecretStore when wired; QSettings XOR
+    // fallback otherwise. The Anthropic legacy path is preserved exactly.
+    QString loadKeyFor(const LlmProvider &p) const;
+    void writeKeyFor(const LlmProvider &p, const QString &key);
+
+    // Per-provider model load/save. Reads QSettings ai/<id>/model and
+    // falls back to provider->defaultModel().
+    QString modelFor(const LlmProvider &p) const;
+    void writeModelFor(const LlmProvider &p, const QString &model);
+
+    // Snapshot of the args we passed to the latest provider->buildRequest()
+    // for each flow. Used to reconstruct the request on a single 429/5xx
+    // retry without re-running the prompt-building logic.
+    struct PendingArgs {
+        QString model;
+        QString systemPrompt;
+        QList<QPair<QString, QString>> messages;
+        int maxTokens = 0;
+    };
+    PendingArgs m_pendingChat;
+    PendingArgs m_pendingSubtask;
+    PendingArgs m_pendingDescription;
+    PendingArgs m_pendingPriority;
 
     // Helper to fire a chat POST and wire its reply to onChatReplyFinished.
     void postChatRequest(const QNetworkRequest &req, const QByteArray &body, bool isRetry);
@@ -180,6 +259,12 @@ private:
     QPointer<SecretStore> m_secretStore;  // Sec-1: nullable; legacy QSettings path when unset
     QNetworkAccessManager m_nam;
     QPointer<QNetworkAccessManager> m_namOverride;  // test hook
+
+    // Providers are owned in registration order; m_currentProviderId picks
+    // which one is active. Order also determines the dropdown order in UI.
+    std::vector<std::unique_ptr<LlmProvider>> m_providers;
+    QString m_currentProviderId;
+
     bool m_isResponding = false;
     bool m_isGeneratingSubtasks = false;
     bool m_subtaskCancelled = false;  // set by cancelSubtaskGeneration()

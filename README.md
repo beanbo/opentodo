@@ -4,7 +4,7 @@
 [![Release](https://github.com/USER/opentodo/actions/workflows/release.yml/badge.svg)](https://github.com/USER/opentodo/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Кросс-платформенный планировщик задач на Qt 6 / QML / C++20. Бесплатная альтернатива Todoist с локальным хранением и Google Drive-синхронизацией.
+Кросс-платформенный планировщик задач на Qt 6 / QML / C++20, вдохновлённый Todoist — с локальным хранением и Google Drive-синхронизацией.
 
 ## Возможности
 
@@ -13,7 +13,7 @@
 - 🔄 Естественный язык для дат на русском и английском (`завтра в 9`, `каждый понедельник`)
 - ☁️ Синхронизация через Google Drive с CRDT-разрешением конфликтов (HLC + per-field LWW)
 - 🔔 Системные уведомления (Windows toast, Android notifications)
-- 🎯 Pomodoro-таймер, ежедневный обзор, статистика и карма
+- 🎯 Pomodoro-таймер, ежедневный обзор, статистика и очки прогресса
 - 🤖 AI-помощник для разбиения задач на подзадачи (Anthropic Claude API)
 - 🎨 8 тем оформления, светлая/тёмная, узкий режим
 - ⌨️ Глобальная горячая клавиша для быстрого добавления (Ctrl+Alt+A)

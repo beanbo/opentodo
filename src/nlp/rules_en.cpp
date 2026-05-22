@@ -424,8 +424,16 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             }
             QDate date(year, month, day);
             if (!date.isValid()) return false;
-            if (!yearProvided && date < reference)
-                date = QDate(year + 1, month, day);
+            if (!yearProvided && date < reference) {
+                // Bump to next year. Defend against Feb 29 → non-leap year
+                // producing an invalid QDate (formatDate would return "",
+                // yet result.valid was being set to true and the caller
+                // returned tryParseTime — net: result.valid=true with
+                // result.date="").
+                const QDate bumped(year + 1, month, day);
+                if (!bumped.isValid()) return false;
+                date = bumped;
+            }
             result.date = formatDate(date);
             result.humanString = date.toString(QStringLiteral("MMM d"));
             result.valid = true;

@@ -30,7 +30,7 @@ Rectangle {
     function themeLabel(name) {
         switch (name) {
         case "system":        return qsTr("Системная")
-        case "todoist_light": return qsTr("Светлая")
+        case "classic_light": return qsTr("Светлая")
         case "dark":          return qsTr("Тёмная")
         case "kale":          return qsTr("Капуста")
         case "blueberry":     return qsTr("Черника")
@@ -116,10 +116,10 @@ Rectangle {
 
                     // Resolve real palette colours from ThemeManager.
                     // "system" is not a real palette — preview the current
-                    // system-resolved palette (dark or todoist_light).
+                    // system-resolved palette (dark or classic_light).
                     readonly property QtObject themeData:
                         modelData === "system"
-                        ? ThemeManager.themes[ThemeManager.systemPrefersDark ? "dark" : "todoist_light"]
+                        ? ThemeManager.themes[ThemeManager.systemPrefersDark ? "dark" : "classic_light"]
                         : (ThemeManager.themes[modelData] || null)
 
                     width: 130

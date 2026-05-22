@@ -11,7 +11,7 @@ Item {
     // All colors come from ThemeManager — switching the active theme
     // re-binds every consumer automatically.
     readonly property bool  isDarkTheme:    ThemeManager.isDark
-    readonly property color todoistRed:     ThemeManager.accentColor
+    readonly property color accentRed:     ThemeManager.accentColor
     readonly property color bgColor:        ThemeManager.backgroundColor
     readonly property color contentColor:   ThemeManager.surfaceColor
     readonly property color borderColor:    ThemeManager.borderColor
@@ -440,6 +440,13 @@ Item {
                                 case TaskViewModel.Inbox:     return qsTr("Входящие")
                                 case TaskViewModel.Today:     return qsTr("Сегодня")
                                 case TaskViewModel.Upcoming:  return qsTr("Предстоящие")
+                                // Q3.27: standalone Calendar = calendar display
+                                // of Upcoming. Reuse the same title so the
+                                // toggle feels like one logical view.
+                                case TaskViewModel.Calendar:
+                                    return taskViewModel.currentProjectId === ""
+                                           ? qsTr("Предстоящие")
+                                           : qsTr("Календарь")
                                 case TaskViewModel.Project: {
                                     const p = projectViewModel ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
                                     return p ? p.name : qsTr("Проект")
@@ -465,6 +472,45 @@ Item {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                             Layout.minimumWidth: 50  // allow shrinking before clipping siblings
+                        }
+
+                        // ── Upcoming view-style toggle (list ↔ calendar) ──────
+                        // Q3.27: surfaces only when the user is in Upcoming or
+                        // standalone Calendar (project-less). Mirrors the
+                        // list/board/calendar toggle in ProjectView so the two
+                        // displays of the same task set ("upcoming, undone") are
+                        // one click apart.
+                        Row {
+                            visible: !root.isNarrow
+                                     && (taskViewModel.filterMode === TaskViewModel.Upcoming
+                                         || (taskViewModel.filterMode === TaskViewModel.Calendar
+                                             && taskViewModel.currentProjectId === ""))
+                            spacing: 2
+                            Layout.alignment: Qt.AlignVCenter
+
+                            ToolButton {
+                                text: "≡"
+                                font.pixelSize: 16
+                                checked: taskViewModel.filterMode === TaskViewModel.Upcoming
+                                ToolTip.text: qsTr("Список")
+                                ToolTip.visible: hovered
+                                Material.foreground: checked ? accentRed : textSecondary
+                                onClicked: taskViewModel.filterMode = TaskViewModel.Upcoming
+                            }
+                            ToolButton {
+                                text: "📅"
+                                font.pixelSize: 16
+                                checked: taskViewModel.filterMode === TaskViewModel.Calendar
+                                ToolTip.text: qsTr("Календарь")
+                                ToolTip.visible: hovered
+                                Material.foreground: checked ? accentRed : textSecondary
+                                onClicked: {
+                                    // Drop project context so the C++ filter takes the
+                                    // upcoming-tasks branch (taskviewmodel.cpp Q3.27).
+                                    taskViewModel.currentProjectId = ""
+                                    taskViewModel.filterMode = TaskViewModel.Calendar
+                                }
+                            }
                         }
 
                         // ── Today goal progress pill ──────────────────────────
@@ -644,10 +690,16 @@ Item {
 
                     // Bug 1 fix: forward openTaskRequested from NotificationsView
                     // to taskViewModel so clicking a notification navigates to its task.
+                    // Q3.27: also forward taskClicked from BoardView so a click on a
+                    // card opens the right-pane editor (matches list-mode behaviour).
                     Connections {
                         target: fullPageLoader.item
                         ignoreUnknownSignals: true
                         function onOpenTaskRequested(taskId) {
+                            if (taskId && taskId.length > 0)
+                                taskViewModel.openTaskById(taskId)
+                        }
+                        function onTaskClicked(taskId) {
                             if (taskId && taskId.length > 0)
                                 taskViewModel.openTaskById(taskId)
                         }
@@ -2860,13 +2912,13 @@ Item {
     // Ctrl+Shift+L → Toggle dark / light theme
     // No _taskListActive guard — theme toggle should work from any view.
     // Uses ThemeManager.isDark to detect the current polarity and switches
-    // between the two baseline themes: "dark" (dark) and "todoist_light" (light).
+    // between the two baseline themes: "dark" (dark) and "classic_light" (light).
     Shortcut {
         sequences: ["Ctrl+Shift+L"]
         enabled: !(commandMenuLoader.item && commandMenuLoader.item.active)
                  && !(quickAddLoader.item && quickAddLoader.item.expanded)
         onActivated: {
-            const target = ThemeManager.isDark ? "todoist_light" : "dark"
+            const target = ThemeManager.isDark ? "classic_light" : "dark"
             settingsViewModel.theme = target
             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                 telemetry.trackEvent("theme_quick_toggle", { "to": target })

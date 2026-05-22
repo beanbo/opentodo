@@ -138,6 +138,11 @@ set_tests_properties(test_qml_warning_audit PROPERTIES
 # requires schema migration).
 opentodo_add_unit_test(test_meta_double_wrap_pin          Infra)
 
+# Pin per-field CRDT stamp keys against Task::toJson — catches iter-2-style
+# drift where a mutator stamps a key that doesn't exist as a real JSON field
+# (label_ids vs labels, due_date vs due, duration_amount vs duration, etc.).
+opentodo_add_unit_test(test_taskvm_field_keys_pin         App)
+
 # Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
 # machine + HotkeyService (Win32 RegisterHotKey + native event filter).
 opentodo_add_unit_test(test_q_gadgets                     Infra)

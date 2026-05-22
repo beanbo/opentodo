@@ -22,7 +22,7 @@ Rectangle {
     // ─── Internals ─────────────────────────────────────────────────────────────
     readonly property bool isDark: ThemeManager.isDark
 
-    readonly property color todoist:    ThemeManager.accentColor
+    readonly property color accentRed:    ThemeManager.accentColor
     readonly property color bgColor:    ThemeManager.backgroundColor
     readonly property color borderCol:  ThemeManager.borderColor
     readonly property color textCol:    ThemeManager.textColor
@@ -109,7 +109,7 @@ Rectangle {
     Text {
         id: plusIcon
         text:  "+"
-        color: root.todoist
+        color: root.accentRed
         font.pixelSize: 22
         font.weight:    Font.Light
         anchors.left:           parent.left
@@ -135,7 +135,7 @@ Rectangle {
         clip: true
         selectByMouse: true
         color: root.textCol
-        selectionColor: root.todoist
+        selectionColor: root.accentRed
         selectedTextColor: "white"
         font.pixelSize: FontSize.body
 
@@ -237,7 +237,7 @@ Rectangle {
                     font.pixelSize:        FontSize.subtitle
                     horizontalAlignment:   Text.AlignHCenter
                     verticalAlignment:     Text.AlignVCenter
-                    color: root.selectedDueString !== "" ? root.todoist : root.subTextCol
+                    color: root.selectedDueString !== "" ? root.accentRed : root.subTextCol
                 }
 
                 background: Rectangle {
@@ -276,7 +276,7 @@ Rectangle {
                     // Highlight when the current input already contains a recurrence phrase
                     color: {
                         var re = /\b(каждый|каждую|каждые)\b/i
-                        return re.test(taskField.text) ? root.todoist : root.subTextCol
+                        return re.test(taskField.text) ? root.accentRed : root.subTextCol
                     }
                 }
 
@@ -491,7 +491,7 @@ Rectangle {
                     font.pixelSize:      FontSize.body
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment:   Text.AlignVCenter
-                    color: root.selectedLabels.length > 0 ? root.todoist : root.subTextCol
+                    color: root.selectedLabels.length > 0 ? root.accentRed : root.subTextCol
                 }
 
                 background: Rectangle {
@@ -726,7 +726,7 @@ Rectangle {
             Text {
                 visible: parent.parsed && parent.parsed.projectName !== ""
                 text: "🏷 " + (parent.parsed ? parent.parsed.projectName : "")
-                color: root.todoist
+                color: root.accentRed
                 font.pixelSize: 11
             }
             Text {

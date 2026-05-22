@@ -91,7 +91,27 @@ QString ProjectViewModel::addProject(const QString &name, const QString &color, 
     Project *p = m_store->addProject(name);
     if (!p) return {};
     p->setColor(color);
-    if (!parentId.isEmpty()) p->setParentId(parentId);
+    // parent_id isn't in addProject's initialFields — without a per-field
+    // CRDT stamp here, a concurrent peer reparenting wins by empty-meta
+    // fallback and the nested project's parent is silently lost after sync.
+    QStringList fields;
+    if (!parentId.isEmpty()) {
+        // Iter-14: validate parentId before we attach. iter-13 added the
+        // stamp but skipped the guards that the local updateProject path and
+        // the inbound applyCommit path already enforce: Inbox must stay at
+        // the root, and orphan / tombstoned parents are silently dropped.
+        const Project *parent = m_store->projectById(parentId);
+        if (parent && !parent->isDeleted() && !parent->isInbox()) {
+            p->setParentId(parentId);
+            fields << QStringLiteral("parent_id");
+        } else if (parent && parent->isInbox()) {
+            qWarning("ProjectViewModel::addProject: rejected Inbox as parent "
+                     "for new project '%s'", qUtf8Printable(name));
+        }
+    }
+    // color is already in initialFields but stamping again advances HLC.
+    fields << QStringLiteral("color");
+    m_store->markProjectFieldsModified(p->id(), fields);
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("project_add"), {});
@@ -126,23 +146,47 @@ bool ProjectViewModel::updateProject(const QString &id, const QString &field, co
         }
     }
 
-    if (field == QStringLiteral("name")) p->setName(value.toString());
-    else if (field == QStringLiteral("color")) p->setColor(value.toString());
-    else if (field == QStringLiteral("description")) p->setDescription(value.toString());
-    else if (field == QStringLiteral("notes")) p->setNotes(value.toString());
-    else if (field == QStringLiteral("viewStyle")) p->setViewStyle(value.toString());
-    else if (field == QStringLiteral("isFavorite")) p->setIsFavorite(value.toBool());
-    else if (field == QStringLiteral("isArchived")) p->setIsArchived(value.toBool());
-    else if (field == QStringLiteral("order")) p->setOrder(value.toInt());
-    else if (field == QStringLiteral("icon")) p->setIcon(value.toString());
-    else if (field == QStringLiteral("weeklyGoal")) p->setWeeklyGoal(value.toInt());
-    else if (field == QStringLiteral("linkedRepoPath")) p->setLinkedRepoPath(value.toString());
+    // The JSON (snake_case) name of the field actually mutated, for the
+    // per-field CRDT stamp below. Keep in sync with each branch.
+    QString jsonField;
+
+    if (field == QStringLiteral("name"))                    { p->setName(value.toString());            jsonField = QStringLiteral("name"); }
+    else if (field == QStringLiteral("color"))              { p->setColor(value.toString());           jsonField = QStringLiteral("color"); }
+    else if (field == QStringLiteral("description"))        { p->setDescription(value.toString());     jsonField = QStringLiteral("description"); }
+    else if (field == QStringLiteral("notes"))              { p->setNotes(value.toString());           jsonField = QStringLiteral("notes"); }
+    else if (field == QStringLiteral("viewStyle"))          { p->setViewStyle(value.toString());       jsonField = QStringLiteral("view_style"); }
+    else if (field == QStringLiteral("isFavorite"))         { p->setIsFavorite(value.toBool());        jsonField = QStringLiteral("is_favorite"); }
+    else if (field == QStringLiteral("isArchived"))         { p->setIsArchived(value.toBool());        jsonField = QStringLiteral("is_archived"); }
+    else if (field == QStringLiteral("order"))              { p->setOrder(value.toInt());              jsonField = QStringLiteral("order"); }
+    else if (field == QStringLiteral("icon"))               { p->setIcon(value.toString());            jsonField = QStringLiteral("icon"); }
+    else if (field == QStringLiteral("weeklyGoal"))         { p->setWeeklyGoal(value.toInt());         jsonField = QStringLiteral("weekly_goal"); }
+    else if (field == QStringLiteral("linkedRepoPath"))     { p->setLinkedRepoPath(value.toString());  jsonField = QStringLiteral("linked_repo_path"); }
     else if (field == QStringLiteral("parentId")) {
         // Cycle check: walk the parent chain from the candidate; if we encounter
         // `id`, setting this parentId would create a cycle — reject.
         const QString candidateParent = value.toString();
+        // Iter-14: Inbox cannot become a child OR a parent. The
+        // existing `p->isInbox()` guard at the top of this function blocks
+        // making Inbox a child of something else; the symmetric block here
+        // stops any project from being parented under Inbox. applyCommit
+        // already has this guard (iter-7) — bringing the local path back in
+        // line so cross-device behaviour matches the cross-process behaviour.
+        if (!candidateParent.isEmpty()) {
+            const Project *candidate = m_store->projectById(candidateParent);
+            if (candidate && candidate->isInbox()) {
+                qWarning("ProjectViewModel::updateProject: rejected Inbox as parent "
+                         "for project '%s'", qUtf8Printable(id));
+                return false;
+            }
+        }
+        // Iter-14: bounded cycle walk. Without MAX_DEPTH a state.json file
+        // carrying a pre-existing A→B→A cycle (legacy data, hand-edit)
+        // would spin forever and freeze the UI thread the moment the user
+        // tried to reparent anything. Mirrors the guard already in
+        // applyCommit (iter-7).
+        constexpr int MAX_DEPTH = 1000;
         QString cur = candidateParent;
-        while (!cur.isEmpty()) {
+        for (int i = 0; i < MAX_DEPTH && !cur.isEmpty(); ++i) {
             if (cur == id) {
                 qWarning("ProjectViewModel::updateProject: rejected parentId '%s' for "
                          "project '%s' — would create a cycle",
@@ -151,14 +195,17 @@ bool ProjectViewModel::updateProject(const QString &id, const QString &field, co
             }
             const Project *ancestor = m_store->projectById(cur);
             if (!ancestor) break;
-            cur = ancestor->parentId();
+            const QString next = ancestor->parentId();
+            if (next == cur) break; // self-loop on the ancestor — stop walking
+            cur = next;
         }
         p->setParentId(candidateParent);
+        jsonField = QStringLiteral("parent_id");
     }
     else return false;
 
     p->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markProjectModified(id);
+    m_store->markProjectFieldsModified(id, {jsonField});
     emit projectChanged(id);
 
     int idx = m_projects.indexOf(p);
@@ -251,13 +298,75 @@ bool ProjectViewModel::reorderProject(int sourceIndex, int targetIndex)
     }
     endResetModel();
     for (const QString &id : toMark)
-        m_store->markProjectModified(id);
+        m_store->markProjectFieldsModified(id, {QStringLiteral("order")});
 
     emit countChanged();
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("project_reorder"), {});
 
+    return true;
+}
+
+bool ProjectViewModel::reorderProjectById(const QString &draggedId,
+                                           const QString &targetId,
+                                           bool above)
+{
+    if (draggedId.isEmpty() || targetId.isEmpty() || draggedId == targetId)
+        return false;
+
+    Project *dragged = m_store->projectById(draggedId);
+    Project *target  = m_store->projectById(targetId);
+    if (!dragged || !target) return false;
+    if (dragged->isInbox()) return false; // Inbox is pinned to top
+
+    // Iter-13: only reorder siblings of the SAME parent. The QML walker is
+    // free to drag a nested child over a sibling-of-cousin visually, but
+    // moving it under a different parent is a separate operation (set
+    // parentId), not a reorder. Reject cross-parent drags here.
+    if (dragged->parentId() != target->parentId()) return false;
+
+    // Collect every visible sibling under this parent, in current order.
+    QList<Project *> siblings;
+    for (Project *p : std::as_const(m_projects)) {
+        if (!p || p->isInbox() || p->isDeleted() || p->isArchived())
+            continue;
+        if (p->parentId() == dragged->parentId())
+            siblings.append(p);
+    }
+    std::sort(siblings.begin(), siblings.end(),
+              [](const Project *a, const Project *b) { return a->order() < b->order(); });
+
+    const int fromIdx = siblings.indexOf(dragged);
+    int targetIdx     = siblings.indexOf(target);
+    if (fromIdx < 0 || targetIdx < 0) return false;
+
+    siblings.removeAt(fromIdx);
+    // After removal, target may have shifted left by one if it was after dragged.
+    int insertAt = siblings.indexOf(target);
+    if (insertAt < 0) return false;
+    if (!above) ++insertAt;
+    siblings.insert(insertAt, dragged);
+
+    // Renumber siblings 1..N (preserving the 1-based convention used by
+    // reorderProject above). Other projects' order values keep their gaps —
+    // sync merges this as a per-field update on just the touched siblings.
+    QStringList toMark;
+    int orderCounter = 1;
+    for (Project *p : std::as_const(siblings)) {
+        if (p->order() != orderCounter)
+            p->setOrder(orderCounter);
+        toMark.append(p->id());
+        ++orderCounter;
+    }
+
+    for (const QString &id : std::as_const(toMark))
+        m_store->markProjectFieldsModified(id, {QStringLiteral("order")});
+
+    // refresh() runs on m_store->projectsChanged via markProjectFieldsModified,
+    // re-sorting m_projects and emitting our model signals — no manual reset.
+    if (m_telemetry)
+        m_telemetry->trackEvent(QStringLiteral("project_reorder"), {});
     return true;
 }
 

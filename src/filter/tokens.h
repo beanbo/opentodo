@@ -55,7 +55,7 @@ enum class TokenType {
     // Completed
     Completed,
 
-    // Has-any-due-date / due-within-N-days (Todoist-style "due" / "due: N")
+    // Has-any-due-date / due-within-N-days (shorthand-style "due" / "due: N")
     // token.value holds N (-1 == "any due date", N>=0 == within N days)
     HasDue,
 

@@ -69,7 +69,7 @@ Item {
     function _themeLabel(key) {
         var map = {
             "system":        qsTr("Системная тема"),
-            "todoist_light": qsTr("Светлая"),
+            "classic_light": qsTr("Светлая"),
             "dark":          qsTr("Тёмная"),
             "kale":          "Kale",
             "blueberry":     "Blueberry",

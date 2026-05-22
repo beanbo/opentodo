@@ -96,7 +96,9 @@ Item {
             }
         }
 
-        // API key setup banner — visible if not configured
+        // API key setup banner — visible if the *current* provider has no key.
+        // The banner doubles as a mini provider selector so the first-run flow
+        // doesn't require opening Settings.
         Rectangle {
             visible: !aiAssistant.isConfigured
             Layout.fillWidth: true
@@ -113,17 +115,68 @@ Item {
                 spacing: Spacing.sm
 
                 Label {
-                    text: qsTr("Настрой Claude API ключ")
+                    text: qsTr("Настрой API ключ помощника")
                     font.pixelSize: FontSize.subtitle
                     color: ThemeManager.textColor
                 }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Spacing.sm
+
+                    Label {
+                        text: qsTr("Провайдер:")
+                        font.pixelSize: FontSize.body
+                        color: ThemeManager.secondaryTextColor
+                    }
+
+                    ComboBox {
+                        id: providerCombo
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "id"
+
+                        function buildModel() {
+                            const ids = aiAssistant.providerIds
+                            const items = []
+                            for (let i = 0; i < ids.length; i++) {
+                                items.push({
+                                    id: ids[i],
+                                    label: aiAssistant.providerDisplayName(ids[i])
+                                })
+                            }
+                            return items
+                        }
+
+                        model: buildModel()
+
+                        currentIndex: {
+                            const ids = aiAssistant.providerIds
+                            for (let i = 0; i < ids.length; i++)
+                                if (ids[i] === aiAssistant.currentProviderId) return i
+                            return 0
+                        }
+
+                        onActivated: {
+                            const id = model[currentIndex].id
+                            if (id !== aiAssistant.currentProviderId)
+                                aiAssistant.currentProviderId = id
+                        }
+                    }
+                }
+
                 Label {
-                    text: qsTr("Получи ключ на console.anthropic.com и вставь сюда. Хранится только на этом устройстве.")
+                    text: qsTr("Получи ключ: ") + "<a href=\"" + aiAssistant.providerConsoleUrl(aiAssistant.currentProviderId) + "\">"
+                          + aiAssistant.providerConsoleUrl(aiAssistant.currentProviderId) + "</a>. "
+                          + qsTr("Ключ хранится только на этом устройстве.")
                     font.pixelSize: FontSize.small
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
+                    textFormat: Text.RichText
+                    onLinkActivated: (url) => Qt.openUrlExternally(url)
                     Layout.fillWidth: true
                 }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Spacing.sm
@@ -131,7 +184,7 @@ Item {
                     TextField {
                         id: keyField
                         Layout.fillWidth: true
-                        placeholderText: "sk-ant-api03-..."
+                        placeholderText: aiAssistant.providerApiKeyPlaceholder(aiAssistant.currentProviderId)
                         echoMode: TextInput.Password
                         Keys.onReturnPressed: saveKeyBtn.clicked()
                     }

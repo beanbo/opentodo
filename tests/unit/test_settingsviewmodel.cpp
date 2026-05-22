@@ -320,7 +320,7 @@ private slots:
 
         // The canonical bundled palettes from ThemeManager.
         for (const auto &expected : {
-                "system", "todoist_light", "dark", "kale", "blueberry",
+                "system", "classic_light", "dark", "kale", "blueberry",
                 "lavender", "raspberry", "graphite", "sunflower",
                 "highcontrast" }) {
             QVERIFY2(themes.contains(QString::fromLatin1(expected)),

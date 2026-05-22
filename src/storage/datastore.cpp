@@ -144,6 +144,36 @@ void DataStore::markSectionModified(const QString &id)
     emit dataChanged();
 }
 
+void DataStore::markTaskFieldsModified(const QString &id, const QStringList &fields)
+{
+    if (!m_taskIndex.contains(id)) return;
+    for (const QString &f : fields)
+        stampEntityField(id, m_taskMeta, f);
+    stampEntityField(id, m_taskMeta, QStringLiteral("updated_at"));
+    emit tasksChanged();
+    emit dataChanged();
+}
+
+void DataStore::markProjectFieldsModified(const QString &id, const QStringList &fields)
+{
+    if (!m_projectIndex.contains(id)) return;
+    for (const QString &f : fields)
+        stampEntityField(id, m_projectMeta, f);
+    stampEntityField(id, m_projectMeta, QStringLiteral("updated_at"));
+    emit projectsChanged();
+    emit dataChanged();
+}
+
+void DataStore::markLabelFieldsModified(const QString &id, const QStringList &fields)
+{
+    if (!m_labelIndex.contains(id)) return;
+    for (const QString &f : fields)
+        stampEntityField(id, m_labelMeta, f);
+    stampEntityField(id, m_labelMeta, QStringLiteral("updated_at"));
+    emit labelsChanged();
+    emit dataChanged();
+}
+
 // ── Inbound CRDT meta application (Q2.18-A) ──────────────────────────────────
 //
 // Per-field merge of an inbound _meta blob into a local entity meta map.
@@ -1008,6 +1038,51 @@ bool DataStore::renameSection(const QString &id, const QString &newName)
     if (!section || newName.trimmed().isEmpty()) return false;
     section->setName(newName.trimmed());
     stampEntityField(id, m_sectionMeta, QStringLiteral("name"));
+    emit sectionsChanged();
+    emit dataChanged();
+    return true;
+}
+
+bool DataStore::setSectionCollapsed(const QString &id, bool collapsed)
+{
+    auto *section = m_sectionIndex.value(id);
+    if (!section) return false;
+    if (section->isCollapsed() == collapsed) return true; // no-op, no stamp churn
+    section->setIsCollapsed(collapsed);
+    stampEntityField(id, m_sectionMeta, QStringLiteral("is_collapsed"));
+    stampEntityField(id, m_sectionMeta, QStringLiteral("updated_at"));
+    emit sectionsChanged();
+    emit dataChanged();
+    return true;
+}
+
+bool DataStore::setSectionArchived(const QString &id, bool archived)
+{
+    auto *section = m_sectionIndex.value(id);
+    if (!section) return false;
+    if (section->isArchived() == archived) return true;
+    section->setIsArchived(archived);
+    stampEntityField(id, m_sectionMeta, QStringLiteral("is_archived"));
+    stampEntityField(id, m_sectionMeta, QStringLiteral("updated_at"));
+    emit sectionsChanged();
+    emit dataChanged();
+    return true;
+}
+
+bool DataStore::setSectionOrder(const QString &id, int order)
+{
+    auto *section = m_sectionIndex.value(id);
+    if (!section) return false;
+    // Section ordering invariant: orders are non-negative — addSection assigns
+    // them sequentially starting at 0 and every reorder helper swaps within
+    // that range. A negative order survives JSON round-trip but breaks sort
+    // assumptions in ProjectView (visible sections vanish below "(Без раздела)"
+    // bucket which sorts at order=0 by convention). Reject early.
+    if (order < 0) return false;
+    if (section->order() == order) return true;
+    section->setOrder(order);
+    stampEntityField(id, m_sectionMeta, QStringLiteral("order"));
+    stampEntityField(id, m_sectionMeta, QStringLiteral("updated_at"));
     emit sectionsChanged();
     emit dataChanged();
     return true;

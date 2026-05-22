@@ -10,8 +10,21 @@ FilterParser::FilterParser(QObject *parent)
 AstNode *FilterParser::parse(const QString &query)
 {
     m_lastError.clear();
-    m_tokens = tokenize(query);
     m_pos = 0;
+    m_depthRemaining = kInitialDepth;
+
+    // Iter-11: hard cap on raw input length to short-circuit pathological
+    // queries before the tokenizer churns through them. 16 KiB is comfortably
+    // larger than any realistic human-written filter; anything beyond is
+    // either a copy-paste accident or an adversarial sync payload.
+    constexpr int kMaxQueryBytes = 16 * 1024;
+    if (query.size() > kMaxQueryBytes) {
+        m_lastError = QStringLiteral("Query too long (%1 > %2)")
+            .arg(query.size()).arg(kMaxQueryBytes);
+        m_tokens.clear();
+        return nullptr;
+    }
+    m_tokens = tokenize(query);
 
     if (m_tokens.isEmpty()) {
         m_lastError = QStringLiteral("Empty query");
@@ -586,22 +599,42 @@ AstNode *FilterParser::parseAnd()
 // Unary := '!' Unary | Atom
 AstNode *FilterParser::parseUnary()
 {
+    // Iter-11: bound the recursion depth. A query like "!!!!!…!a" with 50k
+    // negations would otherwise overflow the C stack (synced filter strings
+    // arrive from peers, so a poisoned query crashes every device opening
+    // the filter view).
+    if (--m_depthRemaining < 0) {
+        m_lastError = QStringLiteral("Filter expression too deeply nested");
+        ++m_depthRemaining; // restore for callers that may share the budget
+        return nullptr;
+    }
+    AstNode *result = nullptr;
     if (peekToken().type == TokenType::Not) {
         advance();
         AstNode *child = parseUnary();
-        if (!child) return nullptr;
-        return AstNode::makeNot(child);
+        if (!child) { ++m_depthRemaining; return nullptr; }
+        result = AstNode::makeNot(child);
+    } else {
+        result = parseAtom();
     }
-
-    return parseAtom();
+    ++m_depthRemaining;
+    return result;
 }
 
 // Atom := '(' Expression ')' | predicate
 AstNode *FilterParser::parseAtom()
 {
     if (peekToken().type == TokenType::LeftParen) {
+        // Iter-11: parentheses descend back into parseExpression, which can
+        // recurse arbitrarily deep on "(((…)))". Share the same depth budget.
+        if (--m_depthRemaining < 0) {
+            m_lastError = QStringLiteral("Filter expression too deeply nested");
+            ++m_depthRemaining;
+            return nullptr;
+        }
         advance();
         AstNode *expr = parseExpression();
+        ++m_depthRemaining;
         if (!expr) return nullptr;
         if (!expect(TokenType::RightParen)) {
             m_lastError = QStringLiteral("Expected ')' at position %1").arg(peekToken().position);

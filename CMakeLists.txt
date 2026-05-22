@@ -221,6 +221,7 @@ set(INFRA_SOURCES
     src/services/windowchrome.cpp
     src/services/undostack.cpp
     src/services/aiassistant.cpp
+    src/services/llmprovider.cpp
     src/services/secretstore.cpp
     src/sync/sharemanager.cpp
     src/services/updatechecker.cpp
@@ -253,6 +254,7 @@ set(INFRA_HEADERS
     src/services/windowchrome.h
     src/services/undostack.h
     src/services/aiassistant.h
+    src/services/llmprovider.h
     src/services/secretstore.h
     src/sync/sharemanager.h
     src/services/crashlogger.h
@@ -483,6 +485,7 @@ set(QML_FILES
     qml/components/settings/SettingsSectionBackup.qml
     qml/components/settings/SettingsSectionAbout.qml
     qml/components/settings/SettingsSectionSupport.qml
+    qml/components/settings/SettingsSectionAI.qml
     qml/views/ProductivityView.qml
     qml/views/NotificationsView.qml
     qml/views/AIView.qml

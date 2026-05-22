@@ -105,11 +105,22 @@ ColumnLayout {
         Layout.preferredHeight: toolbarRow.implicitHeight
         Layout.topMargin: Spacing.xs
 
-        // Show toolbar only while the user is editing or there's already
-        // some content — avoids visual clutter for empty / inactive fields.
-        visible: descriptionField.activeFocus
+        // Q3.25: opacity-based show/hide (not `visible`). When the toolbar
+        // collapses via visible:false the ColumnLayout shifts descriptionField
+        // up under the cursor — descriptionField.hovered flips back on,
+        // toolbar reappears, layout shifts down again, hover flips off →
+        // infinite flicker loop. Keeping the slot allocated (opacity instead
+        // of visible) makes the layout stable, and a HoverHandler on the
+        // toolbar itself keeps it visible while the cursor is over its area.
+        opacity: descriptionField.activeFocus
                  || descriptionField.hovered
-                 || descriptionField.text.length > 0
+                 || mdToolbarHover.hovered
+                 || descriptionField.text.length > 0 ? 1.0 : 0.0
+        enabled: opacity > 0
+
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+
+        HoverHandler { id: mdToolbarHover }
 
         // Safely fire a telemetry event if the optional context property exists.
         function _track(action) {
