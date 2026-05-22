@@ -496,12 +496,30 @@ Rectangle {
             Layout.leftMargin: Spacing.md
             Layout.rightMargin: Spacing.md
             Layout.topMargin: Spacing.sm
-            // Compact when collapsed (header strip only); expanded gives
-            // 220 px which is room for ~10 lines at body font size — long
-            // enough to be useful, short enough to leave the task list
-            // breathing room.
-            Layout.preferredHeight: _expanded ? 220 : 44
-            Layout.maximumHeight:   _expanded ? 220 : 44
+            // Task bd2e7bde: Q3.29 left two latent problems.
+            //   1. Collapsed height was 44 px, but the inner ColumnLayout
+            //      has 16 px top + 16 px bottom margins and a 24-px header,
+            //      i.e. it needs at least 56 px. Children overflowed the
+            //      Rectangle's clip area (visually leaking into the
+            //      "Добавить задачу" bar below).
+            //   2. `Behavior on Layout.preferredHeight` animated only the
+            //      preferredHeight — Layout.maximumHeight snapped instantly
+            //      to the new target. During the 120 ms animation,
+            //      preferredHeight ≠ maximumHeight, and the layout engine
+            //      briefly resolved to the (larger) maximum, shifting the
+            //      quick-add bar mid-frame. Set the same Behavior on
+            //      minimumHeight + maximumHeight so all three move together.
+            //
+            // 56 px = 24 (header) + 16+16 (Spacing.md margins). Anything
+            // smaller forces the header to be clipped. 220 px expanded as
+            // before — 10 lines is the upper bound for "in-view" notes.
+            readonly property int _collapsedHeight: 56
+            readonly property int _expandedHeight:  220
+            readonly property int _targetHeight:
+                _expanded ? _expandedHeight : _collapsedHeight
+            Layout.preferredHeight: _targetHeight
+            Layout.minimumHeight:   _targetHeight
+            Layout.maximumHeight:   _targetHeight
             visible: !!project && !!project.notes
             color: ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
@@ -516,6 +534,12 @@ Rectangle {
                                      && project.notes.length < 200
 
             Behavior on Layout.preferredHeight {
+                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+            }
+            Behavior on Layout.minimumHeight {
+                NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+            }
+            Behavior on Layout.maximumHeight {
                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
             }
 
