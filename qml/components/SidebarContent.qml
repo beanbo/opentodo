@@ -928,11 +928,46 @@ Rectangle {
                         // в плоском списке (визуальная перестановка без
                         // reparent'а). Чтобы изменить родителя, есть
                         // отдельный пункт меню «Родительский проект…».
-                        Drag.active:          dragHandleArea.drag.active
+                        //
+                        // Iter-night-26 (user task a1a57171 "Перетаскивание
+                        // проектов в левой панели… должно быть таким же
+                        // лёгким как перетаскивание тасков"): pre-fix the
+                        // drag was activated only by `dragHandleArea`, the
+                        // 4-16px wide MouseArea hidden inside the
+                        // `dragHandle` Item on the left edge — and that
+                        // handle was visible-gated on row hover, so users
+                        // first had to hover the row, then aim at a sliver
+                        // on the left edge to engage drag. Tasks use a
+                        // row-wide `DragHandler` (TaskItem.qml:223 — pointer
+                        // handler, target: null, dragThreshold: 6) which
+                        // lets the user press anywhere on the row and start
+                        // dragging past a small threshold without competing
+                        // with click handlers. Mirror that design here.
+                        property bool dragActive:
+                            dragHandleArea.drag.active || projRowDragHandler.active
+
+                        Drag.active:          projTreeDelegate.dragActive
                         Drag.dragType:        Drag.Automatic
                         Drag.supportedActions: Qt.MoveAction
+                        Drag.hotSpot.x: width / 2
+                        Drag.hotSpot.y: height / 2
                         Drag.mimeData:        ({ "application/x-opentodo-project": projectId })
                         Drag.keys:            ["application/x-opentodo-project"]
+
+                        // Row-wide drag from any point. Engages after
+                        // dragThreshold pixels of movement so a click on
+                        // the row (no movement) still falls through to
+                        // chevron / row MouseArea / right-click menu.
+                        // Right-button drag is disabled to keep the
+                        // context menu intact.
+                        DragHandler {
+                            id: projRowDragHandler
+                            target: null
+                            dragThreshold: 6
+                            acceptedButtons: Qt.LeftButton
+                            cursorShape: active ? Qt.ClosedHandCursor
+                                                : Qt.ArrowCursor
+                        }
 
                         // Check whether this project has VISIBLE children (to show chevron).
                         // Filter must match the rebuild() loop above so chevron only
