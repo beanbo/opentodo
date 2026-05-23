@@ -4,6 +4,7 @@
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
+#include "model/section.h"
 #include "viewmodels/taskviewmodel.h"
 
 // ---------------------------------------------------------------------------
@@ -263,6 +264,110 @@ private slots:
         TaskViewModel vm(store);
         bool ok = vm.convertToSubtask(t->id(), t->id());
         QVERIFY(!ok);
+
+        delete store;
+    }
+
+    // -----------------------------------------------------------------------
+    // Iter-night-32: convertToSubtask must cascade project_id and
+    // section_id from the new parent — a subtask's container is
+    // semantically implicit (matches addSubtask which already does this).
+    //
+    // The previous implementation only stamped parent_id, leaving stale
+    // project_id/section_id on the dragged task. Symptom: dragging a task
+    // onto a parent that lives in a different section made the dragged
+    // row render under its OLD section header (ProjectView groups by
+    // task->sectionId()). Cross-project drops desynced peers (parent_id
+    // pointed at the new project, but section_id still pointed at the
+    // old project's section UUID — irrecoverable without manual fixup).
+    // -----------------------------------------------------------------------
+    void convertToSubtask_cascadesSectionFromNewParent_sameProject()
+    {
+        DataStore *store = makeStore();
+        const QString inboxId = store->inboxProject()->id();
+
+        // Two sections in the same project. P lives in S2; child lives in S1.
+        Section *s1 = store->addSection(QStringLiteral("Backlog"), inboxId);
+        Section *s2 = store->addSection(QStringLiteral("In Progress"), inboxId);
+
+        Task *parent = store->addTask(QStringLiteral("Parent"), inboxId);
+        parent->setSectionId(s2->id());
+        Task *child  = store->addTask(QStringLiteral("Child"),  inboxId);
+        child->setSectionId(s1->id());
+
+        TaskViewModel vm(store);
+        bool ok = vm.convertToSubtask(child->id(), parent->id());
+        QVERIFY(ok);
+
+        // parent_id set — already covered by sets_parentId, re-asserted
+        // here for completeness.
+        QCOMPARE(child->parentId(), parent->id());
+        // section_id cascaded from the new parent — the key pin.
+        QCOMPARE(child->sectionId(), s2->id());
+        // project_id unchanged (both tasks were in Inbox).
+        QCOMPARE(child->projectId(), inboxId);
+
+        delete store;
+    }
+
+    void convertToSubtask_cascadesProjectAndClearsDescendantsSection()
+    {
+        DataStore *store = makeStore();
+        const QString inboxId = store->inboxProject()->id();
+
+        // Second project + a section in it.
+        Project *work = store->addProject(QStringLiteral("Work"));
+        const QString workId = work->id();
+        Section *workSec = store->addSection(QStringLiteral("Active"), workId);
+
+        // New parent lives in Work / Active.
+        Task *parent = store->addTask(QStringLiteral("Parent"), workId);
+        parent->setSectionId(workSec->id());
+
+        // Dragged subtree: child in Inbox with its own grandchild in Inbox.
+        Section *inboxSec = store->addSection(QStringLiteral("Misc"), inboxId);
+        Task *child = store->addTask(QStringLiteral("Child"), inboxId);
+        child->setSectionId(inboxSec->id());
+        Task *grandchild = store->addTask(QStringLiteral("Grandchild"), inboxId);
+        grandchild->setSectionId(inboxSec->id());
+        grandchild->setParentId(child->id());
+
+        TaskViewModel vm(store);
+        bool ok = vm.convertToSubtask(child->id(), parent->id());
+        QVERIFY(ok);
+
+        // The dragged task itself: parent_id set, project_id and section_id
+        // both inherited from the new parent.
+        QCOMPARE(child->parentId(),  parent->id());
+        QCOMPARE(child->projectId(), workId);
+        QCOMPARE(child->sectionId(), workSec->id());
+
+        // Descendants follow the project move. Section is cleared on the
+        // descendant — its old section UUID belongs to a different project
+        // and would render the row in an unreachable section in the new
+        // project's view. Matches moveTask's existing BFS contract.
+        QCOMPARE(grandchild->projectId(), workId);
+        QCOMPARE(grandchild->sectionId(), QString());
+        // Parent link unchanged — grandchild is still a child of `child`.
+        QCOMPARE(grandchild->parentId(), child->id());
+
+        delete store;
+    }
+
+    void convertToSubtask_unknownNewParent_returnsFalse()
+    {
+        DataStore *store = makeStore();
+        const QString inboxId = store->inboxProject()->id();
+        Task *t = store->addTask(QStringLiteral("Task"), inboxId);
+
+        TaskViewModel vm(store);
+        // Iter-night-32 added an explicit "new parent must exist" guard
+        // alongside the cascade. Sanity-pin that ghost ids are rejected.
+        bool ok = vm.convertToSubtask(t->id(),
+                                      QStringLiteral("nonexistent-parent-id"));
+        QVERIFY(!ok);
+        // The dragged task is unchanged.
+        QCOMPARE(t->parentId(), QString());
 
         delete store;
     }

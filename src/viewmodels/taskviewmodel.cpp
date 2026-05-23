@@ -1325,20 +1325,90 @@ bool TaskViewModel::convertToSubtask(const QString &taskId, const QString &newPa
 {
     Task *task = m_store->taskById(taskId);
     if (!task) return false;
+    // Iter-night-32: new parent must exist for the project_id/section_id
+    // cascade below. The previous (parent_id-only) implementation didn't
+    // need the lookup, which is what hid the bug — siblings of `addSubtask`
+    // (line ~1303, which DOES cascade) showed the asymmetry.
+    Task *parent = m_store->taskById(newParentId);
+    if (!parent) return false;
+
     // Prevent circular: walk the parent chain from newParentId upward; if
     // we encounter taskId, the reparenting would create a cycle.
     QString cur = newParentId;
     while (!cur.isEmpty()) {
         if (cur == taskId) return false; // would form a cycle
-        const Task *parent = m_store->taskById(cur);
-        if (!parent) break;
-        cur = parent->parentId();
+        const Task *p = m_store->taskById(cur);
+        if (!p) break;
+        cur = p->parentId();
     }
 
+    // Iter-night-32: a subtask's project_id/section_id is semantically
+    // implicit — it belongs to whatever container its parent is in. The
+    // previous implementation only stamped parent_id, so dropping a task
+    // onto a parent in a different section (or project) left the dragged
+    // row visually orphaned: ProjectView groups tasks by sectionGroupKey
+    // = task->sectionId() (taskviewmodel.cpp:101), so the dragged task
+    // rendered under its OLD section header. Sync-wise, peers received
+    // parent_id=P2 but a stale section_id/project_id that pointed at the
+    // dragged task's old container — a desync no other device could
+    // detect or repair. Mirror moveTask (line 535) which already handles
+    // the cross-project descendant BFS correctly.
+    const QString oldProject = task->projectId();
+    const QString oldSection = task->sectionId();
+    const QString newProject = parent->projectId();
+    const QString newSection = parent->sectionId();
+    const bool crossProject  = (newProject != oldProject);
+    const bool crossSection  = (newSection != oldSection);
+
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    task->setProjectId(newProject);
+    task->setSectionId(newSection);
     task->setParentId(newParentId);
-    task->setUpdatedAt(QDateTime::currentDateTimeUtc());
-    m_store->markTaskFieldsModified(taskId, {QStringLiteral("parent_id")});
+    task->setUpdatedAt(now);
+
+    QStringList mutated{QStringLiteral("parent_id")};
+    if (crossProject) mutated << QStringLiteral("project_id");
+    if (crossSection) mutated << QStringLiteral("section_id");
+    m_store->markTaskFieldsModified(taskId, mutated);
     emit taskChanged(taskId);
+
+    // Descendant BFS — identical pattern to moveTask. Subtasks of the
+    // dragged task become transitive children of the new parent, so they
+    // must inherit the new project too. Section is cleared on the
+    // descendant because sections belong to a single project (the
+    // dragged task's new section was looked up from the new parent;
+    // children's old sections refer to the OLD project's section IDs).
+    if (crossProject) {
+        constexpr int MAX_DEPTH = 100;
+        QSet<QString> visited;
+        visited.insert(taskId);
+        QStringList frontier{taskId};
+        int depth = 0;
+        while (!frontier.isEmpty() && depth < MAX_DEPTH) {
+            QStringList nextFrontier;
+            for (const QString &parentId : frontier) {
+                const auto kids = m_store->subtasks(parentId);
+                for (Task *child : kids) {
+                    if (!child) continue;
+                    const QString cid = child->id();
+                    if (visited.contains(cid)) continue;
+                    visited.insert(cid);
+
+                    child->setProjectId(newProject);
+                    child->setSectionId(QString());
+                    child->setUpdatedAt(now);
+                    m_store->markTaskFieldsModified(cid,
+                        {QStringLiteral("project_id"),
+                         QStringLiteral("section_id")});
+                    emit taskChanged(cid);
+
+                    nextFrontier.append(cid);
+                }
+            }
+            frontier = nextFrontier;
+            ++depth;
+        }
+    }
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_convert_to_subtask"), {});
