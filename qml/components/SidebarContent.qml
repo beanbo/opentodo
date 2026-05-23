@@ -2561,11 +2561,15 @@ Rectangle {
             Behavior on color { ColorAnimation { duration: 100 } }
 
             // Task 17cea65b iter-3: было unicode "+".
+            // Iter-night-23: was hardcoded "#999999" — same shade as the
+            // dark theme's secondaryTextColor, but invisible against the
+            // light theme's brighter sidebar. Bind to the theme so the
+            // glyph adapts to every palette.
             IconSvg {
                 anchors.centerIn: parent
                 name: "plus"
                 size: 16
-                color: "#999999"
+                color: ThemeManager.secondaryTextColor
             }
 
             MouseArea {

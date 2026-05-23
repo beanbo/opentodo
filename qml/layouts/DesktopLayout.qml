@@ -2056,12 +2056,17 @@ Item {
 
                                     // ── Снять выделение ──────────────────────────────────────
                                     // Task 17cea65b iter-3: было unicode "✕".
+                                    // Iter-night-23: was hardcoded "white".
+                                    // The close icon sits on top of the
+                                    // bulk-select bar (accentColor fill),
+                                    // so the foreground must follow the
+                                    // theme's own accentForeground.
                                     ToolButton {
                                         contentItem: IconSvg {
                                             anchors.centerIn: parent
                                             name: "close"
                                             size: 14
-                                            color: "white"
+                                            color: ThemeManager.accentForeground
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()

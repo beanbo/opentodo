@@ -177,11 +177,22 @@ Rectangle {
                         color: themeCard.themeData ? themeCard.themeData.accentColor : ThemeManager.accentColor
 
                         // Task 17cea65b iter-3: было unicode "✓".
+                        // Iter-night-23: was hardcoded "white". The badge
+                        // sits on the THEME PREVIEW's own accentColor
+                        // (themeData.accentColor), not the current theme's
+                        // — so the foreground must come from the preview
+                        // palette's accentForeground too. Otherwise the
+                        // checkmark on the high-contrast / sunflower
+                        // swatches would be white-on-yellow / white-on-gold
+                        // and fail WCAG even though the active theme is
+                        // something else entirely.
                         IconSvg {
                             anchors.centerIn: parent
                             name: "check"
                             size: 11
-                            color: "white"
+                            color: themeCard.themeData
+                                   ? themeCard.themeData.accentForeground
+                                   : ThemeManager.accentForeground
                         }
                     }
 

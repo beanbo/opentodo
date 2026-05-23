@@ -141,11 +141,18 @@ Rectangle {
                         color: ThemeManager.accentColor
 
                         // Task 17cea65b iter-3: было unicode "✓".
+                        // Iter-night-23: was hardcoded "white". The icon
+                        // sits on top of ThemeManager.accentColor, so the
+                        // correct foreground is the theme's own
+                        // accentForeground (black on yellow accent in the
+                        // high-contrast palette where white-on-yellow
+                        // fails WCAG; near-black on the sunflower's
+                        // gold accent for the same reason).
                         IconSvg {
                             anchors.centerIn: parent
                             name: "check"
                             size: 20
-                            color: "white"
+                            color: ThemeManager.accentForeground
                         }
                     }
 

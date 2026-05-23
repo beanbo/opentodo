@@ -1571,10 +1571,17 @@ Item {
                                 spacing: 8
 
                                 // Checkmark icon — task 17cea65b iter-3: было "✓".
+                                // Iter-night-23: was hardcoded "#2e8b57"
+                                // (sea green). Bind to the theme's semantic
+                                // successColor — same intent ("this task is
+                                // done"), correct adaptation across every
+                                // palette including high-contrast where
+                                // mid-saturation greens become invisible
+                                // against pure-black backgrounds.
                                 IconSvg {
                                     name: "check"
                                     size: 14
-                                    color: "#2e8b57"
+                                    color: ThemeManager.successColor
                                     Layout.alignment: Qt.AlignVCenter
                                 }
 

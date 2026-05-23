@@ -510,11 +510,17 @@ Item {
                 layer.effect: null  // F-6.28: DropShadow skipped — Qt5Compat not confirmed available
 
                 // Task 17cea65b iter-3: было unicode "+".
+                // Iter-night-23: was hardcoded "#ffffff". The FAB renders
+                // on top of the active accentColor; use the theme's
+                // accentForeground so the glyph stays readable on every
+                // palette (white on red accent works; white on yellow
+                // high-contrast accent fails — accentForeground is black
+                // there).
                 IconSvg {
                     anchors.centerIn: parent
                     name: "plus"
                     size: 28
-                    color: "#ffffff"
+                    color: ThemeManager.accentForeground
                     // Nudge slightly to optical center
                     anchors.verticalCenterOffset: -2
                 }
