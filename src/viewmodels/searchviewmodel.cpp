@@ -201,7 +201,18 @@ void SearchViewModel::performSearch()
         }
     }
 
-    // Search comments
+    // Search comments — both task-level AND project-level.
+    //
+    // iter-night-6: the original loop iterated allTasks() only and called
+    // commentsForTask(t->id()). That meant comments attached directly to a
+    // project (taskId empty, projectId set) were never visited — global
+    // search returned zero results even when the search token appeared
+    // verbatim in the project's comment body. Project-level comments are a
+    // first-class feature: DataStore::addComment accepts a projectId fallback,
+    // ShareManager and TaskExporter both serialise them, and the Todoist
+    // importer creates them for any note whose target task was filtered out
+    // of the import (todoistimporter.cpp:750). Users who imported a Todoist
+    // backup with project-level notes had those notes invisible to search.
     const auto allTasks = m_store->allTasks();
     for (auto *t : allTasks) {
         const auto comments = m_store->commentsForTask(t->id());
@@ -214,6 +225,25 @@ void SearchViewModel::performSearch()
                 item[QStringLiteral("title")] = c->content().left(100);
                 item[QStringLiteral("subtitle")] = QStringLiteral("Комментарий к: %1").arg(t->content());
                 item[QStringLiteral("taskId")] = t->id();
+                item[QStringLiteral("object")] = QVariant::fromValue(c);
+                m_results.append(item);
+            }
+        }
+    }
+    for (auto *p : m_store->allProjects()) {
+        const auto comments = m_store->commentsForProject(p->id());
+        for (auto *c : comments) {
+            if (TextSearch::containsNormalized(c->content(), normalizedQuery,
+                                               stripDiacritics)) {
+                QVariantMap item;
+                item[QStringLiteral("type")] = QStringLiteral("comment");
+                item[QStringLiteral("id")] = c->id();
+                item[QStringLiteral("title")] = c->content().left(100);
+                item[QStringLiteral("subtitle")] =
+                    QStringLiteral("Комментарий к проекту: %1").arg(p->name());
+                // Carry projectId rather than taskId so the click handler
+                // routes the user to the project's comments tab.
+                item[QStringLiteral("projectId")] = p->id();
                 item[QStringLiteral("object")] = QVariant::fromValue(c);
                 m_results.append(item);
             }

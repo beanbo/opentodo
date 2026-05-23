@@ -148,6 +148,11 @@ opentodo_add_unit_test(test_taskvm_field_keys_pin         App)
 # firing OS-toasts for invisible tasks.
 opentodo_add_unit_test(test_remove_task_deep_cascade      Infra)
 
+# iter-night-6: SearchViewModel must include project-level comments
+# (taskId="", projectId=p) in global search. Previously only task-level
+# comments were searched, so Todoist-imported project notes were invisible.
+opentodo_add_unit_test(test_search_project_level_comments App)
+
 # Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
 # machine + HotkeyService (Win32 RegisterHotKey + native event filter).
 opentodo_add_unit_test(test_q_gadgets                     Infra)

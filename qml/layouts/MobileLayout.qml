@@ -856,6 +856,11 @@ Item {
                                 taskViewModel.openTaskById(md.id)
                             } else if (md.type === "comment" && md.taskId) {
                                 taskViewModel.openTaskById(md.taskId)
+                            } else if (md.type === "comment" && md.projectId) {
+                                // iter-night-6: project-level comments now
+                                // route to the project view rather than
+                                // silently doing nothing.
+                                sidebarViewModel.navigateToProject(md.projectId)
                             } else if (md.type === "project" && md.id) {
                                 sidebarViewModel.navigateToProject(md.id)
                             } else if (md.type === "label" && md.title) {

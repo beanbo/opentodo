@@ -631,19 +631,19 @@ private slots:
     }
 
     // -----------------------------------------------------------------------
-    // 8. softdelete_parent_cascades_direct_children_only
+    // 8. softdelete_parent_cascades_full_descendant_subtree
     // -----------------------------------------------------------------------
     //
-    // DataStore::removeTask cascades is_deleted to DIRECT children
-    // (depth 1) ONLY. Grandchildren are NOT cascaded — they become
-    // orphans pointing at a (now-tombstoned) middle node.
+    // Iter-night-4 changed DataStore::removeTask from depth-1 cascade to
+    // a BFS depth-N cascade so that grandchildren no longer stayed live
+    // with their reminders firing OS-toasts for invisible tasks. This
+    // test was the previous pin for the (now retired) depth-1 contract;
+    // it has been flipped to pin the new depth-N contract instead.
     //
-    // This is the explicit B-1.6 cascade contract — pin both halves:
-    // direct cascade is on, transitive cascade is off. The sister-suite
-    // test_subtask_hierarchy_edge already pins the direct cascade; here
-    // we add the transitive-cascade-OFF half.
+    // See also: test_remove_task_deep_cascade.cpp (dedicated full pin
+    // for the cascade walker + restoreTask symmetry + cycle guard).
     // -----------------------------------------------------------------------
-    void softdelete_parent_cascades_direct_children_only()
+    void softdelete_parent_cascades_full_descendant_subtree()
     {
         Fixture *f = makeFixture();
         TaskViewModel vm(f->store);
@@ -656,8 +656,7 @@ private slots:
         setTaskParent(f->store, bId, aId);
         setTaskParent(f->store, cId, bId);
 
-        // Soft-delete A. Cascade should hit B (direct child) but NOT C
-        // (grandchild — depth 2 from A).
+        // Soft-delete A. Cascade now walks B (depth 1) AND C (depth 2).
         QVERIFY(vm.deleteTask(aId));
 
         Task *aTask = f->store->taskById(aId);
@@ -669,15 +668,18 @@ private slots:
 
         QVERIFY(aTask->isDeleted());
         QVERIFY(bTask->isDeleted());          // direct child cascaded
-        QVERIFY(!cTask->isDeleted());         // grandchild did NOT cascade
+        QVERIFY2(cTask->isDeleted(),
+                 "Iter-night-4 contract: grandchildren must cascade-"
+                 "tombstone alongside direct children. If this flips, "
+                 "reminders/comments on grandchildren stay live and fire "
+                 "OS toasts for tasks the user thinks they deleted.");
 
-        // C still points at B (its parent_id is preserved across the
-        // tombstone — historical structure stays for sync).
+        // C still points at B — historical structure stays for sync replay.
         QCOMPARE(cTask->parentId(), bId);
 
-        qInfo("removeTask cascades is_deleted to DIRECT children only "
-              "(B-1.6 contract). Grandchild C is orphaned: it remains "
-              "live but its parent_id points at a tombstoned task.");
+        qInfo("removeTask cascades is_deleted across the full descendant "
+              "subtree (iter-night-4). See test_remove_task_deep_cascade "
+              "for the dedicated 4-level pin.");
 
         delete f;
     }
