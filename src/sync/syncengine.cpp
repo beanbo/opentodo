@@ -1108,6 +1108,21 @@ void SyncEngine::applyCommit(Commit *commit)
                     comment->setContent(patched[QStringLiteral("content")].toString());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     comment->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                // Iter-night-41: attachment was missing from this dispatch
+                // (sibling of iter-15 is_favorite for labels, iter-60/61 for
+                // filters/reminders, iter-12 for section is_collapsed/is_archived).
+                // Comment::toJson emits an `attachment` JSON object when
+                // m_attachment.isNull() is false (comment.cpp:69-70) — peer
+                // attaches/edits a file, sets a thumbnail URL, etc., and the
+                // change rides over via the commit log. Without this dispatch
+                // the inbound attachment object is silently dropped on the
+                // receiving device until the next loadFromJson cycle, even
+                // though the patched._meta entry IS pushed back via
+                // applyInboundCommentMeta below.
+                if (patched.contains(QStringLiteral("attachment"))) {
+                    comment->setAttachment(AttachmentObject::fromJson(
+                        patched[QStringLiteral("attachment")].toObject()));
+                }
                 m_store->applyInboundCommentMeta(comment->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }

@@ -605,6 +605,84 @@ private slots:
         QCOMPARE(cStamp.value(QStringLiteral("dev")).toString(),
                  QString::fromLatin1(kDevB));
     }
+
+    // =========================================================================
+    // Iter-night-41: comment_update must dispatch the `attachment` field.
+    //
+    // Pre-fix, applyCommit's comment_update branch only handled `content` and
+    // `is_deleted` (sibling gap to iter-15 label is_favorite, iter-60/61
+    // filter/reminder field misses). Comment::toJson emits an `attachment`
+    // JSON object whenever !m_attachment.isNull() (comment.cpp:69-70).
+    // Without the dispatch, a peer attaching a file or editing an existing
+    // attachment's URL/size produces an inbound commit_update carrying an
+    // `attachment` object that the receiving device silently drops — the
+    // change rides over the wire and gets stored in m_commentMeta correctly
+    // via applyInboundCommentMeta, but the actual Comment entity stays at
+    // its old attachment value until the next loadFromJson cycle.
+    //
+    // The fix mirrors the iter-15/60/61 pattern: read `attachment` from the
+    // patched object and route through Comment::setAttachment.
+    // =========================================================================
+    void comment_update_dispatches_attachment_field()
+    {
+        DataStore store;
+        SyncEngine engine(&store);
+
+        Project *proj = store.addProject(QStringLiteral("AttachProj"));
+        QVERIFY(proj != nullptr);
+        Task *task = store.addTask(QStringLiteral("Task"), proj->id());
+        QVERIFY(task != nullptr);
+        Comment *cmt = store.addComment(QStringLiteral("note"),
+                                        task->id(), proj->id());
+        QVERIFY(cmt != nullptr);
+        // Precondition: no attachment yet.
+        QVERIFY(cmt->attachment().isNull());
+
+        // Build an inbound commit_update that adds an attachment. The field
+        // names match AttachmentObject::toJson (comment.cpp:6-14).
+        QJsonObject att;
+        att[QStringLiteral("file_name")] = QStringLiteral("design.pdf");
+        att[QStringLiteral("file_type")] = QStringLiteral("application/pdf");
+        att[QStringLiteral("file_url")]  = QStringLiteral("https://drive/abc");
+        att[QStringLiteral("file_size")] = 12345;
+
+        QJsonObject patch;
+        patch[QStringLiteral("attachment")] = att;
+
+        const QString tsRem =
+            makeHlc(50000, 0, QString::fromLatin1(kDevB));
+        QJsonObject metaPatch;
+        metaPatch[QStringLiteral("attachment")] = fieldStamp(tsRem, kDevB);
+
+        applyInboundCommit(
+            engine,
+            {makeUpdateOp(QStringLiteral("comment_update"),
+                          cmt->id(), patch, metaPatch)},
+            tsRem, QString::fromLatin1(kDevB));
+
+        // Post-fix: the Comment entity reflects the inbound attachment.
+        QVERIFY2(!cmt->attachment().isNull(),
+                 "iter-night-41 regression: comment_update dropped the "
+                 "inbound attachment payload — Comment::setAttachment "
+                 "was never called.");
+        QCOMPARE(cmt->attachment().fileName,
+                 QStringLiteral("design.pdf"));
+        QCOMPARE(cmt->attachment().fileType,
+                 QStringLiteral("application/pdf"));
+        QCOMPARE(cmt->attachment().fileUrl,
+                 QStringLiteral("https://drive/abc"));
+        QCOMPARE(cmt->attachment().fileSize, 12345);
+
+        // _meta for the attachment field must also be the inbound stamp
+        // (already covered by applyInboundCommentMeta — re-asserted here
+        // so the pin documents the full round-trip).
+        const QJsonObject stamp =
+            fieldMetaFromStore(store, QStringLiteral("comments"),
+                               cmt->id(), QStringLiteral("attachment"));
+        QCOMPARE(stamp.value(QStringLiteral("ts")).toString(), tsRem);
+        QCOMPARE(stamp.value(QStringLiteral("dev")).toString(),
+                 QString::fromLatin1(kDevB));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestApplyCommitMetaPreservation)
