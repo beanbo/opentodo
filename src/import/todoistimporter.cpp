@@ -24,6 +24,8 @@
 #endif
 
 #include <QMap>
+#include <QHash>
+#include <QSet>
 #include <QUrl>
 #include <QDateTime>
 #include <QDir>
@@ -609,7 +611,14 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     // (people don't usually file two literal duplicates) and the previous
     // shape was lossy in other ways anyway (it relied on a timestamp the user
     // could not see). The win — idempotent re-imports — far outweighs it.
-    QSet<QByteArray> existingFingerprints;
+    // iter-night-9: store fingerprint → EXISTING TASK UUID so the dedup
+    // branch below can populate `taskIdMap[tt.id]` with the real id, not
+    // the `__skipped__` sentinel that used to land there. The sentinel
+    // propagated through the second-pass parent-id walk (lines ~726-731)
+    // and ended up as a literal "__skipped__" string in newly-imported
+    // subtasks' parent_id field — visible on every Todoist re-import that
+    // added new children under an already-imported parent.
+    QHash<QByteArray, QString> existingFingerprints;
     {
         const auto existingTasks = m_store->allTasks();
         existingFingerprints.reserve(existingTasks.size());
@@ -618,9 +627,15 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
             QByteArray raw = et->content().toUtf8() + "|"
                            + et->projectId().toUtf8();
             existingFingerprints.insert(
-                QCryptographicHash::hash(raw, QCryptographicHash::Md5));
+                QCryptographicHash::hash(raw, QCryptographicHash::Md5),
+                et->id());
         }
     }
+    // Track which Todoist IDs were mapped via dedup to existing tasks.
+    // The second-pass parent-id walker uses this to AVOID re-stamping the
+    // existing task's parent_id from import data — incremental re-imports
+    // must not clobber the user's local moves of previously-imported tasks.
+    QSet<QString> dedupedTodoistTaskIds;
 
     for (int i = 0; i < totalTasks; ++i) {
         const TodoistTask &tt = data.tasks[i];
@@ -637,18 +652,21 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         // F-Q2.24-C #2: skip if a task with matching content+projectId already
         // exists. Fingerprint must be computed AFTER projectId mapping so the
         // hash matches the one built from the existing DataStore tasks above.
+        QByteArray fp;
         {
             QByteArray raw = tt.content.toUtf8() + "|" + mappedProjectId.toUtf8();
-            const QByteArray fp = QCryptographicHash::hash(raw, QCryptographicHash::Md5);
-            if (existingFingerprints.contains(fp)) {
+            fp = QCryptographicHash::hash(raw, QCryptographicHash::Md5);
+            const auto fpIt = existingFingerprints.constFind(fp);
+            if (fpIt != existingFingerprints.constEnd()) {
                 m_warnings.append(QStringLiteral("Пропущено (уже импортировано): %1").arg(tt.content));
-                // Map the todoist id to the existing task's id if we can find it
-                taskIdMap[tt.id] = QStringLiteral("__skipped__");
+                // iter-night-9: map the Todoist id to the EXISTING task's
+                // UUID (not "__skipped__") so newly-imported children whose
+                // Todoist parent_id points at this row can re-parent
+                // correctly to the survivor in the second pass.
+                taskIdMap[tt.id] = fpIt.value();
+                dedupedTodoistTaskIds.insert(tt.id);
                 continue;
             }
-            // Add this fp so duplicates within the SAME import (e.g. the file
-            // appears twice in the ZIP) also dedup.
-            existingFingerprints.insert(fp);
         }
 
         auto *task = new Task(m_store);
@@ -708,6 +726,14 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         taskIdMap[tt.id] = task->id();
         ++taskCount;
 
+        // iter-night-9: record THIS task's fingerprint → its new UUID so
+        // duplicates appearing later in the SAME import (e.g. the ZIP
+        // ships the row twice) dedup against the just-created task and
+        // their children parent correctly. Previously the SAME-import
+        // dedup path also wrote "__skipped__" — same bug as the
+        // re-import path, harder to hit but identical shape.
+        existingFingerprints.insert(fp, task->id());
+
         if (i % 20 == 0) {
             const int pct = 75 + (i * 15 / qMax(1, totalTasks));
             emit importProgress(pct, 100,
@@ -715,11 +741,21 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         }
     }
 
-    // Second pass: set parentId now that all tasks are created
+    // Second pass: set parentId now that all tasks are created.
+    //
+    // iter-night-9: skip deduplicated rows. taskIdMap[tt.id] now resolves
+    // to an EXISTING task's UUID for deduped rows (was "__skipped__" before),
+    // so without this guard the loop would overwrite the EXISTING task's
+    // parent_id with whatever Todoist's backup says — clobbering any local
+    // move the user made since the previous import. Incremental imports
+    // should be additive: only set parent_id on tasks we actually created
+    // in this run. Deduped tasks already have whatever parent_id they
+    // had locally; leave it alone.
     for (const TodoistTask &tt : data.tasks) {
         if (tt.parentId.isEmpty()) continue;
         if (!taskIdMap.contains(tt.id)) continue;
         if (!taskIdMap.contains(tt.parentId)) continue;
+        if (dedupedTodoistTaskIds.contains(tt.id)) continue;
 
         Task *task = m_store->taskById(taskIdMap[tt.id]);
         if (task) {

@@ -1130,6 +1130,140 @@ private slots:
         }
         QCOMPARE(rProjCount, 1);
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // iter-night-9: re-import that adds a NEW subtask under an existing
+    // (deduplicated) parent must parent the new task to the existing one —
+    // not to the literal "__skipped__" sentinel that used to land in
+    // taskIdMap.
+    //
+    // Before the fix:
+    //   - dedup branch: `taskIdMap[tt.id] = "__skipped__"` (sentinel)
+    //   - second pass: `task->setParentId(taskIdMap[tt.parentId])` so the
+    //     new grandchild ended up with parent_id == "__skipped__" — a
+    //     dangling string that the CRDT field stamp then propagated to
+    //     every sync peer, and that left the new task floating at root
+    //     level instead of nested under its imported parent.
+    //
+    // After the fix:
+    //   - dedup branch maps to the EXISTING task's UUID
+    //   - new grandchild's parent_id resolves to the existing child's UUID
+    //   - deduped tasks themselves are NOT re-parented (incremental
+    //     imports must not clobber the user's local moves).
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_addsNewSubtask_underExistingParent_noSentinel()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        // First backup: Parent (indent=1) → Child (indent=2). No grandchild.
+        const QByteArray csv1 = (kHeader
+            + QStringLiteral("task,Parent,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,Child,,1,2,,,,en,,,\n")).toUtf8();
+        const QString path1 = writeZipTo(tmp,
+            QStringLiteral("first.zip"),
+            { { QStringLiteral("Proj [aaaaaaaaaaaa].csv"), csv1, 0 } });
+
+        // Second backup: Parent + Child + Grandchild (indent=3).
+        const QByteArray csv2 = (kHeader
+            + QStringLiteral("task,Parent,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,Child,,1,2,,,,en,,,\n")
+            + QStringLiteral("task,Grandchild,,1,3,,,,en,,,\n")).toUtf8();
+        const QString path2 = writeZipTo(tmp,
+            QStringLiteral("second.zip"),
+            { { QStringLiteral("Proj [aaaaaaaaaaaa].csv"), csv2, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+
+        imp->importFromBackupZip(path1, false);
+        imp->importFromBackupZip(path2, false);
+
+        QCOMPARE(finished.size(), 2);
+        QVERIFY(finished[0][2].toString().isEmpty());
+        QVERIFY(finished[1][2].toString().isEmpty());
+
+        // Find the surviving Parent, Child, Grandchild (each must exist
+        // exactly once thanks to fingerprint dedup).
+        Task *parent = nullptr;
+        Task *child = nullptr;
+        Task *grandchild = nullptr;
+        int parentCount = 0, childCount = 0, grandCount = 0;
+        for (auto *t : ds->allTasks()) {
+            if (t->isDeleted()) continue;
+            if (t->content() == QStringLiteral("Parent"))    { ++parentCount; parent = t; }
+            if (t->content() == QStringLiteral("Child"))     { ++childCount;  child = t;  }
+            if (t->content() == QStringLiteral("Grandchild")){ ++grandCount;  grandchild = t; }
+        }
+        QCOMPARE(parentCount, 1);
+        QCOMPARE(childCount,  1);
+        QCOMPARE(grandCount,  1);
+        QVERIFY(parent && child && grandchild);
+
+        // The cardinal assertion: new grandchild must point at the EXISTING
+        // child's UUID, never at the literal sentinel "__skipped__".
+        QVERIFY2(grandchild->parentId() != QStringLiteral("__skipped__"),
+                 "iter-night-9: grandchild's parent_id leaked the dedup "
+                 "sentinel — the new task is orphaned under a phantom "
+                 "parent and the rotten id syncs to every peer.");
+        QCOMPARE(grandchild->parentId(), child->id());
+
+        // And the original chain still resolves correctly: Child → Parent.
+        QCOMPARE(child->parentId(), parent->id());
+        QVERIFY(parent->parentId().isEmpty());
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // iter-night-9 (companion): re-importing a backup that re-asserts the
+    // same parent_id on an EXISTING (deduplicated) task MUST NOT mutate
+    // the local task's parent_id. Otherwise a user who locally moved a
+    // previously-imported task to a new parent (or to the root) would
+    // see that move silently reverted on every re-import.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_doesNotClobberLocalParentMoveOnDeduplicatedTask()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        const QByteArray csv = (kHeader
+            + QStringLiteral("task,Anchor,,1,1,,,,en,,,\n")
+            + QStringLiteral("task,Mover,,1,2,,,,en,,,\n")).toUtf8();
+        const QString path = writeZipTo(tmp,
+            QStringLiteral("mover.zip"),
+            { { QStringLiteral("Proj [bbbbbbbbbbbb].csv"), csv, 0 } });
+
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+        QSignalSpy finished(imp.data(), &TodoistImporter::importFinished);
+
+        imp->importFromBackupZip(path, false);
+        QCOMPARE(finished.size(), 1);
+
+        Task *anchor = nullptr, *mover = nullptr;
+        for (auto *t : ds->allTasks()) {
+            if (t->content() == QStringLiteral("Anchor")) anchor = t;
+            if (t->content() == QStringLiteral("Mover"))  mover  = t;
+        }
+        QVERIFY(anchor && mover);
+        QCOMPARE(mover->parentId(), anchor->id());
+
+        // User locally moves Mover out from under Anchor (to the root).
+        mover->setParentId(QString());
+        QVERIFY(mover->parentId().isEmpty());
+
+        // Re-import the same backup — Mover is deduplicated. Second pass
+        // must skip it so the local "move to root" is preserved.
+        imp->importFromBackupZip(path, false);
+        QCOMPARE(finished.size(), 2);
+
+        QVERIFY2(mover->parentId().isEmpty(),
+                 "Re-import of a deduplicated task clobbered the user's "
+                 "local parent_id move — incremental imports must be "
+                 "additive, not authoritative on existing entities.");
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTodoistImporterRobustness)
