@@ -149,6 +149,12 @@ opentodo_add_unit_test(test_taskvm_field_keys_pin         App)
 # after sync because Merger sees identical baseline meta on both sides.
 opentodo_add_unit_test(test_filtervm_field_stamping       App)
 
+# iter-night-13: TaskViewModel::completeTask undo registration must NOT be
+# gated on !task->dueIsRecurring(). Pre-fix the gate excluded recurring
+# tasks even when the recurrence-advance fell through to standard
+# completion (UNTIL exhausted, unparseable RRULE) → user lost Ctrl+Z.
+opentodo_add_unit_test(test_complete_task_undo            App)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.

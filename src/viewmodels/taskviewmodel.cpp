@@ -386,14 +386,6 @@ bool TaskViewModel::completeTask(const QString &id)
     Task *task = m_store->taskById(id);
     if (!task) return false;
 
-    // Register undo before any mutation (non-recurring path only — recurring
-    // tasks advance their due date and are not "completed" in the usual sense).
-    if (m_undoStack && !task->dueIsRecurring()) {
-        m_undoStack->push(QStringLiteral("Задача завершена"), [this, id]() {
-            uncompleteTask(id);
-        });
-    }
-
     // Recurring tasks: advance the due date instead of marking completed.
     if (task->dueIsRecurring() && !task->dueString().isEmpty()) {
         const QString currentDateStr = task->dueDate();
@@ -440,7 +432,25 @@ bool TaskViewModel::completeTask(const QString &id)
                 emit dataChanged(index(idx), index(idx));
             return true;
         }
-        // If we couldn't advance, fall through to standard completion.
+        // If we couldn't advance (unparseable rule, UNTIL exhausted, garbage
+        // dueString from a legacy import), fall through to standard
+        // completion — the task IS being completed and the user needs to
+        // be able to undo it.
+    }
+
+    // Iter-night-13: register undo right before the standard-completion
+    // mutation, NOT gated on `!task->dueIsRecurring()` at the top of the
+    // function. Pre-fix, the top gate locked out the undo entry for any
+    // recurring task — including the recurring-advance fall-through above,
+    // where the task ends up fully completed with no Ctrl+Z to recover. The
+    // most user-visible path is RRULE with UNTIL: when the last legitimate
+    // occurrence is completed, `advance` returns invalid → fall through →
+    // task completes silently with no undo. Imported tasks with unparseable
+    // dueString hit the same path.
+    if (m_undoStack) {
+        m_undoStack->push(QStringLiteral("Задача завершена"), [this, id]() {
+            uncompleteTask(id);
+        });
     }
 
     task->setIsCompleted(true);
