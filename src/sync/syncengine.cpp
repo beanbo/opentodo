@@ -9,8 +9,10 @@
 
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QList>
 #include <QLoggingCategory>
 #include <QMap>
 #include <QSet>
@@ -621,8 +623,120 @@ void SyncEngine::loadPendingCommitsFromDisk()
         m_pendingCommits.append(commit);
     }
 
-    if (!m_pendingCommits.isEmpty()) {
+    if (m_pendingCommits.isEmpty()) return;
+
+    // Iter-night-22: m_pendingCommits was just populated in UUID-alphabetic
+    // order (QDir::Name on random v4 UUID filenames). That has nothing to
+    // do with commit creation order, so the previous "last() is HEAD"
+    // assignment was wrong with probability (N-1)/N — pinned by the test
+    // slot `pending_commits_load_in_UUID_alphabetic_not_creation_order` in
+    // test_syncengine_lifecycle.cpp.
+    //
+    // Consequences pre-fix:
+    //   * `createCommit` stamps `parent_commit = m_headCommitId` — so a
+    //     new commit created AFTER a crash-restart chains under an
+    //     arbitrary pending commit, NOT the actual chain tail.
+    //   * `push()` iterates m_pendingCommits in alphabetic order →
+    //     uploads chain-out-of-order. Each upload advances
+    //     `m_headCommitId = uploaded.uuid()`, so the FINAL remote HEAD
+    //     points at the alphabetically-last UUID, which may not be the
+    //     genuine chain tail. Snapshot compaction's ancestor walk from
+    //     HEAD then misses the branches uploaded earlier — they become
+    //     orphan log files on Drive, unreachable from HEAD, and peers
+    //     pulling later see a corrupt chain.
+    //
+    // The correct chain tail is the unique commit whose UUID is NOT
+    // listed as anyone's `parent_commit`. Walk the chain from the root
+    // (the commit whose `parent_commit` is empty OR points outside the
+    // pending set — i.e. already-pushed to remote) and topologically
+    // sort. Use `Commit::timestamp()` to break ties on the rare case of
+    // multiple tails (a forked local chain — shouldn't happen but the
+    // load path can't assume input is clean).
+    QHash<QString, Commit*> byUuid;
+    byUuid.reserve(m_pendingCommits.size());
+    QSet<QString> referencedAsParent;
+    for (Commit *c : m_pendingCommits) {
+        if (!c) continue;
+        byUuid.insert(c->uuid(), c);
+    }
+    for (Commit *c : m_pendingCommits) {
+        if (!c) continue;
+        const QString p = c->parentCommit();
+        if (!p.isEmpty() && byUuid.contains(p))
+            referencedAsParent.insert(p);
+    }
+
+    // Find tails — commits whose UUID is not referenced as anyone's parent.
+    QList<Commit*> tails;
+    for (Commit *c : m_pendingCommits) {
+        if (!c) continue;
+        if (!referencedAsParent.contains(c->uuid()))
+            tails.append(c);
+    }
+
+    Commit *tail = nullptr;
+    if (tails.size() == 1) {
+        tail = tails.first();
+    } else if (tails.size() > 1) {
+        // Multiple tails — local chain forked (corrupt state). Pick by
+        // latest timestamp and log a warning so the diagnostic surface
+        // exists if a user reports drift.
+        tail = tails.first();
+        for (Commit *c : tails) {
+            if (c->timestamp() > tail->timestamp()) tail = c;
+        }
+        qWarning("SyncEngine: pending log has %lld tails — forked local "
+                 "chain. Using latest-timestamp tail %s as HEAD; sync may "
+                 "drop sibling branches.",
+                 static_cast<long long>(tails.size()),
+                 qPrintable(tail->uuid()));
+    }
+    // If tails is empty (cycle) fall through — m_headCommitId stays at the
+    // pre-load value (typically the remote HEAD from settings).
+
+    // Reorder m_pendingCommits to follow the chain root → tail so push()
+    // uploads in chain order. Defence-in-depth: each commit's
+    // parent_commit is already stamped correctly, so any order succeeds
+    // on the upload side; ordered upload makes the remote chain
+    // inspectable at every step and makes a partial-upload failure
+    // recover predictably.
+    if (tail) {
+        QList<Commit*> ordered;
+        ordered.reserve(m_pendingCommits.size());
+        // Walk root → tail by following parent_commit backwards from
+        // the tail, then reverse.
+        QList<Commit*> reverseChain;
+        QSet<QString> visited;
+        Commit *cur = tail;
+        while (cur && !visited.contains(cur->uuid())) {
+            visited.insert(cur->uuid());
+            reverseChain.append(cur);
+            const QString p = cur->parentCommit();
+            if (p.isEmpty()) break;
+            auto it = byUuid.constFind(p);
+            if (it == byUuid.constEnd()) break;  // points outside pending set
+            cur = it.value();
+        }
+        for (int i = reverseChain.size() - 1; i >= 0; --i)
+            ordered.append(reverseChain.at(i));
+
+        // Any commits not in the chain (orphan branches in corrupt state)
+        // come after, in their pre-existing alphabetic order. They'll
+        // upload last so the linear chain reaches Drive first.
+        QSet<Commit*> inChain(ordered.begin(), ordered.end());
+        for (Commit *c : m_pendingCommits) {
+            if (c && !inChain.contains(c))
+                ordered.append(c);
+        }
+        m_pendingCommits = ordered;
+        m_headCommitId = tail->uuid();
+    } else {
+        // No tail found (cycle or empty after filter). Fall back to the
+        // historical behaviour so we don't regress healthy chains; log.
         m_headCommitId = m_pendingCommits.last()->uuid();
+        qWarning("SyncEngine: could not determine pending log chain tail; "
+                 "falling back to alphabetic last() = %s",
+                 qPrintable(m_headCommitId));
     }
 }
 

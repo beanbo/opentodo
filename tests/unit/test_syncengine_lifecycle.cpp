@@ -596,26 +596,29 @@ private slots:
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // SLOT 3 — Commit ordering: pending commits load in alphabetic UUID order,
-    // NOT in creation order.
+    // SLOT 3 — Commit ordering: pending commits are reconstructed in
+    // PARENT-CHAIN order on load.
     //
-    // SURFACED BUG: SyncEngine::loadPendingCommitsFromDisk uses
-    // QDir::entryList(..., QDir::Name) — alphabetic by filename — but commit
-    // filenames are random v4 UUIDs (UuidHelper::generate → QUuid::createUuid).
-    // After a crash-and-restart, pending commits replay in UUID-alphabetic
-    // order, not in the order the user actually made them.
+    // Iter-night-22: `SyncEngine::loadPendingCommitsFromDisk` used to set
+    // `m_headCommitId = m_pendingCommits.last()->uuid()` after a
+    // `QDir::entryList(..., QDir::Name)` walk of the local_log directory.
+    // Filenames are random v4 UUIDs, so "alphabetic last" was the actual
+    // chain tail only by coincidence. Consequences:
+    //   * createCommit stamped `parent_commit = m_headCommitId` →
+    //     post-restart commits forked off an arbitrary middle node of the
+    //     pending chain.
+    //   * push() uploaded in alphabetic order → final `m_headCommitId` on
+    //     Drive pointed at the alphabetically-last UUID, branches earlier
+    //     in the alphabetic iteration became orphans on next snapshot
+    //     compaction (the ancestor walk from HEAD missed them).
     //
-    // This matters for push(): pending commits are uploaded in m_pendingCommits
-    // iteration order (syncengine.cpp:86). If that order is wrong, the
-    // parent_commit chain on Drive becomes inconsistent: each commit was
-    // STAMPED with parentCommit = previous m_headCommitId at creation, but
-    // m_headCommitId is bumped on UPLOAD — so after a restart the upload
-    // order can break the chain.
-    //
-    // We pin the current production behaviour (loads in UUID order) and
-    // document the bug.
+    // Post-fix the loader walks the parent_commit chain on disk, detects
+    // the unique tail (the commit whose UUID is not referenced as anyone
+    // else's parent), and reorders `m_pendingCommits` root→tail so push()
+    // uploads in chain order. This slot pins the parent-chain-order
+    // contract: the loaded order must equal the creation order.
     // ════════════════════════════════════════════════════════════════════════
-    void pending_commits_load_in_UUID_alphabetic_not_creation_order()
+    void pending_commits_load_in_parent_chain_order_not_uuid_alphabetic()
     {
         useUniqueSettings(QStringLiteral("commitOrdering"));
         DataStore store;
@@ -670,33 +673,25 @@ private slots:
         qInfo() << "Commit creation order:  " << creationOrder;
         qInfo() << "Commit load order:      " << loadedUuids;
 
-        // PIN: loaded order is alphabetic (QDir::Name on UUID filenames).
-        QCOMPARE(loadedUuids.at(0), QStringLiteral("aaaaaaaa-1st-loaded-uuid"));
-        QCOMPARE(loadedUuids.at(1), QStringLiteral("mmmmmmmm-2nd-loaded-uuid"));
-        QCOMPARE(loadedUuids.at(2), QStringLiteral("zzzzzzzz-3rd-created-uuid"));
+        // Iter-night-22 contract: loaded order equals CREATION order
+        // (parent-chain order: zzzz → aaaa → mmmm, since the fixture
+        // chained `parent_commit` = previous-creation-uuid).
+        QCOMPARE(loadedUuids.at(0), QStringLiteral("zzzzzzzz-3rd-created-uuid"));
+        QCOMPARE(loadedUuids.at(1), QStringLiteral("aaaaaaaa-1st-loaded-uuid"));
+        QCOMPARE(loadedUuids.at(2), QStringLiteral("mmmmmmmm-2nd-loaded-uuid"));
+        QCOMPARE(loadedUuids, creationOrder);
 
-        QVERIFY2(loadedUuids != creationOrder,
-                 "Pending commits loaded in CREATION order — the bug pinned by "
-                 "this slot has been fixed. Update the test to assert the new "
-                 "(correct) ordering.");
-
-        // The post-load m_headCommitId is set to m_pendingCommits.LAST() (see
-        // syncengine.cpp:357). With UUID-alphabetic ordering, "last" means
-        // the alphabetically-largest uuid (zzzzzz...), which HAPPENS to be
-        // our creation-order tail in this fixture — but in general it is NOT
-        // the latest commit. Document the bug.
-        qInfo() << "BUG SURFACED: loadPendingCommitsFromDisk uses QDir::Name "
-                   "alphabetic ordering on RANDOM v4 UUID filenames. After a "
-                   "crash-restart, m_pendingCommits is in arbitrary (UUID) "
-                   "order, not creation order. The push() at syncengine.cpp:86 "
-                   "iterates m_pendingCommits in this arbitrary order — which "
-                   "can scramble the parent_commit chain on Drive.";
-
-        qInfo() << "BUG SURFACED: m_headCommitId after load = pendingCommits "
-                   ".last()->uuid() (syncengine.cpp:357). 'last' is "
-                   "alphabetically-last filename, not most-recent commit. "
-                   "Subsequent createCommit will chain parent_commit to an "
-                   "arbitrary local pending commit, not the actual remote HEAD.";
+        // The post-load m_headCommitId is the chain tail, found by topology:
+        // the unique commit whose UUID is not referenced as anyone's parent.
+        // In our fixture that's `mmmmmmmm-2nd-loaded-uuid` (i=2 has no
+        // child). Pre-fix this was `zzzzzzzz-3rd-created-uuid` because that
+        // was the alphabetically-last filename — wrong in general, but
+        // accidentally also the tail in some fixtures. The fix is
+        // verifiable here because the alphabetic last and the chain tail
+        // diverge:
+        //   alphabetic last  = zzzzzzzz-3rd-created-uuid
+        //   true chain tail  = mmmmmmmm-2nd-loaded-uuid
+        QCOMPARE(loadedUuids.last(), QStringLiteral("mmmmmmmm-2nd-loaded-uuid"));
     }
 
     // ════════════════════════════════════════════════════════════════════════
