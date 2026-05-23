@@ -162,6 +162,13 @@ opentodo_add_unit_test(test_complete_task_undo            App)
 # called markDataChanged() only, which emits signals but writes no meta.
 opentodo_add_unit_test(test_reminder_field_stamping       App)
 
+# iter-night-16: SidebarViewModel::updateCounts() must include datetime-only
+# tasks (dueDate empty, dueDatetime set) in today/upcoming badges. Pre-fix
+# the branch was gated on !dueDate().isEmpty(), so synced tasks carrying
+# only `due.datetime` silently dropped from the sidebar badges even though
+# tasksForToday + overdueTasks counted them.
+opentodo_add_unit_test(test_sidebar_counts_datetime_only  App)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.

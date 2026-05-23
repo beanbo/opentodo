@@ -5,8 +5,10 @@
 #include "model/project.h"
 #include "model/label.h"
 #include "model/filter.h"
+#include "utils/datetime.h"
 
 #include <QDate>
+#include <QDateTime>
 #include <QSet>
 #include <QSettings>
 
@@ -260,12 +262,30 @@ void SidebarViewModel::updateCounts()
         if (t->projectId() == inboxId && t->parentId().isEmpty())
             ++newInbox;
 
-        // Today count (due today or overdue)
+        // Today count (due today or overdue) / upcoming count.
+        //
+        // Iter-night-16: also handle datetime-only tasks (dueDate empty,
+        // dueDatetime set). Pre-fix this branch fired only when dueDate
+        // was non-empty, so a peer-synced task carrying just `due.datetime`
+        // — or any task whose dueDate was cleared while dueDatetime stayed
+        // — never contributed to the badge counts even though the today/
+        // upcoming VIEWS listed it (DataStore::tasksForToday at B-1.30 and
+        // ::overdueTasks at B-1.28 already handle this case, as does
+        // DailyReviewService::checkAndNotify). The sidebar VM was the only
+        // count consumer that hadn't received the matching branch, leaving
+        // the user with a badge that disagreed with the view it links to.
         if (!t->dueDate().isEmpty()) {
             const QDate d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
             if (d.isValid()) {
                 if (d <= today) ++newToday;
                 if (d > today) ++newUpcoming;
+            }
+        } else if (!t->dueDatetime().isEmpty()) {
+            const QDateTime dt = DateTimeHelper::fromIsoString(t->dueDatetime());
+            if (dt.isValid()) {
+                const QDate d = dt.date();
+                if (d <= today) ++newToday;
+                else            ++newUpcoming;
             }
         }
     }
