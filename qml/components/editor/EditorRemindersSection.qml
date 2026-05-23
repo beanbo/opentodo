@@ -913,6 +913,16 @@ ColumnLayout {
                                     const offVal = dlg.offsetOptions[dlg.minuteOffsetIndex].value
                                     if (offVal > 0)
                                         rem.setMinuteOffset(offVal)
+                                    // Iter-night-14: stamp per-field _meta for the fields the
+                                    // QML just mutated on the model object. Without this, Merger
+                                    // falls back to whole-entity LWW on conflict and silently
+                                    // loses the new due time / RRULE / offset across sync.
+                                    const stampedFields = ["due"]
+                                    if (dlg.repeat_ && dlg.repeatRule.length > 0)
+                                        stampedFields.push("recurrence_rule")
+                                    if (offVal > 0)
+                                        stampedFields.push("minute_offset")
+                                    dataStore.markReminderFieldsModified(rem.id, stampedFields)
                                     dataStore.markDataChanged()
                                 }
                             } else {
@@ -928,6 +938,9 @@ ColumnLayout {
                                     if (typeof locationService !== "undefined") {
                                         locationService.addGeofence(remLoc.id, lat, lon, rad)
                                     }
+                                    // Iter-night-14: stamp the location field after mutating
+                                    // it on the model object (see absolute-branch comment).
+                                    dataStore.markReminderFieldsModified(remLoc.id, ["location"])
                                     dataStore.markDataChanged()
                                 }
                             }

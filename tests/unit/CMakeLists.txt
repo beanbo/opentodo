@@ -155,6 +155,13 @@ opentodo_add_unit_test(test_filtervm_field_stamping       App)
 # completion (UNTIL exhausted, unparseable RRULE) → user lost Ctrl+Z.
 opentodo_add_unit_test(test_complete_task_undo            App)
 
+# iter-night-14: Reminder per-field _meta. addReminder seeds initial meta
+# for due/location/recurrence_rule (not just task_id/type/minute_offset),
+# and the new markReminderFieldsModified Q_INVOKABLE lets QML stamp those
+# fields after the model setters mutate them — pre-fix the QML editor
+# called markDataChanged() only, which emits signals but writes no meta.
+opentodo_add_unit_test(test_reminder_field_stamping       App)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.

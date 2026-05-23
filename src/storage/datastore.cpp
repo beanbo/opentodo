@@ -184,6 +184,16 @@ void DataStore::markFilterFieldsModified(const QString &id, const QStringList &f
     emit dataChanged();
 }
 
+void DataStore::markReminderFieldsModified(const QString &id, const QStringList &fields)
+{
+    if (!m_reminderIndex.contains(id)) return;
+    for (const QString &f : fields)
+        stampEntityField(id, m_reminderMeta, f);
+    stampEntityField(id, m_reminderMeta, QStringLiteral("updated_at"));
+    emit remindersChanged();
+    emit dataChanged();
+}
+
 // ── Inbound CRDT meta application (Q2.18-A) ──────────────────────────────────
 //
 // Per-field merge of an inbound _meta blob into a local entity meta map.
@@ -1294,10 +1304,23 @@ Reminder *DataStore::addReminder(const QString &taskId, const QString &type)
     m_reminderIndex.insert(reminder->id(), reminder);
 
     // B-1.10: stamp initial CRDT fields.
+    //
+    // Iter-night-14: extended the list to include "due", "location", and
+    // "recurrence_rule". These are user-mutable fields that the QML editor
+    // (EditorRemindersSection.qml) sets immediately after addReminder via
+    // setDueDatetime / setLocationCoords / setRepeatRule on the model
+    // object. Without an initial stamp on the empty value, the post-setter
+    // markReminderFieldsModified call has nothing to compare against on
+    // peer-side merges; with this initial stamp + the post-setter stamp,
+    // both Devices A and B carry per-field meta and Merger can use HLC to
+    // converge instead of falling through to whole-entity LWW.
     const QString id = reminder->id();
     const QStringList initialFields = {
         QStringLiteral("task_id"), QStringLiteral("type"),
+        QStringLiteral("due"),
         QStringLiteral("minute_offset"),
+        QStringLiteral("location"),
+        QStringLiteral("recurrence_rule"),
         QStringLiteral("created_at"), QStringLiteral("updated_at"),
         QStringLiteral("is_deleted"),
     };

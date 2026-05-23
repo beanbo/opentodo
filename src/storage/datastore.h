@@ -219,6 +219,21 @@ public:
     // bare setters with no stamp — so concurrent renames/recolors of the
     // same filter on two devices silently diverged after sync.
     void markFilterFieldsModified(const QString &id, const QStringList &fields);
+    // Iter-night-14: reminders had the same outbound-stamping gap as filters
+    // pre-iter-12, plus two extra wrinkles:
+    //   (1) addReminder only stamps task_id / type / minute_offset /
+    //       created_at / updated_at / is_deleted — the user-mutable "due",
+    //       "location", and "recurrence_rule" fields were NEVER stamped
+    //       initially either (also fixed in addReminder's initialFields).
+    //   (2) No ReminderViewModel exists; QML mutates Reminder* directly via
+    //       setDueDatetime / setLocationCoords / setRepeatRule /
+    //       setMinuteOffset → markDataChanged. Those setters never wrote
+    //       per-field _meta, so on conflict the Merger fell back to the
+    //       empty-meta whole-entity LWW branch and silently lost the newly
+    //       set due time / geofence / RRULE.
+    // QML calls this helper after the setter chain, so it must be Q_INVOKABLE.
+    Q_INVOKABLE void markReminderFieldsModified(const QString &id,
+                                                const QStringList &fields);
 
     // --- Inbound CRDT meta application ---
     // Q2.18-A FIX: SyncEngine::applyCommit needs to push the merged per-field
