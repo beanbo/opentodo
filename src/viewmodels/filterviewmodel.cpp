@@ -83,12 +83,36 @@ bool FilterViewModel::updateFilter(const QString &id, const QString &field, cons
     Filter *f = m_store->filterById(id);
     if (!f) return false;
 
-    if (field == QStringLiteral("name")) f->setName(value.toString());
-    else if (field == QStringLiteral("query")) f->setQuery(value.toString());
-    else if (field == QStringLiteral("color")) f->setColor(value.toString());
-    else if (field == QStringLiteral("order")) f->setOrder(value.toInt());
-    else if (field == QStringLiteral("isFavorite")) f->setIsFavorite(value.toBool());
-    else return false;
+    // Translate QML/C++ property name → JSON field name (snake_case). Only
+    // `isFavorite` differs; the rest are identical between Filter::toJson
+    // and the field strings we accept here.
+    QString jsonField;
+    if (field == QStringLiteral("name")) {
+        f->setName(value.toString());
+        jsonField = QStringLiteral("name");
+    } else if (field == QStringLiteral("query")) {
+        f->setQuery(value.toString());
+        jsonField = QStringLiteral("query");
+    } else if (field == QStringLiteral("color")) {
+        f->setColor(value.toString());
+        jsonField = QStringLiteral("color");
+    } else if (field == QStringLiteral("order")) {
+        f->setOrder(value.toInt());
+        jsonField = QStringLiteral("order");
+    } else if (field == QStringLiteral("isFavorite")) {
+        f->setIsFavorite(value.toBool());
+        jsonField = QStringLiteral("is_favorite");
+    } else {
+        return false;
+    }
+
+    // Iter-night-12: stamp the per-field _meta so concurrent edits on two
+    // devices converge via HLC comparison instead of silently diverging
+    // through the Merger's "lFm == rFm → local wins" fallback. addFilter
+    // already stamps the initial fields and applyCommit filter_update
+    // applies inbound _meta; this closes the OUTBOUND gap that left
+    // filter renames/recolors invisible to sync.
+    m_store->markFilterFieldsModified(id, {jsonField});
 
     emit filterChanged(id);
 

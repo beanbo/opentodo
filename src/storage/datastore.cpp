@@ -174,6 +174,16 @@ void DataStore::markLabelFieldsModified(const QString &id, const QStringList &fi
     emit dataChanged();
 }
 
+void DataStore::markFilterFieldsModified(const QString &id, const QStringList &fields)
+{
+    if (!m_filterIndex.contains(id)) return;
+    for (const QString &f : fields)
+        stampEntityField(id, m_filterMeta, f);
+    stampEntityField(id, m_filterMeta, QStringLiteral("updated_at"));
+    emit filtersChanged();
+    emit dataChanged();
+}
+
 // ── Inbound CRDT meta application (Q2.18-A) ──────────────────────────────────
 //
 // Per-field merge of an inbound _meta blob into a local entity meta map.

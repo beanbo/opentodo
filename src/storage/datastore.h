@@ -212,6 +212,13 @@ public:
     void markTaskFieldsModified(const QString &id, const QStringList &fields);
     void markProjectFieldsModified(const QString &id, const QStringList &fields);
     void markLabelFieldsModified(const QString &id, const QStringList &fields);
+    // Iter-night-12: filters were the only first-class CRDT-tracked entity
+    // missing a per-field stamping API on the OUTBOUND path. addFilter
+    // stamped initial fields and applyCommit filter_update applied inbound
+    // _meta, but local edits via FilterViewModel::updateFilter went through
+    // bare setters with no stamp — so concurrent renames/recolors of the
+    // same filter on two devices silently diverged after sync.
+    void markFilterFieldsModified(const QString &id, const QStringList &fields);
 
     // --- Inbound CRDT meta application ---
     // Q2.18-A FIX: SyncEngine::applyCommit needs to push the merged per-field

@@ -143,6 +143,12 @@ opentodo_add_unit_test(test_meta_double_wrap_pin          Infra)
 # (label_ids vs labels, due_date vs due, duration_amount vs duration, etc.).
 opentodo_add_unit_test(test_taskvm_field_keys_pin         App)
 
+# iter-night-12: FilterViewModel::updateFilter must stamp per-field _meta.
+# Mirrors the test_taskvm_field_keys_pin pattern for filters — without these
+# stamps, concurrent filter rename/recolor on two devices silently diverge
+# after sync because Merger sees identical baseline meta on both sides.
+opentodo_add_unit_test(test_filtervm_field_stamping       App)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.
