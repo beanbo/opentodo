@@ -67,6 +67,16 @@ private:
     void applyImport(const TodoistImportData &data, bool importCompleted);
     void setBusy(bool busy);
 
+    // Iter-night-19: unit tests need to invoke applyImport with a
+    // hand-built TodoistImportData carrying project parent_id (the CSV
+    // parser never sets project.parentId — only task.parentId via INDENT
+    // — and the API path requires network mock infrastructure that
+    // doesn't exist). Granting the existing robustness test suite
+    // friend access is the least-invasive way to pin the second-pass
+    // parent_id guard that iter-night-19 added (mirroring the iter-9
+    // task-side guard).
+    friend class TestTodoistImporterRobustness;
+
     DataStore   *m_store;
     bool         m_busy = false;
     QStringList  m_warnings; // accumulated per-import non-fatal errors [B-5.62]

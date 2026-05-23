@@ -504,6 +504,12 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
     QMap<QString, QString> projIdMap; // todoistId → openTodo UUID
     int projCount = 0;
+    // Iter-night-19: track which Todoist project ids were resolved by
+    // dedup (matched an existing local project). The second pass below
+    // must skip these — otherwise it would silently overwrite the user's
+    // locally-edited project hierarchy on every re-import. Mirrors the
+    // task-side `dedupedTodoistTaskIds` set added in iter-night-9.
+    QSet<QString> dedupedTodoistProjectIds;
 
     // F-Q2.24-C #2: when re-importing the same backup, reuse an existing
     // active project with a matching (case-insensitive) name instead of
@@ -530,6 +536,7 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
             Project *inbox = m_store->inboxProject();
             if (inbox) {
                 projIdMap[tp.id] = inbox->id();
+                dedupedTodoistProjectIds.insert(tp.id);
                 ++projCount; // [B-5.48] Count inbox project in projCount
                 continue;
             }
@@ -538,6 +545,7 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         // F-Q2.24-C #2: reuse existing project by name (dedup across imports).
         if (Project *existing = findExistingProjectByName(tp.name)) {
             projIdMap[tp.id] = existing->id();
+            dedupedTodoistProjectIds.insert(tp.id);
             ++projCount;
             continue;
         }
@@ -552,11 +560,26 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         ++projCount;
     }
 
-    // Second pass: set parentId after all projects are created
+    // Second pass: set parentId after all projects are created.
+    //
+    // Iter-night-19: skip deduplicated rows. `projIdMap[tp.id]` for a
+    // deduped row resolves to an EXISTING project's UUID — so without this
+    // guard the loop would call `proj->setParentId(...)` on the existing
+    // project, overwriting any local re-parent the user made since the
+    // previous import. `markProjectFieldsModified(..., {parent_id})` then
+    // stamps the stale value with a fresh HLC so it ALSO propagates
+    // through sync to every peer device that had observed the user's
+    // local move. Mirrors the task-side guard at the Phase 4 second pass.
+    //
+    // Worst case: `Project::setParentId` is a raw setter with no cycle
+    // guard (unlike `ProjectViewModel::setParentId`). If the user
+    // locally broke a parent chain to escape a cycle, this re-import
+    // could silently re-introduce it.
     for (const TodoistProject &tp : data.projects) {
         if (!projIdMap.contains(tp.id)) continue;
         if (tp.parentId.isEmpty()) continue;
         if (!projIdMap.contains(tp.parentId)) continue;
+        if (dedupedTodoistProjectIds.contains(tp.id)) continue;
 
         Project *proj = m_store->projectById(projIdMap[tp.id]);
         if (proj) {

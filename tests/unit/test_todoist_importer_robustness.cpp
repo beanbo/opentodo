@@ -1264,6 +1264,118 @@ private slots:
                  "local parent_id move — incremental imports must be "
                  "additive, not authoritative on existing entities.");
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-19: PROJECT-side version of the above contract. The CSV
+    // parser never sets TodoistProject.parentId (only TodoistTask.parentId
+    // via INDENT) so we cannot reach this via importFromBackupZip — we
+    // build a TodoistImportData by hand and call the private applyImport
+    // directly via the friend grant in todoistimporter.h.
+    //
+    // Pre-fix Phase 2's second pass (line 555+) unconditionally called
+    // proj->setParentId(...) on every project including ones that were
+    // deduped against an existing local project. The user's local
+    // reorganization of a previously-imported project was silently
+    // overwritten on every re-import.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_doesNotClobberLocalParentMoveOnDeduplicatedProject()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        // First "import": create Parent project and Child project with
+        // Child.parent_id pointing at Parent.
+        TodoistImportData first;
+        TodoistProject backendP;
+        backendP.id     = QStringLiteral("td-backend");
+        backendP.name   = QStringLiteral("Backend");
+        backendP.color  = QStringLiteral("blue");
+        first.projects.append(backendP);
+
+        TodoistProject authP;
+        authP.id        = QStringLiteral("td-auth");
+        authP.name      = QStringLiteral("Auth");
+        authP.color     = QStringLiteral("red");
+        authP.parentId  = QStringLiteral("td-backend");
+        first.projects.append(authP);
+
+        imp->applyImport(first, /*importCompleted=*/false);
+
+        // Locate the OpenTodo projects.
+        Project *backend = nullptr;
+        Project *auth = nullptr;
+        for (auto *p : ds->allProjects()) {
+            if (p->name() == QStringLiteral("Backend")) backend = p;
+            if (p->name() == QStringLiteral("Auth"))    auth    = p;
+        }
+        QVERIFY(backend && auth);
+        QCOMPARE(auth->parentId(), backend->id());
+
+        // User locally moves Auth out from under Backend (to the root).
+        auth->setParentId(QString());
+        QVERIFY(auth->parentId().isEmpty());
+
+        // Re-import the same data — both projects dedup by name. Second
+        // pass must SKIP the deduplicated rows so the local "move to
+        // root" survives.
+        imp->applyImport(first, /*importCompleted=*/false);
+
+        QVERIFY2(auth->parentId().isEmpty(),
+                 "Iter-night-19: re-import of a deduplicated project must "
+                 "NOT clobber the user's local parent_id move. Pre-fix "
+                 "Phase 2's second pass had no `dedupedTodoistProjectIds` "
+                 "set, so every re-import silently re-parented existing "
+                 "projects from the Todoist backup — destroying local "
+                 "reorganizations and stamping the stale value with a "
+                 "fresh HLC that then propagated through sync.");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-19 companion: NEW-child-under-deduped-parent re-parents
+    // correctly. Mirrors the iter-9 task version's
+    // `reimport_addsNewSubtask_underExistingParent_noSentinel` — the
+    // newly-imported child must point at the EXISTING parent's UUID.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_addsNewSubproject_underExistingParent()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        TodoistImportData first;
+        TodoistProject p;
+        p.id   = QStringLiteral("td-engineering");
+        p.name = QStringLiteral("Engineering");
+        first.projects.append(p);
+        imp->applyImport(first, false);
+
+        Project *engineering = nullptr;
+        for (auto *pp : ds->allProjects()) {
+            if (pp->name() == QStringLiteral("Engineering")) engineering = pp;
+        }
+        QVERIFY(engineering);
+
+        // Second import: parent dedups, NEW child under it.
+        TodoistImportData second;
+        second.projects.append(p);     // dedups
+        TodoistProject infra;
+        infra.id       = QStringLiteral("td-infra");
+        infra.name     = QStringLiteral("Infra");
+        infra.parentId = QStringLiteral("td-engineering");
+        second.projects.append(infra);
+        imp->applyImport(second, false);
+
+        Project *infraProj = nullptr;
+        for (auto *pp : ds->allProjects()) {
+            if (pp->name() == QStringLiteral("Infra")) infraProj = pp;
+        }
+        QVERIFY(infraProj);
+        QCOMPARE(infraProj->parentId(), engineering->id());
+        // Engineering's parentId must NOT have been touched by the
+        // second-pass either (it's deduped so the guard skips it).
+        QVERIFY(engineering->parentId().isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTodoistImporterRobustness)
