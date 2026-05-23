@@ -570,9 +570,27 @@ void AIAssistant::onChatReplyFinished(QNetworkReply *reply, bool isRetry)
                 }
                 auto *p = currentProvider();
                 if (!p) {
+                    // Iter-night-20: the retry timer found the provider
+                    // gone (user changed/cleared it during the
+                    // delayMs window, or warm-up failure unset
+                    // m_currentProviderId). The cancel branch above
+                    // and the synchronous error paths below the retry
+                    // window (via dropTrailingUserAndEmit) both drop
+                    // the trailing user message that sendMessage
+                    // appended — this branch was the only one that
+                    // didn't. Result: m_history kept the orphan
+                    // user; the next sendMessage appended another
+                    // user → [user, user] → every major LLM API
+                    // rejected with "messages.roles must alternate"
+                    // and the chat appeared permanently wedged until
+                    // app restart. Mirror the cancel-branch cleanup.
                     m_chatCancelled = false;
                     m_isResponding  = false;
                     emit isRespondingChanged();
+                    if (!m_history.isEmpty()
+                        && m_history.last().first == QLatin1String("user")) {
+                        m_history.removeLast();
+                    }
                     emit errorReceived(QStringLiteral("AI провайдер не выбран."));
                     return;
                 }
