@@ -611,6 +611,146 @@ private slots:
 
         delete f;
     }
+
+    // =====================================================================
+    // Iter-night-33: onTaskUncompleted must mirror onTaskCompleted's
+    // threshold-cross arithmetic in reverse. The previous version only
+    // subtracted -1, leaving phantom +5/+10 bonuses and inflated streak
+    // counters whenever the un-completed task was the one that crossed
+    // a goal threshold. Repeated cross/uncross on a single task inflated
+    // karma without bound and persisted to QSettings across restarts.
+    //
+    // Three pin slots cover the failure modes:
+    //   1. daily_uncross_subtracts_bonus_and_decrements_streak
+    //   2. weekly_uncross_subtracts_bonus_and_decrements_streak
+    //   3. cross_uncross_recross_does_not_double_count
+    // =====================================================================
+
+    void onTaskUncompleted_dailyUncross_subtractsBonusAndDecrementsStreak()
+    {
+        Fixture *f = makeFixture();
+        // Daily goal = 2, so 2 completions cross the threshold.
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal),  2);
+        f->store->setSetting(QLatin1String(SettingsKeys::WeeklyGoal), 0); // disable weekly
+        f->store->setSetting(QLatin1String(SettingsKeys::KarmaScore), 0);
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyStreak), 0);
+
+        KarmaViewModel karma(f->store);
+
+        // First completion (not crossing yet): +1.
+        addCompletedTask(f->store, f->inboxId, QStringLiteral("A"));
+        karma.onTaskCompleted();
+        QCOMPARE(karma.karmaScore(), 1);
+        QCOMPARE(karma.dailyStreak(), 0);
+
+        // Second completion crosses dailyGoal (now 2 >= 2): +1 base + 5 bonus,
+        // dailyStreak bumps to 1.
+        const QString secondTaskId =
+            addCompletedTask(f->store, f->inboxId, QStringLiteral("B"));
+        karma.onTaskCompleted();
+        QCOMPARE(karma.karmaScore(), 7);
+        QCOMPARE(karma.dailyStreak(), 1);
+
+        // Un-complete the second task — this un-crosses the threshold
+        // (count goes 2 → 1, < goal). Before the fix:
+        //   score = 7 − 1 = 6 (phantom +5)
+        //   dailyStreak = 1 (inflated — goal no longer met)
+        // After the fix:
+        //   score = 7 − 1 − 5 = 1
+        //   dailyStreak = 0
+        Task *t = f->store->taskById(secondTaskId);
+        QVERIFY(t != nullptr);
+        t->setIsCompleted(false);
+        karma.onTaskUncompleted();
+        QCOMPARE(karma.karmaScore(), 1);
+        QCOMPARE(karma.dailyStreak(), 0);
+
+        delete f;
+    }
+
+    void onTaskUncompleted_weeklyUncross_subtractsBonusAndDecrementsStreak()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal),  0); // disable daily
+        f->store->setSetting(QLatin1String(SettingsKeys::WeeklyGoal), 2);
+        f->store->setSetting(QLatin1String(SettingsKeys::KarmaScore), 0);
+        f->store->setSetting(QLatin1String(SettingsKeys::WeeklyStreak), 0);
+
+        KarmaViewModel karma(f->store);
+
+        // Two completions on different days this week. m_completedThisWeek is
+        // derived from completedAt; backdate the first so it lands earlier in
+        // the same week.
+        const QDate today = QDate::currentDate();
+        const QDate earlierThisWeek =
+            today.addDays(-(today.dayOfWeek() == 1 ? 0 : 1));
+        // If today is Monday, earlier=today (same bucket); else yesterday.
+        addCompletedTaskOn(f->store, f->inboxId, QStringLiteral("Mon"),
+                           earlierThisWeek);
+        karma.onTaskCompleted();
+        QCOMPARE(karma.karmaScore(), 1);
+
+        const QString secondTaskId =
+            addCompletedTask(f->store, f->inboxId, QStringLiteral("Today"));
+        karma.onTaskCompleted();
+        // Crossed weeklyGoal: +1 + 10 bonus; weeklyStreak bumped.
+        QCOMPARE(karma.karmaScore(), 12);
+        QCOMPARE(karma.weeklyStreak(), 1);
+
+        // Un-complete today's task — weekly count goes 2 → 1, < goal.
+        Task *t = f->store->taskById(secondTaskId);
+        QVERIFY(t != nullptr);
+        t->setIsCompleted(false);
+        karma.onTaskUncompleted();
+        // Before the fix: 12 − 1 = 11 (phantom +10); streak stays 1.
+        // After the fix: 12 − 1 − 10 = 1; streak = 0.
+        QCOMPARE(karma.karmaScore(), 1);
+        QCOMPARE(karma.weeklyStreak(), 0);
+
+        delete f;
+    }
+
+    void onTaskUncompleted_crossUncrossRecross_doesNotDoubleCount()
+    {
+        // The most damaging path before the fix: a single task crossed
+        // the threshold, was un-completed, then re-completed. Pre-fix:
+        //   complete  → +1 +5 = +6
+        //   uncomplete→ -1     = -1   (phantom +5 retained)
+        //   complete  → +1 +5 = +6   (+5 again because the cross-detection
+        //                              fires on prevToday<goal ∧ now≥goal)
+        // Net: +11 instead of +6.
+        // Post-fix:
+        //   complete  → +1 +5 = +6
+        //   uncomplete→ -1 -5 = -6
+        //   complete  → +1 +5 = +6
+        // Net: +6 — correct.
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal),  1);
+        f->store->setSetting(QLatin1String(SettingsKeys::WeeklyGoal), 0);
+        f->store->setSetting(QLatin1String(SettingsKeys::KarmaScore), 0);
+
+        KarmaViewModel karma(f->store);
+
+        // First completion: crosses dailyGoal=1 immediately.
+        const QString tid = addCompletedTask(f->store, f->inboxId,
+                                             QStringLiteral("X"));
+        karma.onTaskCompleted();
+        QCOMPARE(karma.karmaScore(), 6);
+
+        // Un-complete: goes 1 → 0, < goal. Threshold un-crossed.
+        Task *t = f->store->taskById(tid);
+        QVERIFY(t != nullptr);
+        t->setIsCompleted(false);
+        karma.onTaskUncompleted();
+        QCOMPARE(karma.karmaScore(), 0);
+
+        // Re-complete: crosses dailyGoal again.
+        t->setIsCompleted(true);
+        karma.onTaskCompleted();
+        QCOMPARE(karma.karmaScore(), 6);
+
+        delete f;
+    }
 };
 
 QTEST_GUILESS_MAIN(TestKarmaViewModel)

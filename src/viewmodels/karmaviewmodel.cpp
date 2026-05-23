@@ -313,9 +313,56 @@ void KarmaViewModel::resetAllKarma()
 
 void KarmaViewModel::onTaskUncompleted()
 {
-    int score = qMax(0, karmaScore() - 1);
-    m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore), score);
+    // Iter-night-33: asymmetric with onTaskCompleted before this fix.
+    // onTaskCompleted applies THREE independent score deltas — +1 base,
+    // +5 on first crossing of dailyGoal, +10 on first crossing of
+    // weeklyGoal — plus deduped streak increments. The previous
+    // implementation only subtracted -1, so un-completing the task that
+    // triggered a goal crossing left a phantom +5/+10 in the karma
+    // score and the streak counter inflated by one per cross→uncross
+    // cycle. Repeated cross/uncross on a single task inflated karma
+    // without bound; persisted to QSettings so the inflation survived
+    // restarts. Now mirror onTaskCompleted's threshold-cross arithmetic
+    // in reverse, snapshotting prev counts before the refresh so we
+    // can detect the un-crossing.
+    const int prevToday  = m_completedToday;
+    const int prevWeekly = m_completedThisWeek;
     updateCompletionCounts();
+
+    const int dGoal = dailyGoal();
+    const int wGoal = weeklyGoal();
+
+    int score = karmaScore() - 1;
+
+    // Daily threshold un-cross: prev was at/above goal, now below.
+    if (dGoal > 0 && prevToday >= dGoal && m_completedToday < dGoal) {
+        score -= 5;
+        // Decrement the streak counter (floor 0). Symmetric with the
+        // +1 increment in onTaskCompleted, though we can't perfectly
+        // restore the prior streak value because the "before this
+        // crossing" state isn't snapshotted anywhere — but un-crossing
+        // means today's goal isn't met any more, so the streak should
+        // reflect that.
+        const int newStreak = qMax(0, dailyStreak() - 1);
+        m_store->setSetting(QLatin1String(SettingsKeys::DailyStreak), newStreak);
+
+        // Wipe the dedup date so a subsequent re-cross today can fire
+        // the streak logic again. Without this, m_lastStreakIncrementDate
+        // would still equal today and the re-cross would silently NOT
+        // bump the streak, permanently losing the increment.
+        m_lastStreakIncrementDate = QDate();
+        QSettings s;
+        s.remove(QStringLiteral("karma/lastStreakIncrementDate"));
+    }
+
+    // Weekly threshold un-cross.
+    if (wGoal > 0 && prevWeekly >= wGoal && m_completedThisWeek < wGoal) {
+        score -= 10;
+        const int newStreak = qMax(0, weeklyStreak() - 1);
+        m_store->setSetting(QLatin1String(SettingsKeys::WeeklyStreak), newStreak);
+    }
+
+    m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore), qMax(0, score));
     emit karmaChanged();
 }
 
