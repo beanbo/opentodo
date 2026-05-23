@@ -89,13 +89,27 @@ Telemetry::Telemetry(QObject *parent)
 
 Telemetry::~Telemetry()
 {
+    // iter-night-2: explicitly disconnect every in-flight reply's
+    // `finished` lambda BEFORE the member subobjects start destructing.
+    // QNetworkAccessManager is declared first in the header, so under
+    // reverse-order destruction it's the LAST member to die — but its
+    // destructor cancels pending replies which emit finished(), and our
+    // lambdas reach back into m_queue / m_persistTimer / m_inFlight which
+    // by then have already been destroyed. That use-after-destroy was
+    // documented (and QSKIP'd) in test_telemetry_retry.cpp:287-294 but
+    // never fixed in production code. Disconnecting here breaks the
+    // signal chain while every member is still valid.
+    for (auto &reply : m_inFlight) {
+        if (reply)
+            QObject::disconnect(reply, &QNetworkReply::finished, this, nullptr);
+    }
+    m_inFlight.clear();
+
     // Best-effort: if there are still dirty changes pending we persist them
     // here. We do NOT attempt a network flush from the destructor — the NAM
     // may already be tearing down.
     if (m_queueDirty)
         writeQueueToDisk();
-    // We intentionally do NOT abort in-flight replies in the destructor:
-    // the NAM owns them and they'll be cleaned up when it goes out of scope.
 }
 
 bool Telemetry::enabled() const
