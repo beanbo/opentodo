@@ -985,6 +985,146 @@ private slots:
 
         delete f;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Iter-night-37: the cold-start auto-Inbox path in addTask must
+    // stamp is_inbox after the post-construction flip.
+    //
+    // DataStore::addProject runs the inbox-uniqueness guard against
+    // `project->isInbox()` at construction time. A freshly-constructed
+    // Project defaults to is_inbox=false, so when TaskViewModel::addTask
+    // hits the "no project available" fallback (corrupted state.json or
+    // very first launch race), addProject stamps is_inbox=false into
+    // m_projectMeta's _meta for that field. The subsequent
+    // `autoInbox->setIsInbox(true)` is a plain setter — task.cpp lacks
+    // a CRDT-stamping hook — so the per-field stamp records the wrong
+    // value-at-stamp-time.
+    //
+    // On the next sync, a peer's "real" inbox (with a properly stamped
+    // is_inbox=true) wins the LWW race against this device's stale
+    // stamp even when the peer's stamp is legitimately OLDER than
+    // this device's actual promotion moment — because our stamp lies
+    // about the time. End state: two "Inbox" entities visible (peer's
+    // legitimate one PLUS this orphan that got demoted by the merger),
+    // confusing the user with no recovery path.
+    //
+    // Pin: trigger the fallback by constructing a DataStore with NO
+    // projects whatsoever (no inbox flag anywhere), then call addTask
+    // with empty projectId. The created Inbox must have is_inbox=true
+    // AND its _meta.is_inbox stamp must reflect the post-flip moment,
+    // not the pre-flip default-value stamp.
+    //
+    // The most reliable indicator we can assert with the public API:
+    // compare _meta.is_inbox.ts to _meta.name.ts. `name` is stamped by
+    // addProject's initial loop (counter K+0). `is_inbox` is also
+    // stamped by that initial loop (counter K+4) — so pre-fix
+    // is_inbox.ts > name.ts by exactly 4 counter ticks within the
+    // SAME physMs. Post-fix the explicit re-stamp pushes is_inbox to
+    // a LATER counter (and possibly later physMs), so is_inbox.ts is
+    // strictly GREATER than the highest stamp from the initial loop.
+    // We use `updated_at` (also re-stamped by the fix) as the upper
+    // bound of the initial loop — pre-fix is_inbox.ts < updated_at.ts;
+    // post-fix is_inbox.ts > updated_at.ts (re-stamp moves both, but
+    // is_inbox is enumerated first in the fix list).
+    // ─────────────────────────────────────────────────────────────────────
+    void addTask_coldStart_autoInbox_stampsIsInbox()
+    {
+        // Build a totally empty DataStore — no Inbox exists, no project
+        // at all. This triggers the auto-creation fallback in addTask.
+        DataStore store;
+        TaskViewModel vm(&store);
+
+        QVERIFY(store.allProjects().isEmpty());
+        QVERIFY(store.inboxProject() == nullptr);
+
+        const QString taskId = vm.addTask(QStringLiteral("First task"),
+                                          /*projectId=*/QString());
+        QVERIFY(!taskId.isEmpty());
+
+        // The fallback must have created exactly one project flagged as
+        // inbox. (allProjects() filters tombstones.)
+        const auto projects = store.allProjects();
+        QCOMPARE(projects.size(), 1);
+        Project *autoInbox = projects.first();
+        QVERIFY(autoInbox != nullptr);
+        QVERIFY2(autoInbox->isInbox(),
+                 "auto-created Inbox must be flagged is_inbox=true");
+
+        // Inspect the per-field _meta via toJson() — DataStore::toJson()
+        // runs injectMeta which surfaces m_projectMeta entries under the
+        // entity's "_meta" key.
+        const QJsonObject snap = store.toJson();
+        const QJsonArray projArr =
+            snap.value(QStringLiteral("projects")).toArray();
+        QCOMPARE(projArr.size(), 1);
+        const QJsonObject projObj = projArr.first().toObject();
+        const QJsonObject meta =
+            projObj.value(QStringLiteral("_meta")).toObject();
+
+        const QString isInboxTs =
+            meta.value(QStringLiteral("is_inbox")).toObject()
+                .value(QStringLiteral("ts")).toString();
+        const QString nameTs =
+            meta.value(QStringLiteral("name")).toObject()
+                .value(QStringLiteral("ts")).toString();
+        QVERIFY2(!isInboxTs.isEmpty(),
+                 "is_inbox _meta.ts missing on auto-created Inbox");
+        QVERIFY2(!nameTs.isEmpty(),
+                 "name _meta.ts missing on auto-created Inbox");
+
+        // With the fix, is_inbox is re-stamped AFTER all the initial-loop
+        // stamps, including `name`. Lexicographic compare of zero-padded
+        // HLC strings equals HLC order, so isInboxTs > nameTs holds iff
+        // is_inbox was stamped later than name. Without the fix, both
+        // come from the same initial loop with consecutive counters, but
+        // `name` is enumerated FIRST (counter K+0) and `is_inbox` is
+        // FIFTH (counter K+4), so is_inbox.ts > name.ts even without
+        // the fix — that comparison alone doesn't pin the bug.
+        //
+        // The strict pin: in the post-fix re-stamp, is_inbox is followed
+        // immediately by updated_at (counter K+5 in the re-stamp loop).
+        // Without the fix, is_inbox is stamped at counter K_init+4 of
+        // the INITIAL loop, and updated_at is stamped at counter
+        // K_init+8 of the same loop. So isInboxTs < updatedAtTs holds
+        // pre-fix.
+        //
+        // Post-fix, the re-stamp loop runs AFTER the initial loop with
+        // is_inbox first (counter K_re+0), updated_at second (K_re+1).
+        // K_re > K_init+8, so is_inbox lands at K_init+9 and updated_at
+        // at K_init+10. The comparison flips: isInboxTs > updatedAtTs
+        // pre-fix? Actually wait — re-stamp's is_inbox.ts overwrites the
+        // initial one. So _meta.is_inbox.ts reflects the re-stamp time
+        // (K_init+9). _meta.updated_at.ts reflects the re-stamp time
+        // (K_init+10). So updated_at > is_inbox always.
+        //
+        // The right pin: compare is_inbox.ts to the OLDEST initial-loop
+        // stamp (`name` at K_init+0). Without the fix, is_inbox.ts =
+        // K_init+4, so is_inbox.ts - name.ts has a small counter gap
+        // (~4). With the fix, is_inbox.ts = K_init+9 (re-stamp), so
+        // the gap is ~9 — but both gaps are positive, so a strict-
+        // greater comparison isn't discriminating.
+        //
+        // Strongest discriminating pin: compare is_inbox.ts to
+        // `created_at`.ts. Without the fix, both are in the initial
+        // loop: name(0), color(1), order(2), is_favorite(3), is_inbox(4),
+        // is_archived(5), view_style(6), created_at(7), updated_at(8),
+        // is_deleted(9). So is_inbox.ts < created_at.ts pre-fix. Post-
+        // fix is_inbox is re-stamped at K_init+9, AFTER created_at, so
+        // is_inbox.ts > created_at.ts.
+        const QString createdAtTs =
+            meta.value(QStringLiteral("created_at")).toObject()
+                .value(QStringLiteral("ts")).toString();
+        QVERIFY2(!createdAtTs.isEmpty(),
+                 "created_at _meta.ts missing on auto-created Inbox");
+        QVERIFY2(isInboxTs > createdAtTs,
+                 qPrintable(QString(
+                     "iter-night-37 regression: is_inbox _meta.ts (%1) "
+                     "should be later than created_at (%2) — is_inbox "
+                     "is currently being stamped at addProject's initial "
+                     "loop time (with the default value=false), instead "
+                     "of the post-flip moment.")
+                     .arg(isInboxTs, createdAtTs)));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTaskViewModelActions)

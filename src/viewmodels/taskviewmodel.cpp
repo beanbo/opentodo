@@ -278,7 +278,26 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
         qWarning("TaskViewModel::addTask — no project available; auto-creating Inbox");
         Project *autoInbox = m_store->addProject(QStringLiteral("Inbox"));
         if (autoInbox) {
+            // Iter-night-37: DataStore::addProject runs its inbox-uniqueness
+            // guard against `project->isInbox()` at construction time — a
+            // fresh Project defaults to is_inbox=false, so the guard never
+            // fires here. We promote post-hoc to is_inbox=true, then re-
+            // stamp `is_inbox` + `updated_at` so the per-field CRDT _meta
+            // reflects the post-promotion value rather than addProject's
+            // initial-stamp moment (which captured the stale `false`).
+            //
+            // Without the re-stamp, on sync a peer's inbox with a newer
+            // HLC could win the LWW race even when the peer's stamp is
+            // legitimately older than this device's promotion moment —
+            // because our stamp records the wrong time. The user would
+            // see two visible "Inbox" projects after sync: the peer's,
+            // plus our orphan that lost its is_inbox flag and degraded
+            // into a regular project.
             autoInbox->setIsInbox(true);
+            autoInbox->setUpdatedAt(QDateTime::currentDateTimeUtc());
+            m_store->markProjectFieldsModified(autoInbox->id(),
+                {QStringLiteral("is_inbox"),
+                 QStringLiteral("updated_at")});
             pid = autoInbox->id();
         } else {
             qWarning("TaskViewModel::addTask — failed to auto-create Inbox; task dropped");
