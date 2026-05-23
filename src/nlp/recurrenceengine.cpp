@@ -87,8 +87,15 @@ static QList<int> parseByday(const QString &byday)
 
 // Find the next day-of-week occurrence from `from` that is strictly after it.
 // `days` must be sorted ascending.
-static QDate nextByday(const QDate &from, const QList<int> &days)
+//
+// `wrapped` (optional out-param) tells the caller whether the result landed
+// in the next ISO-week (true) or stayed in the same week as `from` (false).
+// The WEEKLY;BYDAY;INTERVAL>1 branch in advance() needs this to decide
+// whether to add the extra (interval-1) weeks — see the comment there.
+static QDate nextByday(const QDate &from, const QList<int> &days,
+                       bool *wrapped = nullptr)
 {
+    if (wrapped) *wrapped = false;
     if (days.isEmpty()) return QDate();
     const int curDow = from.dayOfWeek(); // 1=Mon … 7=Sun
 
@@ -99,6 +106,7 @@ static QDate nextByday(const QDate &from, const QList<int> &days)
         }
     }
     // Wrap around to the next week's first matching day
+    if (wrapped) *wrapped = true;
     const int firstDay = days.first();
     return from.addDays(7 - curDow + firstDay);
 }
@@ -166,15 +174,37 @@ QDate RecurrenceEngine::advance(const QString &recurrenceRule,
         if (byday.isEmpty()) {
             candidate = base.addDays(7 * interval);
         } else {
-            // Find next matching weekday strictly after `base`; if interval > 1 we
-            // advance by (interval-1) full weeks first, then find next day in week.
+            // Find next matching weekday strictly after `base`. Whether to
+            // apply the extra (interval-1) weeks depends on whether the next
+            // BYDAY match wraps to a new ISO-week or stays in the current
+            // on-week.
+            //
+            // Iter-night-10: the previous code added (interval-1) weeks
+            // unconditionally. That broke multi-day BYDAY rules whose
+            // INTERVAL>1 whenever the previous occurrence wasn't the LAST
+            // BYDAY of its on-week:
+            //
+            //   FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR, base = Mon May 4
+            //     nextByday → Wed May 6 (same-week match, no wrap)
+            //     +1 extra week → Wed May 13 (in the OFF-week — invalid)
+            //     expected:    Wed May 6  (still in the same on-week)
+            //
+            // RFC 5545: a BYDAY=MO,WE,FR;INTERVAL=2 rule expands to every
+            // {Mon,Wed,Fri} of every OTHER week. Within an on-week the
+            // adjacent BYDAYs are themselves valid occurrences; only when
+            // we wrap into a new week does the (interval-1) skip kick in
+            // to land us in the next on-week.
             const QList<int> days = parseByday(byday);
             if (days.isEmpty()) {
                 candidate = base.addDays(7 * interval);
             } else {
-                candidate = nextByday(base, days);
-                // Apply extra interval weeks (interval==1 means "within / next occurrence").
-                if (interval > 1)
+                bool wrapped = false;
+                candidate = nextByday(base, days, &wrapped);
+                // Only add the extra (interval-1) weeks when the match
+                // crossed a week boundary — otherwise we're still inside
+                // the current on-week and the same-week BYDAY IS the
+                // correct next occurrence.
+                if (wrapped && interval > 1)
                     candidate = candidate.addDays(7 * (interval - 1));
             }
         }

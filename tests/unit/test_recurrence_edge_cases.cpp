@@ -120,6 +120,92 @@ private slots:
         QCOMPARE(result, QDate(2026, 5, 11));
     }
 
+    // ── Weekly with multi-BYDAY + INTERVAL>1 (iter-night-10 regression pin) ──
+    //
+    // Before the fix, the engine added (interval-1) weeks UNCONDITIONALLY
+    // after `nextByday`, even when that helper returned a date inside the
+    // same on-week. Same-week matches were pushed into the off-week and
+    // landed on dates that are not valid occurrences for a biweekly cycle.
+    //
+    // RRULE expansion of FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR starting
+    // Mon May 4 2026 (week 1):
+    //   Mon May 4   (week 1)        ← starting occurrence
+    //   Wed May 6   (week 1)        ← next, SAME on-week
+    //   Fri May 8   (week 1)
+    //   Mon May 18  (week 3, skip)
+    //   Wed May 20
+    //   Fri May 22
+    //
+    // The three slots below pin each transition: same-week (no wrap),
+    // same-week (no wrap), and wrap (with the interval skip).
+
+    void weekly_multibyday_interval2_mon_to_wed_sameWeek()
+    {
+        // Same-week match. Pre-fix: returned May 13 (off-week, invalid).
+        const QDate from(2026, 5, 4);   // Monday, week 1
+        QCOMPARE(from.dayOfWeek(), 1);
+        const QDate result = RecurrenceEngine::advance(
+            QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR"), from);
+        QCOMPARE(result, QDate(2026, 5, 6));
+    }
+
+    void weekly_multibyday_interval2_wed_to_fri_sameWeek()
+    {
+        // Same-week match. Pre-fix: returned May 15 (off-week, invalid).
+        const QDate from(2026, 5, 6);   // Wednesday, week 1
+        QCOMPARE(from.dayOfWeek(), 3);
+        const QDate result = RecurrenceEngine::advance(
+            QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR"), from);
+        QCOMPARE(result, QDate(2026, 5, 8));
+    }
+
+    void weekly_multibyday_interval2_fri_to_nextOnWeek_mon()
+    {
+        // Wrap match (Fri is last BYDAY of week 1). Pre-fix: correct (May 18).
+        // Pinned here too as a guard against the fix breaking the wrap path.
+        const QDate from(2026, 5, 8);   // Friday, week 1
+        QCOMPARE(from.dayOfWeek(), 5);
+        const QDate result = RecurrenceEngine::advance(
+            QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR"), from);
+        QCOMPARE(result, QDate(2026, 5, 18));
+    }
+
+    void weekly_multibyday_interval2_fullChain()
+    {
+        // Roll the chain forward six times and verify the full expansion.
+        // Pre-fix the chain drifted (every same-week jump added an extra
+        // week), so the second and fifth dates were off by 7.
+        const QString rule =
+            QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,FR");
+        const QList<QDate> expected = {
+            QDate(2026, 5, 6),   // Wed week 1
+            QDate(2026, 5, 8),   // Fri week 1
+            QDate(2026, 5, 18),  // Mon week 3 (skip week 2)
+            QDate(2026, 5, 20),  // Wed week 3
+            QDate(2026, 5, 22),  // Fri week 3
+            QDate(2026, 6, 1),   // Mon week 5 (skip week 4)
+        };
+        QDate cur(2026, 5, 4);  // Mon week 1
+        for (const QDate &exp : expected) {
+            cur = RecurrenceEngine::advance(rule, cur);
+            QCOMPARE(cur, exp);
+        }
+    }
+
+    void weekly_singlebyday_interval2_stillCorrect()
+    {
+        // Pre-fix single-day BYDAY worked correctly (wrap was always
+        // involved when chaining same-dow → same-dow). Pin as a guard
+        // against the fix breaking this previously-OK path.
+        const QString rule = QStringLiteral("FREQ=WEEKLY;INTERVAL=2;BYDAY=TU");
+        QDate cur(2026, 5, 5);  // Tuesday
+        QCOMPARE(cur.dayOfWeek(), 2);
+        cur = RecurrenceEngine::advance(rule, cur);
+        QCOMPARE(cur, QDate(2026, 5, 19));  // skip 2 weeks
+        cur = RecurrenceEngine::advance(rule, cur);
+        QCOMPARE(cur, QDate(2026, 6, 2));
+    }
+
     // ── Daily with INTERVAL ──────────────────────────────────────────────────
 
     void daily_interval2()
