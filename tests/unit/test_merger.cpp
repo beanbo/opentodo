@@ -238,6 +238,74 @@ private slots:
         QCOMPARE(s[QStringLiteral("language")].toString(), QStringLiteral("en"));
     }
 
+    // ── iter-night-30: empty remote settings must NOT wipe local ─────────────
+    //
+    // The whole-object-LWW design means remote wins WHEN remote has a payload.
+    // When remote has none (peer hasn't pushed any user settings yet — fresh
+    // device bootstrap, or an old snapshot with settings: {} key, or no
+    // `settings` key at all), the merge must fall back to local. Otherwise
+    // the very next pull-with-pending-commits writes back an empty settings
+    // object and the user loses theme/language/karma/AI-provider/hotkeys/
+    // default-project all at once. After loadFromJson(merged) the loss is
+    // committed and propagated to peers on the next push.
+    //
+    // Three pin slots covering the three ways "no remote settings" arises:
+    //   1. remote has `settings: {}` (empty but present)
+    //   2. remote has NO `settings` key at all
+    //   3. control: remote has actual settings — LWW still applies (this is
+    //      the existing settings_remoteWins test; we don't duplicate it here
+    //      but keep both for clarity).
+    void settings_emptyRemoteKeepsLocal()
+    {
+        Merger m;
+
+        QJsonObject localSettings;
+        localSettings[QStringLiteral("theme")]    = QStringLiteral("kale");
+        localSettings[QStringLiteral("language")] = QStringLiteral("ru");
+        localSettings[QStringLiteral("karma_score")] = 1247;
+
+        // Remote carries an explicit empty settings object.
+        const QJsonObject result = m.mergeStates(makeState(QJsonArray(), localSettings),
+                                                  makeState(QJsonArray(), QJsonObject()));
+        const QJsonObject s = result[QStringLiteral("settings")].toObject();
+
+        QCOMPARE(s[QStringLiteral("theme")].toString(),    QStringLiteral("kale"));
+        QCOMPARE(s[QStringLiteral("language")].toString(), QStringLiteral("ru"));
+        QCOMPARE(s[QStringLiteral("karma_score")].toInt(), 1247);
+    }
+
+    void settings_missingRemoteKeyKeepsLocal()
+    {
+        Merger m;
+
+        QJsonObject localSettings;
+        localSettings[QStringLiteral("theme")]      = QStringLiteral("dark");
+        localSettings[QStringLiteral("hotkeys")]    = QStringLiteral("Ctrl+Alt+A");
+        localSettings[QStringLiteral("default_project_id")] =
+            QStringLiteral("11111111-2222-3333-4444-555555555555");
+
+        // Build a remote state WITHOUT the "settings" key at all (simulates a
+        // legacy snapshot or a peer that never serialised settings).
+        QJsonObject localState = makeState(QJsonArray(), localSettings);
+        QJsonObject remoteState;
+        remoteState[QStringLiteral("tasks")]    = QJsonArray();
+        remoteState[QStringLiteral("projects")] = QJsonArray();
+        remoteState[QStringLiteral("sections")] = QJsonArray();
+        remoteState[QStringLiteral("labels")]   = QJsonArray();
+        remoteState[QStringLiteral("filters")]  = QJsonArray();
+        remoteState[QStringLiteral("reminders")]= QJsonArray();
+        remoteState[QStringLiteral("comments")] = QJsonArray();
+        // (deliberately no "settings" key)
+
+        const QJsonObject result = m.mergeStates(localState, remoteState);
+        const QJsonObject s = result[QStringLiteral("settings")].toObject();
+
+        QCOMPARE(s[QStringLiteral("theme")].toString(),   QStringLiteral("dark"));
+        QCOMPARE(s[QStringLiteral("hotkeys")].toString(), QStringLiteral("Ctrl+Alt+A"));
+        QCOMPARE(s[QStringLiteral("default_project_id")].toString(),
+                 QStringLiteral("11111111-2222-3333-4444-555555555555"));
+    }
+
     // ── Idempotence: merge(state, state) == state ────────────────────────────
     void idempotence()
     {

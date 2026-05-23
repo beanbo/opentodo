@@ -117,8 +117,22 @@ QJsonObject Merger::mergeStates(const QJsonObject &local, const QJsonObject &rem
 {
     QJsonObject merged;
 
-    // Settings: remote wins for whole-object (unchanged, settings are rare).
-    merged[QStringLiteral("settings")] = remote.value(QStringLiteral("settings")).toObject();
+    // Settings: remote wins for whole-object (per CLAUDE.md design — settings
+    // are rare and don't carry per-field _meta). iter-night-30: only adopt
+    // remote if it actually carries a settings payload. A missing or empty
+    // `settings` key on remote means the peer hasn't pushed any user settings
+    // yet (e.g. brand-new device whose state.json was bootstrapped) — taking
+    // its empty object would silently nuke the local user's entire
+    // configuration (theme, language, karma score/level/streak, AI-provider
+    // wiring, hotkeys, default project). The follow-up loadFromJson(merged)
+    // overwrites `m_settings` directly, so the loss is total — autosave then
+    // commits the cleared state to disk on the 1-second debounce.
+    const QJsonObject remoteSettings = remote.value(QStringLiteral("settings")).toObject();
+    if (!remoteSettings.isEmpty()) {
+        merged[QStringLiteral("settings")] = remoteSettings;
+    } else {
+        merged[QStringLiteral("settings")] = local.value(QStringLiteral("settings")).toObject();
+    }
 
     static const QStringList collections = {
         QStringLiteral("tasks"),
