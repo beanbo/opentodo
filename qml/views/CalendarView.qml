@@ -992,11 +992,15 @@ Rectangle {
                         }
                     }
 
+                    // Task 17cea65b iter-3: было unicode "✕".
                     ToolButton {
-                        text:    "✕"
-                        font.pixelSize: 14
-                        Material.foreground: root.textSecondary
                         onClicked: dayDetailPopup.close()
+                        contentItem: IconSvg {
+                            anchors.centerIn: parent
+                            name: "close"
+                            size: 14
+                            color: root.textSecondary
+                        }
                     }
                 }
 
@@ -1066,15 +1070,18 @@ Rectangle {
                                 Layout.fillWidth: true
                             }
 
-                            // Delete button
+                            // Delete button — task 17cea65b iter-3: было "✕".
                             ToolButton {
-                                text:    "✕"
-                                font.pixelSize: 11
-                                Material.foreground: root.textSecondary
                                 opacity: 0.6
                                 onClicked: {
                                     taskViewModel.deleteTask(modelData.id)
                                     popupTaskList.model = root._tasksForDate(root.selectedDate)
+                                }
+                                contentItem: IconSvg {
+                                    anchors.centerIn: parent
+                                    name: "close"
+                                    size: 11
+                                    color: root.textSecondary
                                 }
                             }
                         }
@@ -1116,11 +1123,11 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    Text {
-                        text:           "+"
-                        color:          root.accentRed
-                        font.pixelSize: 16
-                        font.bold:      true
+                    // Task 17cea65b iter-3: было unicode "+".
+                    IconSvg {
+                        name: "plus"
+                        size: 16
+                        color: root.accentRed
                     }
 
                     TextField {

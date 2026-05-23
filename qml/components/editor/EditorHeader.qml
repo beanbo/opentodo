@@ -24,11 +24,12 @@ RowLayout {
         radius: Radius.sm
         color:  closeHover.containsMouse ? ThemeManager.hoverColor : "transparent"
 
-        Text {
+        // Task 17cea65b iter-3: было unicode "✕".
+        IconSvg {
             anchors.centerIn: parent
-            text:  "✕"
+            name: "close"
+            size: 14
             color: ThemeManager.secondaryTextColor
-            font.pixelSize: FontSize.body
         }
 
         MouseArea {

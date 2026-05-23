@@ -263,16 +263,17 @@ Rectangle {
                             color: sidebarContent.secondaryTextColor
                         }
 
-                        // Иконка-эмодзи
-                        Text {
+                        // Task 17cea65b iter-3: было unicode emoji "📌".
+                        IconSvg {
                             id: pinnedIcon
                             anchors {
                                 left: pinnedChevron.right
                                 leftMargin: 4
                                 verticalCenter: parent.verticalCenter
                             }
-                            text: "📌"
-                            font.pixelSize: FontSize.body
+                            name: "pin"
+                            size: 16
+                            color: ThemeManager.accentColor
                         }
 
                         // Название
@@ -2559,10 +2560,11 @@ Rectangle {
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
-            Text {
+            // Task 17cea65b iter-3: было unicode "+".
+            IconSvg {
                 anchors.centerIn: parent
-                text: "+"
-                font.pixelSize: FontSize.subtitle
+                name: "plus"
+                size: 16
                 color: "#999999"
             }
 

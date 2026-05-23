@@ -131,9 +131,11 @@ Popup {
                 anchors.rightMargin: Spacing.md
                 spacing: Spacing.sm
 
-                Text {
-                    text: "📁"
-                    font.pixelSize: 18
+                // Task 17cea65b iter-3: было unicode "📁".
+                IconSvg {
+                    name: "folder"
+                    size: 18
+                    color: ThemeManager.secondaryTextColor
                 }
 
                 TextField {

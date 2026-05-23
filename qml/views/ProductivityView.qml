@@ -1570,11 +1570,11 @@ Item {
                                 anchors.rightMargin: 8
                                 spacing: 8
 
-                                // Checkmark icon
-                                Text {
-                                    text: "✓"
+                                // Checkmark icon — task 17cea65b iter-3: было "✓".
+                                IconSvg {
+                                    name: "check"
+                                    size: 14
                                     color: "#2e8b57"
-                                    font.pixelSize: 14
                                     Layout.alignment: Qt.AlignVCenter
                                 }
 

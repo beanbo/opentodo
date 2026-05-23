@@ -130,11 +130,12 @@ ColumnLayout {
             border.color: ThemeManager.borderColor
             border.width: 1
 
-            Text {
+            // Task 17cea65b iter-3: было unicode "+".
+            IconSvg {
                 anchors.centerIn: parent
-                text:          "+"
-                font.pixelSize: 14
-                color:         ThemeManager.textColor
+                name: "plus"
+                size: 14
+                color: ThemeManager.textColor
             }
 
             MouseArea {

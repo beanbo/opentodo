@@ -94,13 +94,12 @@ Popup {
                         verticalAlignment: Text.AlignVCenter
                     }
 
-                    // Checkmark for active selection
-                    Text {
-                        text:            "✓"
-                        font.pixelSize:  14
-                        color:           modelData.flagColor
-                        visible:         root.selectedPriority === modelData.value
-                        verticalAlignment: Text.AlignVCenter
+                    // Checkmark — task 17cea65b iter-3: было unicode "✓".
+                    IconSvg {
+                        name: "check"
+                        size: 14
+                        color: modelData.flagColor
+                        visible: root.selectedPriority === modelData.value
                         Layout.alignment: Qt.AlignVCenter
                     }
                 }

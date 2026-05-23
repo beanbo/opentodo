@@ -88,11 +88,12 @@ Popup {
                             ? ThemeManager.hoverColor
                             : "transparent"
 
-                Text {
+                // Task 17cea65b iter-3: было unicode "✕".
+                IconSvg {
                     anchors.centerIn: parent
-                    text:  "✕"
+                    name: "close"
+                    size: 20
                     color: ThemeManager.secondaryTextColor
-                    font.pixelSize: FontSize.headline
                 }
 
                 MouseArea {

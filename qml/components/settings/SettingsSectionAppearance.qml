@@ -176,12 +176,12 @@ Rectangle {
                         width: 18; height: 18; radius: 9
                         color: themeCard.themeData ? themeCard.themeData.accentColor : ThemeManager.accentColor
 
-                        Text {
+                        // Task 17cea65b iter-3: было unicode "✓".
+                        IconSvg {
                             anchors.centerIn: parent
-                            text: "✓"
-                            font.pixelSize: 11
+                            name: "check"
+                            size: 11
                             color: "white"
-                            font.bold: true
                         }
                     }
 

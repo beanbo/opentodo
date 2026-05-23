@@ -278,14 +278,15 @@ Rectangle {
                     elide: Text.ElideRight
                 }
 
-                Text {
+                // Task 17cea65b iter-3: было unicode "✕".
+                IconSvg {
                     id: bannerClose
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.rightMargin: 10
-                    text: "✕"
+                    name: "close"
+                    size: 14
                     color: ThemeManager.secondaryTextColor
-                    font.pixelSize: 14
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor

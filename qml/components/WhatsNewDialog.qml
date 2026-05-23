@@ -90,12 +90,11 @@ Popup {
                     implicitWidth: 36
                     implicitHeight: 36
 
-                    contentItem: Text {
-                        text: "✕"
-                        font.pixelSize: FontSize.subtitle
+                    // Task 17cea65b iter-3: было unicode "✕".
+                    contentItem: IconSvg {
+                        name: "close"
+                        size: 16
                         color: ThemeManager.secondaryTextColor
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
 
                     background: Rectangle {

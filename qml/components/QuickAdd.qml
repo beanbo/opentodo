@@ -106,17 +106,15 @@ Rectangle {
     // ─── Collapsed bar: "+" icon + placeholder/input ──────────────────────────
     // Rendered above the MouseArea, anchored so vertical centering is
     // unambiguous (no Layout dependency).
-    Text {
+    // Task 17cea65b iter-3: было unicode "+".
+    IconSvg {
         id: plusIcon
-        text:  "+"
+        name: "plus"
+        size: 22
         color: root.accentRed
-        font.pixelSize: 22
-        font.weight:    Font.Light
         anchors.left:           parent.left
         anchors.leftMargin:     16
         anchors.verticalCenter: barHitArea.verticalCenter
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment:   Text.AlignVCenter
         width: 24
     }
 

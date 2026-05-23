@@ -237,10 +237,11 @@ ColumnLayout {
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Очистить дату")
 
-            Text {
+            // Task 17cea65b iter-3: было unicode "✕".
+            IconSvg {
                 anchors.centerIn: parent
-                text: "✕"
-                font.pixelSize: 12
+                name: "close"
+                size: 12
                 color: ThemeManager.secondaryTextColor
             }
             MouseArea {
@@ -336,10 +337,11 @@ ColumnLayout {
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Очистить дедлайн")
 
-            Text {
+            // Task 17cea65b iter-3: было unicode "✕".
+            IconSvg {
                 anchors.centerIn: parent
-                text: "✕"
-                font.pixelSize: 12
+                name: "close"
+                size: 12
                 color: ThemeManager.secondaryTextColor
             }
             MouseArea {
@@ -735,12 +737,13 @@ ColumnLayout {
                                              ? ThemeManager.accentColor : "transparent")
                             border.width: modelData === "" ? 1 : (root.task && root.task.color === modelData ? 2 : 0)
 
-                            Text {
+                            // Task 17cea65b iter-3: было unicode "✕".
+                            IconSvg {
                                 anchors.centerIn: parent
-                                visible:  modelData === ""
-                                text:     "✕"
-                                color:    ThemeManager.secondaryTextColor
-                                font.pixelSize: 11
+                                visible: modelData === ""
+                                name: "close"
+                                size: 11
+                                color: ThemeManager.secondaryTextColor
                             }
 
                             MouseArea {

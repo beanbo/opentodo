@@ -317,13 +317,17 @@ Rectangle {
                     Material.foreground: checked ? accentRed : textSecondary
                 }
                 ToolButton {
-                    text:    "📅"
-                    font.pixelSize: 16
                     checked: viewStyle === "calendar"
                     onClicked: root.setView("calendar")
                     ToolTip.text: qsTr("Календарь")
                     ToolTip.visible: hovered
-                    Material.foreground: checked ? accentRed : textSecondary
+                    // Task 17cea65b iter-3: было unicode emoji "📅".
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "calendar"
+                        size: 18
+                        color: parent.checked ? accentRed : textSecondary
+                    }
                 }
 
                 // Separator
@@ -366,13 +370,16 @@ Rectangle {
                     ToolTip.delay: 500
                 }
 
-                // More-options menu button
+                // More-options menu button — task 17cea65b iter-3: было "⋯".
                 ToolButton {
                     id:      moreBtn
-                    text:    "⋯"
-                    font.pixelSize: FontSize.title
                     onClicked: projectMenu.open()
-                    Material.foreground: textSecondary
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "more-horizontal"
+                        size: 18
+                        color: textSecondary
+                    }
                 }
             }
 
@@ -778,14 +785,18 @@ Rectangle {
                                 }
 
                                 ToolButton {
-                                    text:           "+"
-                                    font.pixelSize: FontSize.subtitle
-                                    Material.foreground: root.textSecondary
                                     ToolTip.text: qsTr("Добавить задачу в раздел")
                                     ToolTip.visible: hovered
                                     onClicked: {
                                         addTaskToSectionDialog.sectionId = sectionHeaderRect.sectionId
                                         addTaskToSectionDialog.open()
+                                    }
+                                    // Task 17cea65b iter-3: было unicode "+".
+                                    contentItem: IconSvg {
+                                        anchors.centerIn: parent
+                                        name: "plus"
+                                        size: 16
+                                        color: root.textSecondary
                                     }
                                 }
 
@@ -793,14 +804,18 @@ Rectangle {
                                 // then opens the single globalSectionMenu declared at root.
                                 // This avoids the recycled-delegate / stale-Menu-state bug.
                                 ToolButton {
-                                    text:           "⋯"
-                                    font.pixelSize: FontSize.subtitle
-                                    visible:        sectionHeaderRect.sectionId !== ""
-                                    Material.foreground: root.textSecondary
+                                    visible: sectionHeaderRect.sectionId !== ""
                                     onClicked: {
                                         root._activeSectionId   = sectionHeaderRect.sectionId
                                         root._activeSectionName = sectionHeaderRect.sectionName
                                         globalSectionMenu.popup()
+                                    }
+                                    // Task 17cea65b iter-3: было unicode "⋯".
+                                    contentItem: IconSvg {
+                                        anchors.centerIn: parent
+                                        name: "more-horizontal"
+                                        size: 16
+                                        color: root.textSecondary
                                     }
                                 }
                             }
@@ -1029,10 +1044,11 @@ Rectangle {
                         anchors.leftMargin: Spacing.md
                         spacing: 6
 
-                        Text {
-                            text:           "+"
-                            color:          root.accentRed
-                            font.pixelSize: FontSize.subtitle
+                        // Task 17cea65b iter-3: было unicode "+".
+                        IconSvg {
+                            name: "plus"
+                            size: 16
+                            color: root.accentRed
                         }
                         Text {
                             text:           qsTr("Добавить раздел")
@@ -1219,13 +1235,19 @@ Rectangle {
                 }
 
                 ToolButton {
-                    text: "✕"
                     flat: true
                     ToolTip.text: qsTr("Убрать иконку")
                     ToolTip.visible: hovered
                     onClicked: {
                         iconField.text = ""
                         editDialog.editIcon = ""
+                    }
+                    // Task 17cea65b iter-3: было unicode "✕".
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "close"
+                        size: 14
+                        color: ThemeManager.secondaryTextColor
                     }
                 }
             }

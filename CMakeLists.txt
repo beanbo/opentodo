@@ -700,6 +700,7 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/close.svg
         resources/icons/ui/drag-handle.svg
         resources/icons/ui/filter.svg
+        resources/icons/ui/folder.svg
         resources/icons/ui/inbox.svg
         resources/icons/ui/label.svg
         resources/icons/ui/more-horizontal.svg

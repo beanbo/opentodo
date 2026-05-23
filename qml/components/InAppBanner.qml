@@ -117,12 +117,11 @@ Rectangle {
                 elide: Text.ElideRight
             }
 
-            // Dismiss "×" button in the title bar
-            Text {
-                text: "✕"
+            // Dismiss button — task 17cea65b iter-3: было unicode "✕".
+            IconSvg {
+                name: "close"
+                size: 14
                 color: Qt.rgba(1, 1, 1, 0.75)
-                font.pixelSize: FontSize.body
-                font.bold: true
                 Layout.alignment: Qt.AlignTop
 
                 MouseArea {

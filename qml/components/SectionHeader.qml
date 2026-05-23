@@ -86,12 +86,12 @@ Rectangle {
 
         // Add task button — visible on hover
         // ITER1 #28: z:2 so this item beats the collapse MouseArea (z:0).
-        Text {
+        // Task 17cea65b iter-3: было unicode "+".
+        IconSvg {
             id: addButton
-            text: "+"
-            font.pixelSize: 16
+            name: "plus"
+            size: 16
             color: root.isDarkTheme ? "#cccccc" : "#555555"
-            verticalAlignment: Text.AlignVCenter
             visible: headerHover.hovered
             opacity: addHover.hovered ? 1.0 : 0.7
             z: 2

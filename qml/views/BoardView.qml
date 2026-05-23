@@ -160,10 +160,14 @@ Rectangle {
                             // Column menu
                             ToolButton {
                                 id:    columnMenuBtn
-                                text:  "⋯"
-                                font.pixelSize: 16
-                                Material.foreground: root.textSecondary
                                 onClicked: columnMenu.open()
+                                // Task 17cea65b iter-3: было unicode "⋯".
+                                contentItem: IconSvg {
+                                    anchors.centerIn: parent
+                                    name: "more-horizontal"
+                                    size: 16
+                                    color: root.textSecondary
+                                }
                             }
 
                             Menu {
@@ -303,9 +307,11 @@ Rectangle {
                                             visible: modelData.dueDate !== ""
                                             spacing: 4
 
-                                            Text {
-                                                text:           "📅"
-                                                font.pixelSize: 11
+                                            // Task 17cea65b iter-3: было "📅".
+                                            IconSvg {
+                                                name: "calendar"
+                                                size: 11
+                                                color: ThemeManager.secondaryTextColor
                                             }
                                             Text {
                                                 text:           modelData.dueString !== ""
@@ -395,10 +401,11 @@ Rectangle {
                                 anchors.centerIn: parent
                                 spacing: 4
 
-                                Text {
-                                    text:           "+"
-                                    color:          root.textSecondary
-                                    font.pixelSize: FontSize.subtitle
+                                // Task 17cea65b iter-3: было unicode "+".
+                                IconSvg {
+                                    name: "plus"
+                                    size: 16
+                                    color: root.textSecondary
                                 }
                                 Text {
                                     text:           qsTr("Добавить задачу")
@@ -436,10 +443,11 @@ Rectangle {
                     anchors.centerIn: parent
                     spacing: 8
 
-                    Text {
-                        text:           "+"
-                        font.pixelSize: 24
-                        color:          root.textSecondary
+                    // Task 17cea65b iter-3: было unicode "+".
+                    IconSvg {
+                        name: "plus"
+                        size: 24
+                        color: root.textSecondary
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {

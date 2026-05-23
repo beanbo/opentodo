@@ -498,12 +498,16 @@ Item {
                                 onClicked: taskViewModel.filterMode = TaskViewModel.Upcoming
                             }
                             ToolButton {
-                                text: "📅"
-                                font.pixelSize: 16
                                 checked: taskViewModel.filterMode === TaskViewModel.Calendar
                                 ToolTip.text: qsTr("Календарь")
                                 ToolTip.visible: hovered
-                                Material.foreground: checked ? accentRed : textSecondary
+                                // Task 17cea65b iter-3: было unicode "📅".
+                                contentItem: IconSvg {
+                                    anchors.centerIn: parent
+                                    name: "calendar"
+                                    size: 18
+                                    color: parent.checked ? accentRed : textSecondary
+                                }
                                 onClicked: {
                                     // Drop project context so the C++ filter takes the
                                     // upcoming-tasks branch (taskviewmodel.cpp Q3.27).
@@ -632,12 +636,17 @@ Item {
                         ToolButton {
                             id: collapseAllBtn
                             visible: !root.isFullPageView && !root.isNarrow
-                            text: "📁"
                             flat: true
-                            font.pixelSize: 16
                             ToolTip.text: qsTr("Свернуть подзадачи у всех задач")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
+                            // Task 17cea65b iter-3: было unicode "📁".
+                            contentItem: IconSvg {
+                                anchors.centerIn: parent
+                                name: "folder"
+                                size: 18
+                                color: textSecondary
+                            }
                             onClicked: {
                                 bulkExpandSettings.collapseAllToken = bulkExpandSettings.collapseAllToken + 1
                                 if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
@@ -887,14 +896,20 @@ Item {
                                 // Flexible spacer — pushes the clear button to the right
                                 Item { Layout.fillWidth: true }
 
-                                // "✕ Сбросить" button — only visible while a chip is active
+                                // "Сбросить" button — only visible while a chip is active.
+                                // Task 17cea65b iter-3: было unicode "✕".
                                 ToolButton {
                                     visible: root._quickChip !== ""
-                                    text: "✕"
                                     flat: true
-                                    font.pixelSize: FontSize.caption
                                     Layout.preferredHeight: 26
                                     Layout.preferredWidth: 28
+
+                                    contentItem: IconSvg {
+                                        anchors.centerIn: parent
+                                        name: "close"
+                                        size: 12
+                                        color: ThemeManager.secondaryTextColor
+                                    }
 
                                     onClicked: root._clearChip()
 
@@ -1559,11 +1574,12 @@ Item {
                                                 border.color: modelData === "" ? ThemeManager.borderColor : "transparent"
                                                 border.width: modelData === "" ? 1 : 0
 
-                                                Text {
+                                                // Task 17cea65b iter-3: было unicode "✕".
+                                                IconSvg {
                                                     anchors.centerIn: parent
                                                     visible: modelData === ""
-                                                    text: "✕"
-                                                    font.pixelSize: 10
+                                                    name: "close"
+                                                    size: 10
                                                     color: ThemeManager.secondaryTextColor
                                                 }
 
@@ -2039,13 +2055,13 @@ Item {
                                     }
 
                                     // ── Снять выделение ──────────────────────────────────────
+                                    // Task 17cea65b iter-3: было unicode "✕".
                                     ToolButton {
-                                        contentItem: Text {
-                                            text: "✕"
+                                        contentItem: IconSvg {
+                                            anchors.centerIn: parent
+                                            name: "close"
+                                            size: 14
                                             color: "white"
-                                            font.pixelSize: FontSize.subtitle
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()
@@ -2095,9 +2111,10 @@ Item {
                                 spacing: Spacing.xs
                                 visible: !bottomQuickAdd.editing
 
-                                Text {
-                                    text: "+"
-                                    font.pixelSize: FontSize.subtitle
+                                // Task 17cea65b iter-3: было unicode "+".
+                                IconSvg {
+                                    name: "plus"
+                                    size: 16
                                     color: ThemeManager.secondaryTextColor
                                     Layout.alignment: Qt.AlignVCenter
                                 }
@@ -3148,11 +3165,11 @@ Item {
             anchors.centerIn: parent
             spacing: 8
 
-            Text {
+            // Task 17cea65b iter-3: было unicode "✕".
+            IconSvg {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "✕"
-                font.pixelSize: 13
-                font.bold: true
+                name: "close"
+                size: 13
                 color: ThemeManager.textColor
             }
 

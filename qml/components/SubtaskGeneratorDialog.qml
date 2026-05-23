@@ -242,12 +242,11 @@ Popup {
                 ToolButton {
                     implicitWidth:  28
                     implicitHeight: 28
-                    contentItem: Text {
-                        text:                "✕"
-                        font.pixelSize:      13
-                        color:               ThemeManager.secondaryTextColor
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment:   Text.AlignVCenter
+                    // Task 17cea65b iter-3: было unicode "✕".
+                    contentItem: IconSvg {
+                        name: "close"
+                        size: 13
+                        color: ThemeManager.secondaryTextColor
                     }
                     background: Rectangle {
                         radius: Radius.sm

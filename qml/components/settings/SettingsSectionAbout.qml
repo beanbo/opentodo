@@ -140,12 +140,12 @@ Rectangle {
                         width: 36; height: 36; radius: 8
                         color: ThemeManager.accentColor
 
-                        Text {
+                        // Task 17cea65b iter-3: было unicode "✓".
+                        IconSvg {
                             anchors.centerIn: parent
-                            text: "✓"
+                            name: "check"
+                            size: 20
                             color: "white"
-                            font.pixelSize: 20
-                            font.bold: true
                         }
                     }
 

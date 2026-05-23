@@ -699,12 +699,12 @@ Item {
                     border.color: root._priorityColor
                     border.width: 1.5
 
-                    Text {
+                    // Task 17cea65b iter-3: было unicode "✓".
+                    IconSvg {
                         anchors.centerIn: parent
-                        text:    "✓"
-                        color:   "white"
-                        font.pixelSize: FontSize.caption
-                        font.bold: true
+                        name: "check"
+                        size: 11
+                        color: "white"
                         visible: isCompleted
                     }
                 }
@@ -1011,10 +1011,12 @@ Item {
                         Layout.preferredWidth:  14
                         Layout.preferredHeight: 14
 
-                        Text {
+                        // Task 17cea65b iter-3: было unicode emoji "📌".
+                        IconSvg {
                             anchors.centerIn: parent
-                            text:          "📌"
-                            font.pixelSize: 12
+                            name: "pin"
+                            size: 12
+                            color: ThemeManager.accentColor
                         }
                     }
 
@@ -1556,11 +1558,12 @@ Item {
                             border.color: "#808080"
                             border.width: 1.5
 
-                            Text {
+                            // Task 17cea65b iter-3: было unicode "✓".
+                            IconSvg {
                                 anchors.centerIn: parent
-                                text:    "✓"
-                                color:   "white"
-                                font.pixelSize: 9
+                                name: "check"
+                                size: 9
+                                color: "white"
                                 visible: modelData.isCompleted
                             }
 

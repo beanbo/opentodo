@@ -509,14 +509,14 @@ Item {
                 layer.enabled: true
                 layer.effect: null  // F-6.28: DropShadow skipped — Qt5Compat not confirmed available
 
-                Label {
+                // Task 17cea65b iter-3: было unicode "+".
+                IconSvg {
                     anchors.centerIn: parent
-                    text: "+"
-                    font.pixelSize: FontSize.h1
-                    font.weight: Font.Light
+                    name: "plus"
+                    size: 28
                     color: "#ffffff"
                     // Nudge slightly to optical center
-                    bottomPadding: 2
+                    anchors.verticalCenterOffset: -2
                 }
 
                 // Press scale animation
@@ -641,17 +641,13 @@ Item {
                                 rightMargin: 12
                             }
 
-                            // Close / back button
-                            // B-6.34: qrc:/icons/close.svg doesn't exist — use Unicode glyph
+                            // Close / back button — task 17cea65b iter-3: было unicode "✕".
                             ToolButton {
-                                text: "✕"
-                                font.pixelSize: FontSize.title
-                                contentItem: Text {
-                                    text: parent.text
-                                    font: parent.font
+                                contentItem: IconSvg {
+                                    anchors.centerIn: parent
+                                    name: "close"
+                                    size: 18
                                     color: textSecondary
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
                                 }
                                 onClicked: taskEditorStack.pop()
                             }

@@ -185,14 +185,18 @@ ColumnLayout {
                         // editing shortcut on rowHover is preserved as-is.
                         ToolButton {
                             id:        commentActionsBtn
-                            text:      "⋯"
-                            font.pixelSize: 18
-                            font.bold:      true
                             flat:           true
                             visible:        !commentRow.editing
                             Layout.preferredWidth:  28
                             Layout.preferredHeight: 28
                             padding:        0
+                            // Task 17cea65b iter-3: было unicode "⋯".
+                            contentItem: IconSvg {
+                                anchors.centerIn: parent
+                                name: "more-horizontal"
+                                size: 16
+                                color: ThemeManager.secondaryTextColor
+                            }
                             // Slightly muted so it doesn't compete with the
                             // comment body text; the hover state (handled by
                             // the Material style) gives clear affordance.

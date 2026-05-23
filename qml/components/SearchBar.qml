@@ -218,11 +218,11 @@ Rectangle {
             palette.dark: root._accent
         }
 
-        // Clear (×) button
-        Text {
+        // Clear button — task 17cea65b iter-3: было unicode "✕".
+        IconSvg {
             visible: !searchViewModel.isSearching && searchField.text.length > 0
-            text: "✕"
-            font.pixelSize: FontSize.small
+            name: "close"
+            size: 12
             color: root._subColor
             Layout.alignment: Qt.AlignVCenter
 
@@ -447,9 +447,10 @@ Rectangle {
                                 Layout.alignment: Qt.AlignVCenter
                             }
 
-                            Text {
-                                text: "✕"
-                                font.pixelSize: FontSize.caption
+                            // Task 17cea65b iter-3: было unicode "✕".
+                            IconSvg {
+                                name: "close"
+                                size: 10
                                 color: root._subColor
                                 opacity: recentMouse.containsMouse ? 1.0 : 0.0
                                 Layout.alignment: Qt.AlignVCenter
