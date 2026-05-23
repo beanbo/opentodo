@@ -1062,8 +1062,19 @@ void SyncEngine::applyCommit(Commit *commit)
             if (label) {
                 // Q2.18-A FIX: applyPatch + push inbound _meta back.
                 const QJsonObject patched = applyPatch(label->toJson(), op.data);
-                if (patched.contains(QStringLiteral("name")))
-                    label->setName(patched[QStringLiteral("name")].toString());
+                if (patched.contains(QStringLiteral("name"))) {
+                    // Iter-night-40: route renames through renameLabel
+                    // so m_labelNameIndex stays consistent AND every
+                    // task's `labels` array is cascaded with the new
+                    // name. Bare setName left both stale until the
+                    // next loadFromJson, so peer renames were silently
+                    // invisible (labelByName returned nullptr for the
+                    // new name, tasks still showed the old chip text,
+                    // and the `@label` filter predicate missed the
+                    // renamed label).
+                    m_store->renameLabel(op.entityId,
+                        patched[QStringLiteral("name")].toString());
+                }
                 if (patched.contains(QStringLiteral("color")))
                     label->setColor(patched[QStringLiteral("color")].toString());
                 if (patched.contains(QStringLiteral("order")))

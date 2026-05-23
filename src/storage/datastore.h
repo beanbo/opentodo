@@ -136,6 +136,12 @@ public:
     Q_INVOKABLE Label *labelById(const QString &id) const;
     Q_INVOKABLE Label *labelByName(const QString &name) const;
     Q_INVOKABLE bool removeLabel(const QString &id);
+    // Iter-night-40: rename helper that keeps m_labelNameIndex consistent
+    // AND cascades the new name across every task that referenced the old
+    // name (Task::labels stores names — see task.cpp:84). Bare
+    // label->setName() leaves the index pointing at the old key and tasks
+    // still showing the old chip text until the next loadFromJson.
+    Q_INVOKABLE bool renameLabel(const QString &id, const QString &newName);
     Q_INVOKABLE QList<Label *> allLabels() const;
     void addExistingLabel(Label *label);
 

@@ -1248,6 +1248,98 @@ bool DataStore::removeLabel(const QString &id)
     return true;
 }
 
+// Iter-night-40: a public helper that keeps EVERY name-keyed view of a
+// label in sync after a rename. Three places hold the name:
+//
+//   1. The Label entity itself (m_label->name()).
+//   2. m_labelNameIndex (a QHash<QString,Label*> keyed by lower-cased
+//      name — populated only at addLabel/addExistingLabel/loadFromJson
+//      time, so bare label->setName(...) leaves a STALE key).
+//   3. Every Task that referenced the label by name in its `labels`
+//      QStringList (task.cpp:84-85, 175-177, 217-219 — names not ids).
+//
+// Pre-fix, the sync-inbound `label_update` branch in
+// SyncEngine::applyCommit (line 1066) called label->setName(...)
+// directly, breaking BOTH the index AND every task chip. Result:
+// labelByName(newName) returns nullptr while labelByName(oldName)
+// still resolves to the renamed entity; QML chips render the OLD
+// text (because task.labels still stores the old name string); the
+// `@label` filter predicate (filtereval.cpp:226) matches by name and
+// silently misses the renamed label until the next full
+// loadFromJson cycle. The known-issue comment in
+// test_mega_integration.cpp:350-353 documented this gap.
+//
+// This helper is the same shape as removeLabel's cascade (iter-night-38)
+// — collect the old name once, walk m_tasks case-insensitively, swap
+// the string in-place, stamp `labels` + `updated_at` so the OR-Set
+// remove-of-old + add-of-new propagates correctly on the next sync.
+bool DataStore::renameLabel(const QString &id, const QString &newName)
+{
+    auto *label = m_labelIndex.value(id);
+    if (!label) return false;
+    if (newName.isEmpty()) return false;
+
+    const QString oldName = label->name();
+    if (oldName == newName) return true;  // pure no-op
+
+    // Step 1: update the entity. The label's per-field _meta is
+    // stamped below; if called from applyCommit's label_update branch
+    // the subsequent applyInboundLabelMeta() will override these with
+    // the inbound HLC (correct CRDT behaviour). For local-rename paths
+    // these stamps are the authoritative ones. Note: Label does not
+    // expose a setUpdatedAt() — the entity has no updated_at field —
+    // but addLabel's initialFields and removeLabel both stamp
+    // `updated_at` in m_labelMeta defensively for future schema
+    // additions. Mirror that pattern here.
+    label->setName(newName);
+    stampEntityField(id, m_labelMeta, QStringLiteral("name"));
+    stampEntityField(id, m_labelMeta, QStringLiteral("updated_at"));
+
+    // Step 2: scrub & re-insert the name-index entry. The index is
+    // lower-cased (labelByName uses .toLower() lookup); we only remove
+    // the OLD key if it still points at THIS label — defends against
+    // a pathological case where another label was inserted under the
+    // same key after this one (shouldn't happen, but harmless guard).
+    const QString oldKey = oldName.toLower();
+    const QString newKey = newName.toLower();
+    if (oldKey != newKey) {
+        if (m_labelNameIndex.value(oldKey) == label) {
+            m_labelNameIndex.remove(oldKey);
+        }
+    }
+    m_labelNameIndex.insert(newKey, label);
+
+    // Step 3: cascade across tasks. Same case-insensitive match as the
+    // iter-night-38 removeLabel cascade — labelByName lookups use
+    // .toLower() so a task with labels=["work"] is rendered as label
+    // "Work" via the index; exact-match replacement would skip such
+    // case-drifted strings and leave chips rendering the old name.
+    if (!oldName.isEmpty()) {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        for (Task *t : m_tasks) {
+            if (!t || t->isDeleted()) continue;
+            QStringList ls = t->labels();
+            bool modified = false;
+            for (int i = 0; i < ls.size(); ++i) {
+                if (ls[i].compare(oldName, Qt::CaseInsensitive) == 0) {
+                    ls[i] = newName;
+                    modified = true;
+                }
+            }
+            if (modified) {
+                t->setLabels(ls);
+                t->setUpdatedAt(now);
+                markTaskFieldsModified(t->id(), {QStringLiteral("labels"),
+                                                  QStringLiteral("updated_at")});
+            }
+        }
+    }
+
+    emit labelsChanged();
+    emit dataChanged();
+    return true;
+}
+
 QList<Label *> DataStore::allLabels() const
 {
     QList<Label *> result;

@@ -617,6 +617,213 @@ private slots:
         QCOMPARE(preTs, postTs);
         QCOMPARE(untouched->labels(), QStringList{QStringLiteral("Home")});
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Iter-night-40: renameLabel must keep the m_labelNameIndex
+    // consistent AND cascade the new name across referencing tasks.
+    //
+    // The bug was specifically triggered via sync inbound label_update
+    // (syncengine.cpp:1066) which called label->setName() directly.
+    // m_labelNameIndex is populated only at addLabel /
+    // addExistingLabel / loadFromJson — bare setName leaves the OLD
+    // key pointing at the renamed label and never inserts the NEW key.
+    // Tasks' labels arrays (QStringList of names — task.cpp:84) also
+    // kept the OLD name string, so QML LabelChip rendered the old text
+    // and the `@label` filter predicate missed the renamed label.
+    //
+    // The fix mirrors the iter-night-38 removeLabel cascade and exposes
+    // a public Q_INVOKABLE bool renameLabel(id, newName).
+    //
+    // Pin slots:
+    //   1. renameLabel_updatesNameIndex
+    //   2. renameLabel_cascadesTaskLabelArrays
+    //   3. renameLabel_caseInsensitive_match
+    //   4. renameLabel_noOp_sameName_returnsTrue
+    //   5. renameLabel_unknownId_returnsFalse
+    //   6. renameLabel_emptyNewName_returnsFalse
+    //   7. renameLabel_stampsTaskLabels_field
+    //   8. renameLabel_skipsUnrelatedTasks
+    // ─────────────────────────────────────────────────────────────────────
+
+    void renameLabel_updatesNameIndex()
+    {
+        DataStore store;
+        Label *l = store.addLabel(QStringLiteral("Work"));
+        QCOMPARE(store.labelByName(QStringLiteral("Work")), l);
+        QCOMPARE(store.labelByName(QStringLiteral("work")), l);  // case-insensitive
+
+        QVERIFY(store.renameLabel(l->id(), QStringLiteral("Office")));
+
+        // Old key should no longer resolve.
+        QVERIFY2(store.labelByName(QStringLiteral("Work")) == nullptr,
+                 "iter-night-40 regression: old name still resolves "
+                 "after renameLabel — m_labelNameIndex not scrubbed");
+        // New key should resolve to the same label entity (same UUID).
+        QCOMPARE(store.labelByName(QStringLiteral("Office")), l);
+        QCOMPARE(store.labelByName(QStringLiteral("office")), l);
+        // Entity reflects the new name.
+        QCOMPARE(l->name(), QStringLiteral("Office"));
+    }
+
+    void renameLabel_cascadesTaskLabelArrays()
+    {
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *t1 = store.addTask(QStringLiteral("Email"),  inbox->id());
+        Task *t2 = store.addTask(QStringLiteral("Review"), inbox->id());
+        Task *t3 = store.addTask(QStringLiteral("Milk"),   inbox->id());
+        t1->setLabels({QStringLiteral("Work"), QStringLiteral("urgent")});
+        t2->setLabels({QStringLiteral("Work")});
+        t3->setLabels({QStringLiteral("Home")});
+
+        QVERIFY(store.renameLabel(work->id(), QStringLiteral("Office")));
+
+        // Tasks that had "Work" now have "Office".
+        QVERIFY(t1->labels().contains(QStringLiteral("Office")));
+        QVERIFY(!t1->labels().contains(QStringLiteral("Work")));
+        // Adjacent labels survive on the same task.
+        QVERIFY(t1->labels().contains(QStringLiteral("urgent")));
+
+        QVERIFY(t2->labels().contains(QStringLiteral("Office")));
+        QVERIFY(!t2->labels().contains(QStringLiteral("Work")));
+
+        // The "Home"-tagged task is untouched.
+        QCOMPARE(t3->labels(), QStringList{QStringLiteral("Home")});
+    }
+
+    void renameLabel_caseInsensitive_match()
+    {
+        // Mirror the removeLabel iter-38 case-insensitive cascade —
+        // labelByName uses .toLower(), so labels=["work","WORK"] both
+        // render via the "Work" entity.
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *t = store.addTask(QStringLiteral("Task"), inbox->id());
+        t->setLabels({QStringLiteral("work"), QStringLiteral("WORK")});
+
+        QVERIFY(store.renameLabel(work->id(), QStringLiteral("Office")));
+
+        // All case variations of the old name are replaced with the
+        // canonical new name.
+        QCOMPARE(t->labels(), QStringList({QStringLiteral("Office"),
+                                            QStringLiteral("Office")}));
+    }
+
+    void renameLabel_noOp_sameName_returnsTrue()
+    {
+        DataStore store;
+        Label *l = store.addLabel(QStringLiteral("Work"));
+        // Same name — returns true (idempotent), nothing else changes.
+        QVERIFY(store.renameLabel(l->id(), QStringLiteral("Work")));
+        QCOMPARE(l->name(), QStringLiteral("Work"));
+        QCOMPARE(store.labelByName(QStringLiteral("Work")), l);
+    }
+
+    void renameLabel_unknownId_returnsFalse()
+    {
+        DataStore store;
+        QVERIFY2(!store.renameLabel(QStringLiteral("not-a-real-id"),
+                                     QStringLiteral("Office")),
+                 "renameLabel must return false for unknown id");
+    }
+
+    void renameLabel_emptyNewName_returnsFalse()
+    {
+        DataStore store;
+        Label *l = store.addLabel(QStringLiteral("Work"));
+        // Reject empty new-name — the index uses .toLower() and would
+        // collide with the default Label::name=="" case.
+        QVERIFY(!store.renameLabel(l->id(), QString()));
+        QCOMPARE(l->name(), QStringLiteral("Work"));
+    }
+
+    void renameLabel_stampsTaskLabels_field()
+    {
+        // CRDT-correctness: the cascade must mark `labels` + `updated_at`
+        // on each modified task so the OR-Set remove-of-old +
+        // add-of-new propagates to peers. Sibling of iter-night-38's
+        // stamp assertion.
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *t = store.addTask(QStringLiteral("Task"), inbox->id());
+        t->setLabels({QStringLiteral("Work")});
+
+        auto readTs = [&store, &t](const QString &field) -> QString {
+            const QJsonObject snap = store.toJson();
+            const QJsonArray arr = snap.value(QStringLiteral("tasks")).toArray();
+            for (const QJsonValue &v : arr) {
+                const QJsonObject o = v.toObject();
+                if (o.value(QStringLiteral("id")).toString() == t->id()) {
+                    return o.value(QStringLiteral("_meta")).toObject()
+                            .value(field).toObject()
+                            .value(QStringLiteral("ts")).toString();
+                }
+            }
+            return QString();
+        };
+
+        const QString preUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+        QVERIFY(!preUpdatedAtTs.isEmpty());
+
+        QVERIFY(store.renameLabel(work->id(), QStringLiteral("Office")));
+
+        const QString postUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+        const QString postLabelsTs    = readTs(QStringLiteral("labels"));
+
+        // Post-cascade: BOTH labels._meta AND updated_at._meta must be
+        // present (re-stamped by the cascade).
+        QVERIFY2(!postLabelsTs.isEmpty(),
+                 "iter-night-40: task.labels _meta absent after "
+                 "renameLabel cascade — markTaskFieldsModified missing");
+        QVERIFY2(postUpdatedAtTs > preUpdatedAtTs,
+                 qPrintable(QString(
+                     "iter-night-40: updated_at _meta.ts did not advance. "
+                     "pre=%1 post=%2").arg(preUpdatedAtTs, postUpdatedAtTs)));
+    }
+
+    void renameLabel_skipsUnrelatedTasks()
+    {
+        // Negative pin: tasks that don't reference the renamed label
+        // must not have their `labels` _meta touched.
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *untouched = store.addTask(QStringLiteral("Milk"), inbox->id());
+        untouched->setLabels({QStringLiteral("Home")});
+
+        auto readTs = [&store, &untouched](const QString &field) -> QString {
+            const QJsonObject snap = store.toJson();
+            const QJsonArray arr = snap.value(QStringLiteral("tasks")).toArray();
+            for (const QJsonValue &v : arr) {
+                const QJsonObject o = v.toObject();
+                if (o.value(QStringLiteral("id")).toString() == untouched->id()) {
+                    return o.value(QStringLiteral("_meta")).toObject()
+                            .value(field).toObject()
+                            .value(QStringLiteral("ts")).toString();
+                }
+            }
+            return QString();
+        };
+
+        const QString preUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+
+        QVERIFY(store.renameLabel(work->id(), QStringLiteral("Office")));
+
+        const QString postUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+        QCOMPARE(preUpdatedAtTs, postUpdatedAtTs);
+        QCOMPARE(untouched->labels(), QStringList{QStringLiteral("Home")});
+    }
 };
 
 QTEST_GUILESS_MAIN(TestLabelExtended)
