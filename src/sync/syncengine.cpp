@@ -185,10 +185,27 @@ void SyncEngine::push()
         headObj[QStringLiteral("commit")]    = m_headCommitId;
         headObj[QStringLiteral("timestamp")] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
         const QJsonDocument headDoc(headObj);
-        m_gdrive->uploadFile(QStringLiteral("HEAD"), headDoc.toJson());
+        // iter-night-3 regress-fix (#58/#59 follow-up): the uploadFile return
+        // value here was being ignored. If HEAD failed but state.json + log/
+        // succeeded, peers would still see the OLD HEAD on Drive while their
+        // local m_headCommitId == oldHead would short-circuit the pull
+        // (state.json never re-downloaded). Worse, the subsequent
+        // shouldCompact() / createSnapshot() walks ancestors of our NEW
+        // m_headCommitId and deletes their log/<uuid>.json files — peers and
+        // future pulls then see a dangling HEAD pointing at a now-purged
+        // commit and refuse to push. Treat the HEAD upload as a hard
+        // failure and abort BEFORE running compaction.
+        if (!m_gdrive->uploadFile(QStringLiteral("HEAD"), headDoc.toJson())) {
+            setLastError(QStringLiteral("Failed to upload HEAD pointer"));
+            purgeUploaded();
+            m_gdrive->releaseLock();
+            setStatus(Error);
+            return;
+        }
     }
 
     // X-2.10: create snapshot BEFORE releasing lock so peers can't race in.
+    // (Now gated on HEAD upload success — see comment above.)
     if (m_snapshot->shouldCompact()) {
         m_snapshot->createSnapshot();
     }
