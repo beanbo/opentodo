@@ -696,6 +696,7 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/calendar.svg
         resources/icons/ui/check.svg
         resources/icons/ui/chevron-down.svg
+        resources/icons/ui/chevron-left.svg
         resources/icons/ui/chevron-right.svg
         resources/icons/ui/close.svg
         resources/icons/ui/drag-handle.svg

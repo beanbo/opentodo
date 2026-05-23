@@ -196,11 +196,17 @@ Rectangle {
                 spacing: 4
 
                 // Collapse toggle (strip mode only)
+                // Iter-night-24: было unicode "▼/▶". Migrate to IconSvg so
+                // the chevron renders consistently with the rest of the UI
+                // and theme-colour changes propagate without manual rebind.
                 ToolButton {
                     visible:        !root.widePanel
-                    text:           root.collapsed ? "▶" : "▼"
-                    font.pixelSize: 11
-                    Material.foreground: root._dim
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name:  root.collapsed ? "chevron-right" : "chevron-down"
+                        size:  14
+                        color: root._dim
+                    }
                     Layout.preferredWidth:  24
                     Layout.preferredHeight: 24
                     onClicked: root.collapsed = !root.collapsed
@@ -209,11 +215,16 @@ Rectangle {
                 }
 
                 // Prev month button
+                // Iter-night-24: было unicode "◀". chevron-left.svg added
+                // in this commit (mirrors chevron-right.svg).
                 ToolButton {
                     visible:  !root.collapsed
-                    text:     "◀"
-                    font.pixelSize: 11
-                    Material.foreground: root._dim
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name:  "chevron-left"
+                        size:  14
+                        color: root._dim
+                    }
                     Layout.preferredWidth:  24
                     Layout.preferredHeight: 24
                     onClicked: root._prevMonth()
@@ -236,11 +247,15 @@ Rectangle {
                 }
 
                 // Next month button
+                // Iter-night-24: было unicode "▶".
                 ToolButton {
                     visible:  !root.collapsed
-                    text:     "▶"
-                    font.pixelSize: 11
-                    Material.foreground: root._dim
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name:  "chevron-right"
+                        size:  14
+                        color: root._dim
+                    }
                     Layout.preferredWidth:  24
                     Layout.preferredHeight: 24
                     onClicked: root._nextMonth()

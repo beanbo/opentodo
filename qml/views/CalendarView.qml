@@ -244,10 +244,16 @@ Rectangle {
                 anchors.rightMargin: 16
                 spacing: 12
 
+                // Iter-night-24: было unicode "◀". Migration to IconSvg
+                // (chevron-left.svg added in this commit) so the arrow
+                // adapts to theme like every other glyph in the toolbar.
                 ToolButton {
-                    text: "◀"   // ◀
-                    font.pixelSize: 14
-                    Material.foreground: root.textPrimary
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name:  "chevron-left"
+                        size:  16
+                        color: root.textPrimary
+                    }
                     onClicked: root.prevPeriod()
                     ToolTip.text: root.viewMode === "week"   ? qsTr("Предыдущая неделя")
                                 : root.viewMode === "agenda" ? qsTr("Предыдущие 14 дней")
@@ -284,10 +290,14 @@ Rectangle {
                     color:          root.textPrimary
                 }
 
+                // Iter-night-24: было unicode "▶".
                 ToolButton {
-                    text: "▶"   // ▶
-                    font.pixelSize: 14
-                    Material.foreground: root.textPrimary
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name:  "chevron-right"
+                        size:  16
+                        color: root.textPrimary
+                    }
                     onClicked: root.nextPeriod()
                     ToolTip.text: root.viewMode === "week"   ? qsTr("Следующая неделя")
                                 : root.viewMode === "agenda" ? qsTr("Следующие 14 дней")

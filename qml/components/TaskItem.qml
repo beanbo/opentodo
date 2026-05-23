@@ -662,11 +662,15 @@ Item {
                 visible: !root.isSubtask
                 z: 5
 
-                Text {
+                // Iter-night-24: было unicode "▼/▶". Migration completes the
+                // SVG sweep started in task 17cea65b — the subtask-expand
+                // chevron now uses the IconSvg helper so it adapts to theme
+                // colour like every other glyph in the row.
+                IconSvg {
                     anchors.centerIn: parent
-                    text:    root.expanded ? "▼" : "▶"
+                    name:    root.expanded ? "chevron-down" : "chevron-right"
+                    size:    12
                     color:   root._subColor
-                    font.pixelSize: 10
                     // Hide when no subtasks exist
                     visible: taskViewModel.hasSubtasks(root.id)
                 }
@@ -1139,12 +1143,15 @@ Item {
 
                 Behavior on opacity { NumberAnimation { duration: Duration.fast } }
 
-                Text {
+                // Iter-night-24: было unicode "⋮⋮". Use the dedicated
+                // drag-handle SVG (six-dot grip) instead of two stacked
+                // ellipses — adapts to theme colour through IconSvg's
+                // colorization and renders consistently across high-DPI.
+                IconSvg {
                     anchors.centerIn: parent
-                    text:    "⋮⋮"
-                    color:   root.dragActive ? ThemeManager.accentColor : root._subColor
-                    font.pixelSize: FontSize.body
-                    font.letterSpacing: -2
+                    name:  "drag-handle"
+                    size:  16
+                    color: root.dragActive ? ThemeManager.accentColor : root._subColor
                 }
 
                 // The dedicated drag-only MouseArea.  Using drag.target = root

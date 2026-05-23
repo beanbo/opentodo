@@ -618,12 +618,18 @@ Item {
                             property int expandAllToken: 0
                             property int collapseAllToken: 0
                         }
+                        // Iter-night-24: было unicode "📂" (companion to the
+                        // already-migrated 📁 collapse-all button below).
                         ToolButton {
                             id: expandAllBtn
                             visible: !root.isFullPageView && !root.isNarrow
-                            text: "📂"
                             flat: true
-                            font.pixelSize: 16
+                            contentItem: IconSvg {
+                                anchors.centerIn: parent
+                                name: "folder"
+                                size: 18
+                                color: textSecondary
+                            }
                             ToolTip.text: qsTr("Развернуть подзадачи у всех задач")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
