@@ -1494,6 +1494,152 @@ private slots:
         // second-pass either (it's deduped so the guard skips it).
         QVERIFY(engineering->parentId().isEmpty());
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-27: Phase 3 (Sections) re-import must NOT multiply section
+    // rows. Pre-fix every re-run of the same backup added another fresh
+    // Section per existing one. Phase 4 task dedup is fingerprint-based
+    // (content+projectId), so re-imported tasks went back to the ORIGINAL
+    // section while the new copies stayed empty — pure UI clutter that
+    // grew linearly with re-import count.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_phase3_doesNotDuplicateSections()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        TodoistImportData first;
+        TodoistProject p;
+        p.id = QStringLiteral("td-proj");
+        p.name = QStringLiteral("Work");
+        first.projects.append(p);
+
+        TodoistSection s1;
+        s1.id = QStringLiteral("td-sec-1");
+        s1.name = QStringLiteral("Backlog");
+        s1.projectId = p.id;
+        s1.order = 0;
+        first.sections.append(s1);
+
+        TodoistSection s2;
+        s2.id = QStringLiteral("td-sec-2");
+        s2.name = QStringLiteral("In Progress");
+        s2.projectId = p.id;
+        s2.order = 1;
+        first.sections.append(s2);
+
+        imp->applyImport(first, /*importCompleted=*/false);
+
+        Project *proj = nullptr;
+        for (auto *pp : ds->allProjects()) {
+            if (pp->name() == QStringLiteral("Work")) proj = pp;
+        }
+        QVERIFY(proj);
+        QCOMPARE(ds->sectionsForProject(proj->id()).size(), 2);
+
+        // Re-import the same data — pre-fix the section count doubled to
+        // 4 (two pairs of duplicates) and would grow on every subsequent
+        // run.
+        imp->applyImport(first, false);
+        QCOMPARE(ds->sectionsForProject(proj->id()).size(), 2);
+
+        // Third run for stability — must still be 2.
+        imp->applyImport(first, false);
+        QCOMPARE(ds->sectionsForProject(proj->id()).size(), 2);
+
+        // Sanity: section names match the originals (the dedup found them
+        // by case-insensitive name).
+        QSet<QString> names;
+        for (Section *s : ds->sectionsForProject(proj->id()))
+            names.insert(s->name());
+        QVERIFY(names.contains(QStringLiteral("Backlog")));
+        QVERIFY(names.contains(QStringLiteral("In Progress")));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-27 companion: case-insensitive name match — Todoist
+    // exports may carry "in progress" vs "In Progress" capitalisation
+    // drift across versions. Reuse the existing section regardless of
+    // case to keep re-imports idempotent.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_phase3_dedupIsCaseInsensitive()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        TodoistImportData first;
+        TodoistProject p;
+        p.id = QStringLiteral("td-proj");
+        p.name = QStringLiteral("Proj");
+        first.projects.append(p);
+        TodoistSection s;
+        s.id = QStringLiteral("td-sec-cap");
+        s.name = QStringLiteral("MyStuff");
+        s.projectId = p.id;
+        first.sections.append(s);
+        imp->applyImport(first, false);
+
+        Project *proj = nullptr;
+        for (auto *pp : ds->allProjects()) {
+            if (pp->name() == QStringLiteral("Proj")) proj = pp;
+        }
+        QVERIFY(proj);
+        QCOMPARE(ds->sectionsForProject(proj->id()).size(), 1);
+
+        // Second import with lowercase section name — should still
+        // resolve to the existing "MyStuff" section.
+        TodoistImportData second = first;
+        second.sections[0].name = QStringLiteral("mystuff");
+        imp->applyImport(second, false);
+
+        QCOMPARE(ds->sectionsForProject(proj->id()).size(), 1);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-27 companion: same-named sections in DIFFERENT projects
+    // must NOT collide. Dedup is per-project; two "Backlog" sections in
+    // two projects are independent.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_phase3_sameNameDifferentProjects_independent()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        TodoistImportData first;
+        TodoistProject pA, pB;
+        pA.id = QStringLiteral("td-A"); pA.name = QStringLiteral("Alpha");
+        pB.id = QStringLiteral("td-B"); pB.name = QStringLiteral("Beta");
+        first.projects.append(pA);
+        first.projects.append(pB);
+
+        TodoistSection sA, sB;
+        sA.id = QStringLiteral("td-sec-A"); sA.name = QStringLiteral("Backlog");
+        sA.projectId = pA.id;
+        sB.id = QStringLiteral("td-sec-B"); sB.name = QStringLiteral("Backlog");
+        sB.projectId = pB.id;
+        first.sections.append(sA);
+        first.sections.append(sB);
+
+        imp->applyImport(first, false);
+
+        Project *projA = nullptr, *projB = nullptr;
+        for (auto *pp : ds->allProjects()) {
+            if (pp->name() == QStringLiteral("Alpha")) projA = pp;
+            if (pp->name() == QStringLiteral("Beta"))  projB = pp;
+        }
+        QVERIFY(projA && projB);
+        QCOMPARE(ds->sectionsForProject(projA->id()).size(), 1);
+        QCOMPARE(ds->sectionsForProject(projB->id()).size(), 1);
+
+        // Re-import — each project still has exactly one "Backlog"
+        // section. Cross-project dedup would be a bug.
+        imp->applyImport(first, false);
+        QCOMPARE(ds->sectionsForProject(projA->id()).size(), 1);
+        QCOMPARE(ds->sectionsForProject(projB->id()).size(), 1);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTodoistImporterRobustness)

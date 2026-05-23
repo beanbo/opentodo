@@ -600,9 +600,36 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
     QMap<QString, QString> secIdMap; // todoistId → openTodo UUID
 
+    // Iter-night-27: dedup sections by case-insensitive name within the
+    // target project, mirroring the Phase 1 (labels) and Phase 2 (projects)
+    // dedup. Pre-fix every re-import unconditionally allocated a fresh
+    // Section per row, so re-running the same backup multiplied sections
+    // in every project on every run. Phase 4 task dedup uses
+    // content+projectId fingerprints so the re-routed tasks went back to
+    // the ORIGINAL section, leaving the duplicates empty — pure UI
+    // clutter that grew linearly with re-import count.
+    auto findExistingSectionByName = [this](const QString &projectId,
+                                            const QString &name) -> Section * {
+        for (Section *s : m_store->sectionsForProject(projectId)) {
+            if (!s || s->isDeleted()) continue;
+            if (s->name().compare(name, Qt::CaseInsensitive) == 0)
+                return s;
+        }
+        return nullptr;
+    };
+
     for (const TodoistSection &ts : data.sections) {
         const QString mappedProjectId = projIdMap.value(ts.projectId);
         if (mappedProjectId.isEmpty()) continue;
+
+        if (Section *existing = findExistingSectionByName(mappedProjectId, ts.name)) {
+            // Reuse the existing section. Deliberately NOT overwriting
+            // its order — incremental imports must be additive on
+            // existing entities, matching the iter-night-19 deduped-
+            // project parent_id guard semantic.
+            secIdMap[ts.id] = existing->id();
+            continue;
+        }
 
         Section *sec = m_store->addSection(ts.name, mappedProjectId);
         sec->setOrder(ts.order);
