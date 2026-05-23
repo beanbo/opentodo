@@ -372,6 +372,17 @@ bool OAuthClient::refreshAccessToken()
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   QStringLiteral("application/x-www-form-urlencoded"));
 
+    // Iter-night-1 (zombie sign-out race): the nested QEventLoop below pumps
+    // every Qt event including UI clicks. If the user hits "Sign out" while
+    // we're waiting on Google's response, signOut() reentrantly clears
+    // m_refreshToken / m_accessToken / m_authenticated. When the response
+    // arrives and we resume execution, the old code path would overwrite
+    // the cleared state with the freshly-received tokens, silently undoing
+    // the user's sign-out. Snapshot m_refreshToken now; after the loop, if
+    // it no longer matches we know signOut() ran during the wait and we
+    // abort instead of restoring the session.
+    const QString refreshTokenSnapshot = m_refreshToken;
+
     QNetworkReply *reply = m_nam.post(req, params.toString(QUrl::FullyEncoded).toUtf8());
 
     QEventLoop loop;
@@ -382,6 +393,17 @@ bool OAuthClient::refreshAccessToken()
     const QNetworkReply::NetworkError netErr = reply->error();
     const QByteArray body = reply->readAll();
     reply->deleteLater();
+
+    // Detect a reentrant signOut(): refresh_token was cleared (or replaced
+    // by re-auth) while we were waiting. Drop the response on the floor so
+    // we don't resurrect tokens the user just asked us to forget.
+    if (m_refreshToken != refreshTokenSnapshot) {
+        qCInfo(lcOAuth) << "refreshAccessToken: refresh_token changed during "
+                           "the nested event loop (sign-out or re-auth) — "
+                           "discarding response to honour the new state.";
+        m_refreshInProgress = false;
+        return m_authenticated;
+    }
 
     bool success = false;
 
