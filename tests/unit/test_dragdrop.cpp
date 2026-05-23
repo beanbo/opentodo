@@ -6,6 +6,7 @@
 #include "model/project.h"
 #include "model/section.h"
 #include "viewmodels/taskviewmodel.h"
+#include "services/undostack.h"
 
 // ---------------------------------------------------------------------------
 // Helper: store with Inbox project
@@ -231,6 +232,132 @@ private slots:
         TaskViewModel vm(store);
         bool ok = vm.moveTask(QStringLiteral("bad-id"), work->id(), {});
         QVERIFY(!ok);
+
+        delete store;
+    }
+
+    // -----------------------------------------------------------------------
+    // Iter-night-35: cross-project moveTask undo must restore descendant
+    // section_ids that the forward BFS cleared.
+    //
+    // The forward path (Q3.08-C, line 569+) cascades the new projectId
+    // across every descendant subtask AND clears each one's section_id to
+    // empty (sections are project-scoped, so the source section's UUID is
+    // meaningless in the destination project). Before iter-night-35, the
+    // undo lambda captured ONLY the root task's (oldProject, oldSection),
+    // so the descendants' original section_ids were silently lost on every
+    // move-then-undo round-trip. The recursive moveTask call inside the
+    // undo also re-ran the BFS, clearing them again — so even if memory
+    // had preserved them between push and undo, the recursive call would
+    // wipe them.
+    //
+    // Pin: parent T with subtask D, D originally in section S_D within
+    // project P1. moveTask(T, P2) → undo → expect D back in P1 AND in S_D.
+    // -----------------------------------------------------------------------
+    void moveTask_undo_restoresDescendantSectionIds()
+    {
+        DataStore *store = makeStore();
+        UndoStack undo;
+
+        const QString inboxId = store->inboxProject()->id();
+        Project *work = store->addProject(QStringLiteral("Work"));
+        const QString workId = work->id();
+
+        // Inbox has a section S_inbox; Work has its own section so the
+        // forward move clears the descendant's section_id (because S_inbox
+        // is meaningless in the Work project).
+        Section *sInbox = store->addSection(QStringLiteral("S_inbox"), inboxId);
+        const QString sInboxId = sInbox->id();
+
+        Task *root  = store->addTask(QStringLiteral("Root"),  inboxId);
+        Task *child = store->addTask(QStringLiteral("Child"), inboxId);
+        const QString rootId  = root->id();
+        const QString childId = child->id();
+        root->setSectionId(sInboxId);
+        child->setSectionId(sInboxId);
+        child->setParentId(rootId);
+
+        // Sanity preconditions.
+        QCOMPARE(root->projectId(),  inboxId);
+        QCOMPARE(root->sectionId(),  sInboxId);
+        QCOMPARE(child->projectId(), inboxId);
+        QCOMPARE(child->sectionId(), sInboxId);
+
+        TaskViewModel vm(store);
+        vm.setUndoStack(&undo);
+
+        // Forward: move root to Work with empty section. Forward BFS clears
+        // child's section_id and updates its project_id.
+        QVERIFY(vm.moveTask(rootId, workId, QString()));
+        QCOMPARE(root->projectId(),  workId);
+        QCOMPARE(root->sectionId(),  QString());
+        QCOMPARE(child->projectId(), workId);
+        QCOMPARE(child->sectionId(), QString());
+        QCOMPARE(undo.count(), 1);
+
+        // Undo: root should return to Inbox/S_inbox AND child should also
+        // return to Inbox/S_inbox. Without the iter-night-35 fix the child
+        // would land at Inbox with sectionId="" — the section_id snapshot
+        // was never taken.
+        QVERIFY(undo.undo());
+
+        QCOMPARE(root->projectId(),  inboxId);
+        QCOMPARE(root->sectionId(),  sInboxId);
+        QCOMPARE(child->projectId(), inboxId);
+        QVERIFY2(child->sectionId() == sInboxId,
+                 qPrintable(QString(
+                     "iter-night-35 regression: subtask landed at "
+                     "section_id='%1' after undo of cross-project move; "
+                     "expected the original '%2'.")
+                     .arg(child->sectionId(), sInboxId)));
+
+        delete store;
+    }
+
+    // Companion: deep subtree — grandchild's section_id must also survive
+    // the undo. The undo lambda's snapshot is keyed by id, so all visited
+    // descendants are restored regardless of depth.
+    void moveTask_undo_restoresDeepDescendantSectionIds()
+    {
+        DataStore *store = makeStore();
+        UndoStack undo;
+
+        const QString inboxId = store->inboxProject()->id();
+        Project *work = store->addProject(QStringLiteral("Work"));
+        const QString workId = work->id();
+
+        Section *secA = store->addSection(QStringLiteral("A"), inboxId);
+        Section *secB = store->addSection(QStringLiteral("B"), inboxId);
+        const QString secAId = secA->id();
+        const QString secBId = secB->id();
+
+        Task *root  = store->addTask(QStringLiteral("Root"),  inboxId);
+        Task *child = store->addTask(QStringLiteral("Child"), inboxId);
+        Task *grand = store->addTask(QStringLiteral("Grand"), inboxId);
+        const QString rootId  = root->id();
+        const QString childId = child->id();
+        const QString grandId = grand->id();
+
+        // Mix sections so the snapshot proves it's keyed per-id, not
+        // a single "old section" value.
+        root->setSectionId(secAId);
+        child->setSectionId(secBId);  // different section from root
+        child->setParentId(rootId);
+        grand->setSectionId(secAId);
+        grand->setParentId(childId);
+
+        TaskViewModel vm(store);
+        vm.setUndoStack(&undo);
+
+        QVERIFY(vm.moveTask(rootId, workId, QString()));
+        QCOMPARE(child->sectionId(), QString());
+        QCOMPARE(grand->sectionId(), QString());
+
+        QVERIFY(undo.undo());
+
+        QCOMPARE(root->sectionId(),  secAId);
+        QCOMPARE(child->sectionId(), secBId);
+        QCOMPARE(grand->sectionId(), secAId);
 
         delete store;
     }

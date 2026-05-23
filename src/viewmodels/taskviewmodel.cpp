@@ -541,12 +541,6 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
     const QString oldSection = task->sectionId();
     const bool crossProject  = (projectId != oldProject);
 
-    if (m_undoStack) {
-        m_undoStack->push(QStringLiteral("Задача перемещена"), [this, id, oldProject, oldSection]() {
-            moveTask(id, oldProject, oldSection);
-        });
-    }
-
     const QDateTime now = QDateTime::currentDateTimeUtc();
     task->setProjectId(projectId);
     task->setSectionId(sectionId);
@@ -563,9 +557,18 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
     // Sections belong to a single project, so a cross-project move clears
     // sectionId on every cascaded subtask.
     //
+    // Iter-night-35: capture each descendant's original section_id BEFORE
+    // clearing, so the undo lambda below can restore it. The previous
+    // undo path only captured the root task's (oldProject, oldSection) —
+    // descendants' section_ids were silently lost on every cross-project
+    // move-then-undo round-trip (the forward BFS cleared them to "", and
+    // the undo's recursive moveTask call re-ran the BFS clearing them
+    // again, with no snapshot to restore from).
+    //
     // BFS, bounded by MAX_DEPTH=100 with a visited-set to defend against
     // pre-existing cycles in the parent_id graph (the data layer never
     // enforces acyclicity at write time).
+    QHash<QString, QString> descendantSectionSnapshot;
     if (crossProject) {
         constexpr int MAX_DEPTH = 100;
         QSet<QString> visited;
@@ -582,6 +585,12 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
                     if (visited.contains(cid)) continue;
                     visited.insert(cid);
 
+                    // Snapshot the child's section_id BEFORE clearing.
+                    // The undo lambda will use this map to restore the
+                    // original sectionIds after its recursive moveTask
+                    // call (which re-clears the descendants).
+                    descendantSectionSnapshot.insert(cid, child->sectionId());
+
                     child->setProjectId(projectId);
                     child->setSectionId(QString());
                     child->setUpdatedAt(now);
@@ -595,6 +604,33 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
             frontier = nextFrontier;
             ++depth;
         }
+    }
+
+    // Iter-night-35: push undo AFTER mutations + descendant snapshot so the
+    // lambda can capture the per-child section_id map by value. The undo
+    // lambda first replays moveTask in reverse (which restores the root and
+    // re-runs the BFS clearing the descendants), then restores each
+    // descendant's original section_id from the snapshot. The recursive
+    // moveTask call inside the lambda will push its own undo entry (the
+    // "redo"), which captures its own descendant snapshot — so subsequent
+    // undo/redo cycles also thread the per-child section_ids correctly.
+    if (m_undoStack) {
+        m_undoStack->push(QStringLiteral("Задача перемещена"),
+            [this, id, oldProject, oldSection, descendantSectionSnapshot]() {
+                moveTask(id, oldProject, oldSection);
+                if (descendantSectionSnapshot.isEmpty()) return;
+                const QDateTime undoNow = QDateTime::currentDateTimeUtc();
+                for (auto it = descendantSectionSnapshot.constBegin();
+                     it != descendantSectionSnapshot.constEnd(); ++it) {
+                    Task *child = m_store->taskById(it.key());
+                    if (!child || child->isDeleted()) continue;
+                    child->setSectionId(it.value());
+                    child->setUpdatedAt(undoNow);
+                    m_store->markTaskFieldsModified(it.key(),
+                        {QStringLiteral("section_id")});
+                    emit taskChanged(it.key());
+                }
+            });
     }
 
     return true;
