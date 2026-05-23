@@ -177,6 +177,12 @@ opentodo_add_unit_test(test_sidebar_counts_datetime_only  App)
 # sidebar and store both flagged it.
 opentodo_add_unit_test(test_filter_overdue_datetime_precision Infra)
 
+# iter-night-18: completeTask recurrence base must derive from dueDatetime
+# when dueDate is empty. Pre-fix it defaulted to today → advanced from
+# "now" instead of original due, drifting datetime-only recurring tasks
+# N days forward on every late completion.
+opentodo_add_unit_test(test_recurring_complete_datetime_base App)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.

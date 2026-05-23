@@ -388,10 +388,28 @@ bool TaskViewModel::completeTask(const QString &id)
 
     // Recurring tasks: advance the due date instead of marking completed.
     if (task->dueIsRecurring() && !task->dueString().isEmpty()) {
+        // Iter-night-18: derive the recurrence base from BOTH dueDate AND
+        // dueDatetime. Pre-fix this only consulted dueDate — so a recurring
+        // task arriving via sync or import as datetime-only
+        // (`dueDate=""`, `dueDatetime="2026-05-25T14:00:00"`) defaulted to
+        // base=today and `advance(rule, today)` returned the next
+        // occurrence relative to "now" rather than the original due date.
+        //
+        // Concrete drift example: every-3-days task originally due May 25,
+        // completed on May 27 → pre-fix advances to May 30 (today + 3),
+        // post-fix advances to May 28 (orig + 3). On every late completion
+        // the recurrence schedule slid further from the user's intent;
+        // over a few cycles the task could end up days out of phase.
+        QDate currentDate;
         const QString currentDateStr = task->dueDate();
-        const QDate currentDate = currentDateStr.isEmpty()
-            ? QDate::currentDate()
-            : QDate::fromString(currentDateStr, QStringLiteral("yyyy-MM-dd"));
+        if (!currentDateStr.isEmpty()) {
+            currentDate = QDate::fromString(currentDateStr,
+                                            QStringLiteral("yyyy-MM-dd"));
+        } else if (!task->dueDatetime().isEmpty()) {
+            const QDateTime dt = QDateTime::fromString(task->dueDatetime(),
+                                                       Qt::ISODate);
+            if (dt.isValid()) currentDate = dt.date();
+        }
         const QDate base = currentDate.isValid() ? currentDate : QDate::currentDate();
 
         // B-4.60 follow-up: prefer RRULE-based advance; fall back to humanString
