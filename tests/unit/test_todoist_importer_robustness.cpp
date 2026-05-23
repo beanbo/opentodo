@@ -1337,6 +1337,124 @@ private slots:
     // `reimport_addsNewSubtask_underExistingParent_noSentinel` — the
     // newly-imported child must point at the EXISTING parent's UUID.
     // ────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-21: Phase 5 (notes/comments) re-import must NOT duplicate
+    // existing comments. Pre-fix every re-run of the same backup attached
+    // another copy of every note to the deduped target task/project,
+    // doubling on each import — bloating state.json and sync bandwidth.
+    //
+    // After iter-night-9's task-side dedup change (taskIdMap[t] = existing
+    // UUID instead of the "__skipped__" sentinel), Phase 5's
+    // `taskIdMap.value(tn.taskId)` always resolves to a real task on
+    // re-import → addComment unconditionally allocates a fresh UUID →
+    // duplicate.
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_phase5_doesNotDuplicateComments()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        // Build a TodoistImportData with one task and one comment on it.
+        TodoistImportData first;
+        TodoistProject p;
+        p.id = QStringLiteral("td-proj");
+        p.name = QStringLiteral("Demo");
+        first.projects.append(p);
+
+        TodoistTask t;
+        t.id = QStringLiteral("td-task-A");
+        t.content = QStringLiteral("Pay bills");
+        t.projectId = p.id;
+        first.tasks.append(t);
+
+        TodoistNote n;
+        n.taskId = t.id;
+        n.content = QStringLiteral("Receipt in the inbox folder");
+        n.postedAt = QDateTime(QDate(2026, 5, 1), QTime(10, 30));
+        first.notes.append(n);
+
+        // Also a project-level note to pin both branches.
+        TodoistNote pn;
+        pn.projectId = p.id;
+        pn.content = QStringLiteral("Project kickoff notes");
+        pn.postedAt = QDateTime(QDate(2026, 5, 2), QTime(9, 0));
+        first.notes.append(pn);
+
+        imp->applyImport(first, /*importCompleted=*/false);
+
+        // Locate the live task and project.
+        Task *task = nullptr;
+        Project *proj = nullptr;
+        for (auto *tt : ds->allTasks())   { if (tt->content() == QStringLiteral("Pay bills")) task = tt; }
+        for (auto *pp : ds->allProjects()){ if (pp->name() == QStringLiteral("Demo")) proj = pp; }
+        QVERIFY(task && proj);
+
+        // Each comment surface should have exactly 1 entry after first
+        // import.
+        QCOMPARE(ds->commentsForTask(task->id()).size(),    1);
+        QCOMPARE(ds->commentsForProject(proj->id()).size(), 1);
+
+        // Re-import the same data. Pre-fix this doubled BOTH counts.
+        imp->applyImport(first, false);
+
+        QCOMPARE(ds->commentsForTask(task->id()).size(),    1);
+        QCOMPARE(ds->commentsForProject(proj->id()).size(), 1);
+
+        // Run it a third time for good measure — counts must remain stable.
+        imp->applyImport(first, false);
+        QCOMPARE(ds->commentsForTask(task->id()).size(),    1);
+        QCOMPARE(ds->commentsForProject(proj->id()).size(), 1);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Iter-night-21 companion: NEW note in a later import is attached
+    // (deduped only against existing fingerprints, not all comments).
+    // ────────────────────────────────────────────────────────────────────────
+    void reimport_phase5_addsNewNoteAlongsideExisting()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        TodoistImportData first;
+        TodoistProject p;
+        p.id = QStringLiteral("td-proj");
+        p.name = QStringLiteral("Demo");
+        first.projects.append(p);
+        TodoistTask t;
+        t.id = QStringLiteral("td-task-A");
+        t.content = QStringLiteral("Pay bills");
+        t.projectId = p.id;
+        first.tasks.append(t);
+        TodoistNote n1;
+        n1.taskId = t.id;
+        n1.content = QStringLiteral("Original note");
+        n1.postedAt = QDateTime(QDate(2026, 5, 1), QTime(10, 0));
+        first.notes.append(n1);
+        imp->applyImport(first, false);
+
+        Task *task = nullptr;
+        for (auto *tt : ds->allTasks()) {
+            if (tt->content() == QStringLiteral("Pay bills")) task = tt;
+        }
+        QVERIFY(task);
+        QCOMPARE(ds->commentsForTask(task->id()).size(), 1);
+
+        // Second import: same data + one NEW note.
+        TodoistImportData second = first;
+        TodoistNote n2;
+        n2.taskId = t.id;
+        n2.content = QStringLiteral("Follow-up: receipt arrived");
+        n2.postedAt = QDateTime(QDate(2026, 5, 3), QTime(14, 30));
+        second.notes.append(n2);
+
+        imp->applyImport(second, false);
+
+        // Original is deduped (not re-attached). New one is added.
+        QCOMPARE(ds->commentsForTask(task->id()).size(), 2);
+    }
+
     void reimport_addsNewSubproject_underExistingParent()
     {
         QScopedPointer<DataStore> ds(makeStore(this));

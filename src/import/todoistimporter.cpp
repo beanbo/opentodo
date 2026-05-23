@@ -795,6 +795,56 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
     // ────────────────────────────────────────────────────────────────────────
     emit importProgress(92, 100, QStringLiteral("Импортируем комментарии…"));
 
+    // Iter-night-21: dedup comments on re-import. Phase 4 (tasks) and Phase 2
+    // (projects) already dedup their entities — Phase 5 was the only one left
+    // without it. Pre-fix every re-import duplicated every comment because
+    // `addComment` unconditionally allocates a fresh UUID. After iter-night-9
+    // changed `taskIdMap` to resolve deduped tasks to the EXISTING task's
+    // UUID (instead of the `__skipped__` sentinel), Phase 5's note loop now
+    // ALWAYS resolves to a real task — so on every re-import each note got
+    // re-attached, inflating comment threads N× over N imports and bloating
+    // state.json with sync bandwidth waste proportional to comment count.
+    //
+    // Fingerprint matches the Phase 4 shape: content | target | postedAt.
+    // Including `postedAt` lets two legitimately-identical short comments
+    // posted at different times both survive. For exports that lack
+    // postedAt the fallback is just content|target — same trade-off as
+    // Phase 4 (collisions are the acceptable cost for idempotent re-imports).
+    auto commentFingerprint = [](const QString &content,
+                                 const QString &target,
+                                 const QDateTime &postedAt) -> QByteArray {
+        QByteArray raw = content.toUtf8() + "|" + target.toUtf8();
+        if (postedAt.isValid())
+            raw += "|" + postedAt.toString(Qt::ISODate).toUtf8();
+        return QCryptographicHash::hash(raw, QCryptographicHash::Md5);
+    };
+
+    QSet<QByteArray> existingCommentFingerprints;
+    {
+        // Seed the dedup set from existing live comments. DataStore exposes
+        // per-target getters (commentsForTask / commentsForProject — both
+        // filter tombstones), so walk every task and every project once
+        // and snapshot their comments. Same access pattern that
+        // searchviewmodel.cpp uses for global comment search.
+        for (const Task *t : m_store->allTasks()) {
+            if (!t) continue;
+            for (const Comment *ec : m_store->commentsForTask(t->id())) {
+                if (!ec) continue;
+                existingCommentFingerprints.insert(
+                    commentFingerprint(ec->content(), t->id(), ec->postedAt()));
+            }
+        }
+        for (const Project *p : m_store->allProjects()) {
+            if (!p) continue;
+            for (const Comment *ec : m_store->commentsForProject(p->id())) {
+                if (!ec) continue;
+                existingCommentFingerprints.insert(
+                    commentFingerprint(ec->content(), p->id(), ec->postedAt()));
+            }
+        }
+    }
+
+    int skippedNoteCount = 0;
     for (const TodoistNote &tn : data.notes) {
         if (tn.content.isEmpty()) continue;
 
@@ -806,11 +856,31 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         // have a project-level note (no taskId)
         if (!tn.taskId.isEmpty() && mappedTaskId.isEmpty()) continue;
 
+        // Iter-night-21: skip if a comment with this content already exists
+        // on the target. Mirrors Phase 4 task dedup logic.
+        const QString target = !mappedTaskId.isEmpty()
+            ? mappedTaskId : mappedProjectId;
+        const QByteArray fp = commentFingerprint(tn.content, target,
+                                                  tn.postedAt);
+        if (existingCommentFingerprints.contains(fp)) {
+            ++skippedNoteCount;
+            continue;
+        }
+
         Comment *c = m_store->addComment(tn.content,
                                           mappedTaskId,
                                           mappedProjectId);
         if (tn.postedAt.isValid())
             c->setPostedAt(tn.postedAt);
+
+        // Record this comment's fingerprint so duplicates within the SAME
+        // import (e.g. the export carries the row twice) also dedup.
+        existingCommentFingerprints.insert(fp);
+    }
+    if (skippedNoteCount > 0) {
+        m_warnings.append(QStringLiteral(
+            "Пропущено комментариев (уже импортированы): %1")
+            .arg(skippedNoteCount));
     }
 
     // ────────────────────────────────────────────────────────────────────────
