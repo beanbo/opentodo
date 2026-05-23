@@ -486,10 +486,50 @@ bool FileManager::importData(const QString &jsonString)
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(jsonString.toUtf8(), &parseError);
 
-    if (parseError.error != QJsonParseError::NoError)
+    // Iter-night-15: harden the validation gate. Pre-fix, ONLY parse failures
+    // were rejected. A successfully-parsed JSON array (e.g. a package.json
+    // shaped as a list), an empty object, or any unrelated object (Todoist
+    // export, random API payload, …) all passed through — `doc.object()`
+    // silently returns an empty QJsonObject for arrays/nulls, and
+    // `m_store->loadFromJson({})` calls `clear()` which wipes every task,
+    // project, label, filter, reminder, comment, and the settings dict. The
+    // QML "Load backup" file dialog routes user-picked files straight here,
+    // so one wrong file pick became silent total data loss.
+    //
+    // The cousin `restoreBackup` (filemanager.cpp:444+) already does the
+    // right thing: validates `!doc.isNull() && doc.isObject()` AND takes a
+    // pre-restore safety snapshot via `saveImmediate()` BEFORE clearing the
+    // store, so the user can "undo" by restoring from the now-fresh `.bak`.
+    // Mirror both protections here.
+    if (parseError.error != QJsonParseError::NoError
+        || doc.isNull() || !doc.isObject())
         return false;
 
-    m_store->loadFromJson(doc.object());
+    const QJsonObject obj = doc.object();
+    // Sanity: an OpenTodo export must have at least one of these top-level
+    // keys. Reject obvious not-an-OpenTodo-file payloads (an empty {} is
+    // also rejected because no key is present). The same set is what
+    // createDefaultState writes and what state.json carries on disk.
+    static const QStringList kRequired = {
+        QStringLiteral("schema_version"),
+        QStringLiteral("projects"),
+        QStringLiteral("tasks"),
+        QStringLiteral("settings"),
+    };
+    bool looksLikeOurs = false;
+    for (const QString &k : kRequired) {
+        if (obj.contains(k)) { looksLikeOurs = true; break; }
+    }
+    if (!looksLikeOurs)
+        return false;
+
+    // Pre-import safety snapshot — matches restoreBackup's behaviour so a
+    // user who triggered an unwanted import can recover via the freshly-
+    // rotated .bak chain. Without this, even a deliberate-but-mistaken
+    // import had no undo path; the prior .bak was from the last autosave,
+    // not from "the moment right before import".
+    saveImmediate();
+    m_store->loadFromJson(obj);
     saveImmediate();
     return true;
 }

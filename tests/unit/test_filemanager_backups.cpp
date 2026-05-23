@@ -510,6 +510,147 @@ private slots:
         QVERIFY(found);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Iter-night-15 pins. The pre-fix importData rejected ONLY parse errors;
+    // every other "valid JSON, wrong shape" payload silently wiped the store
+    // via `m_store->loadFromJson({}|array|foreign-object)` → `clear()`.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    void importData_jsonArrayRoot_returns_false_store_unchanged()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+        ds.addProject(QStringLiteral("Sentinel"));
+        const int beforeProjects = ds.allProjects().size();
+
+        // Valid JSON, but the root is an ARRAY (e.g. a package.json that's a
+        // bare list, a Todoist labels export, an iCal CSV row dump). Pre-fix
+        // `doc.object()` silently returned `{}` and the store was wiped.
+        const bool ok = fm.importData(QStringLiteral(R"([1, 2, "three", {"id": "x"}])"));
+        QVERIFY2(!ok,
+                 "importData must reject a JSON-array root — pre-fix the "
+                 "QJsonDocument::object() shortcut silently emptied the "
+                 "store via clear() under loadFromJson({}).");
+        QCOMPARE(ds.allProjects().size(), beforeProjects);
+        bool sentinelStillThere = false;
+        for (auto *p : ds.allProjects()) {
+            if (p->name() == QStringLiteral("Sentinel")) {
+                sentinelStillThere = true;
+                break;
+            }
+        }
+        QVERIFY(sentinelStillThere);
+    }
+
+    void importData_emptyObject_returns_false_store_unchanged()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+        ds.addProject(QStringLiteral("Sentinel"));
+        const int beforeProjects = ds.allProjects().size();
+
+        // An empty JSON object passes parseError and isObject(), but has none
+        // of the required top-level keys.
+        const bool ok = fm.importData(QStringLiteral("{}"));
+        QVERIFY2(!ok,
+                 "importData must reject an empty object — pre-fix the "
+                 "store was clear()'d into a default state.");
+        QCOMPARE(ds.allProjects().size(), beforeProjects);
+    }
+
+    void importData_unrelatedObject_returns_false_store_unchanged()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+        ds.addProject(QStringLiteral("Sentinel"));
+        const int beforeProjects = ds.allProjects().size();
+
+        // A perfectly valid foreign JSON object — e.g. a package.json. None
+        // of its keys overlap with the required OpenTodo-export keys
+        // (schema_version / projects / tasks / settings).
+        const QString fakePackageJson = QStringLiteral(
+            R"({"name":"foo","version":"1.0.0","dependencies":{"bar":"^2"}})");
+        const bool ok = fm.importData(fakePackageJson);
+        QVERIFY2(!ok,
+                 "importData must reject foreign objects (package.json, "
+                 "random API payloads) — pre-fix the user lost all data on "
+                 "a single mis-click in the file picker.");
+        QCOMPARE(ds.allProjects().size(), beforeProjects);
+    }
+
+    void importData_validButTinyObjectMissingSchema_returns_false()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+        ds.addProject(QStringLiteral("Sentinel"));
+
+        // Has SOME keys, but none of the required OpenTodo top-level keys.
+        const QString suspect = QStringLiteral(
+            R"({"_meta":{"foo":"bar"},"comments":[]})");
+        QVERIFY(!fm.importData(suspect));
+    }
+
+    void importData_minimalValidExport_succeeds()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+
+        // Smallest payload that satisfies the new gate: any single key from
+        // the required set is enough. `tasks: []` is a deliberate import that
+        // wipes all tasks (legitimate user intent).
+        const QString minimal = QStringLiteral(
+            R"({"schema_version":1,"tasks":[],"projects":[],"settings":{}})");
+        const bool ok = fm.importData(minimal);
+        QVERIFY2(ok,
+                 "Minimal valid OpenTodo-shaped export must still succeed; "
+                 "the gate only filters obviously-foreign payloads.");
+    }
+
+    void importData_takesPreImportSafetySnapshot()
+    {
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+        ds.addProject(QStringLiteral("PreImportProject"));
+        fm.saveImmediate();
+
+        // Wipe any pre-existing rolling-chain entries so we can attribute
+        // every survivor below to this slot's saveImmediate(s).
+        const QString bak0 = stateFilePath() + QStringLiteral(".bak");
+        const QString bak1 = stateFilePath() + QStringLiteral(".bak.1");
+        QFile::remove(bak0);
+        QFile::remove(bak1);
+        QVERIFY(!QFile::exists(bak0));
+        QVERIFY(!QFile::exists(bak1));
+
+        // A legitimate import that replaces all data.
+        const QString replacement = QStringLiteral(
+            R"({"schema_version":1,"projects":[{"id":"x","name":"Imported","is_inbox":true,"is_deleted":false}],"tasks":[],"settings":{}})");
+        const bool ok = fm.importData(replacement);
+        QVERIFY(ok);
+
+        // Post-fix importData runs saveImmediate TWICE: once to snapshot
+        // the pre-import state and once to write the imported state. The
+        // pre-fix path ran only the post-import save, so .bak contained
+        // pre-import data (copied off state.json before the write) but
+        // .bak.1 stayed empty. Post-fix, both rolling slots hold the
+        // pre-import snapshot, giving the user one extra slot of safety
+        // against a hasty second mutation rotating the snapshot away.
+        QVERIFY(QFile::exists(bak0));
+        QVERIFY2(QFile::exists(bak1),
+                 "Iter-night-15: importData must invoke saveImmediate "
+                 "BEFORE the load (in addition to the existing one after) "
+                 "so both .bak and .bak.1 carry the pre-import snapshot. "
+                 "Mirror's restoreBackup's two-saveImmediate contract; "
+                 "pre-fix the user had only the .bak slot and any rapid "
+                 "subsequent mutation rotated it away.");
+    }
+
     // --- exportData round-trip ---------------------------------------------
 
     // export → import via a fresh DataStore should yield identical entity
