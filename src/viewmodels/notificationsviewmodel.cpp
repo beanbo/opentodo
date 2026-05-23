@@ -9,6 +9,7 @@
 static inline QString newUuid() { return UuidHelper::generate(); }
 
 #include <QDateTime>
+#include <QSet>
 #include <algorithm>
 
 // ---------------------------------------------------------------------------
@@ -291,29 +292,35 @@ void NotificationsViewModel::scanOverdueTasks()
         push(std::move(n));
     }
 
-    // If a previously-overdue task was completed or its due date was cleared /
-    // updated to a future date, stop tracking it so it can fire again if it
-    // becomes overdue in the future.
+    // Cleanup: strip every tracked id whose task is no longer in the current
+    // overdue set, so re-overduing it later fires the "Просроченная задача"
+    // notification again.
+    //
+    // Iter-night-8: the previous gate `t->dueDate().isEmpty()` only caught
+    // tasks where the due date was *cleared*. Moving the due date to a
+    // FUTURE value left dueDate non-empty, so the outer-if was skipped, the
+    // id stayed in the set, and if the task later slid back into the past
+    // (recurring tasks bumped on completion, manual re-schedule back-and-
+    // forth, …) the contains() guard at line 280 suppressed the new
+    // notification for the rest of the session. The same gate also missed
+    // tasks whose due date was *changed* to a different past day — there
+    // the user expects a fresh visual cue and the existing entry is now
+    // stale on the day-after-tomorrow path.
+    //
+    // The only correct invariant is "track only ids that are overdue right
+    // now". Materialise the current overdue set once and erase everything
+    // else — date-only AND datetime-only paths fall out for free, with no
+    // gate to get wrong.
+    QSet<QString> currentOverdueIds;
+    currentOverdueIds.reserve(tasks.size());
+    for (const Task *t : tasks) {
+        if (t) currentOverdueIds.insert(t->id());
+    }
     for (auto it = m_overdueTaskIds.begin(); it != m_overdueTaskIds.end(); ) {
-        Task *t = m_store->taskById(*it);
-        // Remove if the task no longer exists, was deleted, was completed, or
-        // its due date is now empty (cleared).  The original code had the
-        // condition inverted: `!t->dueDate().isEmpty()` kept tasks that still
-        // had a due date (correct) but also removed tasks that should stay
-        // (those without a due date should be removed, not kept).
-        if (!t || t->isDeleted() || t->isCompleted() || t->dueDate().isEmpty()) {
-            // Re-check: if the task is no longer in the current overdue list,
-            // remove from our tracking set.
-            bool stillOverdue = false;
-            for (const Task *ot : tasks) {
-                if (ot && ot->id() == *it) { stillOverdue = true; break; }
-            }
-            if (!stillOverdue) {
-                it = m_overdueTaskIds.erase(it);
-                continue;
-            }
-        }
-        ++it;
+        if (!currentOverdueIds.contains(*it))
+            it = m_overdueTaskIds.erase(it);
+        else
+            ++it;
     }
 }
 

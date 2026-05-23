@@ -159,6 +159,12 @@ opentodo_add_unit_test(test_search_project_level_comments App)
 # dropped and section_id pointed at sections in the source project.
 opentodo_add_unit_test(test_duplicate_project_as_template App)
 
+# iter-night-8: NotificationsViewModel::scanOverdueTasks cleanup must release
+# m_overdueTaskIds for ANY task that is no longer overdue right now (not just
+# date-cleared / completed / deleted). Past→future→past round-trips must fire
+# a fresh "Просроченная задача" notification.
+opentodo_add_unit_test(test_overdue_notification_round_trip App)
+
 # Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
 # machine + HotkeyService (Win32 RegisterHotKey + native event filter).
 opentodo_add_unit_test(test_q_gadgets                     Infra)
