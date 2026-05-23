@@ -153,6 +153,12 @@ opentodo_add_unit_test(test_remove_task_deep_cascade      Infra)
 # comments were searched, so Todoist-imported project notes were invisible.
 opentodo_add_unit_test(test_search_project_level_comments App)
 
+# iter-night-7: duplicateProjectAsTemplate must copy the full task hierarchy
+# (subtasks at any depth) AND duplicate sections, remapping parent_id and
+# section_id through old→new id maps. Previously subtasks were silently
+# dropped and section_id pointed at sections in the source project.
+opentodo_add_unit_test(test_duplicate_project_as_template App)
+
 # Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
 # machine + HotkeyService (Win32 RegisterHotKey + native event filter).
 opentodo_add_unit_test(test_q_gadgets                     Infra)

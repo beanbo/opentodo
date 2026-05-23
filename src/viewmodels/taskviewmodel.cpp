@@ -966,6 +966,29 @@ bool TaskViewModel::moveTaskToBottom(const QString &taskId)
 }
 
 // Wave 3 follow-up (F-6.39): create a template project from an existing one.
+//
+// Iter-night-7: previously this function had three structural bugs:
+//   (1) `tasksForProject(projectId)` returns ONLY top-level tasks (parent_id
+//       empty — see datastore.cpp:550-557). The loop also had a defensive
+//       `continue` on non-empty parent_id with a comment promising
+//       "they'll be re-parented below" — but there was no "below" code. So
+//       every subtask was silently dropped from the template.
+//   (2) `copy->setSectionId(orig->sectionId())` copied the SOURCE project's
+//       section id into the new template task. Sections were not
+//       duplicated, so the template's tasks referenced sections living in
+//       the source project — board grouping showed them under foreign
+//       section headers, and the stale FK propagated through sync.
+//   (3) Subtasks that DID make it (none, given #1) carried no parent_id
+//       stamping anyway.
+//
+// The fix:
+//   • Phase A: duplicate sections, build oldSectionId → newSectionId map.
+//   • Phase B: BFS the task tree from top-level downwards. Use a
+//     parent-before-child queue + visited set (cycle-safe). Each task gets
+//     a fresh id; parent_id is remapped through oldToNewTaskId; section_id
+//     is remapped through the Phase-A map (or cleared if the source
+//     section has been tombstoned).
+//
 QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
 {
     Project *src = m_store->projectById(projectId);
@@ -983,20 +1006,71 @@ QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
     m_store->markProjectFieldsModified(tpl->id(), {QStringLiteral("color"),
                                                     QStringLiteral("view_style")});
 
-    const auto srcTasks = m_store->tasksForProject(projectId);
-    for (Task *orig : srcTasks) {
-        if (!orig || orig->isDeleted())
-            continue;
-        // Skip subtasks; they'll be re-parented below.
-        if (!orig->parentId().isEmpty())
-            continue;
+    // ── Phase A: duplicate sections ────────────────────────────────────────
+    // Build old → new section id map so Phase-B task copies can remap
+    // section_id correctly. Tombstoned sections are skipped (and any task
+    // pointing at one ends up sectionless in the template, which matches
+    // how the source project displays such an orphaned task today).
+    QHash<QString, QString> oldToNewSectionId;
+    for (Section *origSec : m_store->sectionsForProject(projectId)) {
+        if (!origSec || origSec->isDeleted()) continue;
+        Section *newSec = m_store->addSection(origSec->name(), tpl->id());
+        if (!newSec) continue;
+        oldToNewSectionId.insert(origSec->id(), newSec->id());
+    }
+
+    // ── Phase B: duplicate tasks, depth-N, with parent-id remapping ────────
+    // BFS so a parent is always copied before its children → the child's
+    // setParentId() can look its new parent up in oldToNewTaskId.
+    // The visited set defences against any pre-existing parent_id cycle on
+    // disk (legacy state.json files may carry one despite applyCommit
+    // guards).
+    QHash<QString, QString> oldToNewTaskId;
+    QStringList queue;
+    QSet<QString> visited;
+
+    // Seed with top-level tasks of the source project.
+    for (Task *orig : m_store->tasksForProject(projectId)) {
+        if (!orig || orig->isDeleted()) continue;
+        queue.append(orig->id());
+    }
+
+    while (!queue.isEmpty()) {
+        const QString origId = queue.takeFirst();
+        if (visited.contains(origId)) continue;
+        visited.insert(origId);
+
+        Task *orig = m_store->taskById(origId);
+        if (!orig || orig->isDeleted()) continue;
+
+        // Resolve new parent_id (empty for top-level; mapped for descendants).
+        QString newParentId;
+        if (!orig->parentId().isEmpty()) {
+            newParentId = oldToNewTaskId.value(orig->parentId());
+            // Defensive: if the original's parent was tombstoned or was
+            // outside this project's task set, the new parent id is empty
+            // and we'd promote the subtask to top-level. That's not what
+            // the user templated — skip the copy entirely so the template
+            // doesn't grow stray top-level rows that weren't in the source.
+            if (newParentId.isEmpty())
+                continue;
+        }
 
         Task *copy = m_store->addTask(orig->content(), tpl->id());
         if (!copy) continue;
+
+        if (!newParentId.isEmpty()) {
+            copy->setParentId(newParentId);
+            // parent_id is NOT in addTask's initialFields → stamp it so a
+            // concurrent peer edit doesn't auto-win via empty-meta fallback.
+            m_store->markTaskFieldsModified(copy->id(),
+                {QStringLiteral("parent_id")});
+        }
         copy->setDescription(orig->description());
-        copy->setSectionId(orig->sectionId()); // section ids carry across; if QML
-                                               // shows missing-section tasks
-                                               // unsectioned, that's acceptable.
+        // Remap section_id through Phase-A map. If the source had an empty
+        // section_id (or pointed at a tombstoned/foreign section), this
+        // resolves to empty — task lands in the unsectioned area.
+        copy->setSectionId(oldToNewSectionId.value(orig->sectionId(), QString()));
         copy->setPriority(orig->priority());
         copy->setLabels(orig->labels());
         // Intentionally NOT copying due/deadline/completedAt — templates
@@ -1007,6 +1081,14 @@ QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
         m_store->markTaskFieldsModified(copy->id(),
             {QStringLiteral("description"), QStringLiteral("section_id"),
              QStringLiteral("priority"),    QStringLiteral("labels")});
+
+        oldToNewTaskId.insert(origId, copy->id());
+
+        // Enqueue children for the next BFS layer.
+        for (Task *child : m_store->subtasks(origId)) {
+            if (child && !child->isDeleted())
+                queue.append(child->id());
+        }
     }
 
     emit dataChanged(QModelIndex(), QModelIndex());
