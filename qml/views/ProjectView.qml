@@ -518,10 +518,31 @@ Rectangle {
             //      minimumHeight + maximumHeight so all three move together.
             //
             // 56 px = 24 (header) + 16+16 (Spacing.md margins). Anything
-            // smaller forces the header to be clipped. 220 px expanded as
-            // before — 10 lines is the upper bound for "in-view" notes.
+            // smaller forces the header to be clipped.
+            //
+            // Iter-night-25 (user task 8107255f "Размер заметок должен
+            // определяться их наполненеим"): expanded height was a fixed
+            // 220 px regardless of content length, so a 2-line note left a
+            // 180-px empty band below it while a 100-line note still got
+            // truncated to the same 220-px scrolling window. Now compute
+            // the expanded height from `notesBodyText.implicitHeight`
+            // (Text re-computes this on every width or content change),
+            // clamped between the collapsed minimum and an upper cap so a
+            // pathological multi-page note doesn't push the task list off
+            // screen — beyond the cap the Flickable still scrolls.
+            // 400 px = ~18 lines at FontSize.body, a comfortable maximum
+            // before the notes card starts dominating the project view.
             readonly property int _collapsedHeight: 56
-            readonly property int _expandedHeight:  220
+            readonly property int _expandedHeightCap: 400
+            readonly property int _expandedHeight: {
+                // 24 (header) + Spacing.xs (between header and body)
+                // + notesBodyText.implicitHeight + Spacing.md * 2 (margins)
+                const naturalHeight = 24 + Spacing.xs
+                    + notesBodyText.implicitHeight
+                    + Spacing.md * 2
+                return Math.max(_collapsedHeight,
+                                Math.min(naturalHeight, _expandedHeightCap))
+            }
             readonly property int _targetHeight:
                 _expanded ? _expandedHeight : _collapsedHeight
             Layout.preferredHeight: _targetHeight
