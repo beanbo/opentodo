@@ -142,9 +142,34 @@ bool FilterEvaluator::evaluatePredicate(const Token &token, Task *task)
     }
 
     case TokenType::Overdue: {
-        // B-4.44/45 FIX
-        const QDate due = effectiveDueDate(task);
-        return due.isValid() && due < today && !task->isCompleted();
+        // Iter-night-17: use TIME-PRECISE comparison for datetime-only tasks,
+        // matching DataStore::overdueTasks (datastore.cpp:611-627) and the
+        // DateTimeHelper::isOverdue(dateStr, datetimeStr) overload that
+        // already handles this case.
+        //
+        // Pre-fix this branch went through effectiveDueDate() which truncates
+        // dueDatetime to its date component. A task due "today at 09:00"
+        // viewed at 15:00 the same day had due.date()==today, so
+        // `due < today` was FALSE and the filter said "not overdue" — even
+        // though the sidebar Overdue/Today badge (post-iter-night-16) and
+        // DataStore::overdueTasks both flagged it. The two surfaces
+        // disagreed for the entire calendar day after a datetime-only
+        // task's missed moment.
+        //
+        // Today/Tomorrow/Yesterday tokens keep using effectiveDueDate
+        // (calendar-day semantics — "today" means anywhere in this day
+        // regardless of time-of-day). Only `overdue` semantically requires
+        // sub-day precision.
+        if (task->isCompleted()) return false;
+        const QString dueDate = task->dueDate();
+        if (!dueDate.isEmpty()) {
+            const QDate d = DateTimeHelper::fromDateString(dueDate);
+            return d.isValid() && d < today;
+        }
+        const QString dueDt = task->dueDatetime();
+        if (dueDt.isEmpty()) return false;
+        const QDateTime dt = DateTimeHelper::fromIsoString(dueDt);
+        return dt.isValid() && dt < QDateTime::currentDateTime();
     }
 
     case TokenType::NoDate:

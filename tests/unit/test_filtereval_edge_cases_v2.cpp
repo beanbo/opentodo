@@ -481,17 +481,39 @@ private slots:
         QVERIFY(m_taskMidnight->dueDate().isEmpty());
         QVERIFY(!m_taskMidnight->dueDatetime().isEmpty());
 
+        // Calendar predicates (today/tomorrow/yesterday) keep date-truncated
+        // semantics — a task due "midnight today" lives on today's calendar
+        // page regardless of time-of-day.
         QVERIFY(matches(*m_eval, QStringLiteral("today"), m_taskMidnight));
         QVERIFY(!matches(*m_eval, QStringLiteral("tomorrow"), m_taskMidnight));
-        QVERIFY(!matches(*m_eval, QStringLiteral("overdue"), m_taskMidnight));
+
+        // Iter-night-17: `overdue` flipped from date-truncated to TIME-
+        // PRECISE comparison for datetime-only tasks. Pre-fix this slot
+        // asserted `!overdue` because effectiveDueDate truncated the
+        // datetime to its date component and `due < today` was false.
+        // Post-fix: dt < now() is what matters. A 00:00:00 datetime is
+        // strictly earlier than any non-midnight `now`, so the task IS
+        // overdue once the clock crosses midnight.
+        //
+        // The flake-prone edge case — running the test at exactly
+        // 00:00:00 — is mitigated by the test fixture timing (initFixture
+        // runs after the QTest harness, which itself takes >0ms to start).
+        // Practically every test run lands at a `now` strictly after
+        // midnight so `overdue` is reliably true. We assert that here.
+        QVERIFY2(matches(*m_eval, QStringLiteral("overdue"), m_taskMidnight),
+                 "Iter-night-17: datetime-only task with dt=midnight-today "
+                 "is overdue once `now` crosses 00:00:00 — matches "
+                 "DataStore::overdueTasks's time-precise behaviour and the "
+                 "sibling DateTimeHelper::isOverdue(date, dt) overload.");
 
         // Same task does NOT match `no date` because dueDatetime is non-empty.
         QVERIFY(!matches(*m_eval, QStringLiteral("no date"), m_taskMidnight));
 
-        qInfo() << "CONTRACT: midnight (00:00:00) on day X matches `today` if"
-                   " X == today. effectiveDueDate() extracts the date portion"
-                   " of dueDatetime via QDateTime::date() — which uses local"
-                   " time. Time zone of the device matters.";
+        qInfo() << "CONTRACT (post iter-night-17): calendar predicates "
+                   "(today/tomorrow/yesterday) compare via dt.date(); "
+                   "`overdue` compares the full QDateTime to "
+                   "QDateTime::currentDateTime(). Mirrors "
+                   "DataStore::overdueTasks (datastore.cpp:611-627).";
     }
 
     void slot10b_midnight_tomorrow_boundary()

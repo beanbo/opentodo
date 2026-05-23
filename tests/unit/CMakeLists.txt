@@ -169,6 +169,14 @@ opentodo_add_unit_test(test_reminder_field_stamping       App)
 # tasksForToday + overdueTasks counted them.
 opentodo_add_unit_test(test_sidebar_counts_datetime_only  App)
 
+# iter-night-17: FilterEvaluator's `overdue` token must use TIME-PRECISE
+# comparison for datetime-only tasks, matching DataStore::overdueTasks and
+# the DateTimeHelper::isOverdue(date, dt) overload. Pre-fix the filter
+# truncated dueDatetime to its date component → a task due today at 09:00
+# viewed at 15:00 was reported "not overdue" by the filter even though the
+# sidebar and store both flagged it.
+opentodo_add_unit_test(test_filter_overdue_datetime_precision Infra)
+
 # iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
 # pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
 # firing OS-toasts for invisible tasks.
