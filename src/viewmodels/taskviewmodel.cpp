@@ -482,16 +482,19 @@ bool TaskViewModel::deleteTask(const QString &id)
     if (m_undoStack) {
         Task *task = m_store->taskById(id);
         if (task) {
-            // Capture full task state as JSON before soft-deletion so undo can
-            // restore every field exactly as it was.
-            const QJsonObject snapshot = task->toJson();
-            m_undoStack->push(QStringLiteral("Задача удалена"), [this, snapshot]() {
-                Task *t = m_store->taskById(snapshot.value(QStringLiteral("id")).toString());
-                if (t) {
-                    t->setIsDeleted(false);
-                    t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
-                }
+            // iter-night-5: delegate to DataStore::restoreTask so the undo
+            // recovers the WHOLE descendant subtree, including reminders and
+            // comments. The old lambda only flipped the root task's
+            // is_deleted flag directly, leaving every child / grandchild /
+            // their reminders / their comments tombstoned forever (since
+            // they were tombstoned with the deleteTask's cascade timestamp
+            // but the root's updatedAt now diverges from it, so a manual
+            // restoreTask later can't find them either). After iter-night-4
+            // made removeTask cascade depth-N, the matching cascade-restore
+            // in restoreTask is the only correct undo path.
+            m_undoStack->push(QStringLiteral("Задача удалена"), [this, id]() {
+                if (m_store->restoreTask(id))
+                    emit taskChanged(id);
             });
         }
     }
@@ -1789,27 +1792,26 @@ void TaskViewModel::bulkDelete()
                                 {{QStringLiteral("count"), ids.size()}});
 
     if (m_undoStack) {
-        // Capture JSON snapshots for all tasks before deleting them.
-        QList<QJsonObject> snapshots;
-        snapshots.reserve(ids.size());
+        // iter-night-5: capture only ids, undo through restoreTask for the
+        // depth-N cascade restore (subtasks/reminders/comments). The old
+        // path flipped is_deleted on the root only — children and their
+        // reminders were forever lost.
+        QStringList undoIds;
+        undoIds.reserve(ids.size());
         for (const QString &id : ids) {
-            Task *t = m_store->taskById(id);
-            if (t) snapshots.append(t->toJson());
+            if (m_store->taskById(id))
+                undoIds.append(id);
         }
-        const int n = snapshots.size();
+        const int n = undoIds.size();
         const QString label = QStringLiteral("Удалено %1 %2")
                                   .arg(n)
                                   .arg(pluralTasks(n));
-        m_undoStack->push(label, [this, snapshots]() {
-                for (const QJsonObject &snap : snapshots) {
-                    Task *t = m_store->taskById(snap.value(QStringLiteral("id")).toString());
-                    if (t) {
-                        t->setIsDeleted(false);
-                        t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                        m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
-                    }
-                }
-            });
+        m_undoStack->push(label, [this, undoIds]() {
+            for (const QString &id : undoIds) {
+                if (m_store->restoreTask(id))
+                    emit taskChanged(id);
+            }
+        });
         // Delete without pushing individual undo entries.
         // ITER3 #1: don't emit taskRemoved per id — that produced N snackbars
         // stacked. Emit once after the loop with the bulk-aware tasksRemoved
@@ -1993,28 +1995,27 @@ void TaskViewModel::bulkArchive()
 
     const QStringList ids = QStringList(m_selectedIds.begin(), m_selectedIds.end());
 
-    // Capture JSON snapshots for all tasks before archiving them.
-    QList<QJsonObject> snapshots;
-    snapshots.reserve(ids.size());
+    // iter-night-5: collect only ids of live tasks; restore via the cascade-
+    // aware DataStore::restoreTask. Old path flipped is_deleted on root only —
+    // children + their reminders/comments stayed tombstoned (post-iter-night-4
+    // cascade was depth-N).
+    QStringList undoIds;
+    undoIds.reserve(ids.size());
     for (const QString &id : ids) {
         Task *t = m_store->taskById(id);
-        if (t && !t->isDeleted()) snapshots.append(t->toJson());
+        if (t && !t->isDeleted()) undoIds.append(id);
     }
-    if (snapshots.isEmpty()) return;
+    if (undoIds.isEmpty()) return;
 
-    const int n = snapshots.size();
+    const int n = undoIds.size();
     if (m_undoStack) {
         const QString label = QStringLiteral("Архивировано %1 %2")
                                   .arg(n)
                                   .arg(pluralTasks(n));
-        m_undoStack->push(label, [this, snapshots]() {
-            for (const QJsonObject &snap : snapshots) {
-                Task *t = m_store->taskById(snap.value(QStringLiteral("id")).toString());
-                if (t) {
-                    t->setIsDeleted(false);
-                    t->setUpdatedAt(QDateTime::currentDateTimeUtc());
-                    m_store->markTaskFieldsModified(t->id(), {QStringLiteral("is_deleted")});
-                }
+        m_undoStack->push(label, [this, undoIds]() {
+            for (const QString &id : undoIds) {
+                if (m_store->restoreTask(id))
+                    emit taskChanged(id);
             }
         });
     }
