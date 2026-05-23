@@ -2,9 +2,12 @@
 #include <QSignalSpy>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QScopedPointer>
 
 #include "model/label.h"
+#include "model/project.h"
+#include "model/task.h"
 #include "storage/datastore.h"
 #include "utils/uuid.h"
 
@@ -413,6 +416,206 @@ private slots:
         for (auto *x : restored.allLabels()) {
             QVERIFY(x->id() != l->id());
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Iter-night-38: removeLabel must cascade the label-name removal
+    // across every task that still references the label.
+    //
+    // Task::labels stores label NAMES (QStringList — see task.cpp:84-85,
+    // 175-177, 217-219), NOT entity ids. Pre-fix, removeLabel only
+    // tombstoned the Label entity — leaving every task's `labels` array
+    // still containing the dead name. The orphan chip kept rendering in
+    // TaskItem.qml:953 via dataStore.labelByName, which returns
+    // tombstones (iter-29 only fixed the importer's call sites). On sync
+    // the orphan reference propagated to every peer device permanently
+    // until the user manually unlabeled each task one by one.
+    //
+    // Pin slots:
+    //   1. removeLabel_cascades_acrossReferencingTasks
+    //   2. removeLabel_caseInsensitive_match
+    //   3. removeLabel_stampsTaskLabels_field (CRDT sync correctness)
+    //   4. removeLabel_skipsTasksWithoutTheLabel (no spurious updates)
+    // ─────────────────────────────────────────────────────────────────────
+    void removeLabel_cascades_acrossReferencingTasks()
+    {
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Label *home = store.addLabel(QStringLiteral("Home"));
+
+        // Three tasks: two carry the "Work" label, one carries "Home".
+        Task *t1 = store.addTask(QStringLiteral("Email boss"), inbox->id());
+        Task *t2 = store.addTask(QStringLiteral("Review PR"),  inbox->id());
+        Task *t3 = store.addTask(QStringLiteral("Buy milk"),   inbox->id());
+        t1->setLabels({QStringLiteral("Work"), QStringLiteral("urgent")});
+        t2->setLabels({QStringLiteral("Work")});
+        t3->setLabels({QStringLiteral("Home")});
+
+        QVERIFY(store.removeLabel(work->id()));
+
+        // Tombstone is the entity.
+        Label *lookup = store.labelById(work->id());
+        QVERIFY(lookup != nullptr);
+        QVERIFY(lookup->isDeleted());
+
+        // Tasks that had "Work" no longer have it.
+        QVERIFY2(!t1->labels().contains(QStringLiteral("Work")),
+                 "iter-night-38 regression: task t1 still references the "
+                 "tombstoned label 'Work' after removeLabel");
+        QVERIFY2(!t2->labels().contains(QStringLiteral("Work")),
+                 "iter-night-38 regression: task t2 still references the "
+                 "tombstoned label 'Work' after removeLabel");
+        // Other labels survive on the same task.
+        QVERIFY(t1->labels().contains(QStringLiteral("urgent")));
+        // The other label entity and the "Home"-tagged task are untouched.
+        Q_UNUSED(home);
+        QCOMPARE(t3->labels(), QStringList{QStringLiteral("Home")});
+    }
+
+    void removeLabel_caseInsensitive_match()
+    {
+        // labelByName (datastore.cpp:1187) uses .toLower() — the cascade
+        // must follow the same case-insensitive comparison so that a
+        // task with labels=["work"] also loses its chip when label "Work"
+        // is deleted.
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *t = store.addTask(QStringLiteral("Task"), inbox->id());
+        // Mixed case — exact-match removal would skip this.
+        t->setLabels({QStringLiteral("work"), QStringLiteral("WORK")});
+
+        QVERIFY(store.removeLabel(work->id()));
+
+        QVERIFY2(t->labels().isEmpty(),
+                 qPrintable(QString(
+                     "iter-night-38: case-insensitive cascade expected; "
+                     "task still has labels=[%1]").arg(t->labels().join(','))));
+    }
+
+    void removeLabel_stampsTaskLabels_field()
+    {
+        // CRDT-correctness: the cascade must mark `labels` and
+        // `updated_at` on each modified task so the OR-Set remove
+        // propagates to peers. Without the stamp, the task's local
+        // `labels` _meta is silent — a peer re-adding the label with
+        // an older HLC could win the race (and there's no record of
+        // the remove that the peer should respect).
+        //
+        // The pin: addTask's initialFields list does NOT include
+        // `labels` (datastore.cpp:302-307), and Task::setLabels is a
+        // plain setter — so before the cascade fires there's no
+        // labels._meta entry at all. After the fix the cascade calls
+        // markTaskFieldsModified({"labels","updated_at"}), creating a
+        // fresh stamp. We assert the post-cascade labels._meta exists
+        // AND that updated_at.ts was bumped relative to pre-cascade.
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *t = store.addTask(QStringLiteral("Task"), inbox->id());
+        t->setLabels({QStringLiteral("Work")});
+
+        // Pre-cascade: capture updated_at._meta.ts (always present —
+        // updated_at IS in addTask's initialFields).
+        auto readTs = [&store, &t](const QString &field) -> QString {
+            const QJsonObject snap = store.toJson();
+            const QJsonArray arr = snap.value(QStringLiteral("tasks")).toArray();
+            for (const QJsonValue &v : arr) {
+                const QJsonObject o = v.toObject();
+                if (o.value(QStringLiteral("id")).toString() == t->id()) {
+                    return o.value(QStringLiteral("_meta")).toObject()
+                            .value(field).toObject()
+                            .value(QStringLiteral("ts")).toString();
+                }
+            }
+            return QString();
+        };
+
+        const QString preUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+        const QString preLabelsTs    = readTs(QStringLiteral("labels"));
+        QVERIFY(!preUpdatedAtTs.isEmpty());
+        // Pre-cascade: labels._meta may or may not exist (addTask doesn't
+        // stamp it; Task::setLabels is a plain setter). Don't assert.
+
+        QVERIFY(store.removeLabel(work->id()));
+
+        const QString postUpdatedAtTs = readTs(QStringLiteral("updated_at"));
+        const QString postLabelsTs    = readTs(QStringLiteral("labels"));
+
+        // Post-cascade: BOTH labels._meta AND updated_at._meta must be
+        // present (re-stamped by the cascade).
+        QVERIFY2(!postLabelsTs.isEmpty(),
+                 "iter-night-38 regression: task.labels _meta absent after "
+                 "removeLabel cascade — markTaskFieldsModified not called");
+        QVERIFY2(!postUpdatedAtTs.isEmpty(),
+                 "iter-night-38: updated_at _meta absent post-cascade");
+
+        // updated_at must have moved forward (or at least not regressed).
+        QVERIFY2(postUpdatedAtTs >= preUpdatedAtTs,
+                 qPrintable(QString(
+                     "iter-night-38 regression: updated_at _meta.ts did "
+                     "not advance across removeLabel cascade. "
+                     "pre=%1 post=%2").arg(preUpdatedAtTs, postUpdatedAtTs)));
+        // Stronger: at minimum the cascade should have bumped one of the
+        // stamps. Without the fix, neither updated_at nor labels gets a
+        // fresh stamp.
+        QVERIFY2(postLabelsTs > preLabelsTs
+                  || postUpdatedAtTs > preUpdatedAtTs,
+                 qPrintable(QString(
+                     "iter-night-38 regression: cascade did NOT bump any "
+                     "task _meta stamp across removeLabel. "
+                     "labels pre=%1 post=%2; updated_at pre=%3 post=%4")
+                     .arg(preLabelsTs, postLabelsTs,
+                          preUpdatedAtTs, postUpdatedAtTs)));
+        Q_UNUSED(preLabelsTs); // silence unused-warning when assertion fires
+    }
+
+    void removeLabel_skipsTasksWithoutTheLabel()
+    {
+        // Negative pin: tasks that don't reference the removed label must
+        // NOT be touched. Their `labels` _meta and updated_at should stay
+        // at the original addTask-loop stamp (no spurious bumps).
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Label *work = store.addLabel(QStringLiteral("Work"));
+        Task *untouched = store.addTask(QStringLiteral("Buy milk"), inbox->id());
+        untouched->setLabels({QStringLiteral("Home")});
+
+        const QJsonObject preSnap = store.toJson();
+        const QString preTs = [&]() {
+            for (const QJsonValue &v : preSnap.value(QStringLiteral("tasks")).toArray()) {
+                if (v.toObject().value(QStringLiteral("id")).toString() == untouched->id())
+                    return v.toObject().value(QStringLiteral("_meta")).toObject()
+                            .value(QStringLiteral("labels")).toObject()
+                            .value(QStringLiteral("ts")).toString();
+            }
+            return QString();
+        }();
+
+        QVERIFY(store.removeLabel(work->id()));
+
+        const QJsonObject postSnap = store.toJson();
+        const QString postTs = [&]() {
+            for (const QJsonValue &v : postSnap.value(QStringLiteral("tasks")).toArray()) {
+                if (v.toObject().value(QStringLiteral("id")).toString() == untouched->id())
+                    return v.toObject().value(QStringLiteral("_meta")).toObject()
+                            .value(QStringLiteral("labels")).toObject()
+                            .value(QStringLiteral("ts")).toString();
+            }
+            return QString();
+        }();
+
+        QCOMPARE(preTs, postTs);
+        QCOMPARE(untouched->labels(), QStringList{QStringLiteral("Home")});
     }
 };
 

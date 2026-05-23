@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QStandardPaths>
+#include <algorithm>
 
 DataStore::DataStore(QObject *parent)
     : QObject(parent)
@@ -1193,6 +1194,50 @@ bool DataStore::removeLabel(const QString &id)
 {
     auto *label = m_labelIndex.value(id);
     if (!label) return false;
+
+    // Iter-night-38: cascade the label-name removal across every task
+    // that still references this label by name. Task::labels stores
+    // label NAMES (QStringList — see task.cpp:84-85, 175-177, 217-219),
+    // not entity ids. Tombstoning only the Label entity leaves the
+    // task chips rendering the orphaned name via dataStore.labelByName
+    // (TaskItem.qml:953, which returns tombstones because the name
+    // index isn't scrubbed — iter-29 only fixed the importer call
+    // sites, not labelByName itself). Worse, on sync peers receive the
+    // task with the dead label name still in its `labels` array, and
+    // their LabelChip renders the same orphan there. Without an
+    // explicit cascade + per-task `labels` stamp the cleanup never
+    // propagates — every device sees the ghost chip permanently.
+    //
+    // The OR-Set merger on `labels` (merger.cpp:141) handles
+    // add-wins semantics for the array. By removing the label name
+    // from each task's list AND re-stamping the task's `labels`
+    // field, we generate a proper OR-Set "remove" element with the
+    // current HLC — peers' subsequent re-adds (if any) win only with
+    // a strictly-later HLC (per CrdtMeta OrsElement contract).
+    const QString labelName = label->name();
+    if (!labelName.isEmpty()) {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        for (Task *t : m_tasks) {
+            if (!t || t->isDeleted()) continue;
+            QStringList ls = t->labels();
+            const int before = ls.size();
+            // Case-insensitive match: labelByName (datastore.cpp:1187)
+            // and the name-index use .toLower() comparison, so a task
+            // with labels=["work"] is rendered as label "Work" — the
+            // cascade must follow the same loose comparison to actually
+            // clean up all visible chips.
+            ls.erase(std::remove_if(ls.begin(), ls.end(),
+                [&](const QString &s) {
+                    return s.compare(labelName, Qt::CaseInsensitive) == 0;
+                }), ls.end());
+            if (ls.size() != before) {
+                t->setLabels(ls);
+                t->setUpdatedAt(now);
+                markTaskFieldsModified(t->id(), {QStringLiteral("labels"),
+                                                  QStringLiteral("updated_at")});
+            }
+        }
+    }
 
     label->setIsDeleted(true);
     stampEntityField(id, m_labelMeta, QStringLiteral("is_deleted"));
