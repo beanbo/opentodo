@@ -809,9 +809,21 @@ QString TaskViewModel::duplicateTask(const QString &id)
 
     // dup is a freshly added task; stamping the fields we mutated past
     // addTask's default ones so the merger can resolve concurrent edits.
+    //
+    // Iter-night-34: `priority` was missing from this list. addTask
+    // (datastore.cpp:302-307) stamps priority at the DEFAULT value (1),
+    // and `dup->setPriority(original->priority())` at line 777 is a
+    // plain setter — task.cpp:82 — that does NOT re-stamp. So the per-
+    // field HLC stamp on `priority` reflected addTask's default-time,
+    // not the user-visible value. On concurrent peer edit the duplicate
+    // silently reverted to P4/no-priority on whichever side won merger
+    // LWW, even if the source was P1. The sibling fix in
+    // `duplicateProjectAsTemplate` (line ~1117-1119, iter-24) already
+    // included `priority` in its stamp set — this one was the leftover.
     m_store->markTaskFieldsModified(dup->id(),
         {QStringLiteral("description"), QStringLiteral("section_id"),
          QStringLiteral("parent_id"), QStringLiteral("labels"),
+         QStringLiteral("priority"),
          QStringLiteral("deadline"), QStringLiteral("duration"),
          QStringLiteral("color"), QStringLiteral("estimate_minutes"),
          QStringLiteral("due"), QStringLiteral("is_pinned"),

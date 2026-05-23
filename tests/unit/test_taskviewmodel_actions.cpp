@@ -2,6 +2,9 @@
 #include <QSignalSpy>
 #include <QDate>
 #include <QDateTime>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 
 #include <climits>
 
@@ -250,6 +253,83 @@ private slots:
         Task *dup2 = f->store->taskById(id2);
         QVERIFY(dup2);
         QCOMPARE(dup2->content(), QStringLiteral("Task A (копия)"));
+
+        delete f;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Iter-night-34: duplicateTask must stamp `priority` in its
+    // post-addTask markTaskFieldsModified call. Without the fix, the
+    // per-field HLC stamp on `priority` reflected addTask's default-
+    // priority moment (priority=1), not the override at line 777
+    // (`dup->setPriority(original->priority())`). On concurrent peer
+    // edits the duplicate silently reverted to P4/no-priority via
+    // merger LWW even when the source was P1. Sibling pattern to
+    // iter-24 fix for duplicateProjectAsTemplate, which already
+    // stamped `priority` correctly.
+    //
+    // The pin compares the resulting _meta stamps: in the post-fix
+    // markTaskFieldsModified loop the field order is
+    //   description, section_id, parent_id, labels, priority, deadline, …
+    // so labels' HLC counter precedes priority's by exactly 1 within
+    // the same loop iteration → priorityTs > labelsTs.
+    //
+    // Without the fix, priority's stamp comes from addTask's earlier
+    // loop (counter range J), while labels' stamp comes from
+    // duplicateTask's later loop (counter range K > J+7) → priorityTs
+    // is strictly LESS than labelsTs. The lexicographic compare on
+    // zero-padded HLC strings is equivalent to HLC order.
+    // ─────────────────────────────────────────────────────────────────
+    void duplicateTask_stampsPriority_inMarkFieldsLoop()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        // Source taskB has priority=2 (set in makeFixture).
+        const QString newId = vm.duplicateTask(f->taskBId);
+        QVERIFY(!newId.isEmpty());
+
+        // Inspect serialised _meta — toJson() runs injectMeta() so the
+        // per-field stamps appear under "_meta" on the entity.
+        const QJsonObject snap = f->store->toJson();
+        const QJsonArray tasks =
+            snap.value(QStringLiteral("tasks")).toArray();
+        QJsonObject dupJson;
+        for (const QJsonValue &v : tasks) {
+            const QJsonObject obj = v.toObject();
+            if (obj.value(QStringLiteral("id")).toString() == newId) {
+                dupJson = obj;
+                break;
+            }
+        }
+        QVERIFY(!dupJson.isEmpty());
+
+        const QJsonObject meta =
+            dupJson.value(QStringLiteral("_meta")).toObject();
+        const QString priorityTs =
+            meta.value(QStringLiteral("priority")).toObject()
+                .value(QStringLiteral("ts")).toString();
+        const QString labelsTs =
+            meta.value(QStringLiteral("labels")).toObject()
+                .value(QStringLiteral("ts")).toString();
+
+        QVERIFY2(!priorityTs.isEmpty(),
+                 "priority _meta.ts missing on duplicated task");
+        QVERIFY2(!labelsTs.isEmpty(),
+                 "labels _meta.ts missing on duplicated task");
+
+        // With the fix: both stamps come from duplicateTask's loop,
+        // priority is enumerated right after labels → priorityTs > labelsTs.
+        // Without the fix: priority's stamp is from addTask's earlier loop,
+        // labels' from duplicateTask's later loop → priorityTs < labelsTs.
+        QVERIFY2(priorityTs > labelsTs,
+                 qPrintable(QString(
+                     "iter-night-34 regression: priority _meta.ts (%1) "
+                     "should be later than labels (%2) — priority is "
+                     "currently being stamped at addTask-time with the "
+                     "default value instead of in duplicateTask's "
+                     "markTaskFieldsModified loop")
+                     .arg(priorityTs, labelsTs)));
 
         delete f;
     }
