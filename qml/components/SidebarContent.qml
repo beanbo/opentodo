@@ -2537,7 +2537,16 @@ Rectangle {
             font.pixelSize: FontSize.caption
             font.weight: Font.DemiBold
             font.letterSpacing: 0.5
-            color: "#999999"
+            // Iter-night-31: was hardcoded "#999999" — that's exactly the
+            // dark-theme secondaryTextColor (ThemeManager.qml:191), but
+            // every other theme uses a different shade: light=#666666,
+            // kale=#8ea88c, blueberry=#8a90c8, … so the section labels
+            // ("ПРОЕКТЫ", "МЕТКИ", "ФИЛЬТРЫ", "ИЗБРАННОЕ") rendered with
+            // bad contrast in 8 of 9 palettes. The neighbouring "+" icon
+            // was already bound to ThemeManager.secondaryTextColor in
+            // iter-night-23 (see comment at the IconSvg below); this row
+            // header was the lone leftover from that sweep.
+            color: ThemeManager.secondaryTextColor
         }
 
         // Archive toggle icon (📦) — appears to the left of the "+" button

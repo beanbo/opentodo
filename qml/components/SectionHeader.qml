@@ -74,7 +74,11 @@ Rectangle {
             id: countText
             text: root.taskCount > 0 ? "(" + root.taskCount + ")" : ""
             font.pixelSize: 13
-            color: "#999999"
+            // Iter-night-31: was hardcoded "#999999" — readable on the dark
+            // theme (whose secondaryTextColor is the same shade) but too
+            // light against light/kale/lavender/etc. sidebars. Bind to the
+            // active palette like the sidebar's section labels do.
+            color: ThemeManager.secondaryTextColor
             verticalAlignment: Text.AlignVCenter
             visible: root.taskCount > 0
         }
