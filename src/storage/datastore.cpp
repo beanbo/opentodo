@@ -305,62 +305,62 @@ bool DataStore::removeTask(const QString &id)
 
     const QDateTime now = QDateTime::currentDateTimeUtc();
 
-    task->setIsDeleted(true);
-    task->setUpdatedAt(now);
-    stampEntityField(id, m_taskMeta, QStringLiteral("is_deleted"));
-    stampEntityField(id, m_taskMeta, QStringLiteral("updated_at"));
-
-    // B-1.6: cascade to direct subtasks (depth-1; recursive removal handled
-    // by callers looping through children if needed, or by sync re-applying).
-    for (auto *subtask : m_tasks) {
-        if (!subtask->isDeleted() && subtask->parentId() == id) {
-            const QString sid = subtask->id();
-            subtask->setIsDeleted(true);
-            subtask->setUpdatedAt(now);
-            stampEntityField(sid, m_taskMeta, QStringLiteral("is_deleted"));
-            stampEntityField(sid, m_taskMeta, QStringLiteral("updated_at"));
-
-            // Tombstone reminders for this subtask.
-            for (auto *r : m_reminders) {
-                if (!r->isDeleted() && r->taskId() == sid) {
-                    const QString rid = r->id();
-                    r->setIsDeleted(true);
-                    r->setUpdatedAt(now);
-                    stampEntityField(rid, m_reminderMeta, QStringLiteral("is_deleted"));
-                    stampEntityField(rid, m_reminderMeta, QStringLiteral("updated_at"));
-                }
-            }
-            // Tombstone comments for this subtask.
-            for (auto *c : m_comments) {
-                if (!c->isDeleted() && c->taskId() == sid) {
-                    const QString cid = c->id();
-                    c->setIsDeleted(true);
-                    c->setUpdatedAt(now);
-                    stampEntityField(cid, m_commentMeta, QStringLiteral("is_deleted"));
-                    stampEntityField(cid, m_commentMeta, QStringLiteral("updated_at"));
-                }
-            }
+    // iter-night-4: cascade tombstone the entire descendant subtree, not just
+    // direct children. Previously only depth-1 was cascaded; grandchildren
+    // (subtasks of subtasks) stayed live with parentId pointing at a now-
+    // tombstoned parent. Their reminders kept firing OS-toasts for tasks the
+    // user thought were deleted; their entries became orphans in any tree
+    // walker that started from the original root. Walk the parentId graph
+    // with a visited set so a pre-existing cycle (defensively possible —
+    // applyCommit has a guard but legacy state.json files may carry one)
+    // can't loop forever.
+    QSet<QString> cascadeIds;
+    cascadeIds.insert(id);
+    QStringList frontier{id};
+    while (!frontier.isEmpty()) {
+        const QString parentId = frontier.takeFirst();
+        for (auto *t : m_tasks) {
+            if (!t || t->isDeleted()) continue;
+            if (t->parentId() != parentId) continue;
+            if (cascadeIds.contains(t->id())) continue; // cycle defence
+            cascadeIds.insert(t->id());
+            frontier.append(t->id());
         }
     }
 
-    // Tombstone reminders and comments for the task itself.
+    // Tombstone every task in the cascade set with the SAME `now` timestamp.
+    // restoreTask relies on updatedAt == cascadeStamp equality to identify
+    // descendants it should bring back together with the root, so they MUST
+    // share one timestamp.
+    for (const QString &tid : std::as_const(cascadeIds)) {
+        Task *t = m_taskIndex.value(tid);
+        if (!t || t->isDeleted()) continue;
+        t->setIsDeleted(true);
+        t->setUpdatedAt(now);
+        stampEntityField(tid, m_taskMeta, QStringLiteral("is_deleted"));
+        stampEntityField(tid, m_taskMeta, QStringLiteral("updated_at"));
+    }
+
+    // Tombstone reminders + comments for every task in the cascade set.
+    // Single linear pass over each store rather than nesting (was O(N×M)
+    // before, now O(N+M+M) once cascadeIds is built).
     for (auto *r : m_reminders) {
-        if (!r->isDeleted() && r->taskId() == id) {
-            const QString rid = r->id();
-            r->setIsDeleted(true);
-            r->setUpdatedAt(now);
-            stampEntityField(rid, m_reminderMeta, QStringLiteral("is_deleted"));
-            stampEntityField(rid, m_reminderMeta, QStringLiteral("updated_at"));
-        }
+        if (!r || r->isDeleted()) continue;
+        if (!cascadeIds.contains(r->taskId())) continue;
+        const QString rid = r->id();
+        r->setIsDeleted(true);
+        r->setUpdatedAt(now);
+        stampEntityField(rid, m_reminderMeta, QStringLiteral("is_deleted"));
+        stampEntityField(rid, m_reminderMeta, QStringLiteral("updated_at"));
     }
     for (auto *c : m_comments) {
-        if (!c->isDeleted() && c->taskId() == id) {
-            const QString cid = c->id();
-            c->setIsDeleted(true);
-            c->setUpdatedAt(now);
-            stampEntityField(cid, m_commentMeta, QStringLiteral("is_deleted"));
-            stampEntityField(cid, m_commentMeta, QStringLiteral("updated_at"));
-        }
+        if (!c || c->isDeleted()) continue;
+        if (!cascadeIds.contains(c->taskId())) continue;
+        const QString cid = c->id();
+        c->setIsDeleted(true);
+        c->setUpdatedAt(now);
+        stampEntityField(cid, m_commentMeta, QStringLiteral("is_deleted"));
+        stampEntityField(cid, m_commentMeta, QStringLiteral("updated_at"));
     }
 
     emit tasksChanged();
@@ -424,43 +424,64 @@ bool DataStore::restoreTask(const QString &id)
         }
     }
 
-    // Cascade-restore direct subtasks tombstoned by the same removeTask call,
-    // and recursively their reminders/comments. This mirrors the depth-1
-    // subtask cascade in removeTask().
-    for (auto *subtask : m_tasks) {
-        if (!subtask || !subtask->isDeleted()) continue;
-        if (subtask->parentId() != id) continue;
-        if (subtask->updatedAt() != cascadeStamp) continue;
-
-        const QString sid = subtask->id();
-        const QDateTime subStamp = subtask->updatedAt();
-        subtask->setIsDeleted(false);
-        subtask->setUpdatedAt(now);
-        stampEntityField(sid, m_taskMeta, QStringLiteral("is_deleted"));
-        stampEntityField(sid, m_taskMeta, QStringLiteral("updated_at"));
-
-        for (auto *r : m_reminders) {
-            if (r && r->isDeleted() && r->taskId() == sid
-                && r->updatedAt() == subStamp) {
-                const QString rid = r->id();
-                r->setIsDeleted(false);
-                r->setUpdatedAt(now);
-                stampEntityField(rid, m_reminderMeta, QStringLiteral("is_deleted"));
-                stampEntityField(rid, m_reminderMeta, QStringLiteral("updated_at"));
-                anyReminderRestored = true;
-            }
+    // iter-night-4: cascade-restore the entire descendant subtree (depth-N),
+    // mirroring the now-recursive removeTask. We find every descendant by
+    // walking parentId graph, but ONLY restore those whose updatedAt matches
+    // cascadeStamp — that's how we identify "tombstoned by THIS removeTask
+    // call" vs "tombstoned independently before/after". Legacy state.json
+    // files written by the old depth-1 removeTask will have grandchildren
+    // with different timestamps and stay tombstoned — matches old behaviour,
+    // no regression.
+    QSet<QString> cascadeIds;
+    cascadeIds.insert(id);
+    QStringList frontier{id};
+    while (!frontier.isEmpty()) {
+        const QString parentId = frontier.takeFirst();
+        for (auto *t : m_tasks) {
+            if (!t || !t->isDeleted()) continue;
+            if (t->parentId() != parentId) continue;
+            if (t->updatedAt() != cascadeStamp) continue;
+            if (cascadeIds.contains(t->id())) continue; // cycle defence
+            cascadeIds.insert(t->id());
+            frontier.append(t->id());
         }
-        for (auto *c : m_comments) {
-            if (c && c->isDeleted() && c->taskId() == sid
-                && c->updatedAt() == subStamp) {
-                const QString cid = c->id();
-                c->setIsDeleted(false);
-                c->setUpdatedAt(now);
-                stampEntityField(cid, m_commentMeta, QStringLiteral("is_deleted"));
-                stampEntityField(cid, m_commentMeta, QStringLiteral("updated_at"));
-                anyCommentRestored = true;
-            }
-        }
+    }
+
+    // Restore every descendant task (id itself already handled above).
+    for (const QString &tid : std::as_const(cascadeIds)) {
+        if (tid == id) continue;
+        Task *t = m_taskIndex.value(tid);
+        if (!t || !t->isDeleted()) continue;
+        t->setIsDeleted(false);
+        t->setUpdatedAt(now);
+        stampEntityField(tid, m_taskMeta, QStringLiteral("is_deleted"));
+        stampEntityField(tid, m_taskMeta, QStringLiteral("updated_at"));
+    }
+
+    // Restore descendant reminders / comments that match the cascade stamp.
+    for (auto *r : m_reminders) {
+        if (!r || !r->isDeleted()) continue;
+        if (r->updatedAt() != cascadeStamp) continue;
+        if (!cascadeIds.contains(r->taskId())) continue;
+        if (r->taskId() == id) continue; // already handled at the top
+        const QString rid = r->id();
+        r->setIsDeleted(false);
+        r->setUpdatedAt(now);
+        stampEntityField(rid, m_reminderMeta, QStringLiteral("is_deleted"));
+        stampEntityField(rid, m_reminderMeta, QStringLiteral("updated_at"));
+        anyReminderRestored = true;
+    }
+    for (auto *c : m_comments) {
+        if (!c || !c->isDeleted()) continue;
+        if (c->updatedAt() != cascadeStamp) continue;
+        if (!cascadeIds.contains(c->taskId())) continue;
+        if (c->taskId() == id) continue;
+        const QString cid = c->id();
+        c->setIsDeleted(false);
+        c->setUpdatedAt(now);
+        stampEntityField(cid, m_commentMeta, QStringLiteral("is_deleted"));
+        stampEntityField(cid, m_commentMeta, QStringLiteral("updated_at"));
+        anyCommentRestored = true;
     }
 
     emit tasksChanged();

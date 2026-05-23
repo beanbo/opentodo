@@ -143,6 +143,11 @@ opentodo_add_unit_test(test_meta_double_wrap_pin          Infra)
 # (label_ids vs labels, due_date vs due, duration_amount vs duration, etc.).
 opentodo_add_unit_test(test_taskvm_field_keys_pin         App)
 
+# iter-night-4: DataStore::removeTask cascade depth + restoreTask symmetry +
+# pre-existing-cycle defence. Was depth-1; grandchildren reminders kept
+# firing OS-toasts for invisible tasks.
+opentodo_add_unit_test(test_remove_task_deep_cascade      Infra)
+
 # Quality round 2.10: Q_GADGET value types + TaskViewModel selection state
 # machine + HotkeyService (Win32 RegisterHotKey + native event filter).
 opentodo_add_unit_test(test_q_gadgets                     Infra)
