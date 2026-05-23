@@ -421,6 +421,126 @@ private slots:
         QVERIFY(out.contains(QStringLiteral("STATUS:COMPLETED\r\n")));
         QVERIFY(out.contains(QStringLiteral("COMPLETED:20260501T090000Z\r\n")));
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Iter-night-36: subtask hierarchy must be preserved via
+    // RELATED-TO;RELTYPE=PARENT (RFC 5545 §3.8.4.5).
+    //
+    // Before this fix, the exporter emitted every task as a top-level
+    // VTODO with no parent reference. A multi-level outline
+    // ("Прибраться в квартире" → "Кухня", "Гостиная") exported as a flat
+    // sibling list in Apple Calendar / Outlook / Thunderbird — silently
+    // losing the entire hierarchy on the first round-trip.
+    //
+    // Pin slots:
+    //   1. subtaskEmits_relatedTo_parent
+    //   2. grandchildEmits_relatedTo_parent (deep hierarchy)
+    //   3. relatedTo_skippedWhenParentNotInExportSet (defensive — don't
+    //      emit dangling references)
+    //   4. topLevelTasks_haveNo_relatedTo (negative pin)
+    // ─────────────────────────────────────────────────────────────────────
+
+    void subtaskEmits_relatedTo_parent()
+    {
+        DataStore ds;
+        Project *inbox = ds.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Task *parent = ds.addTask(QStringLiteral("Прибраться в квартире"),
+                                  inbox->id());
+        Task *child  = ds.addTask(QStringLiteral("Кухня"), inbox->id());
+        child->setParentId(parent->id());
+
+        const QString out = render(ds.allTasks());
+
+        // Both tasks must be emitted.
+        QVERIFY(out.contains(QStringLiteral("BEGIN:VTODO\r\n")));
+        QCOMPARE(out.count(QStringLiteral("BEGIN:VTODO\r\n")), 2);
+
+        // The child's VTODO must carry RELATED-TO;RELTYPE=PARENT pointing
+        // at the parent's UID. The exact line we expect:
+        const QString expected =
+            QStringLiteral("RELATED-TO;RELTYPE=PARENT:") + parent->id()
+            + QStringLiteral("@opentodo\r\n");
+        QVERIFY2(out.contains(expected),
+                 qPrintable(QStringLiteral(
+                     "iter-night-36 regression: subtask VTODO missing "
+                     "RELATED-TO;RELTYPE=PARENT reference. "
+                     "Expected line:\n%1\n"
+                     "Full output:\n%2").arg(expected, out)));
+
+        // And conversely the PARENT itself must NOT carry a RELATED-TO.
+        // The output should contain exactly one RELATED-TO line.
+        QCOMPARE(out.count(QStringLiteral("RELATED-TO")), 1);
+    }
+
+    void grandchildEmits_relatedTo_parent_deep()
+    {
+        DataStore ds;
+        Project *inbox = ds.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Task *root  = ds.addTask(QStringLiteral("Root"),       inbox->id());
+        Task *child = ds.addTask(QStringLiteral("Child"),      inbox->id());
+        Task *grand = ds.addTask(QStringLiteral("Grandchild"), inbox->id());
+        child->setParentId(root->id());
+        grand->setParentId(child->id());
+
+        const QString out = render(ds.allTasks());
+        QCOMPARE(out.count(QStringLiteral("BEGIN:VTODO\r\n")), 3);
+
+        // Two RELATED-TO lines: child→root, grand→child.
+        QCOMPARE(out.count(QStringLiteral("RELATED-TO;RELTYPE=PARENT:")), 2);
+
+        const QString childToRoot  =
+            QStringLiteral("RELATED-TO;RELTYPE=PARENT:") + root->id()
+            + QStringLiteral("@opentodo\r\n");
+        const QString grandToChild =
+            QStringLiteral("RELATED-TO;RELTYPE=PARENT:") + child->id()
+            + QStringLiteral("@opentodo\r\n");
+        QVERIFY(out.contains(childToRoot));
+        QVERIFY(out.contains(grandToChild));
+    }
+
+    void relatedTo_skippedWhenParentNotInExportSet()
+    {
+        DataStore ds;
+        Project *inbox = ds.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Task *parent = ds.addTask(QStringLiteral("Parent"), inbox->id());
+        Task *child  = ds.addTask(QStringLiteral("Child"),  inbox->id());
+        child->setParentId(parent->id());
+
+        // Build an export set containing ONLY the child — simulates the
+        // "selected tasks" export flow where the parent was filtered out.
+        const QString out = render({ child });
+
+        // One VTODO emitted (the child).
+        QCOMPARE(out.count(QStringLiteral("BEGIN:VTODO\r\n")), 1);
+        // No RELATED-TO line — parent isn't in the export set, so the
+        // reference would be dangling.
+        QVERIFY2(!out.contains(QStringLiteral("RELATED-TO")),
+                 "iter-night-36: child exported without its parent "
+                 "must not emit a dangling RELATED-TO reference");
+    }
+
+    void topLevelTasks_haveNo_relatedTo_negative_pin()
+    {
+        DataStore ds;
+        Project *inbox = ds.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        // Three top-level tasks, no parent links anywhere.
+        ds.addTask(QStringLiteral("A"), inbox->id());
+        ds.addTask(QStringLiteral("B"), inbox->id());
+        ds.addTask(QStringLiteral("C"), inbox->id());
+
+        const QString out = render(ds.allTasks());
+        QCOMPARE(out.count(QStringLiteral("BEGIN:VTODO\r\n")), 3);
+        // No RELATED-TO anywhere — pure sibling list.
+        QVERIFY(!out.contains(QStringLiteral("RELATED-TO")));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestIcsExporter)

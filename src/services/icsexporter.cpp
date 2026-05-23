@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QUrl>
 #include <QRegularExpression>
+#include <QSet>
 
 // ── RFC 5545 helpers ─────────────────────────────────────────────────────────
 //
@@ -261,6 +262,18 @@ QString IcsExporter::exportTasks(const QList<Task *> &tasks)
     const QString dtstamp =
         QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd'T'HHmmss'Z'"));
 
+    // Iter-night-36: pre-compute the set of task ids that will actually be
+    // emitted as VTODOs (skipping nullptrs + tombstones). Used below to gate
+    // RELATED-TO emission — referencing a parent UID that isn't in the
+    // export is worse than dropping the link, because a downstream calendar
+    // app would render an orphan "missing parent" warning. RFC 5545 §3.8.4.5
+    // doesn't define UID resolution failure semantics, so consumers vary.
+    QSet<QString> exportedIds;
+    for (const Task *t : tasks) {
+        if (!t || t->isDeleted()) continue;
+        exportedIds.insert(t->id());
+    }
+
     for (const Task *t : tasks) {
         if (!t || t->isDeleted()) continue;
 
@@ -314,6 +327,22 @@ QString IcsExporter::exportTasks(const QList<Task *> &tasks)
             appendProp(out, QStringLiteral("COMPLETED"),
                        t->completedAt().toUTC()
                            .toString(QStringLiteral("yyyyMMdd'T'HHmmss'Z'")));
+        }
+
+        // RELATED-TO;RELTYPE=PARENT — preserve subtask hierarchy per RFC
+        // 5545 §3.8.4.5. Iter-night-36: before this, every task was
+        // emitted as a top-level VTODO regardless of parent_id, so a
+        // multi-level outline ("Прибраться в квартире" → "Кухня",
+        // "Гостиная") exported as a flat sibling list — Apple Calendar /
+        // Outlook / Thunderbird all dropped the hierarchy on import.
+        // Reference the parent's UID, but only when the parent is also
+        // in the export set — referencing a non-exported UID would
+        // produce a dangling RELATED-TO that consumers handle
+        // inconsistently (RFC 5545 doesn't define UID-resolution
+        // failure semantics).
+        if (!t->parentId().isEmpty() && exportedIds.contains(t->parentId())) {
+            appendPropRaw(out, QStringLiteral("RELATED-TO;RELTYPE=PARENT"),
+                          t->parentId() + QStringLiteral("@opentodo"));
         }
 
         // CATEGORIES from labels (RFC 5545 supports comma-separated text).
