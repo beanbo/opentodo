@@ -138,6 +138,19 @@ Rectangle {
         return root._taskCache[iso] || 0
     }
 
+    // Iter-night-39: latch any rebuild request that arrived while the
+    // panel was invisible. The visibility-guard at the timer's onTriggered
+    // (Q3.23) prevents the rebuild storm but also DROPS the rebuild
+    // entirely if the user navigates away mid-debounce. The panel itself
+    // is a single long-lived QML object whose `visible` toggles based on
+    // taskViewModel.filterMode === Upcoming (DesktopLayout.qml:748) —
+    // it's NOT mounted via Loader, so Component.onCompleted only fires
+    // once at app start. Without latching, the user can edit a task on
+    // Inbox/Today/Project view, navigate back to Upcoming, and see the
+    // stale day-count dots until either they change the month or another
+    // mutation lands while the panel is visible.
+    property bool _cacheStale: false
+
     // Coalescing timer — any number of signals within 50 ms collapses to
     // one _rebuildCache() call. This prevents the double-fire that was
     // causing O(N) full-list scans on every single task mutation:
@@ -148,7 +161,15 @@ Rectangle {
         id: _rebuildTimer
         interval: 50
         repeat:   false
-        onTriggered: if (root.visible) root._rebuildCache()
+        onTriggered: {
+            if (root.visible) {
+                root._rebuildCache()
+            } else {
+                // Iter-night-39: defer the rebuild — onVisibleChanged
+                // below will consume the flag when the panel reappears.
+                root._cacheStale = true
+            }
+        }
     }
 
     // Rebuild on model changes. taskViewModel covers all task mutations
@@ -164,6 +185,17 @@ Rectangle {
     // Rebuild when month changes and on initial load
     onCurrentMonthChanged: _rebuildCache()
     Component.onCompleted:  _rebuildCache()
+
+    // Iter-night-39: consume the stale-flag when the panel becomes
+    // visible again. Single rebuild on transition, not on every
+    // mutation that happened while hidden — preserves the Q3.23 anti-
+    // storm guarantee.
+    onVisibleChanged: {
+        if (visible && _cacheStale) {
+            _cacheStale = false
+            _rebuildCache()
+        }
+    }
 
     // ── Main layout ───────────────────────────────────────────────────────────
     ColumnLayout {
