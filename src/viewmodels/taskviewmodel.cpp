@@ -629,6 +629,14 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
                 task->setDueDatetime({});
             task->setDueString(result.humanString);
             task->setDueIsRecurring(result.isRecurring);
+            // B-4.60 follow-up (iter-night-28): persist RRULE so
+            // RecurrenceEngine can use the primary RRULE path instead of
+            // the legacy humanString fallback on completion. Mirrors the
+            // already-fixed `addTask` (line ~319) and `bulkSetDue` (line
+            // ~2050) paths — `setTaskDue` was the lone gap. Setting
+            // unconditionally also clears any stale rule when the user
+            // overwrites a recurring due with a one-shot date.
+            task->setDueRecurrenceRule(result.recurrenceRule);
         } else {
             return false;
         }

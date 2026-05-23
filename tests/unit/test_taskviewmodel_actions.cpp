@@ -813,6 +813,98 @@ private slots:
 
         delete f;
     }
+
+    // =====================================================================
+    // setTaskDue recurrence persistence (iter-night-28 pin)
+    //
+    // Regression sibling of fix #20 (bulkSetDue) and the addTask-post-set
+    // fix #23. When a user changes a task's due date via the inline date
+    // popup or "snooze" shortcut, the QML layer calls
+    // TaskViewModel::setTaskDue(id, "every Monday") / "каждый понедельник"
+    // / "ежедневно" / etc. The DateParser populates result.recurrenceRule
+    // with the canonical RRULE (e.g. "FREQ=WEEKLY;BYDAY=MO"), but the
+    // setter dropped that field before iter-night-28 — leaving the task
+    // marked isRecurring=true with an EMPTY recurrenceRule, which forced
+    // RecurrenceEngine onto its legacy humanString-parsing fallback on
+    // every completion. The fix mirrors addTask (line ~319) and
+    // bulkSetDue (line ~2050): call setDueRecurrenceRule unconditionally.
+    //
+    // We also pin the inverse direction: overwriting a previously
+    // recurring task with a one-shot date must CLEAR the stale rule.
+    // =====================================================================
+
+    void setTaskDue_recurring_string_persists_rrule()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        // Pre-set Russian language so the parser dispatches to rules_ru.cpp.
+        // (Both rule files populate recurrenceRule equivalently — this just
+        // makes the test's intent explicit and exercises the Russian path
+        // since OpenTodo's UI default is Russian.)
+        f->store->setSetting(QStringLiteral("language"), QStringLiteral("ru"));
+
+        QVERIFY(vm.setTaskDue(f->taskAId, QString::fromUtf8("каждый день")));
+
+        Task *t = f->store->taskById(f->taskAId);
+        QVERIFY(t != nullptr);
+        QVERIFY(t->dueIsRecurring());
+        // "каждый день" resolves to FREQ=DAILY in rules_ru.cpp (line ~480).
+        QCOMPARE(t->dueRecurrenceRule(), QStringLiteral("FREQ=DAILY"));
+
+        delete f;
+    }
+
+    void setTaskDue_english_recurring_string_persists_rrule()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        // Force English path so the EN preset table is consulted.
+        f->store->setSetting(QStringLiteral("language"), QStringLiteral("en"));
+
+        QVERIFY(vm.setTaskDue(f->taskAId, QStringLiteral("every Monday")));
+
+        Task *t = f->store->taskById(f->taskAId);
+        QVERIFY(t != nullptr);
+        QVERIFY(t->dueIsRecurring());
+        // "every Monday" → FREQ=WEEKLY;BYDAY=MO in rules_en.cpp.
+        QCOMPARE(t->dueRecurrenceRule(),
+                 QStringLiteral("FREQ=WEEKLY;BYDAY=MO"));
+
+        delete f;
+    }
+
+    void setTaskDue_oneshot_clears_stale_rrule()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        // Pre-seed taskA as recurring (simulate a prior setTaskDue / import).
+        Task *src = f->store->taskById(f->taskAId);
+        QVERIFY(src);
+        DueObject pre;
+        pre.date           = QStringLiteral("2026-05-25");
+        pre.string         = QStringLiteral("every week");
+        pre.isRecurring    = true;
+        pre.recurrenceRule = QStringLiteral("FREQ=WEEKLY");
+        src->setDue(pre);
+        QVERIFY(src->dueIsRecurring());
+        QVERIFY(!src->dueRecurrenceRule().isEmpty());
+
+        // User overwrites with a one-shot date. The new state must NOT carry
+        // the stale FREQ=WEEKLY rule forward — that would silently keep the
+        // task recurring against the user's intent.
+        f->store->setSetting(QStringLiteral("language"), QStringLiteral("en"));
+        QVERIFY(vm.setTaskDue(f->taskAId, QStringLiteral("2026-12-31")));
+
+        Task *post = f->store->taskById(f->taskAId);
+        QVERIFY(post != nullptr);
+        QVERIFY(!post->dueIsRecurring());
+        QVERIFY(post->dueRecurrenceRule().isEmpty());
+
+        delete f;
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTaskViewModelActions)
