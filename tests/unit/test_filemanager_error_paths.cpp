@@ -363,6 +363,166 @@ private slots:
         QVERIFY(inbox->isInbox());
     }
 
+    // Iter-night-11: state.json is missing but a valid .bak still exists
+    // (antivirus quarantine, accidental delete, cloud-sync conflict
+    // resolution that nuked only the primary file, ...). Pre-fix, load()
+    // ignored the backup chain entirely in the missing-file branch and
+    // ran createDefaultState() → saveImmediate(), which on the next few
+    // autosaves rotated the user's real-data .bak chain out for the
+    // empty default. This pin asserts the missing-file branch now walks
+    // the backup chain — same as the corruption branch — so the sentinel
+    // project from .bak resurrects in the DataStore.
+    void load_missingState_withValidBak_recoversFromBackup()
+    {
+        QVERIFY(!QFile::exists(stateFilePath()));
+
+        // Hand-write a valid backup JSON with a sentinel project name. We
+        // don't go through FileManager because we need the file at the
+        // .bak path while state.json itself is absent.
+        QJsonObject root;
+        root[QStringLiteral("schema_version")] = 1;
+        QJsonObject inbox;
+        inbox[QStringLiteral("id")] = QStringLiteral("inbox-sentinel-id");
+        inbox[QStringLiteral("name")] = QStringLiteral("BAK_INBOX_SENTINEL");
+        inbox[QStringLiteral("is_inbox")] = true;
+        inbox[QStringLiteral("order")] = 0;
+        inbox[QStringLiteral("color")] = QStringLiteral("grey");
+        inbox[QStringLiteral("is_deleted")] = false;
+        QJsonObject userProj;
+        userProj[QStringLiteral("id")] = QStringLiteral("user-proj-sentinel");
+        userProj[QStringLiteral("name")] = QStringLiteral("BAK_REAL_DATA");
+        userProj[QStringLiteral("is_inbox")] = false;
+        userProj[QStringLiteral("order")] = 1;
+        userProj[QStringLiteral("color")] = QStringLiteral("blue");
+        userProj[QStringLiteral("is_deleted")] = false;
+        QJsonArray projects;
+        projects.append(inbox);
+        projects.append(userProj);
+        root[QStringLiteral("projects")] = projects;
+        root[QStringLiteral("tasks")] = QJsonArray();
+        root[QStringLiteral("sections")] = QJsonArray();
+        root[QStringLiteral("labels")] = QJsonArray();
+        root[QStringLiteral("filters")] = QJsonArray();
+        root[QStringLiteral("reminders")] = QJsonArray();
+        root[QStringLiteral("comments")] = QJsonArray();
+        root[QStringLiteral("settings")] = QJsonObject();
+        const QByteArray bytes = QJsonDocument(root).toJson();
+
+        QDir().mkpath(dataDirPath());
+        QFile bak(bak0Path());
+        QVERIFY(bak.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        bak.write(bytes);
+        bak.close();
+        QVERIFY(QFile::exists(bak0Path()));
+        QVERIFY(!QFile::exists(stateFilePath()));
+
+        DataStore ds;
+        FileManager fm(&ds);
+        QSignalSpy loadedSpy(&fm, &FileManager::loaded);
+        QSignalSpy errSpy(&fm, &FileManager::loadError);
+        fm.load();
+
+        QCOMPARE(loadedSpy.count(), 1);
+        // No loadError on successful silent recovery (mirrors the
+        // corruption-recovery branch's behaviour).
+        QCOMPARE(errSpy.count(), 0);
+
+        // The DataStore must contain the sentinel project from the .bak,
+        // not the BAK-less default ("Входящие" with empty project list).
+        bool foundSentinel = false;
+        for (const Project *p : ds.allProjects()) {
+            if (p->name() == QStringLiteral("BAK_REAL_DATA")) {
+                foundSentinel = true;
+                break;
+            }
+        }
+        QVERIFY2(foundSentinel,
+                 "Iter-night-11: missing-state branch must walk the backup "
+                 "chain. Without recovery the user's real data is replaced "
+                 "by a default Inbox and the rolling .bak chain gets ground "
+                 "out by subsequent autosaves.");
+    }
+
+    // Iter-night-11 companion: missing state.json AND no backups → defaults
+    // (regression guard — this case must still work after the recovery
+    // helper is added).
+    void load_missingState_noBackups_stillFallsBackToDefault()
+    {
+        QVERIFY(!QFile::exists(stateFilePath()));
+        QVERIFY(!QFile::exists(bak0Path()));
+        QVERIFY(!QFile::exists(bak1Path()));
+        QVERIFY(!QFile::exists(bak2Path()));
+
+        DataStore ds;
+        FileManager fm(&ds);
+        QSignalSpy loadedSpy(&fm, &FileManager::loaded);
+        QSignalSpy errSpy(&fm, &FileManager::loadError);
+        fm.load();
+
+        QCOMPARE(loadedSpy.count(), 1);
+        QCOMPARE(errSpy.count(), 0);
+
+        // Default Inbox name — confirms createDefaultState path ran.
+        Project *inbox = ds.inboxProject();
+        QVERIFY(inbox != nullptr);
+        QCOMPARE(inbox->name(), QStringLiteral("Входящие"));
+    }
+
+    // Iter-night-11 companion: when only a higher-generation backup exists
+    // (.bak.2 alone), recovery still picks it up. Walks the rolling chain
+    // in LRU-cheapest order then falls through to dated rotation; the
+    // chain order is the same as the corruption-branch recovery path.
+    void load_missingState_onlyBak2Exists_recoversFromBak2()
+    {
+        QVERIFY(!QFile::exists(stateFilePath()));
+
+        QJsonObject root;
+        root[QStringLiteral("schema_version")] = 1;
+        QJsonObject inbox;
+        inbox[QStringLiteral("id")] = QStringLiteral("inbox-id-bak2");
+        inbox[QStringLiteral("name")] = QStringLiteral("Входящие");
+        inbox[QStringLiteral("is_inbox")] = true;
+        inbox[QStringLiteral("order")] = 0;
+        inbox[QStringLiteral("color")] = QStringLiteral("grey");
+        inbox[QStringLiteral("is_deleted")] = false;
+        QJsonObject userProj;
+        userProj[QStringLiteral("id")] = QStringLiteral("user-bak2-sentinel");
+        userProj[QStringLiteral("name")] = QStringLiteral("BAK2_FALLBACK");
+        userProj[QStringLiteral("is_inbox")] = false;
+        userProj[QStringLiteral("order")] = 1;
+        userProj[QStringLiteral("color")] = QStringLiteral("red");
+        userProj[QStringLiteral("is_deleted")] = false;
+        QJsonArray projects; projects.append(inbox); projects.append(userProj);
+        root[QStringLiteral("projects")] = projects;
+        root[QStringLiteral("tasks")]    = QJsonArray();
+        root[QStringLiteral("sections")] = QJsonArray();
+        root[QStringLiteral("labels")]   = QJsonArray();
+        root[QStringLiteral("filters")]  = QJsonArray();
+        root[QStringLiteral("reminders")]= QJsonArray();
+        root[QStringLiteral("comments")] = QJsonArray();
+        root[QStringLiteral("settings")] = QJsonObject();
+        const QByteArray bytes = QJsonDocument(root).toJson();
+
+        QDir().mkpath(dataDirPath());
+        QFile bak2(bak2Path());
+        QVERIFY(bak2.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        bak2.write(bytes);
+        bak2.close();
+
+        DataStore ds;
+        FileManager fm(&ds);
+        fm.load();
+
+        bool found = false;
+        for (const Project *p : ds.allProjects()) {
+            if (p->name() == QStringLiteral("BAK2_FALLBACK")) {
+                found = true;
+                break;
+            }
+        }
+        QVERIFY(found);
+    }
+
     // 0-byte state.json: QJsonDocument::fromJson on an empty buffer returns
     // a null document; the auto-recovery loop tries .bak/.bak.1/.bak.2
     // (none exist), then renames the empty file to state.json.corrupt-<ts>

@@ -84,6 +84,29 @@ void FileManager::load()
     QFile file(filePath);
 
     if (!file.exists()) {
+        // Iter-night-11: state.json missing but backups may still exist.
+        // Previously this branch jumped straight to createDefaultState(),
+        // which then ran performSave() → after a few autosaves the rolling
+        // .bak / .bak.1 / .bak.2 chain was overwritten with empty default
+        // state, and the user's real data was silently ground out. The
+        // corruption-recovery branch below has always walked the backup
+        // chain — make this branch do the same so a missing state.json
+        // with a valid .bak is recoverable, not a one-way trip to a
+        // pristine-looking install.
+        if (tryRecoverFromBackups(filePath, "missing")) {
+            // Materialize state.json from the in-memory recovered state.
+            // Without this, state.json stays absent until the next user
+            // mutation triggers an autosave — which means a peaceful
+            // close-then-reopen would re-enter the recovery path each
+            // time, and `first_launch_creates_state_then_debounces`-
+            // style invariants in test fixtures would also break.
+            // performSave's rotation is gated on QFile::exists(statePath),
+            // so the rotation step is skipped on this first save (state.json
+            // doesn't exist yet) — the recovered .bak is preserved untouched.
+            saveImmediate();
+            emit loaded();
+            return;
+        }
         createDefaultState();
         emit loaded();
         return;
@@ -106,35 +129,9 @@ void FileManager::load()
         // then fall through to the dated rolling backups in mtime order.
         // Q3.10: dated backups extend the recovery window beyond the 3-gen
         // rolling chain, capped by the retention policy.
-        QStringList bakCandidates = {
-            filePath + QStringLiteral(".bak"),
-            filePath + QStringLiteral(".bak.1"),
-            filePath + QStringLiteral(".bak.2"),
-        };
-        QStringList dated = datedBackupPaths();
-        // Order dated backups newest → oldest so the freshest snapshot wins.
-        std::sort(dated.begin(), dated.end(),
-                  [](const QString &a, const QString &b) {
-                      return QFileInfo(a).lastModified()
-                             > QFileInfo(b).lastModified();
-                  });
-        bakCandidates << dated;
-        for (const QString &candidate : bakCandidates) {
-            QFile bakFile(candidate);
-            if (!bakFile.open(QIODevice::ReadOnly))
-                continue;
-            const QByteArray bakData = bakFile.readAll();
-            bakFile.close();
-            QJsonParseError bakErr;
-            QJsonDocument bakDoc = QJsonDocument::fromJson(bakData, &bakErr);
-            if (bakErr.error == QJsonParseError::NoError && !bakDoc.isNull() && bakDoc.isObject()) {
-                qWarning("FileManager: state.json corrupted; recovered from %s",
-                         qPrintable(candidate));
-                m_store->loadFromJson(bakDoc.object());
-                m_dirty = false;
-                emit loaded();
-                return;
-            }
+        if (tryRecoverFromBackups(filePath, "corrupted")) {
+            emit loaded();
+            return;
         }
         qWarning("FileManager: state.json and all backups (.bak/.bak.1/.bak.2) invalid or missing; starting fresh");
 
@@ -283,6 +280,45 @@ QStringList FileManager::datedBackupPaths() const
             out.append(fi.absoluteFilePath());
     }
     return out;
+}
+
+bool FileManager::tryRecoverFromBackups(const QString &filePath,
+                                       const char *reason)
+{
+    // Walk the rolling 3-generation chain (LRU-cheapest first), then the
+    // dated rotation in newest-first order. Same shape as the corruption
+    // recovery branch used pre-iter-night-11 — now shared with the
+    // missing-state branch so a deleted/quarantined state.json with a
+    // valid .bak doesn't lead to silent data loss.
+    QStringList bakCandidates = {
+        filePath + QStringLiteral(".bak"),
+        filePath + QStringLiteral(".bak.1"),
+        filePath + QStringLiteral(".bak.2"),
+    };
+    QStringList dated = datedBackupPaths();
+    std::sort(dated.begin(), dated.end(),
+              [](const QString &a, const QString &b) {
+                  return QFileInfo(a).lastModified()
+                         > QFileInfo(b).lastModified();
+              });
+    bakCandidates << dated;
+    for (const QString &candidate : bakCandidates) {
+        QFile bakFile(candidate);
+        if (!bakFile.open(QIODevice::ReadOnly))
+            continue;
+        const QByteArray bakData = bakFile.readAll();
+        bakFile.close();
+        QJsonParseError bakErr;
+        QJsonDocument bakDoc = QJsonDocument::fromJson(bakData, &bakErr);
+        if (bakErr.error == QJsonParseError::NoError && !bakDoc.isNull() && bakDoc.isObject()) {
+            qWarning("FileManager: state.json %s; recovered from %s",
+                     reason, qPrintable(candidate));
+            m_store->loadFromJson(bakDoc.object());
+            m_dirty = false;
+            return true;
+        }
+    }
+    return false;
 }
 
 void FileManager::writeDatedBackup()

@@ -113,6 +113,14 @@ private:
     QStringList datedBackupPaths() const;
     void writeDatedBackup();   // copy state.json → dated backup, no rotation
 
+    // Iter-night-11: walk the same backup chain that the corruption-recovery
+    // branch uses (.bak / .bak.1 / .bak.2, then dated, newest-first) and load
+    // the first valid one. Returns true on successful recovery (caller should
+    // emit loaded() and return); false if no backup was usable. `reason` is a
+    // short label spliced into the qWarning so log readers can tell whether
+    // we hit this path from missing-file or corrupted-file.
+    bool tryRecoverFromBackups(const QString &filePath, const char *reason);
+
     DataStore *m_store;
     QTimer m_saveTimer;
     bool m_dirty = false;
