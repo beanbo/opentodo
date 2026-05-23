@@ -481,11 +481,28 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
     QMap<QString, QString> labelNameToId; // todoistName → openTodo UUID
 
+    // iter-night-29: DataStore::labelByName() looks up via m_labelNameIndex,
+    // which is NOT scrubbed when removeLabel() tombstones an entry — and
+    // loadFromJson() reinserts every label into the name index regardless
+    // of is_deleted. So labelByName() can return a tombstoned label. If we
+    // reuse it here, the imported "Work" label remains invisible to the
+    // sidebar (it's filtered by allLabels()) AND the tombstone is_deleted=
+    // true field still rides outbound on next sync, propagating the dead
+    // state to other devices that had re-created the label themselves.
+    // Treat a tombstoned hit as not-found and create a fresh one — the
+    // pattern matches the iter-19 (Phase 2 Projects) / iter-27 (Phase 3
+    // Sections) dedup fixes which also explicitly filter isDeleted().
+    auto findLiveLabelByName = [this](const QString &name) -> Label * {
+        Label *existing = m_store->labelByName(name);
+        if (existing && existing->isDeleted()) return nullptr;
+        return existing;
+    };
+
     for (const TodoistLabel &tl : data.labels) {
         if (tl.name.isEmpty()) continue;
 
-        // Reuse existing label if present
-        Label *existing = m_store->labelByName(tl.name);
+        // Reuse existing live label if present (tombstones skipped).
+        Label *existing = findLiveLabelByName(tl.name);
         if (!existing) {
             Label *lbl = m_store->addLabel(tl.name);
             lbl->setColor(mapTodoistColor(tl.color));
@@ -761,8 +778,10 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
             if (labelNameToId.contains(name)) {
                 resolvedLabels.append(name); // Task.labels stores label *names*
             } else {
-                // Create label on the fly if unknown
-                Label *lbl = m_store->labelByName(name);
+                // Create label on the fly if unknown. Use the same live-only
+                // filter as Phase 1 (iter-night-29) — tombstoned hits are
+                // treated as not-found so we materialise a fresh entity.
+                Label *lbl = findLiveLabelByName(name);
                 if (!lbl) {
                     lbl = m_store->addLabel(name);
                 }

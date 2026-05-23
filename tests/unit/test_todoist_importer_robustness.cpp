@@ -83,6 +83,9 @@
 #include <QSettings>
 #include <QSet>
 #include <QStringConverter>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 
 #include "import/todoist_csv_parser.h"
 #include "import/todoistimporter.h"
@@ -1639,6 +1642,160 @@ private slots:
         imp->applyImport(first, false);
         QCOMPARE(ds->sectionsForProject(projA->id()).size(), 1);
         QCOMPARE(ds->sectionsForProject(projB->id()).size(), 1);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Iter-night-29: Phase 1 (Labels) must treat tombstoned labels as
+    // not-found when deduplicating by name.
+    //
+    // DataStore::labelByName() looks up via m_labelNameIndex. That index
+    // is NOT scrubbed when removeLabel() tombstones a label, and
+    // loadFromJson() re-inserts every label into the index regardless of
+    // is_deleted. Before iter-night-29, Phase 1 reused the tombstoned hit
+    // — so a user who had deleted "Work" and then re-imported a Todoist
+    // backup containing "Work" ended up with a label that was tombstoned
+    // (invisible in sidebar, hidden in allLabels()) but still referenced
+    // by name from imported tasks. The tombstone's is_deleted=true would
+    // then ride outbound on sync and silently destroy any peer device's
+    // freshly re-created "Work" label.
+    //
+    // Fix: filter labelByName() hits by isDeleted() inside the importer
+    // (siblings: iter-19 Projects, iter-27 Sections — same pattern).
+    //
+    // Pin: tombstone a label, then re-import the same name. The expected
+    // state is: tombstoned label still exists (untouched) AND a fresh,
+    // non-deleted label with the same name has been created.
+    // ────────────────────────────────────────────────────────────────────
+    void reimport_phase1_doesNotReuseTombstonedLabel()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        // Create a label, then soft-delete it. This leaves the entry in
+        // m_labelNameIndex pointing at a tombstoned label.
+        Label *original = ds->addLabel(QStringLiteral("Work"));
+        QVERIFY(original);
+        const QString originalId = original->id();
+        QVERIFY(ds->removeLabel(originalId));
+        // Confirm the precondition: labelByName still returns the
+        // tombstone (the very mis-design Phase 1 was tripping on).
+        Label *byName = ds->labelByName(QStringLiteral("Work"));
+        QVERIFY(byName != nullptr);
+        QVERIFY(byName->isDeleted());
+
+        // Re-import a backup that contains the same label name.
+        TodoistImportData data;
+        TodoistLabel tl;
+        tl.name  = QStringLiteral("Work");
+        tl.color = QStringLiteral("red");
+        tl.order = 0;
+        data.labels.append(tl);
+        imp->applyImport(data, false);
+
+        // Inspect every Label entity with name "Work". Before the fix
+        // there was exactly one (the tombstone) and it remained tomb-
+        // stoned. After the fix there is the tombstone PLUS a fresh
+        // non-deleted entity (different UUID).
+        int liveCount = 0;
+        int tombCount = 0;
+        // Walk m_labels directly via DataStore's full label list. We
+        // can't use allLabels() because that filters out tombstones —
+        // and we want to assert BOTH halves of the split. Use the
+        // labels QML-bound property's raw read instead.
+        const QJsonObject rawState = ds->toJson();
+        const QJsonArray labelsArr = rawState.value(QStringLiteral("labels")).toArray();
+        for (const QJsonValue &v : labelsArr) {
+            const QJsonObject o = v.toObject();
+            if (o.value(QStringLiteral("name")).toString()
+                    .compare(QStringLiteral("Work"), Qt::CaseInsensitive) != 0)
+                continue;
+            if (o.value(QStringLiteral("is_deleted")).toBool())
+                ++tombCount;
+            else
+                ++liveCount;
+        }
+        QCOMPARE(tombCount, 1);
+        QCOMPARE(liveCount, 1);
+
+        // The user-facing list (filtered) must show exactly one live
+        // "Work" label, and that label must NOT be the tombstoned one.
+        Label *visible = nullptr;
+        for (Label *l : ds->allLabels()) {
+            if (l && l->name().compare(QStringLiteral("Work"),
+                                       Qt::CaseInsensitive) == 0) {
+                QVERIFY(visible == nullptr); // exactly one
+                visible = l;
+            }
+        }
+        QVERIFY(visible != nullptr);
+        QVERIFY(!visible->isDeleted());
+        QVERIFY(visible->id() != originalId);
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Iter-night-29 companion: the on-the-fly label-creation path in
+    // Phase 4 (Tasks) — when a task references a label name that wasn't
+    // declared in data.labels — must also treat tombstoned hits as
+    // not-found. Without the fix, the task ended up labelled with a
+    // tombstoned label's name, leaving the chip rendered but unmanaged.
+    // ────────────────────────────────────────────────────────────────────
+    void reimport_phase4_onTheFlyLabel_doesNotReuseTombstoned()
+    {
+        QScopedPointer<DataStore> ds(makeStore(this));
+        QScopedPointer<TodoistImporter> imp(
+            new TodoistImporter(ds.data(), this));
+
+        // Tombstone "Urgent".
+        Label *original = ds->addLabel(QStringLiteral("Urgent"));
+        QVERIFY(original);
+        const QString originalId = original->id();
+        QVERIFY(ds->removeLabel(originalId));
+
+        // Build an import with a TASK referencing "Urgent" but NO label
+        // declaration — this triggers the on-the-fly creation branch.
+        TodoistImportData data;
+        TodoistProject p;
+        p.id = QStringLiteral("td-proj-29");
+        p.name = QStringLiteral("Sandbox");
+        data.projects.append(p);
+
+        TodoistTask tt;
+        tt.id        = QStringLiteral("td-task-29");
+        tt.projectId = p.id;
+        tt.content   = QStringLiteral("Tagged task");
+        tt.priority  = 1;
+        tt.labelNames << QStringLiteral("Urgent");
+        data.tasks.append(tt);
+
+        imp->applyImport(data, false);
+
+        // Same split assertion: exactly one tombstoned "Urgent" + exactly
+        // one live "Urgent" should now exist.
+        int liveCount = 0, tombCount = 0;
+        const QJsonObject rawState = ds->toJson();
+        const QJsonArray labelsArr = rawState.value(QStringLiteral("labels")).toArray();
+        for (const QJsonValue &v : labelsArr) {
+            const QJsonObject o = v.toObject();
+            if (o.value(QStringLiteral("name")).toString()
+                    .compare(QStringLiteral("Urgent"), Qt::CaseInsensitive) != 0)
+                continue;
+            if (o.value(QStringLiteral("is_deleted")).toBool()) ++tombCount;
+            else                                                 ++liveCount;
+        }
+        QCOMPARE(tombCount, 1);
+        QCOMPARE(liveCount, 1);
+
+        // The imported task should still carry the label by name. The
+        // name uniquely matches the freshly-created (live) label now.
+        bool foundTask = false;
+        for (Task *t : ds->allTasks()) {
+            if (t && t->content() == QStringLiteral("Tagged task")) {
+                foundTask = true;
+                QVERIFY(t->labels().contains(QStringLiteral("Urgent")));
+            }
+        }
+        QVERIFY(foundTask);
     }
 };
 
