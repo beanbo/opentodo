@@ -1774,12 +1774,26 @@ Item {
                                             return true
                                         }
 
-                                        contentItem: Text {
-                                            text: bulkPinBtn.allPinned ? qsTr("📌 Открепить") : qsTr("📌 Закрепить")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "pin"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: bulkPinBtn.allPinned ? qsTr("Открепить") : qsTr("Закрепить")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()
@@ -1799,12 +1813,26 @@ Item {
                                     // ── Цвет ─────────────────────────────────────────────────
                                     ToolButton {
                                         id: bulkColorBtn
-                                        contentItem: Text {
-                                            text: qsTr("🎨 Цвет")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "projects/palette"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: qsTr("Цвет")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()
@@ -1823,12 +1851,26 @@ Item {
                                     // ── Срок ─────────────────────────────────────────────────
                                     ToolButton {
                                         id: bulkDueBtn
-                                        contentItem: Text {
-                                            text: qsTr("📅 Срок")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "calendar"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: qsTr("Срок")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()
@@ -1852,12 +1894,26 @@ Item {
                                     // дедлайн") and to disambiguate from bulkDueBtn above.
                                     ToolButton {
                                         id: bulkDeadlineBtn
-                                        contentItem: Text {
-                                            text: qsTr("📅 Дедлайн")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "alarm"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: qsTr("Дедлайн")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: {
                                             if (bulkPriorityPicker.opened) bulkPriorityPicker.close()
@@ -1878,12 +1934,26 @@ Item {
                                     // ── Архивировать ─────────────────────────────────────────
                                     ToolButton {
                                         id: bulkArchiveBtn
-                                        contentItem: Text {
-                                            text: qsTr("📦 Архив")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "archive"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: qsTr("Архив")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: taskViewModel.bulkArchive()
                                         ToolTip.visible: hovered
@@ -1897,12 +1967,26 @@ Item {
                                     // ── Скопировать как Markdown ──────────────────────────────
                                     ToolButton {
                                         id: bulkCopyMdBtn
-                                        contentItem: Text {
-                                            text: "📋 MD"
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "note"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: "MD"
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: {
                                             const txt = taskViewModel.bulkCopyAsMarkdown()
@@ -1938,12 +2022,26 @@ Item {
                                     // ── Удалить ──────────────────────────────────────────────
                                     // ITER1 #48: show confirmation dialog before bulk-delete
                                     ToolButton {
-                                        contentItem: Text {
-                                            text: qsTr("🗑 Удалить")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Item {
+                                            implicitHeight: bulkBtnRow_.implicitHeight
+                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            Row {
+                                                id: bulkBtnRow_
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                IconSvg {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: "trash"
+                                                    size: 14
+                                                    color: "white"
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: qsTr("Удалить")
+                                                    color: "white"
+                                                    font.pixelSize: FontSize.body
+                                                }
+                                            }
                                         }
                                         onClicked: bulkDeleteConfirmDialog.open()
                                         ToolTip.visible: hovered

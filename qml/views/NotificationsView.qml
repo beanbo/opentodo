@@ -237,6 +237,10 @@ Item {
         signal openTaskRequested(string taskId)
 
         // Map kind int to emoji and accent tint
+        // Q4.01 (redesign): kindEmoji остаётся как fallback (плейн-текстовые
+        // тултипы / экспорт), но рендер делегата теперь использует kindIcon
+        // (см. ниже) с IconSvg из stroke-пака — единый визуальный вес для
+        // всех типов уведомлений.
         readonly property string kindEmoji: {
             switch (delegateRoot.kind) {
                 case 0: return "✅"   // TaskCompleted    ✅
@@ -246,6 +250,35 @@ Item {
                 case 4: return "❌"   // SyncFailure      ❌
                 case 5: return "🏆" // AchievementUnlocked 🏆
                 default: return "📋"
+            }
+        }
+
+        // Q4.01 (redesign): соответствие kind → имя SVG-иконки. close для
+        // failure временно (нет "X" в паке отдельно — но "close" визуально
+        // совпадает); star для achievement (нет trophy/cup в паке).
+        readonly property string kindIcon: {
+            switch (delegateRoot.kind) {
+                case 0: return "check-circle"   // TaskCompleted
+                case 1: return "warning"        // TaskOverdue
+                case 2: return "bell"           // ReminderFired
+                case 3: return "sync"           // SyncSuccess
+                case 4: return "close"          // SyncFailure
+                case 5: return "star"           // AchievementUnlocked
+                default: return "list"
+            }
+        }
+
+        // Q4.01 (redesign): акцентный цвет иконки для каждого kind — берём
+        // непрозрачную версию того же оттенка, что у kindTint фона бубна.
+        readonly property color kindIconColor: {
+            switch (delegateRoot.kind) {
+                case 0: return Qt.rgba(76/255, 175/255,  80/255, 1.0)
+                case 1: return Qt.rgba(255/255, 152/255,  0/255, 1.0)
+                case 2: return Qt.rgba(33/255,  150/255, 243/255, 1.0)
+                case 3: return Qt.rgba(76/255,  175/255,  80/255, 1.0)
+                case 4: return Qt.rgba(244/255,  67/255,  54/255, 1.0)
+                case 5: return Qt.rgba(255/255, 193/255,   7/255, 1.0)
+                default: return textSecondary
             }
         }
 
@@ -333,16 +366,19 @@ Item {
             spacing: Spacing.md
 
             // Kind icon bubble
+            // Q4.01 (redesign): эмодзи в Text заменён на IconSvg из stroke-
+            // пака. Цвет берётся из kindIconColor, фон бубна — из kindTint.
             Rectangle {
                 width: 38
                 height: 38
                 radius: 19
                 color: delegateRoot.kindTint
 
-                Text {
+                IconSvg {
                     anchors.centerIn: parent
-                    text: delegateRoot.kindEmoji
-                    font.pixelSize: 17
+                    name: delegateRoot.kindIcon
+                    size: 18
+                    color: delegateRoot.kindIconColor
                 }
             }
 
