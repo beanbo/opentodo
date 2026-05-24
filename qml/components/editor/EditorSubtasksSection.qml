@@ -62,9 +62,12 @@ ColumnLayout {
                 anchors.centerIn: parent
                 spacing:      4
 
-                Text {
-                    text:           "🤖"
-                    font.pixelSize: 11
+                // Q4.01 (redesign): "🤖" → "sparkles" stroke-иконка для
+                // консистентности AI-точек входа.
+                IconSvg {
+                    name:  "sparkles"
+                    size:  11
+                    color: ThemeManager.accentColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {

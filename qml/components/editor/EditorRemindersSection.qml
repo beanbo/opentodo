@@ -173,13 +173,12 @@ ColumnLayout {
                 }
                 spacing: Spacing.sm
 
-                // Type icon
-                Text {
-                    font.pixelSize: 14
-                    text:           (modelData.type === "location")
-                                    ? "📍"   // 📍 pin
-                                    : "⏰"          // ⏰ clock
-                    color:          ThemeManager.secondaryTextColor
+                // Type icon — Q4.01 (redesign): эмодзи "📍"/"⏰" заменены на
+                // stroke-иконки "pin"/"alarm" из основного пака.
+                IconSvg {
+                    name: (modelData.type === "location") ? "pin" : "alarm"
+                    size: 14
+                    color: ThemeManager.secondaryTextColor
                 }
 
                 Text {

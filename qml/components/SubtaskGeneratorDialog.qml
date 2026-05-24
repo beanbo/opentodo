@@ -72,9 +72,14 @@ Popup {
             Layout.fillWidth: true
             spacing: Spacing.sm
 
-            Text {
-                text: "🤖"
-                font.pixelSize: 20
+            // Q4.01 (redesign): "🤖" заменён на IconSvg "sparkles" — единый
+            // визуальный язык с другими AI-точками входа (sidebar Помощник,
+            // "Сгенерировать описание" в EditorDescriptionField).
+            IconSvg {
+                name: "sparkles"
+                size: 18
+                color: ThemeManager.accentColor
+                Layout.alignment: Qt.AlignVCenter
             }
 
             Text {

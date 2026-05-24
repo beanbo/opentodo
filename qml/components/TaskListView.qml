@@ -82,10 +82,13 @@ Item {
                 onClicked: root._expandAll()
             }
 
+            // Q4.01 (redesign): "📁" заменён на чистый текст; иконку папки
+            // нужно класть в contentItem с IconSvg, но соседний "expand all"
+            // тоже без иконки — оставляем парность.
             ToolButton {
                 id: collapseAllButton
                 flat: true
-                text: qsTr("📁 Свернуть всё")
+                text: qsTr("Свернуть всё")
                 font.pixelSize: FontSize.caption
                 Material.foreground: ThemeManager.secondaryTextColor
                 ToolTip.text: qsTr("Свернуть подзадачи у всех задач")

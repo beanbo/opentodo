@@ -99,6 +99,11 @@ state-backup-*.json
 # Claude-related local state (not part of the project)
 .claude/
 
+# Design-handoff bundles from claude.ai/design (icon source-of-truth is in
+# the regenerated SVG files under resources/icons/; the JSX/HTML prototypes
+# in the bundle are reference material, not shipping assets).
+.design-temp/
+
 # Audit-pipeline scratch outputs (ad-hoc grep dumps, build logs etc.)
 audit_*.txt
 audit_*.xml

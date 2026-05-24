@@ -33,12 +33,22 @@ Item {
     implicitWidth:  size
     implicitHeight: size
 
+    // Q4.01 (redesign): name resolution understands two shapes —
+    //   "calendar"          → resources/icons/ui/calendar.svg     (legacy)
+    //   "projects/briefcase"→ resources/icons/projects/briefcase.svg
+    // The latter lets the redesign's project-category pack live under
+    // resources/icons/projects/ without forcing callers to deal with a
+    // separate component or qrc prefix.
     Image {
         id: iconImage
         anchors.fill: parent
-        source: root.name === ""
-                ? ""
-                : "qrc:/icons/resources/icons/ui/" + root.name + ".svg"
+        source: {
+            if (root.name === "")
+                return ""
+            if (root.name.indexOf("/") >= 0)
+                return "qrc:/icons/resources/icons/" + root.name + ".svg"
+            return "qrc:/icons/resources/icons/ui/" + root.name + ".svg"
+        }
         sourceSize.width:  root.size
         sourceSize.height: root.size
         fillMode: Image.PreserveAspectFit

@@ -61,8 +61,17 @@ Item {
             Layout.fillWidth: true
             spacing: Spacing.sm
 
+            // Q4.01 (redesign): эмодзи "✨" заменён на IconSvg "sparkles" из
+            // stroke-пака. Иконка + чистый заголовок — единый визуальный вес.
+            IconSvg {
+                name: "sparkles"
+                size: 20
+                color: ThemeManager.accentColor
+                Layout.alignment: Qt.AlignVCenter
+            }
+
             Label {
-                text: qsTr("✨ Помощник")
+                text: qsTr("Помощник")
                 font.pixelSize: FontSize.h1
                 font.weight: Font.DemiBold
                 color: ThemeManager.textColor
@@ -264,7 +273,7 @@ Item {
                 required property string content
 
                 width: chatList.width
-                height: msgText.implicitHeight + Spacing.md
+                height: msgRow.implicitHeight + Spacing.md
                 color: role === "user"
                     ? Qt.rgba(ThemeManager.accentColor.r,
                               ThemeManager.accentColor.g,
@@ -272,14 +281,32 @@ Item {
                     : ThemeManager.surfaceColor
                 radius: Radius.md
 
-                Label {
-                    id: msgText
+                // Q4.01 (redesign): префикс собеседника — иконка из stroke-пака
+                // ("user" для пользователя, "sparkles" для AI), а не эмодзи "✨".
+                RowLayout {
+                    id: msgRow
                     anchors.fill: parent
                     anchors.margins: Spacing.sm
-                    text: (role === "user" ? qsTr("Ты:  ") : qsTr("✨  ")) + content
-                    wrapMode: Text.WordWrap
-                    color: ThemeManager.textColor
-                    font.pixelSize: FontSize.body
+                    spacing: Spacing.sm
+
+                    IconSvg {
+                        name: role === "user" ? "projects/user" : "sparkles"
+                        size: 16
+                        color: role === "user"
+                               ? ThemeManager.secondaryTextColor
+                               : ThemeManager.accentColor
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: 2
+                    }
+
+                    Label {
+                        id: msgText
+                        text: content
+                        wrapMode: Text.WordWrap
+                        color: ThemeManager.textColor
+                        font.pixelSize: FontSize.body
+                        Layout.fillWidth: true
+                    }
                 }
             }
 

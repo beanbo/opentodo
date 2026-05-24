@@ -519,12 +519,15 @@ ColumnLayout {
             flat: true
             padding: 4
 
+            // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock" из
+            // stroke-пака. Тинт берёт цвет соседнего текста (theme-aware).
             contentItem: RowLayout {
                 spacing: 4
-                Text {
-                    text:          "⏱"
-                    color:         ThemeManager.textColor
-                    font.pixelSize: 14
+                IconSvg {
+                    name: "clock"
+                    size: 14
+                    color: ThemeManager.textColor
+                    Layout.alignment: Qt.AlignVCenter
                 }
                 Text {
                     text:          root.task && root.task.estimateMinutes > 0

@@ -639,11 +639,26 @@ Item {
                     }
 
                     // ── Header ─────────────────────────────────────────────
-                    Text {
-                        text: qsTr("📊 Прогресс по проектам")
-                        font.pixelSize: 16
-                        font.bold: true
-                        color: textPrimary
+                    // Q4.01 (redesign): "📊" заменён на IconSvg "productivity"
+                    // из stroke-пака. Чат-задача — никаких эмодзи в заголовках
+                    // разделов.
+                    RowLayout {
+                        spacing: Spacing.sm
+
+                        IconSvg {
+                            name: "productivity"
+                            size: 16
+                            color: textPrimary
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        Text {
+                            text: qsTr("Прогресс по проектам")
+                            font.pixelSize: 16
+                            font.bold: true
+                            color: textPrimary
+                            Layout.alignment: Qt.AlignVCenter
+                        }
                     }
                     Text {
                         text: qsTr("Доля выполненных задач")

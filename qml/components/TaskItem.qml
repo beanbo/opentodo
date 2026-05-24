@@ -268,12 +268,14 @@ Item {
     }
 
     // ── Estimate label helper ─────────────────────────────────────────────
-    // Returns a localised string like "⏱ 30 мин", "⏱ 2 ч" or "" when no estimate.
+    // Returns a localised string like "30 мин", "2 ч" or "" when no estimate.
+    // Q4.01 (redesign): icon prefix moved out of the string — the chip wraps
+    // an IconSvg + Text so the glyph carries the stroke-pack visual weight.
     readonly property string _estimateLabel: {
         if (estimateMinutes <= 0) return ""
-        if (estimateMinutes < 60)       return "⏱ " + qsTr("%1 мин").arg(estimateMinutes)
-        if (estimateMinutes % 60 === 0) return "⏱ " + qsTr("%1 ч").arg(estimateMinutes / 60)
-        return "⏱ " + qsTr("%1 ч %2 мин").arg(Math.floor(estimateMinutes / 60)).arg(estimateMinutes % 60)
+        if (estimateMinutes < 60)       return qsTr("%1 мин").arg(estimateMinutes)
+        if (estimateMinutes % 60 === 0) return qsTr("%1 ч").arg(estimateMinutes / 60)
+        return qsTr("%1 ч %2 мин").arg(Math.floor(estimateMinutes / 60)).arg(estimateMinutes % 60)
     }
 
     // ── Duration label helper ─────────────────────────────────────────────
@@ -901,29 +903,40 @@ Item {
                         }
                     }
 
-                    // ── Chip повтора ("🔁 завтра") ────────────────────────
-                    // Показывается только для повторяющихся задач, у которых
-                    // есть следующая дата выполнения. Если dueString уже
-                    // содержит цифры (конкретную дату), чип всё равно
-                    // отображается — иконка повтора служит визуальным
-                    // индикатором, а дата уточняет ближайшее вхождение.
+                    // ── Chip повтора (repeat-icon + дата) ─────────────────
+                    // Q4.01 (redesign): glyph "🔁" заменён на IconSvg из
+                    // stroke-пака. Показывается только для повторяющихся
+                    // задач, у которых есть следующая дата выполнения.
                     Rectangle {
                         id: recurringChip
                         visible: root.isRecurring && root.dueDate !== "" && root.dueDate !== undefined
                         Layout.alignment: Qt.AlignVCenter
                         height: 16
-                        width: recurringChipText.implicitWidth + 8
+                        // 12px icon + 4px gap + text + 8px padding (4 на сторону)
+                        width: recurringChipText.implicitWidth + 24
                         radius: 3
                         color: Qt.rgba(ThemeManager.accentColor.r,
                                        ThemeManager.accentColor.g,
                                        ThemeManager.accentColor.b, 0.12)
 
-                        Text {
-                            id: recurringChipText
+                        Row {
                             anchors.centerIn: parent
-                            text: "🔁 " + recurringChip._nextOccurrenceShort()
-                            font.pixelSize: FontSize.caption
-                            color: ThemeManager.accentColor
+                            spacing: 4
+
+                            IconSvg {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "repeat"
+                                size: 11
+                                color: ThemeManager.accentColor
+                            }
+
+                            Text {
+                                id: recurringChipText
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: recurringChip._nextOccurrenceShort()
+                                font.pixelSize: FontSize.caption
+                                color: ThemeManager.accentColor
+                            }
                         }
 
                         // Возвращает локализованную строку для ближайшей даты:
@@ -958,54 +971,94 @@ Item {
                     }
 
                     // ── Deadline chip ─────────────────────────────────────
+                    // Q4.01 (redesign): "⏰" emoji заменён на IconSvg "alarm".
                     Rectangle {
                         visible:  root._hasDeadline
                         height:   16
-                        width:    deadlineLabel.implicitWidth + 8
+                        width:    deadlineLabel.implicitWidth + 24
                         radius:   3
                         color:    "transparent"
 
-                        Text {
-                            id: deadlineLabel
+                        Row {
                             anchors.centerIn: parent
-                            text:          "⏰ " + root.deadline
-                            font.pixelSize: FontSize.caption
-                            color:         root._deadlineColor
+                            spacing: 4
+
+                            IconSvg {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "alarm"
+                                size: 11
+                                color: root._deadlineColor
+                            }
+
+                            Text {
+                                id: deadlineLabel
+                                anchors.verticalCenter: parent.verticalCenter
+                                text:          root.deadline
+                                font.pixelSize: FontSize.caption
+                                color:         root._deadlineColor
+                            }
                         }
                     }
 
                     // ── Duration chip ─────────────────────────────────────
+                    // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock".
                     Rectangle {
                         visible:  root._durationLabel !== ""
                         height:   16
-                        width:    durationLabel.implicitWidth + 8
+                        width:    durationLabel.implicitWidth + 24
                         radius:   3
                         color:    "transparent"
 
-                        Text {
-                            id: durationLabel
+                        Row {
                             anchors.centerIn: parent
-                            text:          "⏱ " + root._durationLabel
-                            font.pixelSize: FontSize.caption
-                            color:         root._subColor
+                            spacing: 4
+
+                            IconSvg {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "clock"
+                                size: 11
+                                color: root._subColor
+                            }
+
+                            Text {
+                                id: durationLabel
+                                anchors.verticalCenter: parent.verticalCenter
+                                text:          root._durationLabel
+                                font.pixelSize: FontSize.caption
+                                color:         root._subColor
+                            }
                         }
                     }
 
                     // ── Chip оценки трудозатрат ───────────────────────────
+                    // Q4.01 (redesign): "⏱" префикс из _estimateLabel убран,
+                    // теперь рендерим IconSvg + чистый текст.
                     Rectangle {
                         visible: root._estimateLabel !== ""
                         Layout.alignment: Qt.AlignVCenter
                         height: 16
-                        width:  estimateChipText.implicitWidth + 8
+                        width:  estimateChipText.implicitWidth + 24
                         radius: 3
                         color:  "transparent"
 
-                        Text {
-                            id: estimateChipText
+                        Row {
                             anchors.centerIn: parent
-                            text:          root._estimateLabel
-                            font.pixelSize: FontSize.caption
-                            color:         root._subColor
+                            spacing: 4
+
+                            IconSvg {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "clock"
+                                size: 11
+                                color: root._subColor
+                            }
+
+                            Text {
+                                id: estimateChipText
+                                anchors.verticalCenter: parent.verticalCenter
+                                text:          root._estimateLabel
+                                font.pixelSize: FontSize.caption
+                                color:         root._subColor
+                            }
                         }
                     }
 

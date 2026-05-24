@@ -461,8 +461,11 @@ Item {
                                 case TaskViewModel.Settings:      return qsTr("Настройки")
                                 case TaskViewModel.Productivity:  return qsTr("Продуктивность")
                                 case TaskViewModel.Notifications: return qsTr("Уведомления")
-                                case TaskViewModel.AI:            return qsTr("✨ Помощник")
-                                case TaskViewModel.Trash:         return qsTr("🗑 Корзина")
+                                // Q4.01 (redesign): эмодзи-префиксы убраны —
+                                // иконку секции уже несёт сайдбар, в шапке
+                                // достаточно чистого названия.
+                                case TaskViewModel.AI:            return qsTr("Помощник")
+                                case TaskViewModel.Trash:         return qsTr("Корзина")
                                 default:                          return qsTr("Задачи")
                                 }
                             }

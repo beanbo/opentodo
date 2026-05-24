@@ -459,7 +459,7 @@ Rectangle {
 
             SidebarItem {
                 width: parent.width
-                iconText: "📥"
+                iconName: "inbox"
                 label: qsTr("Входящие")
                 count: settingsViewModel.showInboxCount ? sidebarViewModel.inboxCount : 0
                 showCount: settingsViewModel.showInboxCount && sidebarViewModel.inboxCount > 0
@@ -480,7 +480,7 @@ Rectangle {
                 SidebarItem {
                     id: todaySidebarItem
                     width: parent.width
-                    iconText: "📅"
+                    iconName: "today"
                     label: qsTr("Сегодня")
                     count: settingsViewModel.showTodayCount ? sidebarViewModel.todayCount : 0
                     showCount: settingsViewModel.showTodayCount && sidebarViewModel.todayCount > 0
@@ -498,19 +498,36 @@ Rectangle {
                     anchors.rightMargin: (settingsViewModel.showTodayCount && sidebarViewModel.todayCount > 0)
                                          ? 44 : 12
                     anchors.verticalCenter: parent.verticalCenter
-                    width: overdueBadgeText.implicitWidth + 12
+                    // Width budget: 10px warning glyph + 4px gap + text + 12 padding.
+                    width: overdueBadgeText.implicitWidth + 26
                     height: 18
                     radius: 9
                     color: ThemeManager.errorColor || "#E74C3C"
                     z: 2
 
-                    Text {
-                        id: overdueBadgeText
+                    // Q4.01 (redesign): badge previously used the "⚠" Unicode
+                    // glyph as a prefix. Swap to the stroke-pack warning icon
+                    // so it carries the same visual weight as the other nav
+                    // icons; pill width was bumped to accommodate it.
+                    Row {
                         anchors.centerIn: parent
-                        text: "⚠ " + mainColumn._overdueCount
-                        color: "white"
-                        font.pixelSize: 10
-                        font.bold: true
+                        spacing: 4
+
+                        IconSvg {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "warning"
+                            size: 10
+                            color: "white"
+                        }
+
+                        Text {
+                            id: overdueBadgeText
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: mainColumn._overdueCount.toString()
+                            color: "white"
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
                     }
 
                     HoverHandler {
@@ -526,7 +543,7 @@ Rectangle {
 
             SidebarItem {
                 width: parent.width
-                iconText: "📆"
+                iconName: "upcoming"
                 label: qsTr("Предстоящие")
                 count: settingsViewModel.showUpcomingCount ? sidebarViewModel.upcomingCount : 0
                 showCount: settingsViewModel.showUpcomingCount && sidebarViewModel.upcomingCount > 0
@@ -1969,7 +1986,7 @@ Rectangle {
             // ── App-level views (settings / productivity / notifications)
             SidebarItem {
                 width: parent.width
-                iconText: "📊"
+                iconName: "productivity"
                 label: qsTr("Продуктивность")
                 active: isActive("productivity")
                 isDarkTheme: sidebarContent.isDarkTheme
@@ -1978,7 +1995,7 @@ Rectangle {
 
             SidebarItem {
                 width: parent.width
-                iconText: "🔔"
+                iconName: "bell"
                 label: qsTr("Уведомления")
                 active: isActive("notifications")
                 isDarkTheme: sidebarContent.isDarkTheme
@@ -1987,7 +2004,7 @@ Rectangle {
 
             SidebarItem {
                 width: parent.width
-                iconText: "✨"
+                iconName: "sparkles"
                 label: qsTr("Помощник")
                 active: isActive("ai")
                 isDarkTheme: sidebarContent.isDarkTheme
@@ -1996,7 +2013,7 @@ Rectangle {
 
             SidebarItem {
                 width: parent.width
-                iconText: "⚙"
+                iconName: "settings"
                 label: qsTr("Настройки")
                 active: isActive("settings")
                 isDarkTheme: sidebarContent.isDarkTheme
@@ -2011,7 +2028,7 @@ Rectangle {
             SidebarItem {
                 id: trashItem
                 width: parent.width
-                iconText: "🗑"
+                iconName: "trash"
                 label: qsTr("Корзина")
                 count: trashItem._trashCount
                 showCount: trashItem._trashCount > 0
@@ -2064,9 +2081,14 @@ Rectangle {
                     anchors.rightMargin: Spacing.md
                     spacing: Spacing.xs
 
-                    Text {
-                        text: "🔥"
-                        font.pixelSize: 14
+                    // Q4.01 (redesign): was "🔥" Unicode emoji; flame glyph
+                    // from the stroke pack instead. Tinted accent so the
+                    // streak still reads as warm/positive against the dark
+                    // and light themes.
+                    IconSvg {
+                        name: "flame"
+                        size: 14
+                        color: ThemeManager.accentColor
                         Layout.alignment: Qt.AlignVCenter
                     }
 
@@ -2549,7 +2571,11 @@ Rectangle {
             color: ThemeManager.secondaryTextColor
         }
 
-        // Archive toggle icon (📦) — appears to the left of the "+" button
+        // Archive toggle icon — appears to the left of the "+" button.
+        // Q4.01 (redesign): was the "📦" emoji glyph, now an IconSvg from
+        // the stroke pack. Tinted accent when active so the toggle still
+        // reads as "on", neutral secondaryTextColor otherwise (matches the
+        // sibling "+" button next door).
         Rectangle {
             id: archiveToggleBtn
             visible: sectionHeader.showArchiveToggle
@@ -2570,10 +2596,13 @@ Rectangle {
 
             Behavior on color { ColorAnimation { duration: 100 } }
 
-            Text {
+            IconSvg {
                 anchors.centerIn: parent
-                text: "📦"
-                font.pixelSize: 11
+                name: "archive"
+                size: 14
+                color: sectionHeader.archiveActive
+                       ? ThemeManager.accentColor
+                       : ThemeManager.secondaryTextColor
             }
 
             MouseArea {
@@ -2634,6 +2663,12 @@ Rectangle {
         id: sidebarItem
 
         property string iconText: ""
+        // Q4.01 (redesign): when set, render an IconSvg from the stroke-style
+        // pack instead of the iconText emoji glyph. Mutually exclusive with
+        // iconText / iconIsText (those still work as fallbacks for user-typed
+        // emoji icons on projects). Naming matches the file under
+        // resources/icons/ui/<iconName>.svg.
+        property string iconName: ""
         property bool iconIsText: false   // true => show colored dot instead of emoji
         property color dotColor: "#db4c3f"
         property string label: ""
@@ -2685,9 +2720,22 @@ Rectangle {
             height: parent.height
             anchors.left: leftPad.right
 
-            // Colored dot for projects / favorites
+            // Stroke-SVG icon (Q4.01 redesign). Wins over the emoji Text
+            // when iconName is set; tinted via MultiEffect in IconSvg so
+            // active/idle states animate the colour.
+            IconSvg {
+                visible: sidebarItem.iconName !== ""
+                anchors.centerIn: parent
+                name: sidebarItem.iconName
+                size: 16
+                color: sidebarItem.active
+                       ? ThemeManager.accentColor
+                       : (isDarkTheme ? "#aaaaaa" : "#555555")
+            }
+
+            // Colored dot for projects / favorites (no SVG icon set, no emoji)
             Rectangle {
-                visible: sidebarItem.iconIsText
+                visible: sidebarItem.iconName === "" && sidebarItem.iconIsText
                 anchors.centerIn: parent
                 width: 8
                 height: 8
@@ -2695,9 +2743,9 @@ Rectangle {
                 color: sidebarItem.dotColor
             }
 
-            // Emoji icon
+            // Emoji icon — user-typed glyph on a project, or legacy default.
             Text {
-                visible: !sidebarItem.iconIsText
+                visible: sidebarItem.iconName === "" && !sidebarItem.iconIsText
                 anchors.centerIn: parent
                 text: sidebarItem.iconText
                 font.pixelSize: FontSize.body

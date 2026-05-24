@@ -157,11 +157,12 @@ Item {
             Layout.fillHeight: true
 
             // ── Empty state ──────────────────────────────────────────────
+            // Q4.01 (redesign): эмодзи "🔔" заменён на stroke-иконку "bell".
             EmptyState {
                 anchors.fill: parent
                 // Wave 1C fix: use count Q_PROPERTY (not rowCount() function call)
                 visible: notificationsViewModel.count === 0
-                emoji: "🔔"
+                iconName: "bell"
                 title: qsTr("Пока ничего нового")
                 message: qsTr("Здесь появятся уведомления о выполненных задачах, напоминаниях и синхронизации")
             }

@@ -296,25 +296,21 @@ Rectangle {
                     Material.foreground: checked ? accentRed : textSecondary
                 }
                 ToolButton {
-                    // Iteration 3 of the board-icon glyph:
-                    //   v1: ⊞ (U+229E "squared plus") — too thin, looked
-                    //       like a cross, user reported "плохо виден".
-                    //   v2: ▥ (U+25A5 "square with vertical fill") — at the
-                    //       16px tool-button size the stripes collapsed into
-                    //       a solid filled square; user reported "сам по
-                    //       себе плохо читаемый".
-                    //   v3 (current): 🗂 (U+1F5C2 "card index dividers")
-                    //       emoji. Renders as a colour glyph (tabbed cards)
-                    //       on Windows / macOS / Linux Noto / Android — same
-                    //       rendering pipeline as the calendar 📅 next to
-                    //       it. Visually unmistakable as "columns / board".
-                    text:    "🗂"
-                    font.pixelSize: 16
+                    // Q4.01 (redesign): итерация 4 board-иконки. v1=⊞, v2=▥,
+                    // v3=🗂 (emoji) — последний работал, но ломал стиль рядом
+                    // с stroke-иконкой календаря. Перешли на BoardIcon из
+                    // дизайн-пака (resources/icons/ui/board.svg) — теперь
+                    // оба тоггла list/board/calendar единого визуального веса.
                     checked: viewStyle === "board"
                     onClicked: root.setView("board")
                     ToolTip.text: qsTr("Доска")
                     ToolTip.visible: hovered
-                    Material.foreground: checked ? accentRed : textSecondary
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "board"
+                        size: 18
+                        color: parent.checked ? accentRed : textSecondary
+                    }
                 }
                 ToolButton {
                     checked: viewStyle === "calendar"
@@ -618,8 +614,15 @@ Rectangle {
                     Layout.preferredHeight: 24
                     spacing: Spacing.sm
 
+                    // Q4.01 (redesign): эмодзи "📝" заменён на IconSvg "note".
+                    IconSvg {
+                        name: "note"
+                        size: 14
+                        color: ThemeManager.textColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
                     Label {
-                        text: qsTr("📝 Заметки")
+                        text: qsTr("Заметки")
                         font.pixelSize: FontSize.body
                         font.bold: true
                         color: ThemeManager.textColor

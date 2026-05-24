@@ -211,7 +211,9 @@ Item {
                         case TaskViewModel.Settings:  return qsTr("Настройки")
                         case TaskViewModel.Productivity:  return qsTr("Продуктивность")
                         case TaskViewModel.Notifications: return qsTr("Уведомления")
-                        case TaskViewModel.AI:        return qsTr("✨ Помощник")
+                        // Q4.01 (redesign): убран префикс "✨" — иконка несётся
+                        // нижней нав-панелью.
+                        case TaskViewModel.AI:        return qsTr("Помощник")
                         // Q-Android-Audit speculative-finding: Trash was missing
                         // from the title switch; tapping "Корзина" showed
                         // "Задачи" as the fallback title.

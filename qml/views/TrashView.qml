@@ -249,10 +249,11 @@ Item {
 
                 Item { Layout.fillWidth: true }
 
-                // «Очистить корзину»
+                // «Очистить корзину» — Q4.01 (redesign): эмодзи "🗑" заменён
+                // на чистый текст; иконка корзины уже несёт сайдбар.
                 Button {
                     flat: true
-                    text: qsTr("🗑 Очистить корзину")
+                    text: qsTr("Очистить корзину")
                     font.pixelSize: FontSize.small
                     visible: root.trashItems.length > 0
                     onClicked: emptyConfirmDialog.open()
@@ -274,11 +275,11 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // Empty state
+            // Empty state — Q4.01 (redesign): эмодзи заменён на stroke-иконку.
             EmptyState {
                 anchors.fill: parent
                 visible: root.trashItems.length === 0
-                emoji: "🗑"
+                iconName: "trash"
                 title: qsTr("Корзина пуста")
                 message: qsTr("Удалённые задачи появятся здесь и будут доступны для восстановления.")
             }
@@ -430,7 +431,10 @@ Item {
                             }
 
                             ToolButton {
-                                text: qsTr("🗑 Удалить навсегда")
+                                // Q4.01 (redesign): "🗑" заменён на чистый текст;
+                                // соседняя кнопка "↩ Восстановить" тоже использует
+                                // строковый префикс, оставляем парность.
+                                text: qsTr("Удалить навсегда")
                                 font.pixelSize: FontSize.caption
                                 flat: true
                                 ToolTip.text: qsTr("Удалить безвозвратно")
