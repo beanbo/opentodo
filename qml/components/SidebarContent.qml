@@ -2178,15 +2178,26 @@ Rectangle {
         ]
         property string selectedColor: projectColors[0]
 
+        // Q4.01 iter-6: pre-selected иконка для нового проекта. Строка вида
+        // "projects/<glyph>" сохраняется через updateProject сразу после
+        // создания (addProject принимает только name + color на C++ стороне).
+        property string selectedIcon: ""
+
         onAccepted: {
-            if (newProjectName.text.trim() !== "")
-                projectViewModel.addProject(newProjectName.text.trim(), addProjectDialog.selectedColor)
+            if (newProjectName.text.trim() !== "") {
+                const newId = projectViewModel.addProject(
+                    newProjectName.text.trim(), addProjectDialog.selectedColor)
+                if (newId && newId !== "" && addProjectDialog.selectedIcon !== "")
+                    projectViewModel.updateProject(newId, "icon", addProjectDialog.selectedIcon)
+            }
             newProjectName.text = ""
             addProjectDialog.selectedColor = addProjectDialog.projectColors[0]
+            addProjectDialog.selectedIcon = ""
         }
         onRejected: {
             newProjectName.text = ""
             addProjectDialog.selectedColor = addProjectDialog.projectColors[0]
+            addProjectDialog.selectedIcon = ""
         }
 
         ColumnLayout {
@@ -2198,6 +2209,78 @@ Rectangle {
                 Layout.preferredWidth: 280
                 placeholderText: qsTr("Название проекта")
                 focus: true
+            }
+
+            // ── Иконка ──────────────────────────────────────────────────
+            // Q4.01 iter-6: новая секция — иконка проекта. Кликабельная
+            // плитка с превью; по клику открывается ProjectIconPicker.
+            Text {
+                text: qsTr("Иконка")
+                font.pixelSize: FontSize.small
+                color: ThemeManager.secondaryTextColor
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 280
+                Layout.preferredHeight: 40
+                radius: Radius.md
+                color: addProjectIconArea.containsMouse
+                       ? ThemeManager.hoverColor
+                       : ThemeManager.surfaceColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+
+                Behavior on color { ColorAnimation { duration: 100 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Spacing.sm
+                    anchors.rightMargin: Spacing.sm
+                    spacing: Spacing.sm
+
+                    // Превью: либо IconSvg, либо цветная точка-fallback.
+                    IconSvg {
+                        visible: addProjectDialog.selectedIcon !== ""
+                        name: addProjectDialog.selectedIcon
+                        size: 20
+                        color: ThemeManager.accentColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    Rectangle {
+                        visible: addProjectDialog.selectedIcon === ""
+                        Layout.alignment: Qt.AlignVCenter
+                        width: 12
+                        height: 12
+                        radius: 6
+                        color: addProjectDialog.selectedColor
+                    }
+                    Text {
+                        text: addProjectDialog.selectedIcon !== ""
+                              ? addProjectDialog.selectedIcon.replace("projects/", "")
+                              : qsTr("Выбрать иконку…")
+                        color: addProjectDialog.selectedIcon !== ""
+                               ? ThemeManager.textColor
+                               : ThemeManager.secondaryTextColor
+                        font.pixelSize: FontSize.body
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    IconSvg {
+                        name: "chevron-right"
+                        size: 14
+                        color: ThemeManager.secondaryTextColor
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                }
+
+                MouseArea {
+                    id: addProjectIconArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: iconPicker.openWith(addProjectDialog.selectedIcon)
+                }
             }
 
             Text {
@@ -2232,6 +2315,19 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    // ── Project Icon Picker (shared) ─────────────────────────────────────────
+    // Q4.01 iter-6: единый picker для addProjectDialog и (в следующих
+    // итерациях) для контекст-меню «Изменить иконку…». accepted-target
+    // выставляется в .openWith() через дополнительные свойства context-id;
+    // здесь по сигналу iconAccepted мы знаем, что вызвал addProjectDialog,
+    // и сохраняем выбор в addProjectDialog.selectedIcon.
+    ProjectIconPicker {
+        id: iconPicker
+        onIconAccepted: function(icon) {
+            addProjectDialog.selectedIcon = icon
         }
     }
 

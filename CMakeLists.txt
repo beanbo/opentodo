@@ -470,6 +470,7 @@ set(QML_FILES
     # B-7.26: ProjectItem.qml deleted — was dead code, never referenced by any Loader or createComponent
     qml/components/FilterQueryInput.qml
     qml/components/EmptyState.qml
+    qml/components/ProjectIconPicker.qml
     qml/views/ProjectView.qml
     qml/views/BoardView.qml
     qml/views/CalendarView.qml
