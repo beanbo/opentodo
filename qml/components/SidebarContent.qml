@@ -591,10 +591,12 @@ Rectangle {
                                 id: favItem
                                 width: parent.width
                                 // For project favorites: show emoji icon when set, otherwise color dot.
-                                iconText: favRow.modelData.type === "label"
-                                          ? "🏷"
-                                          : (favRow.modelData.type === "project" && favRow.modelData.icon
-                                             ? favRow.modelData.icon : "#")
+                                // Q4.01 (redesign): label-фавориты теперь рендерятся через
+                                // iconName "label" (stroke-пак) вместо эмодзи "🏷"; для
+                                // проектов оставляем user-typed emoji как раньше.
+                                iconName: favRow.modelData.type === "label" ? "label" : ""
+                                iconText: favRow.modelData.type === "project" && favRow.modelData.icon
+                                          ? favRow.modelData.icon : "#"
                                 iconIsText: favRow.modelData.type === "project"
                                             && (!favRow.modelData.icon || favRow.modelData.icon === "")
                                 dotColor: favRow.modelData.color || sidebarContent.accentRed
@@ -1816,7 +1818,10 @@ Rectangle {
                     SidebarItem {
                         id: labelItem
                         width: parent.width
-                        iconText: "🏷"
+                        // Q4.01 (redesign): эмодзи "🏷" → IconSvg "label" + цветная
+                        // точка (color остаётся для идентификации метки).
+                        iconName: "label"
+                        iconText: ""
                         iconIsText: false
                         dotColor: labelDelegate.labelColor
                         label: labelDelegate.labelName
@@ -2115,16 +2120,31 @@ Rectangle {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    // Недельная серия — показывается когда weeklyStreak > 0
-                    Text {
+                    // Недельная серия — показывается когда weeklyStreak > 0.
+                    // Q4.01 (redesign): "📆" emoji-префикс вынесен в IconSvg
+                    // "calendar" + чистый Text. Row сохраняет компоновку с
+                    // соседним flame+streakLabel выше.
+                    Row {
                         visible: typeof karmaViewModel !== "undefined" && karmaViewModel !== null
                                  && karmaViewModel.weeklyStreak > 0
-                        text: (typeof karmaViewModel !== "undefined" && karmaViewModel !== null)
-                              ? qsTr("📆 %1 нед.").arg(karmaViewModel.weeklyStreak)
-                              : ""
-                        font.pixelSize: FontSize.caption
-                        color: ThemeManager.secondaryTextColor
+                        spacing: 3
                         Layout.alignment: Qt.AlignVCenter
+
+                        IconSvg {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "calendar"
+                            size: 11
+                            color: ThemeManager.secondaryTextColor
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (typeof karmaViewModel !== "undefined" && karmaViewModel !== null)
+                                  ? qsTr("%1 нед.").arg(karmaViewModel.weeklyStreak)
+                                  : ""
+                            font.pixelSize: FontSize.caption
+                            color: ThemeManager.secondaryTextColor
+                        }
                     }
                 }
 

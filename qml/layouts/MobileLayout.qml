@@ -798,21 +798,41 @@ Item {
                         anchors.rightMargin: Spacing.md
                         spacing: Spacing.sm
 
-                        // Type glyph mirrors the desktop search bar
-                        // (qml/components/SearchBar.qml:582-590).
-                        Label {
+                        // Type glyph mirrors the desktop search bar.
+                        // Q4.01 (redesign): "🏷"/"💬" эмодзи заменены на
+                        // IconSvg ("label"/"note") из stroke-пака; остальные
+                        // типы держат однознаковые маркеры — единый визуал.
+                        Item {
                             Layout.alignment: Qt.AlignVCenter
-                            font.pixelSize: FontSize.body
-                            color: textSecondary
-                            text: {
-                                if (!searchDelegateRoot.modelData) return ""
-                                switch (searchDelegateRoot.modelData.type) {
-                                    case "task":    return "✓"
-                                    case "project": return "#"
-                                    case "label":   return "🏷"
-                                    case "filter":  return "⊙"
-                                    case "comment": return "💬"
-                                    default:        return "•"
+                            Layout.preferredWidth: 18
+                            Layout.preferredHeight: 18
+
+                            IconSvg {
+                                visible: searchDelegateRoot.modelData
+                                         && (searchDelegateRoot.modelData.type === "label"
+                                             || searchDelegateRoot.modelData.type === "comment")
+                                anchors.centerIn: parent
+                                name: searchDelegateRoot.modelData && searchDelegateRoot.modelData.type === "comment"
+                                      ? "note" : "label"
+                                size: 14
+                                color: textSecondary
+                            }
+
+                            Label {
+                                visible: !searchDelegateRoot.modelData
+                                         || (searchDelegateRoot.modelData.type !== "label"
+                                             && searchDelegateRoot.modelData.type !== "comment")
+                                anchors.centerIn: parent
+                                font.pixelSize: FontSize.body
+                                color: textSecondary
+                                text: {
+                                    if (!searchDelegateRoot.modelData) return ""
+                                    switch (searchDelegateRoot.modelData.type) {
+                                        case "task":    return "✓"
+                                        case "project": return "#"
+                                        case "filter":  return "⊙"
+                                        default:        return "•"
+                                    }
                                 }
                             }
                         }

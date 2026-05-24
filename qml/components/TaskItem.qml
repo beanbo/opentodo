@@ -1338,7 +1338,9 @@ Item {
                 onTriggered: root.taskClicked(root.id)
             }
             MenuItem {
-                text: qsTr("📋 Дублировать")
+                // Q4.01 (redesign): эмодзи-префикс "📋" убран — контекст-меню
+                // не несёт иконок (соседние "Открыть"/"В архив" тоже без них).
+                text: qsTr("Дублировать")
                 // ITER1 #20/#41: use duplicateTask which copies all fields (labels,
                 // due date, description, section, color, deadline, etc.) but NOT
                 // recurrence and NOT the pinned flag. The duplicate is inserted
@@ -1365,7 +1367,8 @@ Item {
             // вперёд бессмысленно (см. также _deferTaskMinutes выше — он ставит
             // напоминание, тогда как здесь меняется именно поле due).
             MenuItem {
-                text: qsTr("📅 Отложить до даты...")
+                // Q4.01 (redesign): эмодзи-префикс "📅" убран.
+                text: qsTr("Отложить до даты...")
                 visible: !root.isCompleted
                 height: visible ? implicitHeight : 0
                 onTriggered: snoozeDatePicker.openForTask()

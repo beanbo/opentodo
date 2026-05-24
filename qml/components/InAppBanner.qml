@@ -269,7 +269,9 @@ Rectangle {
                     // «📅 До понедельника 9:00» — snooze until next Monday 9 AM
                     // (today 9 AM if today is Monday and it's still before 9).
                     MenuItem {
-                        text: qsTr("📅 До понедельника 9:00")
+                        // Q4.01 (redesign): эмодзи-префикс "📅" убран —
+                        // контекст-меню snooze без иконок.
+                        text: qsTr("До понедельника 9:00")
                         ToolTip.visible: hovered
                         ToolTip.delay: 400
                         ToolTip.text: qsTr("Отложить до понедельника 9:00")
