@@ -36,21 +36,39 @@ ColumnLayout {
         Layout.alignment: Qt.AlignRight
         Layout.topMargin: Spacing.xs
 
-        text: aiGeneratingNow ? qsTr("Думаю...") : qsTr("✨ Сгенерировать описание")
+        text: aiGeneratingNow ? qsTr("Думаю...") : qsTr("Сгенерировать описание")
         flat: true
         enabled: !aiGeneratingNow
 
         font.pixelSize: FontSize.caption
 
-        contentItem: Text {
-            text:            parent.text
-            font:            parent.font
-            color:           aiGenerateBtn.enabled
-                                 ? ThemeManager.accentColor
-                                 : ThemeManager.secondaryTextColor
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment:   Text.AlignVCenter
-            elide:           Text.ElideRight
+        // Q4.01 (redesign): "✨" из text-строки убран; вместо него рендерим
+        // настоящий IconSvg "sparkles" слева. Скрываем во время "Думаю..."
+        // чтобы спиннер-state читался текстом без иконки.
+        contentItem: RowLayout {
+            spacing: 4
+
+            IconSvg {
+                visible: !aiGenerateBtn.aiGeneratingNow
+                name: "sparkles"
+                size: 12
+                color: aiGenerateBtn.enabled
+                       ? ThemeManager.accentColor
+                       : ThemeManager.secondaryTextColor
+                Layout.alignment: Qt.AlignVCenter
+            }
+
+            Text {
+                text:            aiGenerateBtn.text
+                font:            aiGenerateBtn.font
+                color:           aiGenerateBtn.enabled
+                                     ? ThemeManager.accentColor
+                                     : ThemeManager.secondaryTextColor
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment:   Text.AlignVCenter
+                elide:           Text.ElideRight
+                Layout.alignment: Qt.AlignVCenter
+            }
         }
 
         background: Rectangle {

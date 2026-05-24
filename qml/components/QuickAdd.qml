@@ -230,11 +230,11 @@ Rectangle {
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Установить срок")
 
-                contentItem: Text {
-                    text:                  "\uD83D\uDCC5"   // 📅 calendar emoji fallback
-                    font.pixelSize:        FontSize.subtitle
-                    horizontalAlignment:   Text.AlignHCenter
-                    verticalAlignment:     Text.AlignVCenter
+                // Q4.01 (redesign): 📅 emoji replaced with IconSvg "calendar".
+                contentItem: IconSvg {
+                    anchors.centerIn: parent
+                    name: "calendar"
+                    size: 16
                     color: root.selectedDueString !== "" ? root.accentRed : root.subTextCol
                 }
 
@@ -266,12 +266,11 @@ Rectangle {
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Повторение")
 
-                contentItem: Text {
-                    text:                "🔁"  // 🔁 repeat arrows
-                    font.pixelSize:      FontSize.body
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
-                    // Highlight when the current input already contains a recurrence phrase
+                // Q4.01 (redesign): 🔁 emoji replaced with IconSvg "repeat".
+                contentItem: IconSvg {
+                    anchors.centerIn: parent
+                    name: "repeat"
+                    size: 16
                     color: {
                         var re = /\b(каждый|каждую|каждые)\b/i
                         return re.test(taskField.text) ? root.accentRed : root.subTextCol
@@ -433,14 +432,12 @@ Rectangle {
                 contentItem: Item {
                     anchors.fill: parent
 
-                    // Sparkle icon — hidden while busy.
-                    Text {
+                    // Q4.01 (redesign): ✨ emoji → IconSvg "sparkles".
+                    IconSvg {
                         anchors.centerIn: parent
                         visible: !root._aiBusy
-                        text: "✨"   // ✨
-                        font.pixelSize: FontSize.subtitle
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment:   Text.AlignVCenter
+                        name: "sparkles"
+                        size: 14
                         color: aiPriorityBtn.enabled
                                   ? ThemeManager.accentColor
                                   : root.subTextCol
@@ -484,11 +481,11 @@ Rectangle {
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Добавить метку")
 
-                contentItem: Text {
-                    text:                "\uD83C\uDFF7"   // 🏷 label emoji
-                    font.pixelSize:      FontSize.body
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
+                // Q4.01 (redesign): 🏷 emoji → IconSvg "label".
+                contentItem: IconSvg {
+                    anchors.centerIn: parent
+                    name: "label"
+                    size: 14
                     color: root.selectedLabels.length > 0 ? root.accentRed : root.subTextCol
                 }
 
@@ -721,23 +718,59 @@ Rectangle {
                                   ? taskViewModel.previewQuickAdd(taskField.text.trim())
                                   : null
 
-            Text {
+            // Q4.01 (redesign): 🏷 + project-name (text)
+            //   → IconSvg "label" + Text. Note: legacy code used the tag glyph
+            //   for project preview — keeping the same icon to avoid changing
+            //   the meaning, even though "project" would arguably warrant "folder".
+            Row {
                 visible: parent.parsed && parent.parsed.projectName !== ""
-                text: "🏷 " + (parent.parsed ? parent.parsed.projectName : "")
-                color: root.accentRed
-                font.pixelSize: 11
+                spacing: 3
+                IconSvg {
+                    name: "label"
+                    size: 11
+                    color: root.accentRed
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: parent.parent.parsed ? parent.parent.parsed.projectName : ""
+                    color: root.accentRed
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
-            Text {
+            // Q4.01 (redesign): ⏰ + due-string → IconSvg "alarm" + Text.
+            Row {
                 visible: parent.parsed && parent.parsed.dueString !== ""
-                text: "⏰ " + (parent.parsed ? parent.parsed.dueString : "")
-                color: root.textCol
-                font.pixelSize: 11
+                spacing: 3
+                IconSvg {
+                    name: "alarm"
+                    size: 11
+                    color: root.textCol
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: parent.parent.parsed ? parent.parent.parsed.dueString : ""
+                    color: root.textCol
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
-            Text {
+            // Q4.01 (redesign): 🎯 + priority → IconSvg "flag" + "pN".
+            Row {
                 visible: parent.parsed && parent.parsed.priority < 4
-                text: "🎯 p" + (parent.parsed ? parent.parsed.priority : "")
-                color: root.priorityColor(parent.parsed ? parent.parsed.priority : 4)
-                font.pixelSize: 11
+                spacing: 3
+                IconSvg {
+                    name: "flag"
+                    size: 11
+                    color: root.priorityColor(parent.parent.parsed ? parent.parent.parsed.priority : 4)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: "p" + (parent.parent.parsed ? parent.parent.parsed.priority : "")
+                    color: root.priorityColor(parent.parent.parsed ? parent.parent.parsed.priority : 4)
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
             Repeater {
                 model: parent.parsed ? parent.parsed.labels : []

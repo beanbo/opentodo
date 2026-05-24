@@ -76,8 +76,16 @@ Popup {
                 anchors.rightMargin: Spacing.sm
                 spacing: Spacing.sm
 
+                // Q4.01 (redesign): "✨" заменён на IconSvg "sparkles".
+                IconSvg {
+                    name: "sparkles"
+                    size: 20
+                    color: ThemeManager.accentColor
+                    Layout.alignment: Qt.AlignVCenter
+                }
+
                 Label {
-                    text: qsTr("✨ Что нового в OpenTodo")
+                    text: qsTr("Что нового в OpenTodo")
                     font.pixelSize: FontSize.title
                     font.bold: true
                     color: ThemeManager.textColor

@@ -575,19 +575,37 @@ Rectangle {
                                 }
                                 spacing: 10
 
-                                // Type icon
-                                Text {
-                                    font.pixelSize: 15
-                                    color: root._subColor
+                                // Type icon — Q4.01 (redesign): "🏷" emoji
+                                // мешал визуальному весу рядом с символьными
+                                // глифами других типов. Метка теперь рендерится
+                                // через IconSvg "label", остальные типы — те
+                                // же текстовые маркеры что раньше.
+                                Item {
                                     Layout.alignment: Qt.AlignVCenter
-                                    text: {
-                                        if (!modelData) return ""
-                                        switch (modelData.type) {
-                                            case "task":    return "✓"
-                                            case "project": return "#"
-                                            case "label":   return "🏷"
-                                            case "filter":  return "⊙"
-                                            default:        return "•"
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+
+                                    IconSvg {
+                                        visible: modelData && modelData.type === "label"
+                                        anchors.centerIn: parent
+                                        name: "label"
+                                        size: 14
+                                        color: root._subColor
+                                    }
+
+                                    Text {
+                                        visible: !modelData || modelData.type !== "label"
+                                        anchors.centerIn: parent
+                                        font.pixelSize: 15
+                                        color: root._subColor
+                                        text: {
+                                            if (!modelData) return ""
+                                            switch (modelData.type) {
+                                                case "task":    return "✓"
+                                                case "project": return "#"
+                                                case "filter":  return "⊙"
+                                                default:        return "•"
+                                            }
                                         }
                                     }
                                 }

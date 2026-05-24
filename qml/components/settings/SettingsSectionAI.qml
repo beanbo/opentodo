@@ -46,8 +46,15 @@ Rectangle {
             anchors.leftMargin: 20
             anchors.rightMargin: 20
 
+            // Q4.01 (redesign): "✨" заменён на IconSvg "sparkles".
+            IconSvg {
+                name: "sparkles"
+                size: 16
+                color: ThemeManager.accentColor
+                Layout.alignment: Qt.AlignVCenter
+            }
             Text {
-                text: qsTr("✨ AI помощник")
+                text: qsTr("AI помощник")
                 font.pixelSize: 16
                 font.bold: true
                 color: ThemeManager.textColor

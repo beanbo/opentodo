@@ -89,22 +89,27 @@ Item {
         var list = []
 
         // ── Navigation ──────────────────────────────────────────────────────
-        list.push({ id: "nav_inbox",        category: "Navigation", icon: "📥",
+        // Q4.01 (redesign): командному меню добавлено поле iconName — имя
+        // SVG-иконки из stroke-пака. Делегат рендерит её через IconSvg, а
+        // поле `icon` остаётся как fallback-эмодзи и для динамических
+        // элементов (проекты-точка "●", темы "🎨" и т.п.), где stroke-
+        // иконка не нужна.
+        list.push({ id: "nav_inbox",        category: "Navigation", iconName: "inbox",
                     label: qsTr("Перейти во Входящие"),    shortcut: "",
                     action: "inbox" })
-        list.push({ id: "nav_today",        category: "Navigation", icon: "📅",
+        list.push({ id: "nav_today",        category: "Navigation", iconName: "today",
                     label: qsTr("Перейти в Сегодня"),      shortcut: "",
                     action: "today" })
-        list.push({ id: "nav_upcoming",     category: "Navigation", icon: "📆",
+        list.push({ id: "nav_upcoming",     category: "Navigation", iconName: "upcoming",
                     label: qsTr("Перейти в Предстоящие"),  shortcut: "",
                     action: "upcoming" })
-        list.push({ id: "nav_settings",     category: "Navigation", icon: "⚙️",
+        list.push({ id: "nav_settings",     category: "Navigation", iconName: "settings",
                     label: qsTr("Перейти в Настройки"),    shortcut: "",
                     action: "settings" })
-        list.push({ id: "nav_productivity", category: "Navigation", icon: "📊",
+        list.push({ id: "nav_productivity", category: "Navigation", iconName: "productivity",
                     label: qsTr("Перейти в Продуктивность"), shortcut: "",
                     action: "productivity" })
-        list.push({ id: "nav_notifications", category: "Navigation", icon: "🔔",
+        list.push({ id: "nav_notifications", category: "Navigation", iconName: "bell",
                     label: qsTr("Перейти в Уведомления"),  shortcut: "",
                     action: "notifications" })
 
@@ -161,22 +166,22 @@ Item {
         }
 
         // ── Actions ──────────────────────────────────────────────────────────
-        list.push({ id: "act_new_task",    category: "Actions", icon: "✏️",
+        list.push({ id: "act_new_task",    category: "Actions", iconName: "projects/pencil",
                     label: qsTr("Новая задача"),       shortcut: "Q",
                     action: "new_task" })
-        list.push({ id: "act_add_task",    category: "Actions", icon: "➕",
+        list.push({ id: "act_add_task",    category: "Actions", iconName: "plus",
                     label: qsTr("Добавить задачу"),   shortcut: "",
                     action: "add_task" })
-        list.push({ id: "act_add_project", category: "Actions", icon: "📁",
+        list.push({ id: "act_add_project", category: "Actions", iconName: "folder",
                     label: qsTr("Добавить проект"),   shortcut: "",
                     action: "add_project" })
-        list.push({ id: "act_add_filter",  category: "Actions", icon: "🔽",
+        list.push({ id: "act_add_filter",  category: "Actions", iconName: "filter",
                     label: qsTr("Добавить фильтр"),   shortcut: "",
                     action: "add_filter" })
-        list.push({ id: "act_add_label",   category: "Actions", icon: "🏷️",
+        list.push({ id: "act_add_label",   category: "Actions", iconName: "label",
                     label: qsTr("Добавить метку"),    shortcut: "",
                     action: "add_label" })
-        list.push({ id: "act_search",      category: "Actions", icon: "🔍",
+        list.push({ id: "act_search",      category: "Actions", iconName: "search",
                     label: qsTr("Поиск"),             shortcut: "/",
                     action: "search" })
         // ITER1 #45 / ITER2 #5: Undo action wired to undoStack.
@@ -190,7 +195,7 @@ Item {
                              && undoStack.lastDescription && undoStack.lastDescription !== "")
                             ? qsTr("Отменить: %1").arg(undoStack.lastDescription)
                             : qsTr("Отменить действие")
-            list.push({ id: "action_undo", category: "Actions", icon: "↩️",
+            list.push({ id: "action_undo", category: "Actions", iconName: "reset",
                         label: undoLabel, shortcut: "Ctrl+Z",
                         action: "undo" })
         }
@@ -200,13 +205,13 @@ Item {
             var selTask = (typeof taskViewModel !== "undefined" && taskViewModel)
                           ? taskViewModel.selectedTask : null
             if (selTask) {
-                list.push({ id: "task_complete", category: "Selected task", icon: "✅",
+                list.push({ id: "task_complete", category: "Selected task", iconName: "check",
                              label: qsTr("Завершить задачу"),  shortcut: "",
                              action: "task_complete" })
-                list.push({ id: "task_delete",   category: "Selected task", icon: "🗑️",
+                list.push({ id: "task_delete",   category: "Selected task", iconName: "trash",
                              label: qsTr("Удалить задачу"),    shortcut: "",
                              action: "task_delete" })
-                list.push({ id: "task_edit",     category: "Selected task", icon: "✏️",
+                list.push({ id: "task_edit",     category: "Selected task", iconName: "projects/pencil",
                              label: qsTr("Редактировать задачу"), shortcut: "",
                              action: "task_edit" })
             }
@@ -231,13 +236,13 @@ Item {
         } catch(e) {}
 
         // ── Other ─────────────────────────────────────────────────────────────
-        list.push({ id: "other_sidebar",  category: "Other", icon: "☰",
+        list.push({ id: "other_sidebar",  category: "Other", iconName: "sidebar",
                     label: qsTr("Боковая панель вкл/выкл"), shortcut: "",
                     action: "toggle_sidebar" })
-        list.push({ id: "other_reload",   category: "Other", icon: "🔄",
+        list.push({ id: "other_reload",   category: "Other", iconName: "sync",
                     label: qsTr("Перезагрузить данные"),    shortcut: "",
                     action: "reload" })
-        list.push({ id: "other_quit",     category: "Other", icon: "🚪",
+        list.push({ id: "other_quit",     category: "Other", iconName: "close",
                     label: qsTr("Выйти из приложения"),     shortcut: "Alt+F4",
                     action: "quit" })
 
@@ -620,14 +625,32 @@ Item {
                             }
                             spacing: 10
 
-                            // Icon
-                            Text {
-                                text: modelData.icon || "·"
-                                font.pixelSize: 15
-                                color: root._subColor
+                            // Icon — Q4.01 (redesign): для команд с
+                            // iconName рендерим IconSvg из stroke-пака,
+                            // иначе откатываемся к Text (динамические
+                            // проекты-точки "●" и темы "🎨").
+                            Item {
                                 Layout.alignment: Qt.AlignVCenter
                                 Layout.preferredWidth: 22
-                                horizontalAlignment: Text.AlignHCenter
+                                Layout.preferredHeight: 22
+
+                                IconSvg {
+                                    visible: !!modelData.iconName
+                                    anchors.centerIn: parent
+                                    name: modelData.iconName || ""
+                                    size: 16
+                                    color: root._selectedIndex === index
+                                           ? root._accent : root._subColor
+                                }
+
+                                Text {
+                                    visible: !modelData.iconName
+                                    anchors.centerIn: parent
+                                    text: modelData.icon || "·"
+                                    font.pixelSize: 15
+                                    color: root._subColor
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
                             }
 
                             // Label (fills remaining space)

@@ -189,7 +189,9 @@ Rectangle {
                 // Hyperlink-styled label: accent color + underline on hover.
                 Label {
                     id: whatsNewLink
-                    text: qsTr("✨ Что нового...")
+                    // Q4.01 (redesign): убран эмодзи-префикс "✨"; цвет-акцент
+                    // и underline-on-hover уже идентифицируют это как ссылку.
+                    text: qsTr("Что нового...")
                     font.pixelSize: 13
                     font.underline: whatsNewMouseArea.containsMouse
                     color: ThemeManager.accentColor

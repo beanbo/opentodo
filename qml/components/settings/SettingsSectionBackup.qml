@@ -824,11 +824,13 @@ Rectangle {
                         anchors.bottomMargin: 4
                         spacing: 10
 
-                        // Icon column
-                        Text {
-                            text: "📦"
-                            font.pixelSize: 14
-                            verticalAlignment: Text.AlignVCenter
+                        // Icon column — Q4.01 (redesign): "📦" заменён на
+                        // IconSvg "archive" из stroke-пака.
+                        IconSvg {
+                            name: "archive"
+                            size: 14
+                            color: ThemeManager.secondaryTextColor
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         // Name + meta column
