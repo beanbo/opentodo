@@ -538,22 +538,47 @@ Rectangle {
                     root._dismissedDefaultLabels = []
                 }
 
-                // Chip label: emoji icon (if set) or 📁, then project name
-                contentItem: Text {
+                // Chip label: stroke-icon (Q4.01) or emoji (legacy) + project name.
+                // Q4.01 iter-7: добавлен auto-detect префикса "projects/" в
+                // Project.icon. Новый формат рендерится через IconSvg рядом
+                // с именем; legacy emoji-проекты и пустой icon работают как
+                // раньше (Text-фолбэк, "📁" для пустого).
+                contentItem: Row {
                     leftPadding: 4
-                    text: {
-                        if (!root.selectedProjectId) return qsTr("📁 Проект")
-                        var p = (typeof projectViewModel !== "undefined")
-                                ? projectViewModel.projectById(root.selectedProjectId)
-                                : null
-                        if (!p) return "📁 " + projectCombo.displayText
-                        var icon = p.icon || ""
-                        return (icon !== "" ? icon : "📁") + " " + p.name
+                    spacing: 6
+
+                    readonly property var _proj: root.selectedProjectId
+                            && typeof projectViewModel !== "undefined"
+                            ? projectViewModel.projectById(root.selectedProjectId)
+                            : null
+                    readonly property string _icon: _proj ? (_proj.icon || "") : ""
+                    readonly property bool   _isStroke: _icon.indexOf("projects/") === 0
+                    readonly property string _name: _proj ? _proj.name
+                                                          : (root.selectedProjectId
+                                                             ? projectCombo.displayText
+                                                             : qsTr("Проект"))
+
+                    IconSvg {
+                        visible: parent._isStroke
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: parent._icon
+                        size: 14
+                        color: root.textCol
                     }
-                    color: root.textCol
-                    font:  projectCombo.font
-                    verticalAlignment: Text.AlignVCenter
-                    elide: Text.ElideRight
+                    Text {
+                        visible: !parent._isStroke
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent._icon !== "" ? parent._icon : "📁"
+                        color: root.textCol
+                        font: projectCombo.font
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent._name
+                        color: root.textCol
+                        font:  projectCombo.font
+                        elide: Text.ElideRight
+                    }
                 }
 
                 // Dropdown delegate: emoji icon if set, otherwise color dot
@@ -569,20 +594,33 @@ Rectangle {
                         spacing: 8
                         anchors.leftMargin: 8
 
-                        // Project icon — emoji if set, otherwise color dot
+                        // Project icon — Q4.01 iter-7: три ветки
+                        //   1. иконка с префиксом "projects/" → IconSvg
+                        //   2. user-typed эмодзи              → Text
+                        //   3. без иконки                      → цветная точка
                         Item {
                             width: 18
                             height: 18
 
+                            readonly property string _icon: (_proj && _proj.icon) ? _proj.icon : ""
+                            readonly property bool   _isStroke: _icon.indexOf("projects/") === 0
+
+                            IconSvg {
+                                anchors.centerIn: parent
+                                visible: parent._isStroke
+                                name: parent._icon
+                                size: 14
+                                color: ThemeManager.textColor
+                            }
                             Text {
                                 anchors.centerIn: parent
-                                visible: _proj && _proj.icon !== ""
-                                text:    (_proj && _proj.icon) ? _proj.icon : ""
+                                visible: !parent._isStroke && parent._icon !== ""
+                                text:    parent._icon
                                 font.pixelSize: 14
                             }
                             Rectangle {
                                 anchors.centerIn: parent
-                                visible: !_proj || _proj.icon === ""
+                                visible: parent._icon === ""
                                 width:  10
                                 height: 10
                                 radius: 5

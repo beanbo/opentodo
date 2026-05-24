@@ -1267,6 +1267,18 @@ Rectangle {
                                     parentPickerDialog.open()
                                 }
                             }
+                            // Q4.01 iter-7: смена иконки уже существующего
+                            // проекта через тот же ProjectIconPicker. Используем
+                            // отдельный экземпляр (ctxIconPicker) — так не нужен
+                            // дискриминатор контекста в onIconAccepted.
+                            MenuItem {
+                                text: qsTr("Изменить иконку…")
+                                onTriggered: {
+                                    const p = projectViewModel.projectById(projCtxMenu.projectId)
+                                    ctxIconPicker.targetProjectId = projCtxMenu.projectId
+                                    ctxIconPicker.openWith(p ? (p.icon || "") : "")
+                                }
+                            }
                             MenuSeparator {}
                             MenuItem {
                                 text: (projectViewModel.projectById(projCtxMenu.projectId)
@@ -2328,6 +2340,25 @@ Rectangle {
         id: iconPicker
         onIconAccepted: function(icon) {
             addProjectDialog.selectedIcon = icon
+        }
+    }
+
+    // Q4.01 iter-7: второй экземпляр пикера для контекст-меню "Изменить
+    // иконку…". Отдельный экземпляр (а не дискриминатор) — потому что
+    // обработчик iconAccepted ходит в разные ViewModel-методы:
+    //   • iconPicker      → set local state of addProjectDialog
+    //   • ctxIconPicker   → projectViewModel.updateProject(id, "icon", ...)
+    ProjectIconPicker {
+        id: ctxIconPicker
+        property string targetProjectId: ""
+
+        onIconAccepted: function(icon) {
+            if (ctxIconPicker.targetProjectId === "") return
+            projectViewModel.updateProject(
+                ctxIconPicker.targetProjectId, "icon", icon)
+            if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
+                telemetry.trackEvent("project_icon_changed", { icon: icon })
+            ctxIconPicker.targetProjectId = ""
         }
     }
 
