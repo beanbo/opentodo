@@ -317,11 +317,13 @@ Rectangle {
                 }
             }
 
-            // «🌅 До утра» — one-click snooze until the next 9:00 AM
+            // «До утра» — one-click snooze until the next 9:00 AM
             // (today 9:00 if it's still before morning, otherwise tomorrow 9:00).
+            // Q4.01 (redesign): "🌅" префикс убран — соседние snooze-кнопки
+            // тоже без иконок (Готово / Отложить / меню).
             ActionButton {
                 id: morningBtn
-                label: qsTr("🌅 До утра")
+                label: qsTr("До утра")
                 visible_: root.bannerTaskId.length > 0
                 isHovered: morningHover.hovered
 

@@ -1100,11 +1100,12 @@ Rectangle {
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                     }
 
-                    // Empty state
+                    // Empty state — Q4.01 (redesign): эмодзи "📋" заменён на
+                    // stroke-иконку "list" в EmptyState.iconName.
                     EmptyState {
                         anchors.fill: parent
                         visible: taskViewModel.count === 0
-                        emoji: "📋"
+                        iconName: "list"
                         title: qsTr("Этот проект пуст")
                         message: qsTr("Начни с одной маленькой задачи. Большие достижения складываются из маленьких шагов.")
                         actionLabel: qsTr("Добавить первую задачу")

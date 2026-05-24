@@ -829,12 +829,15 @@ Item {
                                 }
                                 spacing: Spacing.sm
 
-                                // Three chip definitions — modelData exposed by Repeater
+                                // Three chip definitions — modelData exposed by Repeater.
+                                // Q4.01 (redesign): добавлено поле iconName — имя SVG
+                                // в resources/icons/ui/. Делегат рендерит IconSvg если
+                                // iconName есть, иначе fallback на icon-emoji.
                                 Repeater {
                                     model: [
-                                        { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅" },
-                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🚨" },
-                                        { chipId: "no_date", label: qsTr("Без даты"),   icon: "💭" }
+                                        { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅", iconName: "today" },
+                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🚨", iconName: "warning" },
+                                        { chipId: "no_date", label: qsTr("Без даты"),   icon: "💭", iconName: "" }
                                     ]
 
                                     delegate: Rectangle {
@@ -860,8 +863,21 @@ Item {
                                             anchors.centerIn: parent
                                             spacing: 4
 
-                                            Text {
+                                            // Q4.01 (redesign): IconSvg для chip-ов
+                                            // с iconName, fallback на эмодзи иначе.
+                                            IconSvg {
                                                 id: _chipIcon
+                                                visible: modelData.iconName !== ""
+                                                name: modelData.iconName
+                                                size: 12
+                                                color: parent.parent._active
+                                                    ? "#ffffff"
+                                                    : ThemeManager.textColor
+                                                Layout.alignment: Qt.AlignVCenter
+                                            }
+
+                                            Text {
+                                                visible: modelData.iconName === ""
                                                 text: modelData.icon
                                                 font.pixelSize: 12
                                                 verticalAlignment: Text.AlignVCenter

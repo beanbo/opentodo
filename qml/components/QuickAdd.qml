@@ -636,11 +636,18 @@ Rectangle {
                             verticalAlignment: Text.AlignVCenter
                         }
 
-                        // Inbox marker
-                        Text {
+                        // Inbox marker — Q4.01 (redesign): "📥" emoji заменён
+                        // на IconSvg "inbox" в Item с visible-детектом.
+                        Item {
                             visible: model.isInbox === true
-                            text:    "📥"
-                            font.pixelSize: 12
+                            implicitWidth: 14
+                            implicitHeight: 14
+                            IconSvg {
+                                anchors.centerIn: parent
+                                name: "inbox"
+                                size: 12
+                                color: ThemeManager.secondaryTextColor
+                            }
                         }
                     }
 

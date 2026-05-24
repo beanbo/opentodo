@@ -471,9 +471,9 @@ Rectangle {
                 anchors.topMargin: 12
                 spacing: 10
 
-                // Section title
+                // Section title — Q4.01 (redesign): "🍅" префикс убран.
                 Text {
-                    text: "🍅 Pomodoro"
+                    text: "Pomodoro"
                     font.pixelSize: 14
                     font.bold: true
                     color: ThemeManager.textColor

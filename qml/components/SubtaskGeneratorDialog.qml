@@ -274,10 +274,12 @@ Popup {
             Layout.fillWidth: true
             spacing: Spacing.sm
 
-            // Generate button (hidden once suggestions shown)
+            // Generate button (hidden once suggestions shown).
+            // Q4.01 (redesign): эмодзи "✨" убран — иконка sparkles уже
+            // несётся заголовком диалога (см. line 75).
             Button {
                 visible: root._suggestions.length === 0 && !root._loading
-                text:    "✨ Сгенерировать"
+                text:    qsTr("Сгенерировать")
                 enabled: !root._loading && root.taskContent.length > 0
                 Material.background: ThemeManager.accentColor
                 Material.foreground: "white"

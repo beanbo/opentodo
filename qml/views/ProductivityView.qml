@@ -121,8 +121,10 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
+                        // Q4.01 (redesign): "🍅" префикс убран — заголовок
+                        // секции уже опознавателен в контексте Productivity.
                         Text {
-                            text: qsTr("🍅 Помодоро")
+                            text: qsTr("Помодоро")
                             font.pixelSize: 16
                             font.bold: true
                             color: textPrimary
@@ -413,8 +415,9 @@ Item {
                     }
 
                     // ── Header ─────────────────────────────────────────────
+                    // Q4.01 (redesign): "🍅" префикс убран.
                     Text {
-                        text: qsTr("🍅 Pomodoro статистика")
+                        text: qsTr("Pomodoro статистика")
                         font.pixelSize: 16
                         font.bold: true
                         color: textPrimary
