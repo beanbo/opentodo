@@ -1295,16 +1295,33 @@ Rectangle {
                     onTextChanged: editDialog.editIcon = text
                 }
 
+                // Q4.01 (redesign): эмодзи-набор заменён на 12 stroke-иконок
+                // из resources/icons/projects/. Сохраняется как строка вида
+                // "projects/<glyph>" — IconSvg уже умеет резолвить subdir,
+                // и SidebarItem detects префикс "projects/" чтобы рендерить
+                // иконку, а не как Text-emoji.
                 RowLayout {
                     spacing: 2
                     Layout.fillWidth: true
                     Repeater {
-                        model: ["🐢","🐱","🏡","🍅","💼","🎯","💡","📚","🚀","🎨","🛒","🏃"]
+                        model: ["projects/paw", "projects/heart", "projects/house",
+                                "projects/fork-knife", "projects/briefcase", "projects/target",
+                                "projects/lightbulb", "projects/book", "projects/rocket",
+                                "projects/palette", "projects/cart", "projects/runner"]
                         delegate: ToolButton {
                             required property string modelData
-                            text: modelData
-                            font.pixelSize: 20
                             flat: true
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            ToolTip.text: modelData
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 500
+                            contentItem: IconSvg {
+                                anchors.centerIn: parent
+                                name: parent.modelData
+                                size: 20
+                                color: ThemeManager.textColor
+                            }
                             onClicked: {
                                 iconField.text = modelData
                                 editDialog.editIcon = modelData

@@ -38,12 +38,16 @@ Item {
         return qsTr("очков")
     }
 
+    // Q4.01 (redesign): убрано поле `emoji` — оно никогда не рендерилось
+    // (downstream использовался только greet.text). Если когда-нибудь
+    // потребуется иконка времени суток, она маппится так:
+    //   h<5  → moon, h<12 → sun, h<18 → sun, иначе → moon.
     function _greetingByTime() {
         var h = new Date().getHours()
-        if (h < 5)  return { emoji: "🌙", text: qsTr("Доброй ночи") }
-        if (h < 12) return { emoji: "🌅", text: qsTr("Доброе утро") }
-        if (h < 18) return { emoji: "☀️",  text: qsTr("Добрый день") }
-        return      { emoji: "🌆", text: qsTr("Добрый вечер") }
+        if (h < 5)  return { text: qsTr("Доброй ночи") }
+        if (h < 12) return { text: qsTr("Доброе утро") }
+        if (h < 18) return { text: qsTr("Добрый день") }
+        return      { text: qsTr("Добрый вечер") }
     }
 
     function _briefingMessage(kick) {
@@ -60,23 +64,27 @@ Item {
         var remaining = total - done
         var greet = _greetingByTime()
 
+        // Q4.01 (redesign): поле emoji → iconName (имя файла в
+        // resources/icons/ui/<iconName>.svg). 🎉 freeday → sparkles,
+        // 🚨 overdue → warning, 💪 normal → flame. Делегат рендерит
+        // IconSvg на месте старого Text-emoji.
         if (total === 0) {
-            return { emoji: "🎉",
+            return { iconName: "sparkles",
                      title: greet.text + "!",
                      body: qsTr("Сегодня свободный день — можно отдохнуть.") }
         }
         if (done === total) {
-            return { emoji: "🏆",
+            return { iconName: "star",
                      title: qsTr("Ты умница!"),
                      body: qsTr("Все задачи на сегодня выполнены — заслуженный отдых.") }
         }
         if (overdueCount > 0) {
-            return { emoji: "🚨",
+            return { iconName: "warning",
                      title: greet.text + "!",
                      body: qsTr("Сегодня %1 %2, из них %3 просрочено. Самое время сосредоточиться.")
                            .arg(remaining).arg(taskWord(remaining)).arg(overdueCount) }
         }
-        return { emoji: "💪",
+        return { iconName: "flame",
                  title: greet.text + "!",
                  body: qsTr("Сегодня %1 %2. Вперёд — ты справишься!")
                        .arg(remaining).arg(taskWord(remaining)) }
@@ -789,9 +797,13 @@ Item {
                     RowLayout {
                         spacing: 10
 
-                        Text {
-                            text: briefingCol._msg.emoji
-                            font.pixelSize: 28
+                        // Q4.01 (redesign): emoji-glyph (🎉 / 🚨 / 💪 / 🏆)
+                        // заменён на IconSvg из stroke-пака; цвет — accent.
+                        IconSvg {
+                            name: briefingCol._msg.iconName || "list"
+                            size: 28
+                            color: ThemeManager.accentColor
+                            Layout.alignment: Qt.AlignVCenter
                         }
                         Text {
                             text: briefingCol._msg.title

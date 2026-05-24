@@ -2734,19 +2734,31 @@ Rectangle {
         }
 
         // Icon / dot
+        // Q4.01 iter-5: добавлен auto-detect префикса "projects/" в iconText.
+        // Когда Project.icon хранится как "projects/briefcase" (новый формат
+        // из ProjectIconPicker), рендерим IconSvg вместо Text-emoji. Совмест-
+        // имость: старые проекты с эмодзи продолжают рендериться текстом.
         Item {
             id: iconArea
             width: 22
             height: parent.height
             anchors.left: leftPad.right
 
+            // Резолв эффективного имени иконки: явный iconName или iconText
+            // с префиксом "projects/" → IconSvg.
+            readonly property string _effectiveIconName: {
+                if (sidebarItem.iconName !== "") return sidebarItem.iconName
+                if (sidebarItem.iconText.indexOf("projects/") === 0) return sidebarItem.iconText
+                return ""
+            }
+
             // Stroke-SVG icon (Q4.01 redesign). Wins over the emoji Text
             // when iconName is set; tinted via MultiEffect in IconSvg so
             // active/idle states animate the colour.
             IconSvg {
-                visible: sidebarItem.iconName !== ""
+                visible: iconArea._effectiveIconName !== ""
                 anchors.centerIn: parent
-                name: sidebarItem.iconName
+                name: iconArea._effectiveIconName
                 size: 16
                 color: sidebarItem.active
                        ? ThemeManager.accentColor
@@ -2755,7 +2767,7 @@ Rectangle {
 
             // Colored dot for projects / favorites (no SVG icon set, no emoji)
             Rectangle {
-                visible: sidebarItem.iconName === "" && sidebarItem.iconIsText
+                visible: iconArea._effectiveIconName === "" && sidebarItem.iconIsText
                 anchors.centerIn: parent
                 width: 8
                 height: 8
@@ -2765,7 +2777,7 @@ Rectangle {
 
             // Emoji icon — user-typed glyph on a project, or legacy default.
             Text {
-                visible: sidebarItem.iconName === "" && !sidebarItem.iconIsText
+                visible: iconArea._effectiveIconName === "" && !sidebarItem.iconIsText
                 anchors.centerIn: parent
                 text: sidebarItem.iconText
                 font.pixelSize: FontSize.body
