@@ -534,15 +534,52 @@ Rectangle {
             // before the notes card starts dominating the project view.
             readonly property int _collapsedHeight: 56
             readonly property int _expandedHeightCap: 400
-            readonly property int _expandedHeight: {
-                // 24 (header) + Spacing.xs (between header and body)
-                // + notesBodyText.implicitHeight + Spacing.md * 2 (margins)
-                const naturalHeight = 24 + Spacing.xs
-                    + notesBodyText.implicitHeight
-                    + Spacing.md * 2
-                return Math.max(_collapsedHeight,
-                                Math.min(naturalHeight, _expandedHeightCap))
+            // Iter-night-42 (task bd2e7bde re-open): _expandedHeight USED
+            // to be a readonly binding directly dependent on
+            // notesBodyText.implicitHeight. During initial render and
+            // window-resize the Text widget's implicitHeight settles over
+            // several frames as it re-flows under the changing width —
+            // each implicitHeight tick re-triggered the Layout.preferred/
+            // minimum/maximumHeight Behavior animations (all bound to
+            // _targetHeight), which chased a moving target. The animation
+            // lag let the Loader below the card briefly mis-align with
+            // the card's drawn extent and the "Добавить задачу" bar
+            // visually rode over the card's bottom border for several
+            // frames before the layout settled.
+            //
+            // Fix: coalesce implicitHeight transitions via a one-shot
+            // 50 ms Timer. _expandedHeight becomes a mutable property
+            // that's recomputed at discrete, stable moments — never
+            // during the multi-frame layout settle. UX cost: a 50 ms
+            // latency between editing notes and the card resizing —
+            // imperceptible. Q3.29's anti-overlap invariant
+            // (Layout.preferredHeight === Layout.minimumHeight ===
+            // Layout.maximumHeight, all three animated by Behavior in
+            // lockstep) is preserved unchanged.
+            property int _expandedHeight: _collapsedHeight
+
+            Timer {
+                id: _heightRecomputeTimer
+                interval: 50
+                repeat:   false
+                onTriggered: {
+                    const naturalHeight = 24 + Spacing.xs
+                        + notesBodyText.implicitHeight
+                        + Spacing.md * 2
+                    notesCard._expandedHeight = Math.max(
+                        notesCard._collapsedHeight,
+                        Math.min(naturalHeight,
+                                 notesCard._expandedHeightCap))
+                }
             }
+
+            Connections {
+                target: notesBodyText
+                function onImplicitHeightChanged() {
+                    _heightRecomputeTimer.restart()
+                }
+            }
+
             readonly property int _targetHeight:
                 _expanded ? _expandedHeight : _collapsedHeight
             Layout.preferredHeight: _targetHeight
@@ -665,7 +702,25 @@ Rectangle {
                 // Quick-add bar
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 48
+                    // Task bd2e7bde (re-opened): the previous `height: 48`
+                    // gave the Rectangle a fixed VISUAL height of 48px but
+                    // did NOT tell the parent ColumnLayout — without a
+                    // Layout.preferredHeight, the layout engine derived the
+                    // child's allocation from implicitHeight, which traces
+                    // back to the inner RowLayout's content height (TextField
+                    // + small Rectangle = ~25px). So the Layout reserved
+                    // ~25px for this bar, but the Rectangle DREW 48px. The
+                    // ListView below was positioned at y=25 (next layout
+                    // slot), overlapping the bottom 23px of the Quick-add
+                    // bar — and, during the notes-card grow/shrink
+                    // animation, the bar's drawn extent likewise rode over
+                    // the notes card's allocated layout box from above
+                    // because the parent's slot math used the wrong height.
+                    //
+                    // Layout.preferredHeight makes the ColumnLayout actually
+                    // reserve 48px for this Rectangle. ListView slots down
+                    // by 48px, no overlap geometrically possible.
+                    Layout.preferredHeight: 48
                     color: contentColor
 
                     RowLayout {
