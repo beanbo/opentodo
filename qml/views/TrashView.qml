@@ -232,7 +232,7 @@ Item {
 
                 Label {
                     text: qsTr("Корзина")
-                    font.pixelSize: FontSize.h2
+                    font.pixelSize: FontSize.viewHeader
                     font.weight: Font.DemiBold
                     color: textPrimary
                 }

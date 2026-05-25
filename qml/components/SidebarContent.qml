@@ -1994,14 +1994,17 @@ Rectangle {
             } // Repeater labelRepeater
 
             // ── Divider before app-level views ────────────────────────────
-            Item { width: 1; height: 16 }
+            // Q4.01 pixel-perfect: разделитель между main sidebar и bottom
+            // section (productivity/notifications/assistant/settings/trash).
+            // Дизайн (.design-temp/opentodo/project/app-shell.jsx, 142-149):
+            // borderTop 1px t.border + padding 6 0.
+            Item { width: parent.width; height: 6 }
             Rectangle {
-                width: parent.width - 24
-                x: 12
+                width: parent.width
                 height: 1
-                color: sidebarContent.borderColor
+                color: ThemeManager.borderColor
             }
-            Item { width: 1; height: 8 }
+            Item { width: parent.width; height: 6 }
 
             // ── App-level views (settings / productivity / notifications)
             SidebarItem {

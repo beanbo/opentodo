@@ -12,6 +12,7 @@ QtObject {
     readonly property int subtitle:     16
     readonly property int headline:     17
     readonly property int title:        18
+    readonly property int viewHeader:   20
     readonly property int h2:           22
     readonly property int h1:           28
     readonly property int display:      48

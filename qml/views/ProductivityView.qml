@@ -111,7 +111,7 @@ Item {
                 }
                 Label {
                     text: qsTr("Продуктивность")
-                    font.pixelSize: FontSize.h2
+                    font.pixelSize: FontSize.viewHeader
                     font.weight: Font.DemiBold
                     color: textPrimary
                 }

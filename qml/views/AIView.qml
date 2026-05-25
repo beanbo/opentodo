@@ -74,7 +74,7 @@ Item {
 
             Label {
                 text: qsTr("Помощник")
-                font.pixelSize: FontSize.h2
+                font.pixelSize: FontSize.viewHeader
                 font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true

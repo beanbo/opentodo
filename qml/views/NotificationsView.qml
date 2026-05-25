@@ -104,7 +104,7 @@ Item {
 
                 Label {
                     text: qsTr("Уведомления")
-                    font.pixelSize: FontSize.h2
+                    font.pixelSize: FontSize.viewHeader
                     font.weight: Font.DemiBold
                     color: textPrimary
                 }

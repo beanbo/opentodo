@@ -300,17 +300,21 @@ Rectangle {
                     }
                 }
 
-                // View-style toggles — font.pixelSize matches surrounding
-                // topbar icons (search/sync/hide-completed at 16px) so the
-                // glyphs read consistently with their neighbours.
+                // View-style toggles — Q4.01 pixel-perfect: PillIconBtn в
+                // дизайне view-project.jsx (стр. 7-17, 112-114) рендерит
+                // иконки size=14, поэтому все три тоггла приведены к 14px.
                 ToolButton {
-                    text:    "≡"
-                    font.pixelSize: 16
                     checked: viewStyle === "list"
                     onClicked: root.setView("list")
                     ToolTip.text: qsTr("Список")
                     ToolTip.visible: hovered
                     Material.foreground: checked ? accentRed : textSecondary
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "list"
+                        size: 14
+                        color: parent.checked ? accentRed : textSecondary
+                    }
                 }
                 ToolButton {
                     // Q4.01 (redesign): итерация 4 board-иконки. v1=⊞, v2=▥,
@@ -325,7 +329,7 @@ Rectangle {
                     contentItem: IconSvg {
                         anchors.centerIn: parent
                         name: "board"
-                        size: 18
+                        size: 14
                         color: parent.checked ? accentRed : textSecondary
                     }
                 }
@@ -338,7 +342,7 @@ Rectangle {
                     contentItem: IconSvg {
                         anchors.centerIn: parent
                         name: "calendar"
-                        size: 18
+                        size: 14
                         color: parent.checked ? accentRed : textSecondary
                     }
                 }
@@ -662,12 +666,25 @@ Rectangle {
                         color: ThemeManager.accentColor
                         Layout.alignment: Qt.AlignVCenter
                     }
-                    Label {
-                        text: qsTr("Заметки")
-                        // Q4.01 pixel-perfect: title fontSize 13 / weight Medium (500).
-                        font.pixelSize: FontSize.bodySmall
-                        font.weight: Font.Medium
-                        color: ThemeManager.textColor
+                    // Q4.01 pixel-perfect: title + subtitle stack
+                    // (дизайн view-project.jsx стр. 127-141 — note panel).
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: 2
+
+                        Label {
+                            text: qsTr("Заметки")
+                            // Q4.01 pixel-perfect: title fontSize 13 / weight Medium (500).
+                            font.pixelSize: FontSize.bodySmall
+                            font.weight: Font.Medium
+                            color: ThemeManager.textColor
+                        }
+                        Label {
+                            // Q4.01 pixel-perfect: subtitle fontSize 11 / secondary text.
+                            text: qsTr("Описание проекта, ссылки, контекст")
+                            font.pixelSize: FontSize.caption
+                            color: ThemeManager.secondaryTextColor
+                        }
                     }
                     Item { Layout.fillWidth: true }
                     ToolButton {
