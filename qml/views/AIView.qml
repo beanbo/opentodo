@@ -65,14 +65,14 @@ Item {
             // stroke-пака. Иконка + чистый заголовок — единый визуальный вес.
             IconSvg {
                 name: "sparkles"
-                size: 20
+                size: 22
                 color: ThemeManager.accentColor
                 Layout.alignment: Qt.AlignVCenter
             }
 
             Label {
                 text: qsTr("Помощник")
-                font.pixelSize: FontSize.h1
+                font.pixelSize: FontSize.h2
                 font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true

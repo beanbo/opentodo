@@ -197,14 +197,14 @@ Rectangle {
 
             RowLayout {
                 anchors.fill:        parent
-                anchors.leftMargin:  Spacing.md
+                anchors.leftMargin:  Spacing.lg
                 anchors.rightMargin: Spacing.sm
-                spacing: Spacing.sm
+                spacing: Spacing.md
 
                 // Project icon: emoji if set, otherwise color dot.
                 Item {
-                    width: 24
-                    height: 24
+                    width: 22
+                    height: 22
                     Layout.alignment: Qt.AlignVCenter
 
                     Text {
@@ -227,7 +227,7 @@ Rectangle {
                 Label {
                     text:            project ? project.name : ""
                     font.pixelSize:  FontSize.h2
-                    font.bold:       true
+                    font.weight:     Font.DemiBold
                     color:           textPrimary
                     elide:           Text.ElideRight
                     Layout.fillWidth: true
@@ -333,14 +333,33 @@ Rectangle {
                     color:  borderColor
                 }
 
-                // Add-section button (visible only in list view)
+                // Add-section button (visible only in list view).
+                // Q4.01 (redesign): unicode fullwidth ＋ → stroke PlusIcon
+                // matching design's PillIconBtn pattern (PlusIcon size 12 +
+                // "Раздел" label, both in accent colour).
                 ToolButton {
                     id:      addSectionBtn
-                    text:    qsTr("＋ Раздел")
-                    font.pixelSize: FontSize.body
                     visible: viewStyle === "list"
+                    flat:    true
+                    padding: 6
                     onClicked: addSectionDialog.open()
-                    Material.foreground: accentRed
+
+                    contentItem: Row {
+                        spacing: 4
+                        anchors.centerIn: parent
+                        IconSvg {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "plus"
+                            size: 12
+                            color: accentRed
+                        }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: qsTr("Раздел")
+                            color: accentRed
+                            font.pixelSize: FontSize.body
+                        }
+                    }
 
                     ToolTip.text: qsTr("Добавить раздел в проект")
                     ToolTip.visible: hovered

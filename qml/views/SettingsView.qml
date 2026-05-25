@@ -29,8 +29,8 @@ Item {
 
             Label {
                 text: qsTr("Настройки")
-                font.pixelSize: 28
-                font.bold: true
+                font.pixelSize: 24
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
                 Layout.topMargin: 28

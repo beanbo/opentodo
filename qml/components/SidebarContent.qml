@@ -20,7 +20,7 @@ Rectangle {
     readonly property color borderColor: ThemeManager.borderColor
     readonly property color iconColor: isDarkTheme ? "#aaaaaa" : "#555555"
 
-    width: 280
+    width: 220
     color: bgColor
 
     // -------------------------------------------------------------------------
@@ -505,17 +505,19 @@ Rectangle {
                     color: ThemeManager.errorColor || "#E74C3C"
                     z: 2
 
-                    // Q4.01 (redesign): badge previously used the "⚠" Unicode
-                    // glyph as a prefix. Swap to the stroke-pack warning icon
-                    // so it carries the same visual weight as the other nav
-                    // icons; pill width was bumped to accommodate it.
+                    // Q4.01 (redesign): warning glyph → stroke flame to match
+                    // design canvas — overdue is "burning"/urgent, not a generic
+                    // warning. (Design's app-shell.jsx Sidebar component uses
+                    // WarningIcon but the standalone FilterChip pattern uses
+                    // FlameIcon at red; we follow the chip language because the
+                    // sidebar badge sits in the same visual register.)
                     Row {
                         anchors.centerIn: parent
                         spacing: 4
 
                         IconSvg {
                             anchors.verticalCenter: parent.verticalCenter
-                            name: "warning"
+                            name: "flame"
                             size: 10
                             color: "white"
                         }
@@ -2703,9 +2705,9 @@ Rectangle {
                 verticalCenterOffset: 4
             }
             text: sectionHeader.title.toUpperCase()
-            font.pixelSize: FontSize.caption
+            font.pixelSize: FontSize.tiny
             font.weight: Font.DemiBold
-            font.letterSpacing: 0.5
+            font.letterSpacing: 0.8
             // Iter-night-31: was hardcoded "#999999" — that's exactly the
             // dark-theme secondaryTextColor (ThemeManager.qml:191), but
             // every other theme uses a different shade: light=#666666,
@@ -2923,7 +2925,7 @@ Rectangle {
                 verticalCenter: parent.verticalCenter
             }
             text: sidebarItem.label
-            font.pixelSize: FontSize.body
+            font.pixelSize: FontSize.bodySmall
             elide: Text.ElideRight
             color: sidebarItem.active
                    ? "#db4c3f"

@@ -34,17 +34,19 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
         spacing: 6
 
         // Collapse arrow
-        Text {
+        // Q4.01 (redesign): "\u25B8" (\u25B8) unicode \u2192 stroke chevron-right IconSvg.
+        // Rotation transform stays \u2014 it animates 0\u00B0 \u2192 90\u00B0 to convert
+        // chevron-right into chevron-down without swapping the icon name.
+        IconSvg {
             id: arrowText
-            text: "\u25B8"
-            font.pixelSize: 12
+            name: "chevron-right"
+            size: 12
             color: root.isDarkTheme ? "#cccccc" : "#333333"
-            verticalAlignment: Text.AlignVCenter
 
             transform: Rotation {
                 id: arrowRotation
@@ -62,8 +64,8 @@ Rectangle {
         Text {
             id: titleText
             text: root.title
-            font.pixelSize: 14
-            font.bold: true
+            font.pixelSize: FontSize.small
+            font.weight: Font.Medium
             color: root.isDarkTheme ? "#cccccc" : "#333333"
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
@@ -73,7 +75,7 @@ Rectangle {
         Text {
             id: countText
             text: root.taskCount > 0 ? "(" + root.taskCount + ")" : ""
-            font.pixelSize: 13
+            font.pixelSize: FontSize.tiny
             // Iter-night-31: was hardcoded "#999999" — readable on the dark
             // theme (whose secondaryTextColor is the same shade) but too
             // light against light/kale/lavender/etc. sidebars. Bind to the
@@ -94,7 +96,7 @@ Rectangle {
         IconSvg {
             id: addButton
             name: "plus"
-            size: 16
+            size: 14
             color: root.isDarkTheme ? "#cccccc" : "#555555"
             visible: headerHover.hovered
             opacity: addHover.hovered ? 1.0 : 0.7
@@ -117,12 +119,12 @@ Rectangle {
         }
 
         // More options button — visible on hover
-        Text {
+        // Q4.01 (redesign): unicode "⋯" → stroke more (3-dot) IconSvg
+        IconSvg {
             id: moreButton
-            text: "\u22EF"
-            font.pixelSize: 16
+            name: "more"
+            size: 14
             color: root.isDarkTheme ? "#cccccc" : "#555555"
-            verticalAlignment: Text.AlignVCenter
             visible: headerHover.hovered
             opacity: moreHover.hovered ? 1.0 : 0.7
             z: 2

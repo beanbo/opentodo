@@ -298,8 +298,8 @@ Item {
     // ── Density helpers ───────────────────────────────────────────────────
     readonly property bool _compact: typeof settingsViewModel !== "undefined"
                                      && settingsViewModel.compactDensity
-    readonly property int _rowMinHeight: _compact ? 32 : 44
-    readonly property int _rowVPadding:  _compact ? 2  : Spacing.xs
+    readonly property int _rowMinHeight: _compact ? 32 : 36
+    readonly property int _rowVPadding:  _compact ? 2  : Spacing.sm
 
     // ── Hover-preview helpers ─────────────────────────────────────────────
     // Show the popup only when there is extra information beyond the task title.
@@ -766,7 +766,7 @@ Item {
                         textFormat:       root._hasUrl(root.content) ? Text.RichText : Text.PlainText
                         onLinkActivated:  function(url) { Qt.openUrlExternally(url) }
                         linkColor:        ThemeManager.accentColor
-                        font.pixelSize:   root.isSubtask ? FontSize.caption : FontSize.body
+                        font.pixelSize:   root.isSubtask ? FontSize.caption : FontSize.bodySmallSmallSmall
                         color:            isCompleted ? root._subColor : root._textColor
                         font.strikeout:   isCompleted
                         elide:            Text.ElideRight
@@ -793,7 +793,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root._inlineEditing
                         // Match the read-only Label so swapping is visually quiet.
-                        font.pixelSize: root.isSubtask ? FontSize.caption : FontSize.body
+                        font.pixelSize: root.isSubtask ? FontSize.caption : FontSize.bodySmallSmallSmall
                         color:          root._textColor
                         selectByMouse:  true
                         selectionColor: ThemeManager.accentColor
@@ -887,19 +887,36 @@ Item {
                              || root._hasDeadline || root._durationLabel !== ""
                              || root._estimateLabel !== ""
 
+                    // Q4.01 (redesign): due-date chip now leads with a stroke
+                    // CalendarIcon (size 11) like the design's TaskChip — date
+                    // text alone read as "raw timestamp", the icon reads as
+                    // "this is a due date" at a glance.
                     Rectangle {
                         visible:  dueDate !== "" && dueDate !== undefined
                         height:   16
-                        width:    dueDateLabel.implicitWidth + 8
+                        width:    _dueChipRow.implicitWidth + 8
                         radius:   3
                         color:    "transparent"
 
-                        Text {
-                            id: dueDateLabel
+                        Row {
+                            id: _dueChipRow
                             anchors.centerIn: parent
-                            text:          root.dueString !== "" ? root.dueString : root.dueDate
-                            font.pixelSize: FontSize.caption
-                            color:         root._isOverdue ? "#db4c3f" : root._subColor
+                            spacing: 4
+
+                            IconSvg {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: "calendar"
+                                size: 11
+                                color: root._isOverdue ? "#db4c3f" : root._subColor
+                            }
+
+                            Text {
+                                id: dueDateLabel
+                                anchors.verticalCenter: parent.verticalCenter
+                                text:          root.dueString !== "" ? root.dueString : root.dueDate
+                                font.pixelSize: FontSize.caption
+                                color:         root._isOverdue ? "#db4c3f" : root._subColor
+                            }
                         }
                     }
 

@@ -18,8 +18,8 @@ Item {
     readonly property color textPrimary:    ThemeManager.textColor
     readonly property color textSecondary:  ThemeManager.secondaryTextColor
 
-    readonly property int sidebarWidth:      280
-    readonly property int taskItemHeight:    40
+    readonly property int sidebarWidth:      220
+    readonly property int taskItemHeight:    36
     readonly property int taskItemPadding:   Spacing.md
     readonly property int taskEditorWidth:   400
     readonly property int animationDuration: Duration.normal
@@ -387,7 +387,7 @@ Item {
                     id: topBar
                     objectName: "topBar"
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 56
+                    Layout.preferredHeight: 48
                     color: contentColor
                     // Скрывается в режиме фокуса (F11) — задачи без отвлекающих элементов.
                     visible: !root._focusMode
@@ -432,6 +432,35 @@ Item {
                                              : qsTr("Показать боковую панель"))
                         }
 
+                        // Q4.01 (redesign): icon prefix for the view title.
+                        // Mirrors the icon highlighted in the sidebar so that the
+                        // top bar (which is the only chrome the user sees in
+                        // ultra-compact mode) still communicates "where am I"
+                        // without forcing them to open the drawer.
+                        IconSvg {
+                            id: viewTitleIcon
+                            name: {
+                                switch (taskViewModel.filterMode) {
+                                case TaskViewModel.Inbox:         return "inbox"
+                                case TaskViewModel.Today:         return "today"
+                                case TaskViewModel.Upcoming:      return "upcoming"
+                                case TaskViewModel.Calendar:      return "upcoming"
+                                case TaskViewModel.Label:         return "label"
+                                case TaskViewModel.Filter:        return "filter"
+                                case TaskViewModel.Completed:     return "check-circle"
+                                case TaskViewModel.Settings:      return "settings"
+                                case TaskViewModel.Productivity:  return "productivity"
+                                case TaskViewModel.Notifications: return "bell"
+                                case TaskViewModel.AI:            return "sparkles"
+                                case TaskViewModel.Trash:         return "trash"
+                                default:                          return ""
+                                }
+                            }
+                            size: 18
+                            color: ThemeManager.iconColor
+                            visible: name !== "" && taskViewModel.filterMode !== TaskViewModel.Project
+                        }
+
                         // Current view title — derived from the active filter mode.
                         Label {
                             id: viewTitleLabel
@@ -469,8 +498,8 @@ Item {
                                 default:                          return qsTr("Задачи")
                                 }
                             }
-                            font.pixelSize: FontSize.title
-                            font.weight: Font.DemiBold
+                            font.pixelSize: FontSize.subtitleSmall
+                            font.weight: Font.Medium
                             color: textPrimary
                             elide: Text.ElideRight
                             Layout.fillWidth: true
@@ -564,13 +593,26 @@ Item {
                                 Behavior on width { NumberAnimation { duration: 300 } }
                             }
 
-                            Text {
+                            // Q4.01 (redesign): emoji "🎯 " prefix replaced with stroke IconSvg
+                            // so the badge reads consistently across themes (Material's
+                            // default emoji font rendered the target as a flat orange disk on
+                            // the dark themes, breaking the streak feel).
+                            Row {
                                 anchors.centerIn: parent
-                                text: "🎯 " + parent._completedToday + " / " + parent._goal
-                                font.pixelSize: FontSize.caption
-                                font.bold: parent._completedToday > 0
-                                color: parent._completedToday > 0 ? "#ffffff" : ThemeManager.textColor
-                                z: 1
+                                spacing: 4
+                                IconSvg {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    name: "flame"
+                                    size: 12
+                                    color: todayGoalIndicator._completedToday > 0 ? "#ffffff" : "#e05050"
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: todayGoalIndicator._completedToday + " / " + todayGoalIndicator._goal
+                                    font.pixelSize: FontSize.caption
+                                    font.bold: todayGoalIndicator._completedToday > 0
+                                    color: todayGoalIndicator._completedToday > 0 ? "#ffffff" : ThemeManager.textColor
+                                }
                             }
 
                             HoverHandler { id: tdgHover }
@@ -592,13 +634,20 @@ Item {
                             Layout.preferredHeight: 32
                         }
 
-                        // Hide-completed toggle — not shown in full-page views or compact modes
+                        // Hide-completed toggle — not shown in full-page views or compact modes.
+                        // Q4.01 (redesign): was "👁" / "🙈" emoji, now stroke
+                        // IconSvg eye/eye-off pair so the toggle matches the rest of the topbar
+                        // glyphs and re-tints under each theme.
                         ToolButton {
                             id: hideCompletedBtn
                             visible: !root.isFullPageView && !root.isNarrow
-                            text: taskViewModel.showCompleted ? "👁" : "🙈"
                             flat: true
-                            font.pixelSize: 16
+                            contentItem: IconSvg {
+                                name: taskViewModel.showCompleted ? "eye" : "eye-off"
+                                size: 18
+                                color: ThemeManager.iconColor
+                                anchors.centerIn: parent
+                            }
                             ToolTip.text: taskViewModel.showCompleted
                                 ? qsTr("Скрыть выполненные")
                                 : qsTr("Показать выполненные")
@@ -834,10 +883,14 @@ Item {
                                 // в resources/icons/ui/. Делегат рендерит IconSvg если
                                 // iconName есть, иначе fallback на icon-emoji.
                                 Repeater {
+                                    // Q4.01 (redesign): icons match design canvas filter chips —
+                                    // calendar / red flame / clock. iconColor lets "Просрочено"
+                                    // render its flame in design's "#e05050" red instead of the
+                                    // default themed icon colour.
                                     model: [
-                                        { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅", iconName: "today" },
-                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🚨", iconName: "warning" },
-                                        { chipId: "no_date", label: qsTr("Без даты"),   icon: "💭", iconName: "" }
+                                        { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅", iconName: "today", iconColor: "" },
+                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🔥", iconName: "flame", iconColor: "#e05050" },
+                                        { chipId: "no_date", label: qsTr("Без даты"),   icon: "🕒", iconName: "clock", iconColor: "" }
                                     ]
 
                                     delegate: Rectangle {
@@ -870,9 +923,15 @@ Item {
                                                 visible: modelData.iconName !== ""
                                                 name: modelData.iconName
                                                 size: 12
+                                                // Q4.01 (redesign): when active, tint white;
+                                                // otherwise use per-chip iconColor if provided
+                                                // (e.g. red flame for "Просрочено"), else
+                                                // fall back to the themed icon colour.
                                                 color: parent.parent._active
                                                     ? "#ffffff"
-                                                    : ThemeManager.textColor
+                                                    : (modelData.iconColor && modelData.iconColor !== ""
+                                                       ? modelData.iconColor
+                                                       : ThemeManager.textColor)
                                                 Layout.alignment: Qt.AlignVCenter
                                             }
 
@@ -1226,7 +1285,8 @@ Item {
                                     EmptyState {
                                         anchors.fill: parent
                                         visible: taskListView.count === 0
-                                        emoji: "✅"
+                                        iconName: "check-bold"
+                                        successBadge: true
                                         title: qsTr("Задач нет")
                                         message: qsTr("Всё сделано! Самое время добавить что-то новое или просто отдохнуть.")
                                         actionLabel: qsTr("Добавить задачу")
@@ -1791,10 +1851,10 @@ Item {
                                         }
 
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowPin.implicitHeight
+                                            implicitWidth: bulkBtnRowPin.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowPin
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -1830,10 +1890,10 @@ Item {
                                     ToolButton {
                                         id: bulkColorBtn
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowColor.implicitHeight
+                                            implicitWidth: bulkBtnRowColor.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowColor
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -1868,10 +1928,10 @@ Item {
                                     ToolButton {
                                         id: bulkDueBtn
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowDue.implicitHeight
+                                            implicitWidth: bulkBtnRowDue.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowDue
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -1911,10 +1971,10 @@ Item {
                                     ToolButton {
                                         id: bulkDeadlineBtn
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowDeadline.implicitHeight
+                                            implicitWidth: bulkBtnRowDeadline.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowDeadline
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -1951,10 +2011,10 @@ Item {
                                     ToolButton {
                                         id: bulkArchiveBtn
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowArchive.implicitHeight
+                                            implicitWidth: bulkBtnRowArchive.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowArchive
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -1984,10 +2044,10 @@ Item {
                                     ToolButton {
                                         id: bulkCopyMdBtn
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowCopyMd.implicitHeight
+                                            implicitWidth: bulkBtnRowCopyMd.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowCopyMd
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
@@ -2039,10 +2099,10 @@ Item {
                                     // ITER1 #48: show confirmation dialog before bulk-delete
                                     ToolButton {
                                         contentItem: Item {
-                                            implicitHeight: bulkBtnRow_.implicitHeight
-                                            implicitWidth: bulkBtnRow_.implicitWidth
+                                            implicitHeight: bulkBtnRowDelete.implicitHeight
+                                            implicitWidth: bulkBtnRowDelete.implicitWidth
                                             Row {
-                                                id: bulkBtnRow_
+                                                id: bulkBtnRowDelete
                                                 anchors.centerIn: parent
                                                 spacing: 6
                                                 IconSvg {
