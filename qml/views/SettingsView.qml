@@ -27,14 +27,25 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 16
 
-            Label {
-                text: qsTr("Настройки")
-                font.pixelSize: 24
-                font.weight: Font.DemiBold
-                color: ThemeManager.textColor
-                Layout.fillWidth: true
+            // Q4.01 pixel-perfect: дизайн SettingsView header — IconSvg "settings" 22 + title.
+            RowLayout {
                 Layout.topMargin: 28
                 Layout.leftMargin: 24
+                Layout.fillWidth: true
+                spacing: 12
+                IconSvg {
+                    name: "settings"
+                    size: 22
+                    color: ThemeManager.textColor
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                Label {
+                    text: qsTr("Настройки")
+                    font.pixelSize: 24
+                    font.weight: Font.DemiBold
+                    color: ThemeManager.textColor
+                }
+                Item { Layout.fillWidth: true }
             }
 
             SettingsSectionGeneral      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }

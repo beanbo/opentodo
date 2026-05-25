@@ -99,14 +99,31 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 24
 
-            Item { Layout.preferredHeight: 24 }
+            // Q4.01 pixel-perfect: view-header — icon 22 + title 20/600 как у Settings/Notifications/AI.
+            RowLayout {
+                Layout.topMargin: 24
+                spacing: 12
+                IconSvg {
+                    name: "productivity"
+                    size: 22
+                    color: textPrimary
+                    Layout.alignment: Qt.AlignVCenter
+                }
+                Label {
+                    text: qsTr("Продуктивность")
+                    font.pixelSize: FontSize.h2
+                    font.weight: Font.DemiBold
+                    color: textPrimary
+                }
+                Item { Layout.fillWidth: true }
+            }
 
             // === Pomodoro Timer Card ===
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: pomodoroCol.implicitHeight + 32
                 color: contentColor
-                radius: 12
+                radius: 10
                 border.color: borderColor
                 border.width: 1
 
@@ -164,16 +181,23 @@ Item {
                         }
                     }
 
-                    // Progress bar (remaining / cycle length)
+                    // Progress bar (remaining / cycle length).
+                    // Design wants an EMPTY bar in "idle" state ("Готов к старту"):
+                    // it represents elapsed time, not time available. When idle we
+                    // force 0; during work/break we map remainingSeconds/cycleSeconds
+                    // → reverse to show how much has been used.
                     Rectangle {
                         Layout.fillWidth: true
                         height: 4
                         radius: 2
                         color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
                         Rectangle {
-                            width: pomodoroService.cycleSeconds > 0
-                                ? parent.width * (pomodoroService.remainingSeconds / pomodoroService.cycleSeconds)
-                                : 0
+                            width: {
+                                if (pomodoroService.phase === "idle") return 0
+                                if (pomodoroService.cycleSeconds <= 0) return 0
+                                const elapsed = pomodoroService.cycleSeconds - pomodoroService.remainingSeconds
+                                return parent.width * (elapsed / pomodoroService.cycleSeconds)
+                            }
                             height: parent.height
                             radius: 2
                             color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
@@ -775,7 +799,7 @@ Item {
                 Layout.fillWidth: true
                 implicitHeight: briefingCol.implicitHeight + 32
                 color: contentColor
-                radius: 12
+                radius: 10
 
                 // Accent stripe on the leading edge
                 Rectangle {
@@ -934,7 +958,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 120
-                    radius: 12
+                    radius: 10
                     color: contentColor
                     border.color: borderColor
                     border.width: 1
@@ -979,7 +1003,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 120
-                    radius: 12
+                    radius: 10
                     color: contentColor
                     border.color: borderColor
                     border.width: 1
@@ -1029,7 +1053,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 80
-                    radius: 12
+                    radius: 10
                     color: contentColor
                     border.color: borderColor
                     border.width: 1
@@ -1038,9 +1062,11 @@ Item {
                         anchors.centerIn: parent
                         spacing: 12
 
-                        Text {
-                            text: "\uD83D\uDD25"
-                            font.pixelSize: 28
+                        // Q4.01 (redesign): "\uD83D\uDD25" emoji \u2192 stroke flame IconSvg
+                        IconSvg {
+                            name: "flame"
+                            size: 28
+                            color: "#e05050"
                         }
 
                         ColumnLayout {
@@ -1064,7 +1090,7 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 80
-                    radius: 12
+                    radius: 10
                     color: contentColor
                     border.color: borderColor
                     border.width: 1
@@ -1073,9 +1099,11 @@ Item {
                         anchors.centerIn: parent
                         spacing: 12
 
-                        Text {
-                            text: "\u2B50"
-                            font.pixelSize: 28
+                        // Q4.01 (redesign): unicode star → stroke IconSvg "star"
+                        IconSvg {
+                            name: "star"
+                            size: 28
+                            color: "#f7c92f"
                         }
 
                         ColumnLayout {
@@ -1100,7 +1128,7 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 height: 220
-                radius: 12
+                radius: 10
                 color: contentColor
                 border.color: borderColor
                 border.width: 1
@@ -1199,7 +1227,7 @@ Item {
             // === Activity Heatmap ===
             Rectangle {
                 Layout.fillWidth: true
-                radius: 12
+                radius: 10
                 color: contentColor
                 border.color: borderColor
                 border.width: 1
@@ -1373,7 +1401,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: priorityChartCol.implicitHeight + 32
                 color: contentColor
-                radius: 12
+                radius: 10
                 border.color: borderColor
                 border.width: 1
 
@@ -1495,7 +1523,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: recentDoneCol.implicitHeight + 32
                 color: contentColor
-                radius: 12
+                radius: 10
                 border.color: borderColor
                 border.width: 1
 
@@ -1850,7 +1878,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 200
                 color: contentColor
-                radius: 12
+                radius: 10
                 border.color: borderColor
                 border.width: 1
 
@@ -1982,7 +2010,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: tagCloudCol.implicitHeight + 32
                 color: contentColor
-                radius: 12
+                radius: 10
                 border.color: borderColor
                 border.width: 1
 
@@ -2117,7 +2145,7 @@ Item {
             // === Goals ===
             Rectangle {
                 Layout.fillWidth: true
-                radius: 12
+                radius: 10
                 color: contentColor
                 border.color: borderColor
                 border.width: 1

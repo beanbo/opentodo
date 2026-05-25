@@ -83,6 +83,7 @@ Item {
         spacing: 0
 
         // ── Header ─────────────────────────────────────────────────────────
+        // Q4.01 pixel-perfect: дизайн view-header — padding 16 24, gap 12, icon 22.
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 56
@@ -92,7 +93,14 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: Spacing.lg
                 anchors.rightMargin: Spacing.md
-                spacing: Spacing.sm
+                spacing: 12
+
+                IconSvg {
+                    name: "bell"
+                    size: 22
+                    color: textPrimary
+                    Layout.alignment: Qt.AlignVCenter
+                }
 
                 Label {
                     text: qsTr("Уведомления")

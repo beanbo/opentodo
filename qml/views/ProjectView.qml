@@ -604,7 +604,8 @@ Rectangle {
             color: ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
             border.width: 1
-            radius: Radius.md
+            // Q4.01 pixel-perfect: дизайн note panel borderRadius 8 (`Card.borderRadius: 8`).
+            radius: Radius.lg
             clip: true
 
             // Expanded by default for short notes (the whole point of having
@@ -623,27 +624,32 @@ Rectangle {
                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
             }
 
+            // Q4.01 pixel-perfect: дизайн note-panel — padding 12 14, gap 10.
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Spacing.md
+                anchors.topMargin:    12
+                anchors.bottomMargin: 12
+                anchors.leftMargin:   14
+                anchors.rightMargin:  14
                 spacing: Spacing.xs
 
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 24
-                    spacing: Spacing.sm
+                    spacing: 10  // Q4.01 pixel-perfect: gap icon-text 10
 
-                    // Q4.01 (redesign): эмодзи "📝" заменён на IconSvg "note".
+                    // Q4.01 pixel-perfect: icon 16, цвет accent (дизайн).
                     IconSvg {
                         name: "note"
-                        size: 14
-                        color: ThemeManager.textColor
+                        size: 16
+                        color: ThemeManager.accentColor
                         Layout.alignment: Qt.AlignVCenter
                     }
                     Label {
                         text: qsTr("Заметки")
-                        font.pixelSize: FontSize.body
-                        font.bold: true
+                        // Q4.01 pixel-perfect: title fontSize 13 / weight Medium (500).
+                        font.pixelSize: FontSize.bodySmall
+                        font.weight: Font.Medium
                         color: ThemeManager.textColor
                     }
                     Item { Layout.fillWidth: true }
@@ -658,9 +664,10 @@ Rectangle {
                         ToolTip.visible: hovered
                         onClicked: notesCard._expanded = !notesCard._expanded
                         // Task 17cea65b iter-2: was unicode "▾"/"▸".
+                        // Q4.01 pixel-perfect: chevron 14 (дизайн ChevronDownIcon size 14).
                         contentItem: IconSvg {
                             name: notesCard._expanded ? "chevron-down" : "chevron-right"
-                            size: 16
+                            size: 14
                             color: ThemeManager.secondaryTextColor
                             anchors.centerIn: parent
                         }

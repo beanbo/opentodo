@@ -59,14 +59,16 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: Spacing.sm
+            // Q4.01 pixel-perfect: gap header (icon→title) — 12, не Spacing.sm (8).
+            spacing: 12
 
             // Q4.01 (redesign): эмодзи "✨" заменён на IconSvg "sparkles" из
             // stroke-пака. Иконка + чистый заголовок — единый визуальный вес.
+            // Q4.01 pixel-perfect: цвет header icon в дизайне = t.text (не accent).
             IconSvg {
                 name: "sparkles"
                 size: 22
-                color: ThemeManager.accentColor
+                color: ThemeManager.textColor
                 Layout.alignment: Qt.AlignVCenter
             }
 

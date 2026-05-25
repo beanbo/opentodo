@@ -358,7 +358,11 @@ def main() -> None:
             files[path] = path.read_text(encoding="utf-8")
         src = files[path]
 
-        if p["new"] in src and p["old"] not in src:
+        # ВАЖНО: проверяем new ПЕРВЫМ, без условия про old. Иначе если old
+        # является substring of new (например `FontSize.body` ⊂ `FontSize.bodySmall`),
+        # повторный запуск находит old внутри уже-применённого new и заменяет
+        # снова, превращая `bodySmall` → `bodySmallSmall` → `bodySmallSmallSmall`.
+        if p["new"] in src:
             print(f"  = {p['note']}  (уже применено)")
             summary["already"] += 1
             continue

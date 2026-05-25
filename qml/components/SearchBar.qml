@@ -63,8 +63,9 @@ Rectangle {
     }
 
     // ── Dimensions ───────────────────────────────────────────────────────────
-    height: 36
-    radius: Radius.lg
+    // Q4.01 pixel-perfect: дизайн topbar search 260×28, borderRadius 6.
+    height: 28
+    radius: Radius.md
 
     // ── Colors ───────────────────────────────────────────────────────────────
     readonly property color _bgNormal:    ThemeManager.backgroundColor
@@ -130,9 +131,11 @@ Rectangle {
         spacing: 6
         visible: !root.expanded
 
-        Text {
-            text: "⌕"
-            font.pixelSize: FontSize.subtitle
+        // Q4.01 (redesign): "⌕" unicode glyph → stroke search IconSvg so the
+        // search affordance matches the rest of the chrome glyphs.
+        IconSvg {
+            name: "search"
+            size: 14
             color: root._subColor
             Layout.alignment: Qt.AlignVCenter
         }
@@ -156,9 +159,11 @@ Rectangle {
         spacing: 6
         visible: root.expanded
 
-        Text {
-            text: "⌕"
-            font.pixelSize: FontSize.subtitle
+        // Q4.01 (redesign): "⌕" unicode glyph → stroke search IconSvg so the
+        // search affordance matches the rest of the chrome glyphs.
+        IconSvg {
+            name: "search"
+            size: 14
             color: root._subColor
             Layout.alignment: Qt.AlignVCenter
         }
@@ -431,9 +436,10 @@ Rectangle {
                             }
                             spacing: 8
 
-                            Text {
-                                text: "🕒"
-                                font.pixelSize: 13
+                            // Q4.01 (redesign): "🕒" emoji → stroke clock icon
+                            IconSvg {
+                                name: "clock"
+                                size: 13
                                 color: root._subColor
                                 Layout.alignment: Qt.AlignVCenter
                             }

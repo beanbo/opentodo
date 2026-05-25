@@ -216,15 +216,23 @@ Item {
             Layout.preferredHeight: 56
             color: contentColor
 
+            // Q4.01 pixel-perfect: view-header — icon 22 + title h2(22)/DemiBold, gap 12.
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: Spacing.lg
                 anchors.rightMargin: Spacing.md
-                spacing: Spacing.sm
+                spacing: 12
+
+                IconSvg {
+                    name: "trash"
+                    size: 22
+                    color: textPrimary
+                    Layout.alignment: Qt.AlignVCenter
+                }
 
                 Label {
                     text: qsTr("Корзина")
-                    font.pixelSize: FontSize.h1
+                    font.pixelSize: FontSize.h2
                     font.weight: Font.DemiBold
                     color: textPrimary
                 }

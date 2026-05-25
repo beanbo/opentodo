@@ -625,13 +625,14 @@ Item {
 
                         // Search bar — shrinks at narrow widths, hidden in ultra-compact.
                         // The search palette (Ctrl+F / Ctrl+K) remains reachable.
+                        // Q4.01 pixel-perfect: дизайн search 260×28.
                         Loader {
                             id: searchBarLoader
                             source: "../components/SearchBar.qml"
                             visible: !root._narrowUltraCompact
-                            Layout.preferredWidth: root._narrowCompact ? 140 : 220
+                            Layout.preferredWidth: root._narrowCompact ? 140 : 260
                             Layout.minimumWidth: root._narrowCompact ? 100 : 120
-                            Layout.preferredHeight: 32
+                            Layout.preferredHeight: 28
                         }
 
                         // Hide-completed toggle — not shown in full-page views or compact modes.

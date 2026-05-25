@@ -656,32 +656,37 @@ Item {
             // the row-level MouseArea (which opened the task editor
             // instead of toggling subtask expansion). z:5 keeps the click
             // priority above the row MouseArea.
+            // Q4.01 pixel-perfect: дизайн TaskRow всегда рисует chevron-right
+            // слева от чекбокса (decorative для задач без подзадач, кликабельный
+            // — для задач с подзадачами). Ширина обёртки 12, иконка 11, top-выровнена
+            // с paddingTop 3 (alignItems: 'flex-start' в дизайне).
             Item {
                 id: expandToggleItem
-                Layout.preferredWidth:  16
+                Layout.preferredWidth:  12
                 Layout.preferredHeight: 16
-                Layout.alignment: Qt.AlignVCenter
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: 3
                 visible: !root.isSubtask
                 z: 5
 
-                // Iter-night-24: было unicode "▼/▶". Migration completes the
-                // SVG sweep started in task 17cea65b — the subtask-expand
-                // chevron now uses the IconSvg helper so it adapts to theme
-                // colour like every other glyph in the row.
+                readonly property bool _hasSub: taskViewModel.hasSubtasks(root.id)
+
                 IconSvg {
-                    anchors.centerIn: parent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
                     name:    root.expanded ? "chevron-down" : "chevron-right"
-                    size:    12
+                    size:    11
                     color:   root._subColor
-                    // Hide when no subtasks exist
-                    visible: taskViewModel.hasSubtasks(root.id)
+                    // Q4.01 pixel-perfect: всегда видим, но затемнён для задач без подзадач
+                    // (decorative-only). Дизайн делает то же через opacity: mute ? 0.4 : 1.
+                    opacity: expandToggleItem._hasSub ? 1.0 : 0.4
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     anchors.margins: -6
-                    cursorShape: Qt.PointingHandCursor
-                    enabled: taskViewModel.hasSubtasks(root.id)
+                    cursorShape: expandToggleItem._hasSub ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    enabled: expandToggleItem._hasSub
                     // preventStealing + propagateComposedEvents:false so the
                     // row MouseArea (which fills the whole row) doesn't grab
                     // our click during the press phase.
@@ -706,10 +711,11 @@ Item {
                     border.width: 1.5
 
                     // Task 17cea65b iter-3: было unicode "✓".
+                    // Q4.01 pixel-perfect: size 10 (дизайн PriorityCheckCircle.check)
                     IconSvg {
                         anchors.centerIn: parent
                         name: "check"
-                        size: 11
+                        size: 10
                         color: "white"
                         visible: isCompleted
                     }
@@ -766,7 +772,7 @@ Item {
                         textFormat:       root._hasUrl(root.content) ? Text.RichText : Text.PlainText
                         onLinkActivated:  function(url) { Qt.openUrlExternally(url) }
                         linkColor:        ThemeManager.accentColor
-                        font.pixelSize:   root.isSubtask ? FontSize.caption : FontSize.bodySmallSmallSmall
+                        font.pixelSize:   root.isSubtask ? FontSize.caption : FontSize.bodySmall
                         color:            isCompleted ? root._subColor : root._textColor
                         font.strikeout:   isCompleted
                         elide:            Text.ElideRight
@@ -793,7 +799,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: root._inlineEditing
                         // Match the read-only Label so swapping is visually quiet.
-                        font.pixelSize: root.isSubtask ? FontSize.caption : FontSize.bodySmallSmallSmall
+                        font.pixelSize: root.isSubtask ? FontSize.caption : FontSize.bodySmall
                         color:          root._textColor
                         selectByMouse:  true
                         selectionColor: ThemeManager.accentColor
@@ -893,9 +899,9 @@ Item {
                     // "this is a due date" at a glance.
                     Rectangle {
                         visible:  dueDate !== "" && dueDate !== undefined
-                        height:   16
-                        width:    _dueChipRow.implicitWidth + 8
-                        radius:   3
+                        height:   18
+                        width:    _dueChipRow.implicitWidth + 12
+                        radius:   4
                         color:    "transparent"
 
                         Row {
@@ -928,10 +934,11 @@ Item {
                         id: recurringChip
                         visible: root.isRecurring && root.dueDate !== "" && root.dueDate !== undefined
                         Layout.alignment: Qt.AlignVCenter
-                        height: 16
-                        // 12px icon + 4px gap + text + 8px padding (4 на сторону)
-                        width: recurringChipText.implicitWidth + 24
-                        radius: 3
+                        height: 18
+                        // Q4.01 pixel-perfect: дизайн TaskChip height 18, radius 4,
+                        // padding 0 6 → 11 icon + 4 gap + text + 12 padding = +27
+                        width: recurringChipText.implicitWidth + 27
+                        radius: 4
                         color: Qt.rgba(ThemeManager.accentColor.r,
                                        ThemeManager.accentColor.g,
                                        ThemeManager.accentColor.b, 0.12)
@@ -991,9 +998,9 @@ Item {
                     // Q4.01 (redesign): "⏰" emoji заменён на IconSvg "alarm".
                     Rectangle {
                         visible:  root._hasDeadline
-                        height:   16
-                        width:    deadlineLabel.implicitWidth + 24
-                        radius:   3
+                        height:   18
+                        width:    deadlineLabel.implicitWidth + 27
+                        radius:   4
                         color:    "transparent"
 
                         Row {
@@ -1021,9 +1028,9 @@ Item {
                     // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock".
                     Rectangle {
                         visible:  root._durationLabel !== ""
-                        height:   16
-                        width:    durationLabel.implicitWidth + 24
-                        radius:   3
+                        height:   18
+                        width:    durationLabel.implicitWidth + 27
+                        radius:   4
                         color:    "transparent"
 
                         Row {
@@ -1053,9 +1060,9 @@ Item {
                     Rectangle {
                         visible: root._estimateLabel !== ""
                         Layout.alignment: Qt.AlignVCenter
-                        height: 16
-                        width:  estimateChipText.implicitWidth + 24
-                        radius: 3
+                        height: 18
+                        width:  estimateChipText.implicitWidth + 27
+                        radius: 4
                         color:  "transparent"
 
                         Row {

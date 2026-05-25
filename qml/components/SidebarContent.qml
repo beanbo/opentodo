@@ -499,9 +499,10 @@ Rectangle {
                                          ? 44 : 12
                     anchors.verticalCenter: parent.verticalCenter
                     // Width budget: 10px warning glyph + 4px gap + text + 12 padding.
+                    // Q4.01 pixel-perfect: дизайн badge — radius 8 (`borderRadius: 8`).
                     width: overdueBadgeText.implicitWidth + 26
                     height: 18
-                    radius: 9
+                    radius: 8
                     color: ThemeManager.errorColor || "#E74C3C"
                     z: 2
 
@@ -2855,9 +2856,10 @@ Rectangle {
         Behavior on color { ColorAnimation { duration: 150 } }
 
         // Left margin spacer
+        // Q4.01 pixel-perfect: padding-left 12 (дизайн NavItem `padding: '6px 12px'`).
         Item {
             id: leftPad
-            width: 8
+            width: 12
             height: parent.height
             anchors.left: parent.left
         }
@@ -2867,9 +2869,11 @@ Rectangle {
         // Когда Project.icon хранится как "projects/briefcase" (новый формат
         // из ProjectIconPicker), рендерим IconSvg вместо Text-emoji. Совмест-
         // имость: старые проекты с эмодзи продолжают рендериться текстом.
+        // Q4.01 pixel-perfect: iconArea сужена до 16 (только размер иконки),
+        // gap до text задаётся через leftMargin: 10 у label (дизайн gap 10).
         Item {
             id: iconArea
-            width: 22
+            width: 16
             height: parent.height
             anchors.left: leftPad.right
 
@@ -2915,11 +2919,12 @@ Rectangle {
         }
 
         // Label
+        // Q4.01 pixel-perfect: leftMargin 10 — gap icon→text как в дизайне NavItem.
         Text {
             id: itemLabel
             anchors {
                 left: iconArea.right
-                leftMargin: 6
+                leftMargin: 10
                 right: badgeLoader.left
                 rightMargin: 4
                 verticalCenter: parent.verticalCenter

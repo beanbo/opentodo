@@ -107,23 +107,25 @@ Rectangle {
     // Rendered above the MouseArea, anchored so vertical centering is
     // unambiguous (no Layout dependency).
     // Task 17cea65b iter-3: было unicode "+".
+    // Q4.01 pixel-perfect: дизайн quick-add — plus 14px accent, gap до текста 10.
     IconSvg {
         id: plusIcon
         name: "plus"
-        size: 22
+        size: 14
         color: root.accentRed
         anchors.left:           parent.left
         anchors.leftMargin:     16
         anchors.verticalCenter: barHitArea.verticalCenter
-        width: 24
+        width: 14
     }
 
     // Plain TextInput (no Material chrome / floating label) — keeps the text
     // baseline pinned to the bar's vertical center regardless of focus state.
+    // Q4.01 pixel-perfect: gap plus→text 10, fontSize 13 (дизайн placeholder).
     TextInput {
         id: taskField
         anchors.left:           plusIcon.right
-        anchors.leftMargin:     8
+        anchors.leftMargin:     10
         anchors.right:          parent.right
         anchors.rightMargin:    16
         anchors.verticalCenter: barHitArea.verticalCenter
@@ -135,7 +137,7 @@ Rectangle {
         color: root.textCol
         selectionColor: root.accentRed
         selectedTextColor: "white"
-        font.pixelSize: FontSize.body
+        font.pixelSize: FontSize.bodySmall
 
         // Manual placeholder — visible only when empty, never floats.
         Text {
@@ -386,12 +388,12 @@ Rectangle {
                 Accessible.role: Accessible.Button
                 Accessible.name: qsTr("Приоритет")
 
-                contentItem: Text {
-                    text:                "\u2691"    // ⚑ flag
-                    font.pixelSize:      FontSize.subtitle
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
+                // Q4.01 (redesign): unicode flag → stroke IconSvg "flag"
+                contentItem: IconSvg {
+                    name: "flag"
+                    size: 14
                     color: root.priorityColor(root.selectedPriority)
+                    anchors.centerIn: parent
                 }
 
                 background: Rectangle {
@@ -565,10 +567,22 @@ Rectangle {
                         size: 14
                         color: root.textCol
                     }
-                    Text {
-                        visible: !parent._isStroke
+                    // Q4.01 (redesign): empty/legacy fallback was "📁" emoji.
+                    // Show a stroke folder IconSvg when project.icon is empty so
+                    // the chip stays visually consistent with the rest of the
+                    // chrome; legacy emoji-projects (icon stored as a single
+                    // unicode glyph, not "projects/...") still render as Text.
+                    IconSvg {
+                        visible: !parent._isStroke && parent._icon === ""
                         anchors.verticalCenter: parent.verticalCenter
-                        text: parent._icon !== "" ? parent._icon : "📁"
+                        name: "folder"
+                        size: 14
+                        color: root.textCol
+                    }
+                    Text {
+                        visible: !parent._isStroke && parent._icon !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: parent._icon
                         color: root.textCol
                         font: projectCombo.font
                     }

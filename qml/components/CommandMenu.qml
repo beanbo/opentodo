@@ -438,7 +438,8 @@ Item {
         height: Math.min(headerArea.height + listArea.implicitHeight, 520)
 
         color: root._bgColor
-        radius: 12
+        // Q4.01 pixel-perfect: дизайн Card.borderRadius: 10.
+        radius: 10
         border.color: root._borderColor
         border.width: 1
         clip: true
@@ -477,9 +478,10 @@ Item {
                 }
                 spacing: 10
 
-                Text {
-                    text: "⌕"
-                    font.pixelSize: 17
+                // Q4.01 (redesign): "⌕" unicode → stroke search IconSvg
+                IconSvg {
+                    name: "search"
+                    size: 16
                     color: root._subColor
                     Layout.alignment: Qt.AlignVCenter
                 }
