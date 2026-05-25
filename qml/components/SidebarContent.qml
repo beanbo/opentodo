@@ -2830,148 +2830,167 @@ Rectangle {
         signal clicked()
         signal doubleClicked()
 
-        // Объявлено раньше color-привязки ниже, чтобы hoverMouse.containsMouse
-        // не давало undefined при первом построении компонента.
-        MouseArea {
-            id: hoverMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            // Double-click is an additional way for users to expand
-            // hierarchical sidebar items (projects with sub-projects) when
-            // the small chevron hit-zone is hard to target with a touchpad
-            // or high-DPI mouse. The single-click handler still navigates.
-            onClicked: sidebarItem.clicked()
-            onDoubleClicked: sidebarItem.doubleClicked()
-        }
-
+        // Q4.01 pixel-perfect: дизайн NavItem `margin: '1px 8px'` —
+        // визуальный «капсула» уже sidebar на 16 px (по 8 px с каждой
+        // стороны) и отстоит на 1 px сверху от соседнего item. Сам
+        // root оставляем width: parent.width (внешний API), фон/радиус/
+        // hover/mouse — переносятся на дочерний visualContainer.
         height: 36
-        radius: Radius.md
-        color: active
-               ? (isDarkTheme ? "#3d2020" : "#ffede8")
-               : hoverMouse.containsMouse
-                 ? (isDarkTheme ? "#333333" : "#f5f5f5")
-                 : "transparent"
+        color: "transparent"
 
-        Behavior on color { ColorAnimation { duration: 150 } }
+        Rectangle {
+            id: visualContainer
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            anchors.topMargin: 1
+            anchors.bottomMargin: 0
 
-        // Left margin spacer
-        // Q4.01 pixel-perfect: padding-left 12 (дизайн NavItem `padding: '6px 12px'`).
-        Item {
-            id: leftPad
-            width: 12
-            height: parent.height
-            anchors.left: parent.left
-        }
-
-        // Icon / dot
-        // Q4.01 iter-5: добавлен auto-detect префикса "projects/" в iconText.
-        // Когда Project.icon хранится как "projects/briefcase" (новый формат
-        // из ProjectIconPicker), рендерим IconSvg вместо Text-emoji. Совмест-
-        // имость: старые проекты с эмодзи продолжают рендериться текстом.
-        // Q4.01 pixel-perfect: iconArea сужена до 16 (только размер иконки),
-        // gap до text задаётся через leftMargin: 10 у label (дизайн gap 10).
-        Item {
-            id: iconArea
-            width: 16
-            height: parent.height
-            anchors.left: leftPad.right
-
-            // Резолв эффективного имени иконки: явный iconName или iconText
-            // с префиксом "projects/" → IconSvg.
-            readonly property string _effectiveIconName: {
-                if (sidebarItem.iconName !== "") return sidebarItem.iconName
-                if (sidebarItem.iconText.indexOf("projects/") === 0) return sidebarItem.iconText
-                return ""
+            // Объявлено раньше color-привязки ниже, чтобы hoverMouse.containsMouse
+            // не давало undefined при первом построении компонента.
+            MouseArea {
+                id: hoverMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                // Double-click is an additional way for users to expand
+                // hierarchical sidebar items (projects with sub-projects) when
+                // the small chevron hit-zone is hard to target with a touchpad
+                // or high-DPI mouse. The single-click handler still navigates.
+                onClicked: sidebarItem.clicked()
+                onDoubleClicked: sidebarItem.doubleClicked()
             }
 
-            // Stroke-SVG icon (Q4.01 redesign). Wins over the emoji Text
-            // when iconName is set; tinted via MultiEffect in IconSvg so
-            // active/idle states animate the colour.
-            IconSvg {
-                visible: iconArea._effectiveIconName !== ""
-                anchors.centerIn: parent
-                name: iconArea._effectiveIconName
-                size: 16
-                color: sidebarItem.active
-                       ? ThemeManager.accentColor
-                       : (isDarkTheme ? "#aaaaaa" : "#555555")
-            }
-
-            // Colored dot for projects / favorites (no SVG icon set, no emoji)
-            Rectangle {
-                visible: iconArea._effectiveIconName === "" && sidebarItem.iconIsText
-                anchors.centerIn: parent
-                width: 8
-                height: 8
-                radius: Radius.sm
-                color: sidebarItem.dotColor
-            }
-
-            // Emoji icon — user-typed glyph on a project, or legacy default.
-            Text {
-                visible: iconArea._effectiveIconName === "" && !sidebarItem.iconIsText
-                anchors.centerIn: parent
-                text: sidebarItem.iconText
-                font.pixelSize: FontSize.body
-                color: sidebarItem.active ? "#db4c3f" : (isDarkTheme ? "#aaaaaa" : "#555555")
-            }
-        }
-
-        // Label
-        // Q4.01 pixel-perfect: leftMargin 10 — gap icon→text как в дизайне NavItem.
-        Text {
-            id: itemLabel
-            anchors {
-                left: iconArea.right
-                leftMargin: 10
-                right: badgeLoader.left
-                rightMargin: 4
-                verticalCenter: parent.verticalCenter
-            }
-            text: sidebarItem.label
-            font.pixelSize: FontSize.bodySmall
-            elide: Text.ElideRight
+            radius: Radius.md
             color: sidebarItem.active
-                   ? "#db4c3f"
-                   : (isDarkTheme ? "#e0e0e0" : "#202020")
+                   ? (sidebarItem.isDarkTheme ? "#3d2020" : "#ffede8")
+                   : hoverMouse.containsMouse
+                     ? (sidebarItem.isDarkTheme ? "#333333" : "#f5f5f5")
+                     : "transparent"
 
             Behavior on color { ColorAnimation { duration: 150 } }
-        }
 
-        // Count badge (pill)
-        Loader {
-            id: badgeLoader
-            anchors {
-                right: parent.right
-                rightMargin: 10
-                verticalCenter: parent.verticalCenter
+            // Left margin spacer
+            // Q4.01 pixel-perfect: padding-left 12 (дизайн NavItem `padding: '6px 12px'`).
+            Item {
+                id: leftPad
+                width: 12
+                height: parent.height
+                anchors.left: parent.left
             }
-            active: sidebarItem.showCount && sidebarItem.count > 0
-            visible: active
 
-            sourceComponent: Rectangle {
-                height: 18
-                width: Math.max(18, badgeText.implicitWidth + 10)
-                radius: 9
-                color: sidebarItem.active
-                       ? "#db4c3f"
-                       : (isDarkTheme ? "#3a3a3a" : "#ebebeb")
+            // Icon / dot
+            // Q4.01 iter-5: добавлен auto-detect префикса "projects/" в iconText.
+            // Когда Project.icon хранится как "projects/briefcase" (новый формат
+            // из ProjectIconPicker), рендерим IconSvg вместо Text-emoji. Совмест-
+            // имость: старые проекты с эмодзи продолжают рендериться текстом.
+            // Q4.01 pixel-perfect: iconArea сужена до 16 (только размер иконки),
+            // gap до text задаётся через leftMargin: 10 у label (дизайн gap 10).
+            Item {
+                id: iconArea
+                width: 16
+                height: parent.height
+                anchors.left: leftPad.right
 
-                Behavior on color { ColorAnimation { duration: 150 } }
+                // Резолв эффективного имени иконки: явный iconName или iconText
+                // с префиксом "projects/" → IconSvg.
+                readonly property string _effectiveIconName: {
+                    if (sidebarItem.iconName !== "") return sidebarItem.iconName
+                    if (sidebarItem.iconText.indexOf("projects/") === 0) return sidebarItem.iconText
+                    return ""
+                }
 
-                Text {
-                    id: badgeText
+                // Stroke-SVG icon (Q4.01 redesign). Wins over the emoji Text
+                // when iconName is set; tinted via MultiEffect in IconSvg so
+                // active/idle states animate the colour.
+                IconSvg {
+                    visible: iconArea._effectiveIconName !== ""
                     anchors.centerIn: parent
-                    text: sidebarItem.count > 99 ? "99+" : sidebarItem.count.toString()
-                    font.pixelSize: FontSize.caption
-                    font.weight: Font.Medium
+                    name: iconArea._effectiveIconName
+                    size: 16
                     color: sidebarItem.active
-                           ? "#ffffff"
-                           : (isDarkTheme ? "#aaaaaa" : "#666666")
+                           ? ThemeManager.accentColor
+                           : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#555555")
+                }
+
+                // Colored dot for projects / favorites (no SVG icon set, no emoji)
+                Rectangle {
+                    visible: iconArea._effectiveIconName === "" && sidebarItem.iconIsText
+                    anchors.centerIn: parent
+                    width: 8
+                    height: 8
+                    radius: Radius.sm
+                    color: sidebarItem.dotColor
+                }
+
+                // Emoji icon — user-typed glyph on a project, or legacy default.
+                Text {
+                    visible: iconArea._effectiveIconName === "" && !sidebarItem.iconIsText
+                    anchors.centerIn: parent
+                    text: sidebarItem.iconText
+                    font.pixelSize: FontSize.body
+                    color: sidebarItem.active ? "#db4c3f" : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#555555")
                 }
             }
-        }
+
+            // Label
+            // Q4.01 pixel-perfect: leftMargin 10 — gap icon→text как в дизайне NavItem.
+            // Q4.01 pixel-perfect: active NavItem использует fontWeight 500 (Medium)
+            // — выделение активного пункта по дизайну app-shell.jsx.
+            Text {
+                id: itemLabel
+                anchors {
+                    left: iconArea.right
+                    leftMargin: 10
+                    right: badgeLoader.left
+                    rightMargin: 4
+                    verticalCenter: parent.verticalCenter
+                }
+                text: sidebarItem.label
+                font.pixelSize: FontSize.bodySmall
+                font.weight: sidebarItem.active ? Font.Medium : Font.Normal
+                elide: Text.ElideRight
+                color: sidebarItem.active
+                       ? "#db4c3f"
+                       : (sidebarItem.isDarkTheme ? "#e0e0e0" : "#202020")
+
+                Behavior on color { ColorAnimation { duration: 150 } }
+            }
+
+            // Count badge (pill)
+            Loader {
+                id: badgeLoader
+                anchors {
+                    right: parent.right
+                    rightMargin: 10
+                    verticalCenter: parent.verticalCenter
+                }
+                active: sidebarItem.showCount && sidebarItem.count > 0
+                visible: active
+
+                sourceComponent: Rectangle {
+                    height: 18
+                    width: Math.max(18, badgeText.implicitWidth + 10)
+                    radius: 9
+                    color: sidebarItem.active
+                           ? "#db4c3f"
+                           : (sidebarItem.isDarkTheme ? "#3a3a3a" : "#ebebeb")
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+
+                    Text {
+                        id: badgeText
+                        anchors.centerIn: parent
+                        text: sidebarItem.count > 99 ? "99+" : sidebarItem.count.toString()
+                        font.pixelSize: FontSize.caption
+                        font.weight: Font.Medium
+                        color: sidebarItem.active
+                               ? "#ffffff"
+                               : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#666666")
+                    }
+                }
+            }
+        } // visualContainer
 
     } // SidebarItem
 

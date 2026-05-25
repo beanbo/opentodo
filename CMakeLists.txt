@@ -706,9 +706,11 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/alarm.svg
         resources/icons/ui/archive.svg
         resources/icons/ui/bell.svg
+        resources/icons/ui/bitcoin.svg
         resources/icons/ui/board.svg
         resources/icons/ui/calendar.svg
         resources/icons/ui/check.svg
+        resources/icons/ui/check-bold.svg
         resources/icons/ui/check-circle.svg
         resources/icons/ui/chevron-down.svg
         resources/icons/ui/chevron-left.svg
@@ -718,6 +720,9 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/close.svg
         resources/icons/ui/cube.svg
         resources/icons/ui/drag-handle.svg
+        resources/icons/ui/ethereum.svg
+        resources/icons/ui/eye.svg
+        resources/icons/ui/eye-off.svg
         resources/icons/ui/filter.svg
         resources/icons/ui/flag.svg
         resources/icons/ui/flame.svg
@@ -732,6 +737,7 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/more-horizontal.svg
         resources/icons/ui/note.svg
         resources/icons/ui/offline.svg
+        resources/icons/ui/opentodo-mark.svg
         resources/icons/ui/paperclip.svg
         resources/icons/ui/pause.svg
         resources/icons/ui/pin.svg
@@ -748,11 +754,14 @@ qt_add_resources(OpenTodo "ui_icons"
         resources/icons/ui/sparkles.svg
         resources/icons/ui/star-filled.svg
         resources/icons/ui/star.svg
+        resources/icons/ui/success-badge.svg
         resources/icons/ui/sync.svg
         resources/icons/ui/tag.svg
         resources/icons/ui/today.svg
+        resources/icons/ui/ton.svg
         resources/icons/ui/trash.svg
         resources/icons/ui/upcoming.svg
+        resources/icons/ui/usdt.svg
         resources/icons/ui/warning.svg
 )
 

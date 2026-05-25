@@ -413,8 +413,15 @@ Item {
                         ToolButton {
                             id: sidebarToggleButton
                             objectName: "sidebarToggleButton"
-                            text: "☰"  // hamburger glyph; avoids depending on a missing svg resource
-                            font.pixelSize: FontSize.title
+                            // Q4.01 pixel-perfect: дизайн использует stroke SVG MenuIcon
+                            // вместо юникод-символа ☰ (см. .design-temp/.../app-shell.jsx
+                            // строка 120). Иконка size 18, цвет — themed iconColor.
+                            contentItem: IconSvg {
+                                anchors.centerIn: parent
+                                name: "menu"
+                                size: 18
+                                color: ThemeManager.iconColor
+                            }
                             onClicked: sidebarViewModel.toggleSidebar()
                             KeyNavigation.tab: searchBarLoader  // F-6.96 a11y
 
@@ -899,15 +906,16 @@ Item {
 
                                         readonly property bool _active: root._quickChip === modelData.chipId
 
-                                        Layout.preferredHeight: 26
+                                        Layout.preferredHeight: 24
                                         Layout.preferredWidth:  _chipLabel.implicitWidth + _chipIcon.implicitWidth + Spacing.sm + 24
-                                        radius: 13
+                                        radius: 16
 
-                                        color: _active
-                                            ? ThemeManager.accentColor
-                                            : Qt.rgba(ThemeManager.textColor.r,
-                                                      ThemeManager.textColor.g,
-                                                      ThemeManager.textColor.b, 0.08)
+                                        // Q4.01 pixel-perfect: chip bg всегда surface (см.
+                                        // .design-temp/.../view-others.jsx InboxView). Active
+                                        // state выделяется tinted border, а не сменой bg.
+                                        color: ThemeManager.surfaceColor
+                                        border.color: _active ? ThemeManager.accentColor : ThemeManager.borderColor
+                                        border.width: 1
 
                                         Behavior on color {
                                             ColorAnimation { duration: Duration.fast }
@@ -915,7 +923,7 @@ Item {
 
                                         RowLayout {
                                             anchors.centerIn: parent
-                                            spacing: 4
+                                            spacing: 6
 
                                             // Q4.01 (redesign): IconSvg для chip-ов
                                             // с iconName, fallback на эмодзи иначе.
@@ -924,15 +932,11 @@ Item {
                                                 visible: modelData.iconName !== ""
                                                 name: modelData.iconName
                                                 size: 12
-                                                // Q4.01 (redesign): when active, tint white;
-                                                // otherwise use per-chip iconColor if provided
-                                                // (e.g. red flame for "Просрочено"), else
-                                                // fall back to the themed icon colour.
-                                                color: parent.parent._active
-                                                    ? "#ffffff"
-                                                    : (modelData.iconColor && modelData.iconColor !== ""
-                                                       ? modelData.iconColor
-                                                       : ThemeManager.textColor)
+                                                // Q4.01 pixel-perfect: icon сохраняет свой
+                                                // цвет даже в active (red flame остаётся red).
+                                                color: modelData.iconColor && modelData.iconColor !== ""
+                                                    ? modelData.iconColor
+                                                    : ThemeManager.textColor
                                                 Layout.alignment: Qt.AlignVCenter
                                             }
 
@@ -946,11 +950,9 @@ Item {
                                             Text {
                                                 id: _chipLabel
                                                 text: modelData.label
-                                                font.pixelSize: FontSize.caption
+                                                font.pixelSize: FontSize.small
                                                 font.bold: parent.parent._active
-                                                color: parent.parent._active
-                                                    ? "#ffffff"
-                                                    : ThemeManager.textColor
+                                                color: ThemeManager.textColor
                                                 verticalAlignment: Text.AlignVCenter
 
                                                 Behavior on color {

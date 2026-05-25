@@ -505,15 +505,10 @@ Item {
         }
     }
 
-    // ── Bottom divider ────────────────────────────────────────────────────
-    Rectangle {
-        anchors.bottom: parent.bottom
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        anchors.leftMargin: Spacing.md
-        height: 1
-        color:  isDarkTheme ? "#363636" : "#f0f0f0"
-    }
+    // ── Bottom divider — удалён в Q4.01 pixel-perfect. Замещён full-width
+    // themed border в самом конце root Item (см. конец файла). Старый
+    // divider использовал hardcoded `#363636/#f0f0f0` и leftMargin Spacing.md,
+    // новый — ThemeManager.borderColor full-width (как в дизайне TaskRow).
 
     // ── Color stripe (left edge) — visible only when task has a color set ─
     // Width 3px, height matches the main row; rendered above background but
@@ -697,10 +692,15 @@ Item {
             }
 
             // ── Completion checkbox (circular) ────────────────────────────
+            // Q4.01 pixel-perfect: top-align like the design (alignItems: flex-start
+            // in TaskRow). topMargin nudges the 18px circle down a hair in non-compact
+            // mode so it sits on the typographic baseline of the title row instead
+            // of hugging the very top edge.
             Item {
                 Layout.preferredWidth:  18
                 Layout.preferredHeight: 18
-                Layout.alignment: Qt.AlignVCenter
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: _rowVPadding > 8 ? 0 : 4
 
                 Rectangle {
                     id: checkCircle
@@ -734,9 +734,13 @@ Item {
             }
 
             // ── Content column ────────────────────────────────────────────
+            // Q4.01 pixel-perfect: top-aligned (design uses alignItems: flex-start),
+            // so the title sits at the top of the row and any wrapped description
+            // / meta-chips flow downward instead of being centred against the
+            // checkbox/expand-toggle.
             ColumnLayout {
                 Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
+                Layout.alignment: Qt.AlignTop
                 spacing: 2
 
                 // Wrapper around the title Text + inline-edit TextField. A
@@ -2259,5 +2263,20 @@ Item {
                 }
             }
         }
+    }
+
+    // ── Bottom border (Q4.01 pixel-perfect) ───────────────────────────────
+    // Matches design TaskRow `borderBottom: 1px solid ${t.border}`. Sits as
+    // the LAST child of root Item so it paints above any earlier dividers and
+    // above the expanded subtaskSection's bottom edge. Hidden for subtasks —
+    // the subtask list inside an expanded parent must not be sliced by
+    // per-row separators.
+    Rectangle {
+        anchors.left:   parent.left
+        anchors.right:  parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: ThemeManager.borderColor
+        visible: !root.isSubtask
     }
 }

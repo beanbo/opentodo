@@ -72,17 +72,29 @@ Rectangle {
         }
 
         // Task count
-        Text {
-            id: countText
-            text: root.taskCount > 0 ? "(" + root.taskCount + ")" : ""
-            font.pixelSize: FontSize.tiny
-            // Iter-night-31: was hardcoded "#999999" — readable on the dark
-            // theme (whose secondaryTextColor is the same shade) but too
-            // light against light/kale/lavender/etc. sidebars. Bind to the
-            // active palette like the sidebar's section labels do.
-            color: ThemeManager.secondaryTextColor
-            verticalAlignment: Text.AlignVCenter
+        // Q4.01 pixel-perfect: дизайн SectionHeader count — pill с background surface,
+        // radius 9, padding 1 7, fontSize 10 / Medium.
+        Rectangle {
+            id: countBadge
             visible: root.taskCount > 0
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth:  countLabel.implicitWidth + 14   // 7+7 padding
+            implicitHeight: countLabel.implicitHeight + 2   // 1+1 padding
+            radius: 9
+            color: ThemeManager.surfaceColor
+
+            Text {
+                id: countLabel
+                anchors.centerIn: parent
+                text: root.taskCount.toString()
+                font.pixelSize: FontSize.tiny
+                font.weight: Font.Medium
+                // Iter-night-31: was hardcoded "#999999" — readable on the dark
+                // theme (whose secondaryTextColor is the same shade) but too
+                // light against light/kale/lavender/etc. sidebars. Bind to the
+                // active palette like the sidebar's section labels do.
+                color: ThemeManager.secondaryTextColor
+            }
         }
 
         // Spacer

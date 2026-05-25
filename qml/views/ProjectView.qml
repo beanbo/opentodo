@@ -201,11 +201,28 @@ Rectangle {
                 anchors.rightMargin: Spacing.sm
                 spacing: Spacing.md
 
-                // Project icon: emoji if set, otherwise color dot.
+                // Project icon: brand mark for OpenTodo (no explicit icon),
+                // emoji/SVG icon if set, otherwise color dot.
                 Item {
                     width: 22
                     height: 22
                     Layout.alignment: Qt.AlignVCenter
+
+                    // Q4.01 pixel-perfect: бренд-маркер для проекта OpenTodo.
+                    // Когда у проекта нет своей иконки и имя = "OpenTodo" —
+                    // рендерим красный круг с белой галочкой (см. дизайн
+                    // .design-temp/opentodo/project/icons.jsx → OpenTodoMark).
+                    // Используем прямо Image (без IconSvg/MultiEffect),
+                    // чтобы галочка осталась белой, а круг — фирменно-красным.
+                    Image {
+                        visible: project && project.icon === "" && project.name === "OpenTodo"
+                        source: "qrc:/icons/resources/icons/ui/opentodo-mark.svg"
+                        anchors.fill: parent
+                        sourceSize.width: 44
+                        sourceSize.height: 44
+                        smooth: true
+                        mipmap: false
+                    }
 
                     Text {
                         anchors.centerIn: parent
@@ -215,7 +232,7 @@ Rectangle {
                     }
                     Rectangle {
                         anchors.centerIn: parent
-                        visible: !project || project.icon === ""
+                        visible: project && project.icon === "" && project.name !== "OpenTodo"
                         width: 10
                         height: 10
                         radius: 5
