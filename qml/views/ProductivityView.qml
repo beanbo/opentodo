@@ -142,8 +142,8 @@ Item {
                         // секции уже опознавателен в контексте Productivity.
                         Text {
                             text: qsTr("Помодоро")
-                            font.pixelSize: 16
-                            font.bold: true
+                            font.pixelSize: FontSize.body
+                            font.weight: Font.DemiBold
                             color: textPrimary
                         }
                         Item { Layout.fillWidth: true }
@@ -442,8 +442,8 @@ Item {
                     // Q4.01 (redesign): "🍅" префикс убран.
                     Text {
                         text: qsTr("Pomodoro статистика")
-                        font.pixelSize: 16
-                        font.bold: true
+                        font.pixelSize: FontSize.body
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -689,8 +689,8 @@ Item {
 
                         Text {
                             text: qsTr("Прогресс по проектам")
-                            font.pixelSize: 16
-                            font.bold: true
+                            font.pixelSize: FontSize.body
+                            font.weight: Font.DemiBold
                             color: textPrimary
                             Layout.alignment: Qt.AlignVCenter
                         }

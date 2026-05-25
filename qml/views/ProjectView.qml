@@ -199,7 +199,7 @@ Rectangle {
                 anchors.fill:        parent
                 anchors.leftMargin:  Spacing.lg
                 anchors.rightMargin: Spacing.sm
-                spacing: Spacing.md
+                spacing: 12
 
                 // Project icon: brand mark for OpenTodo (no explicit icon),
                 // emoji/SVG icon if set, otherwise color dot.
@@ -243,7 +243,7 @@ Rectangle {
                 // Project name
                 Label {
                     text:            project ? project.name : ""
-                    font.pixelSize:  FontSize.h2
+                    font.pixelSize:  FontSize.viewHeader
                     font.weight:     Font.DemiBold
                     color:           textPrimary
                     elide:           Text.ElideRight

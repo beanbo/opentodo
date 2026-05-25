@@ -636,7 +636,7 @@ Item {
             anchors {
                 fill:        parent
                 leftMargin:  root.isSubtask ? Spacing.md + 24 : Spacing.md
-                rightMargin: Spacing.sm
+                rightMargin: Spacing.md
                 topMargin:   _rowVPadding
                 bottomMargin: _rowVPadding
             }
@@ -777,6 +777,8 @@ Item {
                         onLinkActivated:  function(url) { Qt.openUrlExternally(url) }
                         linkColor:        ThemeManager.accentColor
                         font.pixelSize:   root.isSubtask ? FontSize.caption : FontSize.bodySmall
+                        lineHeight:       1.4
+                        lineHeightMode:   Text.ProportionalHeight
                         color:            isCompleted ? root._subColor : root._textColor
                         font.strikeout:   isCompleted
                         elide:            Text.ElideRight
@@ -917,7 +919,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 name: "calendar"
                                 size: 11
-                                color: root._isOverdue ? "#db4c3f" : root._subColor
+                                color: root._isOverdue ? ThemeManager.errorColor : root._subColor
                             }
 
                             Text {
@@ -925,7 +927,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text:          root.dueString !== "" ? root.dueString : root.dueDate
                                 font.pixelSize: FontSize.caption
-                                color:         root._isOverdue ? "#db4c3f" : root._subColor
+                                color:         root._isOverdue ? ThemeManager.errorColor : root._subColor
                             }
                         }
                     }
