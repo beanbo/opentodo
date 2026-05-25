@@ -8,6 +8,7 @@
 | 2 | `8a39191` | NavItem margin '1px 8px' + active Medium, TaskRow flex-start + bottom border, filter chips redesign, MenuIcon SVG, SectionHeader count pill, OpenTodoMark brand SVG |
 | 3 | `863db0b` | FontSize.viewHeader token 20, Notifications/AI/Trash/Productivity headers, Sidebar bottom-section separator, Note panel subtitle, ProjectView toggle icons 14 |
 | 4 | `e441f6c` | Productivity card titles 16→14/DemiBold, ProjectView header spacing 12 + title viewHeader, EmptyState message 13 + maxWidth 320 + button radius 20 + label 13, TaskItem right padding md + lineHeight 1.4 + overdue color → ThemeManager.errorColor |
+| 5 | `acb2062` | topBar color bg, RowLayout spacing 14, mainColumn paddingTop 6 (drop bottomPadding 8), overdue badge fontWeight 600, NavItem idle icon color → ThemeManager.iconColor, EmptyState gap 16 |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
