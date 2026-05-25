@@ -1,5 +1,13 @@
 # Расхождения между дизайн-проектом и QML-приложением
 
+## Прогресс раундов
+
+| Раунд | Commit | Что закрыто |
+|---|---|---|
+| 1 | `63c29ff` | sidebar 280→220, topbar 56→48, taskItemHeight 40→36, viewTitle 18→15, SectionHeader 5 правок, TaskItem font + minHeight, ProjectView header margins, Settings/Notifications/AI titles |
+| 2 | `8a39191` | NavItem margin '1px 8px' + active Medium, TaskRow flex-start + bottom border, filter chips redesign, MenuIcon SVG, SectionHeader count pill, OpenTodoMark brand SVG |
+| 3 | `863db0b` | FontSize.viewHeader token 20, Notifications/AI/Trash/Productivity headers, Sidebar bottom-section separator, Note panel subtitle, ProjectView toggle icons 14 |
+
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
 - Дизайн: `.design-temp/opentodo/project/` (icons.jsx, project-icons.jsx, app-shell.jsx, view-project.jsx, view-others.jsx).
