@@ -388,7 +388,7 @@ Item {
                     objectName: "topBar"
                     Layout.fillWidth: true
                     Layout.preferredHeight: 48
-                    color: contentColor
+                    color: bgColor
                     // Скрывается в режиме фокуса (F11) — задачи без отвлекающих элементов.
                     visible: !root._focusMode
 
@@ -407,7 +407,7 @@ Item {
                             leftMargin: taskItemPadding
                             rightMargin: taskItemPadding
                         }
-                        spacing: 12
+                        spacing: 14
 
                         // Hamburger / sidebar toggle
                         ToolButton {

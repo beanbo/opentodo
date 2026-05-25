@@ -84,8 +84,7 @@ Rectangle {
         Column {
             id: mainColumn
             width: parent.width
-            topPadding: 8
-            bottomPadding: 8
+            topPadding: 6
 
             // I24-D: overdue tasks count for the "Сегодня" badge.
             // Recomputed on dataStore changes and once per minute (so a task
@@ -529,7 +528,7 @@ Rectangle {
                             text: mainColumn._overdueCount.toString()
                             color: "white"
                             font.pixelSize: 10
-                            font.bold: true
+                            font.weight: Font.DemiBold
                         }
                     }
 
@@ -2913,7 +2912,7 @@ Rectangle {
                     size: 16
                     color: sidebarItem.active
                            ? ThemeManager.accentColor
-                           : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#555555")
+                           : ThemeManager.iconColor
                 }
 
                 // Colored dot for projects / favorites (no SVG icon set, no emoji)
@@ -2932,7 +2931,7 @@ Rectangle {
                     anchors.centerIn: parent
                     text: sidebarItem.iconText
                     font.pixelSize: FontSize.body
-                    color: sidebarItem.active ? "#db4c3f" : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#555555")
+                    color: sidebarItem.active ? "#db4c3f" : ThemeManager.iconColor
                 }
             }
 

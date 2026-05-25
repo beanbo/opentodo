@@ -22,7 +22,7 @@ Item {
 
     ColumnLayout {
         anchors.centerIn: parent
-        spacing: Spacing.lg
+        spacing: Spacing.md
         width: Math.min(parent.width - Spacing.xl * 2, 400)
 
         // "Задач нет" success badge — green circle + white check. Drawn as a
