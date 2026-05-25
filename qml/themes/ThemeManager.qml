@@ -130,6 +130,16 @@ QtObject {
     readonly property color priorityP3Color:    activeTheme.priorityP3Color
     readonly property color priorityP4Color:    activeTheme.priorityP4Color
     readonly property bool  isDark:             activeTheme.isDark
+    // Q4.01 (redesign): expose iconColor + titleBarColor at the root so
+    // QML callers can write `ThemeManager.iconColor`. Fall back to
+    // secondaryTextColor / surfaceColor for themes that have not been
+    // explicitly updated yet (kale/blueberry/etc.).
+    readonly property color iconColor:          activeTheme.iconColor !== undefined
+                                                ? activeTheme.iconColor
+                                                : activeTheme.secondaryTextColor
+    readonly property color titleBarColor:      activeTheme.titleBarColor !== undefined
+                                                ? activeTheme.titleBarColor
+                                                : activeTheme.surfaceColor
 
     // Resolve the active theme object via effectiveThemeName.
     readonly property QtObject activeTheme: themes[effectiveThemeName] || classic_light
@@ -157,18 +167,20 @@ QtObject {
         readonly property color sidebarTextColor:   "#333333"
         readonly property color sidebarActiveColor: "#ffede8"
         readonly property color textColor:          "#202020"
-        readonly property color secondaryTextColor: "#666666"
+        readonly property color secondaryTextColor: "#808080"
+        readonly property color titleBarColor:      "#f4f4f4"
+        readonly property color iconColor:          "#555555"
         readonly property color accentColor:        "#db4c3f"
         // F-8.45: white readable on this deep-red accent
         readonly property color accentForeground:      "#ffffff"
-        readonly property color borderColor:        "#f0f0f0"
+        readonly property color borderColor:        "#eaeaea"
         readonly property color hoverColor:         "#f5f5f5"
         // F-8.4: ~20% alpha tint of accentColor (#db4c3f) on white background
         readonly property color selectionColor:     Qt.rgba(0.859, 0.298, 0.247, 0.18)
         // F-8.32: lighter scrim for light theme
         readonly property color scrimColor:         Qt.rgba(0, 0, 0, 0.4)
         // F-8.2: semantic colors for light theme — saturated, readable on white
-        readonly property color errorColor:         "#d33b2c"
+        readonly property color errorColor:         "#e05050"
         readonly property color warningColor:       "#e08e10"
         readonly property color successColor:       "#3aa84e"
         readonly property color infoColor:          "#2980b9"
@@ -189,6 +201,13 @@ QtObject {
         readonly property color sidebarActiveColor: "#3d2020"
         readonly property color textColor:          "#e0e0e0"
         readonly property color secondaryTextColor: "#999999"
+        // Q4.01 (redesign): iconColor + titleBarColor pulled from the design
+        // canvas palette so chrome glyphs (topbar, view headers, project
+        // headers) tint consistently across themes. Without these every
+        // IconSvg that bound to ThemeManager.iconColor was falling back to
+        // black/transparent, breaking the stroke-icon aesthetic on dark.
+        readonly property color iconColor:          "#aaaaaa"
+        readonly property color titleBarColor:      "#2a1d1d"
         readonly property color accentColor:        "#db4c3f"
         // F-8.45: white readable on dark-red accent
         readonly property color accentForeground:      "#ffffff"
@@ -221,6 +240,8 @@ QtObject {
         readonly property color sidebarActiveColor: "#5a6f5d"
         readonly property color textColor:          "#d8e8d6"
         readonly property color secondaryTextColor: "#8ea88c"
+        readonly property color titleBarColor:      "#283228"
+        readonly property color iconColor:          "#9ec09a"
         readonly property color accentColor:        "#7fba7a"
         // F-8.45: white readable on green accent
         readonly property color accentForeground:      "#ffffff"
@@ -254,6 +275,8 @@ QtObject {
         readonly property color textColor:          "#d0d4f0"
         // R-8.54: bumped for better contrast (was #7a80b8)
         readonly property color secondaryTextColor: "#8a90c8"
+        readonly property color titleBarColor:      "#131635"
+        readonly property color iconColor:          "#9aa0d0"
         readonly property color accentColor:        "#6c88f4"
         // F-8.45: white readable on blue accent
         readonly property color accentForeground:      "#ffffff"
@@ -349,6 +372,8 @@ QtObject {
         readonly property color sidebarActiveColor: "#3a3a3a"
         readonly property color textColor:          "#d0d0d0"
         readonly property color secondaryTextColor: "#808080"
+        readonly property color titleBarColor:      "#1c1c1c"
+        readonly property color iconColor:          "#a0a0a0"
         // B-8.5: desaturated cool blue replaces #808080 so selection/hover/P3
         // are distinguishable from the pure-grayscale palette
         readonly property color accentColor:        "#7a9cc6"
