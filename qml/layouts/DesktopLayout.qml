@@ -2112,13 +2112,26 @@ Item {
                                     }
 
                                     // ── Завершить ────────────────────────────────────────────
+                                    // Q4.01 (night iter-4): "✓ Завершить" text-emoji
+                                    // заменён на IconSvg "check" + Text label, чтобы
+                                    // bulk-action кнопка использовала stroke icon как
+                                    // остальные кнопки в bulk bar (Удалить/Метки/etc.).
                                     ToolButton {
-                                        contentItem: Text {
-                                            text: qsTr("✓ Завершить")
-                                            color: "white"
-                                            font.pixelSize: FontSize.body
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: Row {
+                                            spacing: 6
+                                            anchors.centerIn: parent
+                                            IconSvg {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                name: "check"
+                                                size: 14
+                                                color: "white"
+                                            }
+                                            Text {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: qsTr("Завершить")
+                                                color: "white"
+                                                font.pixelSize: FontSize.body
+                                            }
                                         }
                                         onClicked: taskViewModel.bulkComplete()
                                         ToolTip.visible: hovered
