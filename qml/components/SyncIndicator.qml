@@ -176,7 +176,7 @@ Rectangle {
                 width: Math.max(14, badgeText.implicitWidth + 6)
                 height: 14
                 radius: 7
-                color: "#db4c3f"
+                color: ThemeManager.accentColor
                 anchors.top: parent.top
                 anchors.right: parent.right
                 anchors.topMargin: -3

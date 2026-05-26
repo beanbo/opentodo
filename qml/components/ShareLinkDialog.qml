@@ -200,7 +200,7 @@ Dialog {
                 font.pixelSize: 32
                 horizontalAlignment: Text.AlignHCenter
                 Layout.alignment: Qt.AlignHCenter
-                color: "#db4c3f"
+                color: ThemeManager.errorColor
             }
             Label {
                 text: qsTr("Не удалось опубликовать ссылку.")

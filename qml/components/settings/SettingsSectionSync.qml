@@ -590,7 +590,7 @@ Rectangle {
 
                 Rectangle {
                     width: 8; height: 8; radius: 4
-                    color: "#f49c18"
+                    color: ThemeManager.warningColor
                 }
 
                 Text {

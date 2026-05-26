@@ -1142,7 +1142,7 @@ Item {
                         IconSvg {
                             name: "flame"
                             size: 28
-                            color: "#e05050"
+                            color: ThemeManager.errorColor
                         }
 
                         ColumnLayout {
@@ -1545,10 +1545,10 @@ Item {
                     // Bar rows
                     Repeater {
                         model: priorityChartCol._totalCount > 0 ? [
-                            { label: qsTr("P1 — высокий"), count: priorityChartCol._counts.p1, color: "#db4c3f" },
-                            { label: qsTr("P2 — средний"), count: priorityChartCol._counts.p2, color: "#f49c18" },
-                            { label: qsTr("P3 — низкий"),  count: priorityChartCol._counts.p3, color: "#4073ff" },
-                            { label: qsTr("P4 — обычный"), count: priorityChartCol._counts.p4, color: "#808080" }
+                            { label: qsTr("P1 — высокий"), count: priorityChartCol._counts.p1, color: ThemeManager.priorityP1Color },
+                            { label: qsTr("P2 — средний"), count: priorityChartCol._counts.p2, color: ThemeManager.priorityP2Color },
+                            { label: qsTr("P3 — низкий"),  count: priorityChartCol._counts.p3, color: ThemeManager.priorityP3Color },
+                            { label: qsTr("P4 — обычный"), count: priorityChartCol._counts.p4, color: ThemeManager.priorityP4Color }
                         ] : []
 
                         delegate: RowLayout {

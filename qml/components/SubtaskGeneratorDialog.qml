@@ -177,7 +177,7 @@ Popup {
             height:           errText.implicitHeight + Spacing.sm * 2
             radius:           Radius.sm
             color:            Qt.rgba(1, 0.2, 0.2, 0.08)
-            border.color:     "#e05050"
+            border.color:     ThemeManager.errorColor
             border.width:     1
 
             Text {
@@ -190,7 +190,7 @@ Popup {
                 }
                 text:           root._errorText
                 font.pixelSize: FontSize.small
-                color:          "#e05050"
+                color:          ThemeManager.errorColor
                 wrapMode:       Text.WordWrap
             }
         }

@@ -197,8 +197,8 @@ ColumnLayout {
                     width:  14
                     height: 14
                     radius: 7
-                    color:  modelData.isCompleted ? "#808080" : "transparent"
-                    border.color: "#808080"
+                    color:  modelData.isCompleted ? ThemeManager.secondaryTextColor : "transparent"
+                    border.color: ThemeManager.secondaryTextColor
                     border.width: 1.5
 
                     MouseArea {
