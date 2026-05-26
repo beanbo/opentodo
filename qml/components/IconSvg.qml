@@ -67,8 +67,26 @@ Item {
     readonly property int _renderDpr:
         Math.max(2, Math.ceil(Screen.devicePixelRatio))
 
+    // CRITICAL: Image is pinned to exactly `size × size` and centred in the
+    // root Item — NOT `anchors.fill: parent`.  When IconSvg is used as a
+    // Control's contentItem (ToolButton, AbstractButton, …) the control
+    // unconditionally rewrites the contentItem's width/height to fill the
+    // available content area, overriding the Item's implicitWidth/Height.
+    // `anchors.fill: parent` then makes the Image 28×28 (or whatever box the
+    // button gives us), which stretches a stroke-style SVG painted at 14×14
+    // raster pixels across a 28×28 logical area — producing exactly the
+    // "blurry, oversized paperclip / plus / more / check" the user sees.
+    //
+    // Anchoring the Image to the centre with explicit width/height equal to
+    // `size` decouples the visual icon size from whatever geometry the
+    // surrounding control imposes.  Result: the icon is always exactly
+    // `size × size` regardless of parent (Control contentItem, RowLayout
+    // cell, plain Item, etc.) and the high-DPI rasterisation chain stays
+    // pixel-aligned.
     Image {
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width:  root.size
+        height: root.size
         source: root.name === "" ? "" :
                 "image://svg-tinted/" + root.name + "?color=" + root._colorHex
         sourceSize.width:  root.size * root._renderDpr
