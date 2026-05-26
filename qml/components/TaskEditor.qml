@@ -170,89 +170,39 @@ Rectangle {
                 }
             }
 
-            // ── Subtasks Card ────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth:    true
-                Layout.leftMargin:   12
-                Layout.rightMargin:  12
-                Layout.preferredHeight: subtasksCardLayout.implicitHeight + 28
-                color:        ThemeManager.surfaceColor
-                border.color: ThemeManager.borderColor
-                border.width: 1
-                radius:       10
+            // Q4.01 (iter-8): дизайн-канвас (user screenshot) показывает
+            // Подзадачи / Напоминания / Комментарии БЕЗ Card-обёртки —
+            // плоские section'ы с горизонтальным паддингом на bg. Card-стиль
+            // только у Meta (см. выше). Раньше эти три блока были обёрнуты
+            // в surface-card'ы, что давало слишком "технический" вид —
+            // editor выглядел как стопка четырёх карточек, а не как лента.
 
-                ColumnLayout {
-                    id: subtasksCardLayout
-                    anchors {
-                        left:    parent.left
-                        right:   parent.right
-                        top:     parent.top
-                        margins: 14
-                    }
-                    spacing: 0
-
-                    EditorSubtasksSection {
-                        Layout.fillWidth: true
-                        taskId:      root.taskId
-                        taskContent: root.task ? (root.task.content || "") : ""
-                    }
-                }
+            // ── Subtasks section (no Card) ───────────────────────────────
+            EditorSubtasksSection {
+                Layout.fillWidth: true
+                Layout.leftMargin:  16
+                Layout.rightMargin: 16
+                Layout.topMargin:   4
+                taskId:      root.taskId
+                taskContent: root.task ? (root.task.content || "") : ""
             }
 
-            // ── Reminders Card ───────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth:    true
-                Layout.leftMargin:   12
-                Layout.rightMargin:  12
-                Layout.preferredHeight: remindersCardLayout.implicitHeight + 28
-                color:        ThemeManager.surfaceColor
-                border.color: ThemeManager.borderColor
-                border.width: 1
-                radius:       10
-
-                ColumnLayout {
-                    id: remindersCardLayout
-                    anchors {
-                        left:    parent.left
-                        right:   parent.right
-                        top:     parent.top
-                        margins: 14
-                    }
-                    spacing: 0
-
-                    EditorRemindersSection {
-                        Layout.fillWidth: true
-                        taskId: root.taskId
-                    }
-                }
+            // ── Reminders section (no Card) ──────────────────────────────
+            EditorRemindersSection {
+                Layout.fillWidth: true
+                Layout.leftMargin:  16
+                Layout.rightMargin: 16
+                Layout.topMargin:   4
+                taskId: root.taskId
             }
 
-            // ── Comments Card ────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth:    true
-                Layout.leftMargin:   12
-                Layout.rightMargin:  12
-                Layout.preferredHeight: commentsCardLayout.implicitHeight + 28
-                color:        ThemeManager.surfaceColor
-                border.color: ThemeManager.borderColor
-                border.width: 1
-                radius:       10
-
-                ColumnLayout {
-                    id: commentsCardLayout
-                    anchors {
-                        left:    parent.left
-                        right:   parent.right
-                        top:     parent.top
-                        margins: 14
-                    }
-                    spacing: 0
-
-                    EditorCommentsSection {
-                        Layout.fillWidth: true
-                        taskId: root.taskId
-                    }
-                }
+            // ── Comments section (no Card) ───────────────────────────────
+            EditorCommentsSection {
+                Layout.fillWidth: true
+                Layout.leftMargin:  16
+                Layout.rightMargin: 16
+                Layout.topMargin:   4
+                taskId: root.taskId
             }
         }
     }

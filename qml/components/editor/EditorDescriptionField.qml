@@ -512,8 +512,17 @@ ColumnLayout {
     TextArea {
         id: descriptionField
 
+        // Q4.01 (iter-8): дизайн-канвас показывает description-блок ТОЛЬКО
+        // в Card-стиле когда у задачи есть содержимое (или сейчас фокус).
+        // Когда description пуст и пользователь не редактирует — выглядит
+        // как plain-text placeholder без border/bg, минимальная высота.
+        // Раньше пустое поле занимало ~80 px высоты с большим Card-фоном
+        // + placeholder — это сильно отличалось от макета.
+        readonly property bool _isEmpty: text.length === 0 && !activeFocus
+
         Layout.fillWidth: true
         Layout.topMargin: 4
+        Layout.preferredHeight: _isEmpty ? 32 : implicitHeight
 
         text:            root.task ? (root.task.description || "") : ""
         placeholderText: qsTr("Описание (поддерживается Markdown)")
@@ -521,16 +530,18 @@ ColumnLayout {
         color:           ThemeManager.textColor
         wrapMode:        TextEdit.Wrap
 
-        leftPadding:   12
-        rightPadding:  12
-        topPadding:    12
-        bottomPadding: 12
+        leftPadding:   _isEmpty ? 4 : 12
+        rightPadding:  _isEmpty ? 4 : 12
+        topPadding:    _isEmpty ? 6 : 12
+        bottomPadding: _isEmpty ? 6 : 12
 
         background: Rectangle {
-            color:        ThemeManager.surfaceColor
-            border.color: descriptionField.activeFocus
-                          ? ThemeManager.accentColor
-                          : ThemeManager.borderColor
+            color:        descriptionField._isEmpty ? "transparent" : ThemeManager.surfaceColor
+            border.color: descriptionField._isEmpty
+                          ? "transparent"
+                          : (descriptionField.activeFocus
+                             ? ThemeManager.accentColor
+                             : ThemeManager.borderColor)
             border.width: 1
             radius:       10
         }
