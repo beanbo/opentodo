@@ -316,44 +316,50 @@ Rectangle {
                 Item { Layout.fillWidth: true }
 
                 // ── View-mode toggle ──────────────────────────────────────────
-                RowLayout {
-                    spacing: 2
+                // Q4.01 (night iter-2): унифицировано с ProjectView view-toggle —
+                // pill-стиль (Radius.md, 28×28 для иконок или 28h auto-width для
+                // текста), active = accent fill / white text, inactive =
+                // transparent / textSecondary. Раньше были Material.foreground
+                // text-only кнопки — несовместимо с дизайн-канвасом, который
+                // везде использует PillIconBtn для view-toggle групп.
+                Repeater {
+                    model: [
+                        { mode: "month",  label: qsTr("Месяц"),  tip: qsTr("Вид: месяц") },
+                        { mode: "week",   label: qsTr("Неделя"), tip: qsTr("Вид: неделя") },
+                        { mode: "agenda", label: qsTr("Список"), tip: qsTr("Вид: список (агенда)") }
+                    ]
+                    delegate: ToolButton {
+                        required property var modelData
+                        readonly property bool _active: root.viewMode === modelData.mode
 
-                    ToolButton {
-                        text: qsTr("Месяц")
+                        text: modelData.label
                         font.pixelSize: FontSize.bodySmall
-                        checked: root.viewMode === "month"
-                        onClicked: root.viewMode = "month"
-                        Material.foreground: root.viewMode === "month"
-                                             ? root.accentRed : root.textSecondary
-                        ToolTip.text: qsTr("Вид: месяц")
-                        ToolTip.visible: hovered
-                    }
+                        checked: _active
+                        padding: 0
+                        leftPadding: 10
+                        rightPadding: 10
+                        implicitHeight: 28
 
-                    ToolButton {
-                        text: qsTr("Неделя")
-                        font.pixelSize: FontSize.bodySmall
-                        checked: root.viewMode === "week"
-                        onClicked: root.viewMode = "week"
-                        Material.foreground: root.viewMode === "week"
-                                             ? root.accentRed : root.textSecondary
-                        ToolTip.text: qsTr("Вид: неделя")
-                        ToolTip.visible: hovered
-                    }
-
-                    ToolButton {
-                        text: qsTr("Список")
-                        font.pixelSize: FontSize.bodySmall
-                        checked: root.viewMode === "agenda"
-                        onClicked: {
-                            // Reset agenda window to today each time we enter agenda mode
-                            var t = new Date(); t.setHours(0,0,0,0)
-                            root.agendaStartDate = t
-                            root.viewMode = "agenda"
+                        background: Rectangle {
+                            radius: Radius.md
+                            color:  parent._active ? root.accentRed : "transparent"
                         }
-                        Material.foreground: root.viewMode === "agenda"
-                                             ? root.accentRed : root.textSecondary
-                        ToolTip.text: qsTr("Вид: список (агенда)")
+                        contentItem: Text {
+                            text:               parent.text
+                            font:               parent.font
+                            color:              parent._active ? "#ffffff" : root.textSecondary
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment:   Text.AlignVCenter
+                        }
+
+                        onClicked: {
+                            if (modelData.mode === "agenda") {
+                                var t = new Date(); t.setHours(0,0,0,0)
+                                root.agendaStartDate = t
+                            }
+                            root.viewMode = modelData.mode
+                        }
+                        ToolTip.text: modelData.tip
                         ToolTip.visible: hovered
                     }
                 }
