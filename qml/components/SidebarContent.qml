@@ -349,7 +349,7 @@ Rectangle {
                                     readonly property int    taskPrio: modelData.priority || 4
 
                                     width: parent.width
-                                    height: 32
+                                    height: Spacing.xl
                                     radius: Radius.md
                                     color: pinnedRowMouse.containsMouse
                                            ? sidebarContent.hoverColor
@@ -1046,8 +1046,8 @@ Rectangle {
                             visible: projTreeDelegate.hasChildren
                             x: projTreeDelegate.depth * 14 + 4
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 16
-                            height: 16
+                            width: Spacing.md
+                            height: Spacing.md
                             radius: 3
                             color: chevronMouse.containsMouse
                                    ? (sidebarContent.isDarkTheme ? "#444444" : "#e0e0e0")
@@ -1859,7 +1859,7 @@ Rectangle {
                         visible: labelHoverHandler.hovered || labelDelegate.Drag.active
                         x: 0
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 16
+                        width: Spacing.md
                         height: parent.height
                         z: 11
 
@@ -2902,7 +2902,7 @@ Rectangle {
             // gap до text задаётся через leftMargin: 10 у label (дизайн gap 10).
             Item {
                 id: iconArea
-                width: 16
+                width: Spacing.md
                 height: parent.height
                 anchors.left: leftPad.right
 
@@ -2931,8 +2931,8 @@ Rectangle {
                 Rectangle {
                     visible: iconArea._effectiveIconName === "" && sidebarItem.iconIsText
                     anchors.centerIn: parent
-                    width: 8
-                    height: 8
+                    width: Spacing.sm
+                    height: Spacing.sm
                     radius: Radius.sm
                     color: sidebarItem.dotColor
                 }

@@ -81,8 +81,8 @@ Popup {
             // Close ✕ button — mirrors the EditorHeader style.
             Rectangle {
                 Layout.alignment: Qt.AlignTop
-                width:  32
-                height: 32
+                width:  Spacing.xl
+                height: Spacing.xl
                 radius: Radius.sm
                 color:  closeHover.containsMouse
                             ? ThemeManager.hoverColor

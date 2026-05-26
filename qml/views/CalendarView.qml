@@ -373,7 +373,7 @@ Rectangle {
         // ── Day-of-week headers (month mode only) ────────────────────────────
         Rectangle {
             Layout.fillWidth: true
-            height: 32
+            height: Spacing.xl
             color:  root.contentColor
             visible: root.viewMode === "month"
 
@@ -386,7 +386,7 @@ Rectangle {
 
                     delegate: Item {
                         Layout.fillWidth: true
-                        height: 32
+                        height: Spacing.xl
                         required property string modelData
 
                         Text {
@@ -492,7 +492,7 @@ Rectangle {
                             delegate: Rectangle {
                                 required property int index
                                 Layout.fillWidth: true
-                                height: 16; radius: Radius.xs
+                                height: Spacing.md; radius: Radius.xs
                                 color: root.isDarkTheme ? "#333333" : "#f0f0f0"
 
                                 // Priority accent left border

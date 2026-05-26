@@ -103,7 +103,7 @@ Rectangle {
 
         // Delete button
         Rectangle {
-            height: 32
+            height: Spacing.xl
             width:  deleteText.implicitWidth + 24
             radius: Radius.sm
             color:  deleteHover.containsMouse
@@ -137,7 +137,7 @@ Rectangle {
 
         // Duplicate button
         Rectangle {
-            height: 32
+            height: Spacing.xl
             width:  duplicateText.implicitWidth + 24
             radius: Radius.sm
             color:  dupHover.containsMouse
@@ -169,7 +169,7 @@ Rectangle {
         // shows a brief "Сохранено" toast. Auto-save still happens on field
         // blur, but users coming from Todoist expect a Save button to exist.
         Rectangle {
-            height: 32
+            height: Spacing.xl
             width:  saveText.implicitWidth + 28
             radius: Radius.sm
             color:  saveHover.containsMouse

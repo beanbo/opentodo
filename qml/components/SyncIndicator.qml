@@ -92,8 +92,8 @@ Rectangle {
         // Status icon / animation container
         Item {
             id: iconArea
-            width: 16
-            height: 16
+            width: Spacing.md
+            height: Spacing.md
             Layout.alignment: Qt.AlignVCenter
 
             // Synced: green filled circle

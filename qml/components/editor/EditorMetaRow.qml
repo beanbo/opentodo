@@ -391,7 +391,7 @@ ColumnLayout {
                     required property int modelData
                     readonly property int pVal: modelData
 
-                    width:  32
+                    width:  Spacing.xl
                     height: 26
                     radius: Radius.sm
                     color:  root._priority === pVal

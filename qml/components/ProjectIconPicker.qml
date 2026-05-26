@@ -100,8 +100,8 @@ Dialog {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 8
-                width: 16
-                height: 16
+                width: Spacing.md
+                height: Spacing.md
                 IconSvg {
                     anchors.centerIn: parent
                     name: "search"

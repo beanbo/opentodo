@@ -3296,7 +3296,7 @@ Item {
             bottomMargin: 16
         }
         width: gPrefixLabel.implicitWidth + 16
-        height: 24
+        height: Spacing.lg
         radius: Radius.sm
         color: ThemeManager.isDark ? "#333333" : "#e8e8e8"
         border.width: 1

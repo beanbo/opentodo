@@ -598,7 +598,7 @@ Rectangle {
                 // Dropdown delegate: emoji icon if set, otherwise color dot
                 delegate: ItemDelegate {
                     width: projectCombo.width
-                    height: 32
+                    height: Spacing.xl
 
                     // Pull the Project* object via the "projectObject" model role
                     // so we can read the icon Q_PROPERTY (not exposed as a plain role).

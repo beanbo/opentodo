@@ -191,7 +191,7 @@ Item {
                     // → reverse to show how much has been used.
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 4
+                        height: Spacing.xs
                         radius: Radius.xs
                         color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
                         Rectangle {
@@ -882,7 +882,7 @@ Item {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: 4
+                    width: Spacing.xs
                     radius: parent.radius
                     color: ThemeManager.accentColor
                 }

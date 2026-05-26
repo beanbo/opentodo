@@ -44,7 +44,7 @@ ColumnLayout {
             visible:  typeof aiAssistant !== "undefined"
                       && aiAssistant.isConfigured
                       && root.taskContent.trim().length > 0
-            height:   24
+            height:   Spacing.lg
             width:    aiButtonRow.implicitWidth + Spacing.md
             radius:   Radius.sm
             color:    aiButtonMouseArea.containsMouse
@@ -142,7 +142,7 @@ ColumnLayout {
             // have circles but no text." Take the width from the ColumnLayout
             // parent instead.
             Layout.fillWidth: true
-            height: 32
+            height: Spacing.xl
 
             // Drag configuration — we use Drag.Automatic so Qt handles the
             // grab and cursor; the actual drag starts when dragHandleArea's
@@ -329,7 +329,7 @@ ColumnLayout {
     // ── Inline add subtask row ─────────────────────────────────────────────────
     RowLayout {
         Layout.fillWidth: true
-        height: 32
+        height: Spacing.xl
         spacing: Spacing.sm
 
         Rectangle {
