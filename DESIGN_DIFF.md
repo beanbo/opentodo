@@ -9,6 +9,7 @@
 | 3 | `863db0b` | FontSize.viewHeader token 20, Notifications/AI/Trash/Productivity headers, Sidebar bottom-section separator, Note panel subtitle, ProjectView toggle icons 14 |
 | 4 | `e441f6c` | Productivity card titles 16→14/DemiBold, ProjectView header spacing 12 + title viewHeader, EmptyState message 13 + maxWidth 320 + button radius 20 + label 13, TaskItem right padding md + lineHeight 1.4 + overdue color → ThemeManager.errorColor |
 | 5 | `acb2062` | topBar color bg, RowLayout spacing 14, mainColumn paddingTop 6 (drop bottomPadding 8), overdue badge fontWeight 600, NavItem idle icon color → ThemeManager.iconColor, EmptyState gap 16 |
+| 6 | `633d260` | Pomodoro timer 56/Light/letterSpacing -2, stats cells 24/DemiBold + radius 8 + bg, action buttons pill radius 16, AIView suggestion chips radius 18 + fontSize 12, input box height 38 + radius 8 + bordered surface, send button height 38 radius 8 accent + icon, BoardView columns 220 + radius 10, header padding 10/12 + title small/Medium, card bg backgroundColor + small + lineHeight 1.45 |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
