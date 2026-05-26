@@ -128,7 +128,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: 6
 
                 Text {
@@ -211,7 +211,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            Layout.topMargin: 4
+            Layout.topMargin: Spacing.xs
             Layout.bottomMargin: 20
             text: qsTr("Спасибо! 🙏")
             font.pixelSize: FontSize.body
@@ -280,7 +280,7 @@ Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 16
+            anchors.margins: Spacing.md
             spacing: 8
 
             RowLayout {
@@ -338,7 +338,7 @@ Rectangle {
             // Address + copy button row.
             RowLayout {
                 Layout.fillWidth: true
-                Layout.topMargin: 4
+                Layout.topMargin: Spacing.xs
                 spacing: 8
 
                 // Use a selectable TextEdit (not a Text) so the user can

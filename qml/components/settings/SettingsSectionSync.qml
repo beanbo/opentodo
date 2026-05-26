@@ -99,7 +99,7 @@ Rectangle {
                 name: root.expanded ? "chevron-down" : "chevron-right"
                 size: 14
                 color: ThemeManager.secondaryTextColor
-                Layout.leftMargin: 8
+                Layout.leftMargin: Spacing.sm
             }
         }
 
@@ -254,7 +254,7 @@ Rectangle {
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: -8
-            Layout.bottomMargin: 8
+            Layout.bottomMargin: Spacing.sm
             text: ""
             font.pixelSize: FontSize.caption
             color: ThemeManager.secondaryTextColor
@@ -560,8 +560,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            Layout.topMargin: 4
-            Layout.bottomMargin: 4
+            Layout.topMargin: Spacing.xs
+            Layout.bottomMargin: Spacing.xs
             text: ""
             font.pixelSize: FontSize.caption
             color: ThemeManager.secondaryTextColor

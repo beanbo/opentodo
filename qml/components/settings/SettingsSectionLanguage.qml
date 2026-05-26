@@ -258,8 +258,8 @@ Rectangle {
 
                 Layout.fillWidth: true
                 Layout.preferredHeight: visible ? 36 : 0
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
+                Layout.leftMargin: Spacing.md
+                Layout.rightMargin: Spacing.md
                 Layout.topMargin: visible ? 8 : 0
                 Layout.bottomMargin: visible ? 8 : 0
                 radius: 4

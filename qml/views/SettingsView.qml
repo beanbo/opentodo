@@ -30,7 +30,7 @@ Item {
             // Q4.01 pixel-perfect: дизайн SettingsView header — IconSvg "settings" 22 + title.
             RowLayout {
                 Layout.topMargin: 28
-                Layout.leftMargin: 24
+                Layout.leftMargin: Spacing.lg
                 Layout.fillWidth: true
                 spacing: 12
                 IconSvg {
@@ -48,18 +48,18 @@ Item {
                 Item { Layout.fillWidth: true }
             }
 
-            SettingsSectionGeneral      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionLanguage     { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionAppearance   { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionSync         { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionAI           { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionProductivity { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionReminders    { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionDefer        { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionSidebar      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionBackup       { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionAbout        { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
-            SettingsSectionSupport      { Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16 }
+            SettingsSectionGeneral      { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionLanguage     { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionAppearance   { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionSync         { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionAI           { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionProductivity { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionReminders    { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionDefer        { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionSidebar      { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionBackup       { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionAbout        { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionSupport      { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
 
             Item { Layout.preferredHeight: 40 }
         }

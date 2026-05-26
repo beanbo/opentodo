@@ -130,7 +130,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: 6
 
                 RowLayout {
@@ -177,7 +177,7 @@ Rectangle {
                     text: qsTr("Приватный планировщик задач с открытым исходным кодом.")
                     font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
-                    Layout.topMargin: 4
+                    Layout.topMargin: Spacing.xs
                 }
 
                 Text {
@@ -224,7 +224,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: 12
 
                 ColumnLayout {
@@ -282,7 +282,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: Spacing.sm
 
                 // Header row: label + status pill
@@ -421,7 +421,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: Spacing.sm
 
                 // Header
@@ -523,7 +523,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: Spacing.sm
 
                 Label {
@@ -548,12 +548,12 @@ Rectangle {
                     color: ThemeManager.textColor
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
+                    Layout.topMargin: Spacing.xs
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
+                    Layout.topMargin: Spacing.xs
                     spacing: Spacing.sm
 
                     Item { Layout.fillWidth: true }
@@ -604,7 +604,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: Spacing.sm
 
                 Label {
@@ -624,7 +624,7 @@ Rectangle {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
+                    Layout.topMargin: Spacing.xs
                     spacing: Spacing.sm
 
                     Button {
@@ -751,7 +751,7 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: 12
 
                 ColumnLayout {
@@ -816,7 +816,7 @@ Rectangle {
         Button {
             text: qsTr("Сбросить все настройки")
             Layout.alignment: Qt.AlignHCenter
-            Layout.bottomMargin: 16
+            Layout.bottomMargin: Spacing.md
             implicitHeight: 40
             implicitWidth: 260
 

@@ -240,8 +240,8 @@ Rectangle {
 
             RowLayout {
                 anchors.fill:        parent
-                anchors.leftMargin:  16
-                anchors.rightMargin: 16
+                anchors.leftMargin:  Spacing.md
+                anchors.rightMargin: Spacing.md
                 spacing: 12
 
                 // Iter-night-24: было unicode "◀". Migration to IconSvg
@@ -469,7 +469,7 @@ Rectangle {
 
                     ColumnLayout {
                         anchors.fill:    parent
-                        anchors.margins: 4
+                        anchors.margins: Spacing.xs
                         spacing: 2
 
                         // Day number
@@ -608,7 +608,7 @@ Rectangle {
 
                 ColumnLayout {
                     anchors.fill:    parent
-                    anchors.margins: 8
+                    anchors.margins: Spacing.sm
                     spacing: 3
 
                     // ── Day header row ────────────────────────────────────────
@@ -787,8 +787,8 @@ Rectangle {
                             // ── Day section header ────────────────────────────
                             RowLayout {
                                 Layout.fillWidth:    true
-                                Layout.leftMargin:   16
-                                Layout.rightMargin:  16
+                                Layout.leftMargin:   Spacing.md
+                                Layout.rightMargin:  Spacing.md
                                 Layout.topMargin:    10
                                 spacing: 6
 
@@ -834,8 +834,8 @@ Rectangle {
                                     required property int  index
 
                                     Layout.fillWidth:   true
-                                    Layout.leftMargin:  32
-                                    Layout.rightMargin: 16
+                                    Layout.leftMargin:  Spacing.xl
+                                    Layout.rightMargin: Spacing.md
                                     height: 28
                                     color: "transparent"
 
@@ -851,8 +851,8 @@ Rectangle {
 
                                     RowLayout {
                                         anchors.fill:        parent
-                                        anchors.leftMargin:  4
-                                        anchors.rightMargin: 4
+                                        anchors.leftMargin:  Spacing.xs
+                                        anchors.rightMargin: Spacing.xs
                                         spacing: 6
 
                                         // Priority dot
@@ -964,7 +964,7 @@ Rectangle {
 
             ColumnLayout {
                 anchors.fill:    parent
-                anchors.margins: 16
+                anchors.margins: Spacing.md
                 spacing: 12
 
                 // Header row

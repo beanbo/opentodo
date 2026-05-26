@@ -392,7 +392,7 @@ Rectangle {
                         font.pixelSize: FontSize.caption
                         font.weight: Font.DemiBold
                         color: root._subColor
-                        Layout.leftMargin: 16
+                        Layout.leftMargin: Spacing.md
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
                     }

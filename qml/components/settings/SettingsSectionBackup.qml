@@ -137,7 +137,7 @@ Rectangle {
 
         contentItem: ColumnLayout {
             spacing: 12
-            anchors.margins: 16
+            anchors.margins: Spacing.md
 
             Text {
                 text: qsTr("Введите API-токен из Todoist:\nНастройки → Интеграции → Разработчикам → API-токен")
@@ -243,7 +243,7 @@ Rectangle {
 
         contentItem: ColumnLayout {
             spacing: 12
-            anchors.margins: 16
+            anchors.margins: Spacing.md
 
             Text {
                 text: importResultDialog.importResultText
@@ -608,7 +608,7 @@ Rectangle {
                 anchors.fill: parent
                 anchors.leftMargin: 20
                 anchors.rightMargin: 20
-                anchors.topMargin: 8
+                anchors.topMargin: Spacing.sm
                 spacing: 4
 
                 ProgressBar {
@@ -774,7 +774,7 @@ Rectangle {
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: 12
-            Layout.bottomMargin: 4
+            Layout.bottomMargin: Spacing.xs
             spacing: 0
 
             // Loaded on expand, refreshed after each restore.
@@ -821,8 +821,8 @@ Rectangle {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.topMargin: 4
-                        anchors.bottomMargin: 4
+                        anchors.topMargin: Spacing.xs
+                        anchors.bottomMargin: Spacing.xs
                         spacing: 10
 
                         // Icon column — Q4.01 (redesign): "📦" заменён на
@@ -931,7 +931,7 @@ Rectangle {
 
             contentItem: ColumnLayout {
                 spacing: 8
-                anchors.margins: 4
+                anchors.margins: Spacing.xs
 
                 Text {
                     text: qsTr("Восстановить из «%1»?\n\nТекущая state.json будет сохранена в ротацию .bak перед заменой — последующее восстановление позволит откатить это действие.").arg(restoreConfirmDialog.targetName)

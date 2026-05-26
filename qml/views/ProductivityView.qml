@@ -101,7 +101,7 @@ Item {
 
             // Q4.01 pixel-perfect: view-header — icon 22 + title 20/600 как у Settings/Notifications/AI.
             RowLayout {
-                Layout.topMargin: 24
+                Layout.topMargin: Spacing.lg
                 spacing: 12
                 IconSvg {
                     name: "productivity"
@@ -130,7 +130,7 @@ Item {
                 ColumnLayout {
                     id: pomodoroCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 10
 
                     // Header row: title + daily counter
@@ -335,7 +335,7 @@ Item {
                 ColumnLayout {
                     id: pomodoroStatsCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 12
 
                     // ── Reactive state ─────────────────────────────────────
@@ -591,7 +591,7 @@ Item {
                         id: chartColumn
                         visible: !pomodoroStatsCol._isEmpty
                         Layout.fillWidth: true
-                        Layout.topMargin: 4
+                        Layout.topMargin: Spacing.xs
                         spacing: Spacing.xs
 
                         readonly property int _maxCount: {
@@ -688,7 +688,7 @@ Item {
                 ColumnLayout {
                     id: projectChartCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 12
 
                     // Cached chart data: [{ id, name, icon, color, total, completed, ratio }]
@@ -775,7 +775,7 @@ Item {
                         text: qsTr("Доля выполненных задач")
                         font.pixelSize: FontSize.small
                         color: textSecondary
-                        Layout.bottomMargin: 4
+                        Layout.bottomMargin: Spacing.xs
                     }
 
                     // ── Empty state ────────────────────────────────────────
@@ -890,7 +890,7 @@ Item {
                 ColumnLayout {
                     id: briefingCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 6
 
                     // Kick counter — incremented by Connections to force re-evaluation.
@@ -950,8 +950,8 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    anchors.margins: 16
-                    anchors.topMargin: 16
+                    anchors.margins: Spacing.md
+                    anchors.topMargin: Spacing.md
                     spacing: Spacing.xs
 
                     Text {
@@ -973,7 +973,7 @@ Item {
                         Layout.fillWidth: true
                         visible: karmaViewModel.nextMilestone > 0
                         spacing: Spacing.xs
-                        Layout.topMargin: 8
+                        Layout.topMargin: Spacing.sm
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -1041,7 +1041,7 @@ Item {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 16
+                        anchors.margins: Spacing.md
                         spacing: Spacing.sm
 
                         Text {
@@ -1086,7 +1086,7 @@ Item {
 
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 16
+                        anchors.margins: Spacing.md
                         spacing: Spacing.sm
 
                         Text {
@@ -1211,7 +1211,7 @@ Item {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     Text {
@@ -1312,7 +1312,7 @@ Item {
                 ColumnLayout {
                     id: heatmapCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 12
 
                     Text {
@@ -1484,7 +1484,7 @@ Item {
                 ColumnLayout {
                     id: priorityChartCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     Text {
@@ -1582,7 +1582,7 @@ Item {
                                 Text {
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
-                                    anchors.rightMargin: 4
+                                    anchors.rightMargin: Spacing.xs
                                     text: modelData.count
                                     font.bold: true
                                     font.pixelSize: FontSize.caption
@@ -1606,7 +1606,7 @@ Item {
                 ColumnLayout {
                     id: recentDoneCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     Text {
@@ -1675,7 +1675,7 @@ Item {
                         text: qsTr("Пока нет завершённых задач.")
                         color: textSecondary
                         font.pixelSize: FontSize.small
-                        Layout.topMargin: 4
+                        Layout.topMargin: Spacing.xs
                     }
 
                     // One hoverable row per task.
@@ -1700,8 +1700,8 @@ Item {
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
+                                anchors.leftMargin: Spacing.sm
+                                anchors.rightMargin: Spacing.sm
                                 spacing: Spacing.sm
 
                                 // Checkmark icon — task 17cea65b iter-3: было "✓".
@@ -1765,7 +1765,7 @@ Item {
                 ColumnLayout {
                     id: activityFeedCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     // Header: title + subtitle
@@ -1779,7 +1779,7 @@ Item {
                         text: qsTr("Последние 30 событий")
                         color: textSecondary
                         font.pixelSize: FontSize.caption
-                        Layout.bottomMargin: 4
+                        Layout.bottomMargin: Spacing.xs
                     }
 
                     // Reactive kick: bumped when DataStore signals task changes.
@@ -1907,8 +1907,8 @@ Item {
                         font.pixelSize: FontSize.small
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
-                        Layout.topMargin: 8
-                        Layout.bottomMargin: 8
+                        Layout.topMargin: Spacing.sm
+                        Layout.bottomMargin: Spacing.sm
                     }
 
                     // Feed entries
@@ -1960,7 +1960,7 @@ Item {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     Text {
@@ -2093,7 +2093,7 @@ Item {
                 ColumnLayout {
                     id: tagCloudCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: Spacing.sm
 
                     Text {
@@ -2230,7 +2230,7 @@ Item {
                 ColumnLayout {
                     id: goalsCol
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: Spacing.md
                     spacing: 12
 
                     Text {

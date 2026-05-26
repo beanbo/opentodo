@@ -2073,7 +2073,7 @@ Item {
             // Кнопки «Отмена» / «Применить»
             RowLayout {
                 Layout.fillWidth: true
-                Layout.topMargin: 4
+                Layout.topMargin: Spacing.xs
                 spacing: 8
 
                 Item { Layout.fillWidth: true }
