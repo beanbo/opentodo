@@ -511,7 +511,7 @@ Rectangle {
                     }
                 }
 
-                Switch {
+                DesignSwitch {
                     id: dailyReviewSwitch
                     checked: settingsViewModel.dailyReviewEnabled
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -657,7 +657,7 @@ Rectangle {
                     }
                 }
 
-                Switch {
+                DesignSwitch {
                     id: sortReversedSwitch
                     checked: taskViewModel.sortReversed
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter

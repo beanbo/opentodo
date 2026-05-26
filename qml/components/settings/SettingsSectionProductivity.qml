@@ -289,7 +289,7 @@ Rectangle {
                     }
                 }
 
-                Switch {
+                DesignSwitch {
                     checked: settingsViewModel.vacationMode
                     onToggled: {
                         settingsViewModel.updateSetting("vacationMode", checked)

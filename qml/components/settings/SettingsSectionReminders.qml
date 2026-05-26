@@ -112,7 +112,7 @@ Rectangle {
                     }
                 }
 
-                Switch {
+                DesignSwitch {
                     id: soundSwitch
                     checked: soundSettings.enabled
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter

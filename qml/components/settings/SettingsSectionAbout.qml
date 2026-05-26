@@ -246,7 +246,7 @@ Rectangle {
                     }
                 }
 
-                Switch {
+                DesignSwitch {
                     // B-7.72: guard against undefined telemetry context property
                     checked: (typeof telemetry !== "undefined" && telemetry)
                              ? telemetry.enabled : false

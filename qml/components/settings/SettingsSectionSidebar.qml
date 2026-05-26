@@ -91,7 +91,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                Switch {
+                DesignSwitch {
                     checked: settingsViewModel.showInboxCount
                     onToggled: {
                         settingsViewModel.updateSetting("showInboxCount", checked)
@@ -131,7 +131,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                Switch {
+                DesignSwitch {
                     checked: settingsViewModel.showTodayCount
                     onToggled: {
                         settingsViewModel.updateSetting("showTodayCount", checked)
@@ -171,7 +171,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                Switch {
+                DesignSwitch {
                     checked: settingsViewModel.showUpcomingCount
                     onToggled: {
                         settingsViewModel.updateSetting("showUpcomingCount", checked)
