@@ -911,7 +911,7 @@ Item {
                         Text {
                             text: briefingCol._msg.title
                             font.pixelSize: 18
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: textPrimary
                         }
                     }
@@ -957,7 +957,7 @@ Item {
                     Text {
                         text: karmaViewModel.karmaScore.toString()
                         font.pixelSize: 48
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: "white"
                         Layout.alignment: Qt.AlignHCenter
                     }
@@ -1047,14 +1047,14 @@ Item {
                         Text {
                             text: qsTr("Прогресс за день")
                             font.pixelSize: FontSize.body
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: textPrimary
                         }
 
                         Text {
                             text: karmaViewModel.completedToday + " / " + karmaViewModel.dailyGoal
                             font.pixelSize: 28
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: karmaViewModel.dailyGoalMet ? "#4caf50" : textPrimary
                         }
 
@@ -1092,14 +1092,14 @@ Item {
                         Text {
                             text: qsTr("Прогресс за неделю")
                             font.pixelSize: FontSize.body
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: textPrimary
                         }
 
                         Text {
                             text: karmaViewModel.completedThisWeek + " / " + karmaViewModel.weeklyGoal
                             font.pixelSize: 28
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: karmaViewModel.weeklyGoalMet ? "#4caf50" : textPrimary
                         }
 
@@ -1150,7 +1150,7 @@ Item {
                             Text {
                                 text: karmaViewModel.dailyStreak.toString()
                                 font.pixelSize: 24
-                                font.bold: true
+                                font.weight: Font.DemiBold
                                 color: textPrimary
                             }
                             Text {
@@ -1187,7 +1187,7 @@ Item {
                             Text {
                                 text: karmaViewModel.weeklyStreak.toString()
                                 font.pixelSize: 24
-                                font.bold: true
+                                font.weight: Font.DemiBold
                                 color: textPrimary
                             }
                             Text {
@@ -1217,7 +1217,7 @@ Item {
                     Text {
                         text: qsTr("Динамика продуктивности (30 дней)")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -1318,7 +1318,7 @@ Item {
                     Text {
                         text: qsTr("Активность за 90 дней")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -1490,7 +1490,7 @@ Item {
                     Text {
                         text: qsTr("Задачи по приоритету")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -1612,7 +1612,7 @@ Item {
                     Text {
                         text: qsTr("Недавно завершённые")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -1772,7 +1772,7 @@ Item {
                     Text {
                         text: qsTr("Лента активности")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
                     Text {
@@ -1966,7 +1966,7 @@ Item {
                     Text {
                         text: qsTr("Очки за 30 дней")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -2099,7 +2099,7 @@ Item {
                     Text {
                         text: qsTr("Облако меток")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 
@@ -2236,7 +2236,7 @@ Item {
                     Text {
                         text: qsTr("Цели")
                         font.pixelSize: FontSize.body
-                        font.bold: true
+                        font.weight: Font.DemiBold
                         color: textPrimary
                     }
 

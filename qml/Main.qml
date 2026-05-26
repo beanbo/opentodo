@@ -230,7 +230,7 @@ ApplicationWindow {
                 contentItem: Text {
                     text: qsTr("ОТМЕНИТЬ")
                     color: ThemeManager.accentColor
-                    font.bold: true
+                    font.weight: Font.DemiBold
                     font.pixelSize: FontSize.body
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignHCenter
@@ -539,7 +539,7 @@ ApplicationWindow {
 
                 Text {
                     text: achievementBanner.title
-                    font.bold: true
+                    font.weight: Font.DemiBold
                     font.pixelSize: FontSize.subtitle
                     color: "#3a2d00"
                 }
@@ -588,7 +588,7 @@ ApplicationWindow {
                         Label {
                             text: qsTr("OpenTodo %1 доступен.").arg(updateChecker.latestVersion)
                             font.pixelSize: FontSize.subtitle
-                            font.bold: true
+                            font.weight: Font.DemiBold
                             color: ThemeManager.textColor
                         }
                         Label {

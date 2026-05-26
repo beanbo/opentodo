@@ -112,7 +112,7 @@ Rectangle {
                 text: root.bannerTitle
                 color: "white"
                 font.pixelSize: FontSize.body
-                font.bold: true
+                font.weight: Font.DemiBold
                 Layout.fillWidth: true
                 elide: Text.ElideRight
             }

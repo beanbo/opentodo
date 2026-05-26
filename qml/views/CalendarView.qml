@@ -286,7 +286,7 @@ Rectangle {
                         return root.currentMonth.toLocaleDateString(Qt.locale("ru_RU"), "MMMM yyyy")
                     }
                     font.pixelSize: 20
-                    font.bold:      true
+                    font.weight:    Font.DemiBold
                     color:          root.textPrimary
                 }
 
@@ -802,7 +802,7 @@ Rectangle {
                                         return raw.charAt(0).toUpperCase() + raw.slice(1)
                                     }
                                     font.pixelSize: FontSize.body
-                                    font.bold: true
+                                    font.weight: Font.DemiBold
                                     color: agendaDayItem.isToday ? root.accentRed : root.textPrimary
                                 }
 
@@ -980,7 +980,7 @@ Rectangle {
                         text:           root.selectedDate.toLocaleDateString(Qt.locale("ru_RU"),
                                                                              "dddd, d MMMM")
                         font.pixelSize: 18
-                        font.bold:      true
+                        font.weight:    Font.DemiBold
                         color:          root.textPrimary
                         Layout.fillWidth: true
                     }

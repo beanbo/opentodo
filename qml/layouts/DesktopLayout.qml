@@ -1107,7 +1107,7 @@ Item {
                                             anchors.leftMargin:     Spacing.md
                                             text:           dayGroupHeader._label
                                             font.pixelSize: FontSize.body
-                                            font.bold:      true
+                                            font.weight:    Font.DemiBold
                                             color:          ThemeManager.textColor
                                         }
 
