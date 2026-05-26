@@ -79,11 +79,13 @@ Rectangle {
         }
     }
 
-    // Q4.01 (redesign): 48 px button row + 24 px timestamp footer (visible
-    // only when a task with a known createdAt is loaded). Action bar sits
-    // on bg color (matches editor pane) with a top 1px border separating
-    // it from the scroll area.
-    height: root.task && root.task.createdAt ? 72 : 48
+    // Q4.01 (iter-9): дизайн-канвас (.design-temp + user screenshots) НЕ
+    // показывает timestamp-футер ("Создана … Изменена …") — action bar в
+    // макете строго 48 px (3 кнопки + padding). Раньше футер занимал
+    // дополнительные 24 px и отличался от макета. Убираем timestamp,
+    // фиксируем высоту на 48. Сам timestampFooter Text сохраняется в QML
+    // ниже на случай если потребуется вернуть, но `visible: false`.
+    height: 48
     color:  ThemeManager.backgroundColor
 
     // Top separator
@@ -239,8 +241,10 @@ Rectangle {
             bottomMargin: 6
         }
 
-        visible: root.task !== null && root.task !== undefined &&
-                 root.task.createdAt !== undefined && root.task.createdAt !== ""
+        // Q4.01 (iter-9): hidden — дизайн не показывает timestamp-футер.
+        // Оставлен в QML на случай возврата (просто перевести visible
+        // обратно на createdAt-условие).
+        visible: false
 
         text: {
             // Touch _timestampKick so QML tracks it as a dependency and

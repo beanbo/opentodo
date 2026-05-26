@@ -525,7 +525,11 @@ ColumnLayout {
         Layout.preferredHeight: _isEmpty ? 32 : implicitHeight
 
         text:            root.task ? (root.task.description || "") : ""
-        placeholderText: qsTr("Описание (поддерживается Markdown)")
+        // Q4.01 (iter-9): дизайн-канвас не показывает placeholder в пустом
+        // description-поле — над meta-полями видна только AI-link
+        // "✦ Сгенерировать описание". Раньше placeholder висел даже при
+        // hidden Card-стиле и портил вид. Скрываем когда _isEmpty.
+        placeholderText: _isEmpty ? "" : qsTr("Описание (поддерживается Markdown)")
         font.pixelSize:  FontSize.body
         color:           ThemeManager.textColor
         wrapMode:        TextEdit.Wrap
