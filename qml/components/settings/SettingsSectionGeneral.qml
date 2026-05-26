@@ -203,32 +203,22 @@ Rectangle {
                 }
 
                 RowLayout {
-                    spacing: 16
+                    spacing: Spacing.sm
+                    ButtonGroup { id: hourFormatGroup }
 
-                    RadioButton {
+                    DesignPill {
                         text: qsTr("12-часовой")
+                        checkable: true
                         checked: settingsViewModel.timeFormat === 12
+                        ButtonGroup.group: hourFormatGroup
                         onClicked: settingsViewModel.updateSetting("timeFormat", 12)
-                        contentItem: Text {
-                            leftPadding: parent.indicator.width + 6
-                            text: parent.text
-                            font.pixelSize: 13
-                            color: ThemeManager.textColor
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
-
-                    RadioButton {
+                    DesignPill {
                         text: qsTr("24-часовой")
+                        checkable: true
                         checked: settingsViewModel.timeFormat === 24
+                        ButtonGroup.group: hourFormatGroup
                         onClicked: settingsViewModel.updateSetting("timeFormat", 24)
-                        contentItem: Text {
-                            leftPadding: parent.indicator.width + 6
-                            text: parent.text
-                            font.pixelSize: 13
-                            color: ThemeManager.textColor
-                            verticalAlignment: Text.AlignVCenter
-                        }
                     }
                 }
             }
