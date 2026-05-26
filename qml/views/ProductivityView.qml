@@ -151,7 +151,7 @@ Item {
                             visible: pomodoroService.completedCyclesToday > 0
                             text: qsTr("Сегодня: %1").arg(pomodoroService.completedCyclesToday)
                             color: textSecondary
-                            font.pixelSize: 12
+                            font.pixelSize: FontSize.small
                         }
                     }
 
@@ -175,7 +175,7 @@ Item {
                     // Phase label
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         color: textSecondary
                         text: {
                             if (pomodoroService.phase === "work")  return qsTr("Работа")
@@ -224,7 +224,7 @@ Item {
                             text: pomodoroService.running
                                 ? qsTr("Пауза")
                                 : (pomodoroService.phase === "idle" ? qsTr("Старт") : qsTr("Продолжить"))
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             leftPadding: 18
                             rightPadding: 18
                             topPadding: 7
@@ -253,7 +253,7 @@ Item {
                             id: pomodoroSkipBtn
                             text: qsTr("Пропустить")
                             enabled: pomodoroService.phase !== "idle"
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             leftPadding: 14
                             rightPadding: 14
                             topPadding: 7
@@ -280,7 +280,7 @@ Item {
                             id: pomodoroResetBtn
                             text: qsTr("Сброс")
                             enabled: pomodoroService.phase !== "idle"
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             leftPadding: 14
                             rightPadding: 14
                             topPadding: 7
@@ -578,7 +578,7 @@ Item {
                         visible: pomodoroStatsCol._isEmpty
                         text: qsTr("Запусти первый Pomodoro в селе")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         font.italic: true
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
@@ -773,7 +773,7 @@ Item {
                     }
                     Text {
                         text: qsTr("Доля выполненных задач")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         color: textSecondary
                         Layout.bottomMargin: 4
                     }
@@ -783,7 +783,7 @@ Item {
                         visible: projectChartCol._projectChartData.length === 0
                         text: qsTr("Нет проектов с задачами")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         font.italic: true
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
@@ -813,7 +813,7 @@ Item {
                             // Project name (elided)
                             Text {
                                 text: modelData.name
-                                font.pixelSize: 13
+                                font.pixelSize: FontSize.bodySmall
                                 color: textPrimary
                                 elide: Text.ElideRight
                                 Layout.preferredWidth: 110
@@ -823,7 +823,7 @@ Item {
                             // "N из M"
                             Text {
                                 text: qsTr("%1 из %2").arg(modelData.completed).arg(modelData.total)
-                                font.pixelSize: 11
+                                font.pixelSize: FontSize.caption
                                 color: textSecondary
                                 horizontalAlignment: Text.AlignRight
                                 Layout.preferredWidth: 60
@@ -859,7 +859,7 @@ Item {
                             // Percent text
                             Text {
                                 text: Math.round(modelData.ratio * 100) + "%"
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 font.bold: true
                                 color: textPrimary
                                 Layout.preferredWidth: 38
@@ -919,7 +919,7 @@ Item {
                     Text {
                         text: briefingCol._msg.body
                         color: textSecondary
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
@@ -980,14 +980,14 @@ Item {
 
                             Text {
                                 text: qsTr("До %1 очков:").arg(karmaViewModel.nextMilestone)
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color: Qt.rgba(1, 1, 1, 0.75)
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 readonly property int _remaining: karmaViewModel.nextMilestone - karmaViewModel.karmaScore
                                 text: qsTr("%1 %2").arg(_remaining).arg(_milestoneSuffix(_remaining))
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 font.bold: true
                                 color: "white"
                             }
@@ -1046,7 +1046,7 @@ Item {
 
                         Text {
                             text: qsTr("Прогресс за день")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.body
                             font.bold: true
                             color: textPrimary
                         }
@@ -1091,7 +1091,7 @@ Item {
 
                         Text {
                             text: qsTr("Прогресс за неделю")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.body
                             font.bold: true
                             color: textPrimary
                         }
@@ -1155,7 +1155,7 @@ Item {
                             }
                             Text {
                                 text: qsTr("дн. подряд")
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color: textSecondary
                             }
                         }
@@ -1192,7 +1192,7 @@ Item {
                             }
                             Text {
                                 text: qsTr("нед. подряд")
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color: textSecondary
                             }
                         }
@@ -1216,7 +1216,7 @@ Item {
 
                     Text {
                         text: qsTr("Динамика продуктивности (30 дней)")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -1317,7 +1317,7 @@ Item {
 
                     Text {
                         text: qsTr("Активность за 90 дней")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -1489,7 +1489,7 @@ Item {
 
                     Text {
                         text: qsTr("Задачи по приоритету")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -1539,7 +1539,7 @@ Item {
                         visible: priorityChartCol._totalCount === 0
                         text: qsTr("Нет активных задач.")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                     }
 
                     // Bar rows
@@ -1558,7 +1558,7 @@ Item {
                             Text {
                                 text: modelData.label
                                 color: textPrimary
-                                font.pixelSize: 13
+                                font.pixelSize: FontSize.bodySmall
                                 Layout.preferredWidth: 110
                             }
 
@@ -1585,7 +1585,7 @@ Item {
                                     anchors.rightMargin: 4
                                     text: modelData.count
                                     font.bold: true
-                                    font.pixelSize: 11
+                                    font.pixelSize: FontSize.caption
                                     color: textPrimary
                                 }
                             }
@@ -1611,7 +1611,7 @@ Item {
 
                     Text {
                         text: qsTr("Недавно завершённые")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -1674,7 +1674,7 @@ Item {
                         visible: !recentDoneCol._recentTasks || recentDoneCol._recentTasks.length === 0
                         text: qsTr("Пока нет завершённых задач.")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         Layout.topMargin: 4
                     }
 
@@ -1728,7 +1728,7 @@ Item {
                                     Text {
                                         text: modelData.content
                                         color: textPrimary
-                                        font.pixelSize: 13
+                                        font.pixelSize: FontSize.bodySmall
                                         font.strikeout: true
                                         elide: Text.ElideRight
                                         Layout.fillWidth: true
@@ -1736,7 +1736,7 @@ Item {
 
                                     Text {
                                         color: textSecondary
-                                        font.pixelSize: 11
+                                        font.pixelSize: FontSize.caption
                                         text: {
                                             const rel  = recentDoneCol._formatRelative(modelData.completedAt)
                                             const proj = (typeof projectViewModel.projectById === "function")
@@ -1771,14 +1771,14 @@ Item {
                     // Header: title + subtitle
                     Text {
                         text: qsTr("Лента активности")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
                     Text {
                         text: qsTr("Последние 30 событий")
                         color: textSecondary
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         Layout.bottomMargin: 4
                     }
 
@@ -1904,7 +1904,7 @@ Item {
                         visible: !activityFeedCol._feed || activityFeedCol._feed.length === 0
                         text: qsTr("Пока нет активности")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true
                         Layout.topMargin: 8
@@ -1933,7 +1933,7 @@ Item {
                                 Layout.fillWidth: true
                                 text: modelData.prefix + modelData.content
                                 color: textPrimary
-                                font.pixelSize: 13
+                                font.pixelSize: FontSize.bodySmall
                                 elide: Text.ElideRight
                             }
 
@@ -1941,7 +1941,7 @@ Item {
                             Text {
                                 text: activityFeedCol._formatRelative(modelData.when)
                                 color: textSecondary
-                                font.pixelSize: 11
+                                font.pixelSize: FontSize.caption
                                 Layout.alignment: Qt.AlignVCenter
                             }
                         }
@@ -1965,7 +1965,7 @@ Item {
 
                     Text {
                         text: qsTr("Очки за 30 дней")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -2065,7 +2065,7 @@ Item {
                     // Total karma earned in the last 30 days
                     Text {
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         text: {
                             if (!trendCanvas30.trendData) return ""
                             var sum = 0
@@ -2098,7 +2098,7 @@ Item {
 
                     Text {
                         text: qsTr("Облако меток")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -2158,7 +2158,7 @@ Item {
                         visible: !tagCloudCol._tagData || tagCloudCol._tagData.length === 0
                         text: qsTr("Метки не используются. Добавьте @метку к задаче, чтобы она появилась здесь.")
                         color: textSecondary
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
                     }
@@ -2235,7 +2235,7 @@ Item {
 
                     Text {
                         text: qsTr("Цели")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
                         font.bold: true
                         color: textPrimary
                     }
@@ -2244,7 +2244,7 @@ Item {
                         Layout.fillWidth: true
                         Text {
                             text: qsTr("Дневная цель")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.body
                             color: textPrimary
                             Layout.fillWidth: true
                         }
@@ -2272,7 +2272,7 @@ Item {
                         Layout.fillWidth: true
                         Text {
                             text: qsTr("Недельная цель")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.body
                             color: textPrimary
                             Layout.fillWidth: true
                         }

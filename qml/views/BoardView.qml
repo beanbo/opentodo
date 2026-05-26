@@ -344,7 +344,7 @@ Rectangle {
                                                 text:           modelData.dueString !== ""
                                                                 ? modelData.dueString
                                                                 : modelData.dueDate
-                                                font.pixelSize: 11
+                                                font.pixelSize: FontSize.caption
                                                 color:          root._isOverdue(modelData.dueDate)
                                                                 ? root.accentRed
                                                                 : root.textSecondary

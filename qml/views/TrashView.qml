@@ -249,7 +249,7 @@ Item {
                         id: badgeText
                         anchors.centerIn: parent
                         text: root.trashItems.length.toString()
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         font.bold: true
                         color: textPrimary
                     }
