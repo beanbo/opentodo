@@ -156,10 +156,13 @@ Item {
                     }
 
                     // Big countdown
+                    // Q4.01 pixel-perfect: design-canvas wants 56 px Light with
+                    // tabular-nums + letterSpacing -2 for the mm:ss readout.
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        font.pixelSize: 52
-                        font.bold: true
+                        font.pixelSize: 56
+                        font.weight: Font.Light
+                        font.letterSpacing: -2
                         color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
                         text: {
                             var sec = pomodoroService.remainingSeconds
@@ -206,14 +209,40 @@ Item {
                     }
 
                     // Control buttons
+                    // Q4.01 pixel-perfect: design-canvas wants pill buttons —
+                    // radius 16, padding 7 18 (primary) / 7 14 (secondary),
+                    // fontSize 13, primary filled with accent, secondaries
+                    // outlined with border. We override the Material `background`
+                    // and content paddings rather than swap to bare Rectangles
+                    // so click ripple + focus still work.
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: 8
 
                         Button {
+                            id: pomodoroPrimaryBtn
                             text: pomodoroService.running
                                 ? qsTr("Пауза")
                                 : (pomodoroService.phase === "idle" ? qsTr("Старт") : qsTr("Продолжить"))
+                            font.pixelSize: 13
+                            leftPadding: 18
+                            rightPadding: 18
+                            topPadding: 7
+                            bottomPadding: 7
+                            contentItem: Text {
+                                text: pomodoroPrimaryBtn.text
+                                font: pomodoroPrimaryBtn.font
+                                color: "white"
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 16
+                                color: pomodoroPrimaryBtn.down
+                                       ? Qt.darker(ThemeManager.accentColor, 1.15)
+                                       : ThemeManager.accentColor
+                                opacity: pomodoroPrimaryBtn.enabled ? 1.0 : 0.55
+                            }
                             onClicked: {
                                 if (pomodoroService.running)         pomodoroService.pause()
                                 else if (pomodoroService.phase === "idle") pomodoroService.start()
@@ -221,13 +250,57 @@ Item {
                             }
                         }
                         Button {
+                            id: pomodoroSkipBtn
                             text: qsTr("Пропустить")
                             enabled: pomodoroService.phase !== "idle"
+                            font.pixelSize: 13
+                            leftPadding: 14
+                            rightPadding: 14
+                            topPadding: 7
+                            bottomPadding: 7
+                            contentItem: Text {
+                                text: pomodoroSkipBtn.text
+                                font: pomodoroSkipBtn.font
+                                color: textPrimary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 16
+                                color: pomodoroSkipBtn.down
+                                       ? Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.08)
+                                       : "transparent"
+                                border.color: borderColor
+                                border.width: 1
+                                opacity: pomodoroSkipBtn.enabled ? 1.0 : 0.55
+                            }
                             onClicked: pomodoroService.skip()
                         }
                         Button {
+                            id: pomodoroResetBtn
                             text: qsTr("Сброс")
                             enabled: pomodoroService.phase !== "idle"
+                            font.pixelSize: 13
+                            leftPadding: 14
+                            rightPadding: 14
+                            topPadding: 7
+                            bottomPadding: 7
+                            contentItem: Text {
+                                text: pomodoroResetBtn.text
+                                font: pomodoroResetBtn.font
+                                color: textPrimary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 16
+                                color: pomodoroResetBtn.down
+                                       ? Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.08)
+                                       : "transparent"
+                                border.color: borderColor
+                                border.width: 1
+                                opacity: pomodoroResetBtn.enabled ? 1.0 : 0.55
+                            }
                             onClicked: pomodoroService.reset()
                         }
                     }
@@ -458,35 +531,38 @@ Item {
                                 { label: qsTr("За неделю"), value: pomodoroStatsCol._stats.week },
                                 { label: qsTr("Всего"),     value: pomodoroStatsCol._stats.total }
                             ]
+                            // Q4.01 pixel-perfect: design-canvas wants tiles on
+                            // the bg surface (not accent-tint), radius 8, 24px
+                            // DemiBold number + 11px caption, padding 14/8.
                             delegate: Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 64
-                                radius: 6
-                                color: Qt.rgba(ThemeManager.accentColor.r,
-                                               ThemeManager.accentColor.g,
-                                               ThemeManager.accentColor.b,
-                                               0.10)
+                                radius: Radius.lg
+                                color: ThemeManager.backgroundColor
                                 border.color: borderColor
                                 border.width: 1
+                                Layout.preferredHeight: tileCol.implicitHeight + 28
 
                                 ColumnLayout {
+                                    id: tileCol
                                     anchors.centerIn: parent
+                                    width: parent.width - 16
                                     spacing: 2
 
                                     Text {
                                         text: modelData.value
-                                        font.pixelSize: 22
-                                        font.bold: true
+                                        font.pixelSize: 24
+                                        font.weight: Font.DemiBold
                                         color: textPrimary
                                         horizontalAlignment: Text.AlignHCenter
                                         Layout.alignment: Qt.AlignHCenter
                                     }
                                     Text {
                                         text: modelData.label
-                                        font.pixelSize: 11
+                                        font.pixelSize: FontSize.caption
                                         color: textSecondary
                                         horizontalAlignment: Text.AlignHCenter
                                         Layout.alignment: Qt.AlignHCenter
+                                        Layout.topMargin: 2
                                     }
                                 }
                             }

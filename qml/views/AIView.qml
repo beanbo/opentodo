@@ -213,6 +213,8 @@ Item {
         }
 
         // Suggestion chips (one-click prompts, shown when no messages yet)
+        // Q4.01 (redesign): pill-shape per design-canvas — radius 18, padding 7/14,
+        // FontSize.small (12), surfaceColor bg, borderColor stroke.
         Flow {
             visible: aiAssistant.isConfigured && messages.count === 0
             Layout.fillWidth: true
@@ -227,9 +229,10 @@ Item {
                 ]
                 delegate: Rectangle {
                     required property string modelData
-                    height: 32
-                    width: chipText.implicitWidth + Spacing.lg
-                    radius: Radius.pill
+                    // padding: 7 vertical, 14 horizontal → height = textHeight + 14
+                    height: chipText.implicitHeight + 14
+                    width: chipText.implicitWidth + 28
+                    radius: 18
                     color: ThemeManager.surfaceColor
                     border.color: ThemeManager.borderColor
                     border.width: 1
@@ -239,7 +242,7 @@ Item {
                         anchors.centerIn: parent
                         text: parent.modelData
                         color: ThemeManager.textColor
-                        font.pixelSize: FontSize.body
+                        font.pixelSize: FontSize.small
                     }
 
                     MouseArea {
@@ -323,6 +326,9 @@ Item {
         }
 
         // Input row
+        // Q4.01 (redesign): input + send переделаны под design-canvas —
+        // высота 38, radius Radius.lg, custom Rectangle background для
+        // полного контроля поверх Material-стилей.
         RowLayout {
             visible: aiAssistant.isConfigured
             Layout.fillWidth: true
@@ -331,16 +337,60 @@ Item {
             TextField {
                 id: inputField
                 Layout.fillWidth: true
+                Layout.preferredHeight: 38
                 placeholderText: qsTr("Спроси что-нибудь… например, 'распланируй мою неделю'")
+                placeholderTextColor: ThemeManager.secondaryTextColor
+                color: ThemeManager.textColor
+                font.pixelSize: FontSize.bodySmall
                 enabled: !aiAssistant.isResponding
+                leftPadding: 14
+                rightPadding: 14
+                topPadding: 0
+                bottomPadding: 0
+                verticalAlignment: TextInput.AlignVCenter
+                background: Rectangle {
+                    radius: Radius.lg
+                    color: ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
+                    border.width: 1
+                }
                 Keys.onReturnPressed: sendBtn.clicked()
             }
             Button {
                 id: sendBtn
-                text: aiAssistant.isResponding ? "..." : qsTr("Отправить")
                 enabled: !aiAssistant.isResponding && inputField.text.trim().length > 0
-                Material.background: ThemeManager.accentColor
-                Material.foreground: "white"
+                implicitHeight: 38
+                implicitWidth: sendRow.implicitWidth + 32  // 16 padding on each side
+
+                background: Rectangle {
+                    radius: Radius.lg
+                    color: sendBtn.enabled
+                           ? (sendBtn.hovered
+                              ? Qt.darker(ThemeManager.accentColor, 1.1)
+                              : ThemeManager.accentColor)
+                           : Qt.rgba(ThemeManager.accentColor.r,
+                                     ThemeManager.accentColor.g,
+                                     ThemeManager.accentColor.b, 0.4)
+                }
+
+                contentItem: RowLayout {
+                    id: sendRow
+                    spacing: 6
+                    IconSvg {
+                        name: "send"
+                        size: 13
+                        color: "white"
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    Text {
+                        text: aiAssistant.isResponding ? "..." : qsTr("Отправить")
+                        color: "white"
+                        font.pixelSize: FontSize.bodySmall
+                        verticalAlignment: Text.AlignVCenter
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                }
+
                 onClicked: {
                     const txt = inputField.text.trim()
                     if (txt.length === 0)

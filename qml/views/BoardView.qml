@@ -104,11 +104,12 @@ Rectangle {
                     required property int index
                     required property var modelData   // { id, name }
 
-                    width:  280
+                    // Q4.01 design parity: column 220 wide, surface bg, radius 10, 1px border
+                    width:  220
                     height: boardRow.height - 32
-                    radius: Radius.md
-                    color:  root.isDarkTheme ? "#242424" : "#f7f7f7"
-                    border.color: root.borderColor
+                    radius: 10
+                    color:  ThemeManager.surfaceColor
+                    border.color: ThemeManager.borderColor
                     border.width: 1
 
                     // Re-evaluate the task list each time taskViewModel changes
@@ -124,77 +125,97 @@ Rectangle {
 
                     ColumnLayout {
                         anchors.fill:    parent
-                        anchors.margins: 8
-                        spacing: 8
+                        spacing: 0
 
-                        // Column header
-                        RowLayout {
+                        // Column header — Q4.01 design parity: padding 10 12, border-bottom 1px
+                        Rectangle {
                             Layout.fillWidth: true
-                            height: 36
+                            implicitHeight: headerRow.implicitHeight + 20  // padding-top 10 + padding-bot 10
+                            color: "transparent"
 
-                            Label {
-                                text:             modelData.name
-                                font.pixelSize:   FontSize.body
-                                font.bold:        true
-                                color:            root.textPrimary
-                                elide:            Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-
-                            // Task count badge
+                            // 1px bottom border line
                             Rectangle {
-                                visible: column.columnTasks.length > 0
-                                width:  countLabel.implicitWidth + 8
-                                height: 18; radius: Radius.pill
-                                color:  root.isDarkTheme ? "#383838" : "#e8e8e8"
-
-                                Text {
-                                    id:             countLabel
-                                    anchors.centerIn: parent
-                                    text:           column.columnTasks.length
-                                    font.pixelSize: FontSize.small
-                                    color:          root.textSecondary
-                                }
+                                anchors.bottom: parent.bottom
+                                anchors.left:   parent.left
+                                anchors.right:  parent.right
+                                height:         1
+                                color:          ThemeManager.borderColor
                             }
 
-                            // Column menu
-                            ToolButton {
-                                id:    columnMenuBtn
-                                onClicked: columnMenu.open()
-                                // Task 17cea65b iter-3: было unicode "⋯".
-                                contentItem: IconSvg {
-                                    anchors.centerIn: parent
-                                    name: "more-horizontal"
-                                    size: 16
-                                    color: root.textSecondary
+                            RowLayout {
+                                id: headerRow
+                                anchors.left:           parent.left
+                                anchors.right:          parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin:     12
+                                anchors.rightMargin:    12
+                                spacing: 6
+
+                                Label {
+                                    text:             modelData.name
+                                    font.pixelSize:   FontSize.small      // 12 per design
+                                    font.weight:      Font.Medium         // weight 500 per design
+                                    color:            root.textPrimary
+                                    elide:            Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
-                            }
 
-                            Menu {
-                                id: columnMenu
-                                y:  columnMenuBtn.height
+                                // Task count badge — fontSize 10, padding 1 7, radius 9, bg t.bg, color subText
+                                Rectangle {
+                                    visible: column.columnTasks.length > 0
+                                    implicitWidth:  countLabel.implicitWidth + 14   // 7 + 7 horizontal padding
+                                    implicitHeight: countLabel.implicitHeight + 2   // 1 + 1 vertical padding
+                                    radius: 9
+                                    color:  ThemeManager.backgroundColor
 
-                                MenuItem {
-                                    text: qsTr("Переименовать раздел")
-                                    onTriggered: {
-                                        renameSectionDialog.sectionId   = modelData.id
-                                        renameSectionDialog.sectionName = modelData.name
-                                        renameSectionDialog.open()
+                                    Text {
+                                        id:             countLabel
+                                        anchors.centerIn: parent
+                                        text:           column.columnTasks.length
+                                        font.pixelSize: FontSize.tiny    // 10 per design
+                                        color:          root.textSecondary
                                     }
                                 }
-                                MenuSeparator {}
-                                MenuItem {
-                                    text: qsTr("Удалить раздел")
-                                    Material.foreground: root.accentRed
-                                    onTriggered: {
-                                        // B-6.40 — canonical API is removeSection (not deleteSection)
-                                        if (modelData.id !== "")
-                                            dataStore.removeSection(modelData.id)
-                                        root._refreshSections()
+
+                                // Column menu — more icon size 12, color subText
+                                ToolButton {
+                                    id:    columnMenuBtn
+                                    onClicked: columnMenu.open()
+                                    // Task 17cea65b iter-3: было unicode "⋯".
+                                    contentItem: IconSvg {
+                                        anchors.centerIn: parent
+                                        name: "more-horizontal"
+                                        size: 12
+                                        color: root.textSecondary
                                     }
                                 }
-                            }
-                        }
+
+                                Menu {
+                                    id: columnMenu
+                                    y:  columnMenuBtn.height
+
+                                    MenuItem {
+                                        text: qsTr("Переименовать раздел")
+                                        onTriggered: {
+                                            renameSectionDialog.sectionId   = modelData.id
+                                            renameSectionDialog.sectionName = modelData.name
+                                            renameSectionDialog.open()
+                                        }
+                                    }
+                                    MenuSeparator {}
+                                    MenuItem {
+                                        text: qsTr("Удалить раздел")
+                                        Material.foreground: root.accentRed
+                                        onTriggered: {
+                                            // B-6.40 — canonical API is removeSection (not deleteSection)
+                                            if (modelData.id !== "")
+                                                dataStore.removeSection(modelData.id)
+                                            root._refreshSections()
+                                        }
+                                    }
+                                }
+                            }   // close RowLayout (headerRow)
+                        }       // close header Rectangle wrapper
 
                         // ── Card list ─────────────────────────────────────────
                         // F-6.45 — drop area covering the whole card list for inter-column moves
@@ -215,11 +236,12 @@ Rectangle {
                                     required property int index
                                     required property var modelData   // task snapshot
 
+                                    // Q4.01 design parity: bg t.bg, 1px border, radius 6, padding 8 10
                                     width:  cardList.width
-                                    height: cardContent.implicitHeight + 24
-                                    radius: Radius.md
-                                    color:  root.contentColor
-                                    border.color: root.borderColor
+                                    height: cardContent.implicitHeight + 16   // 8 + 8 vertical padding
+                                    radius: Radius.md                          // 6
+                                    color:  ThemeManager.backgroundColor
+                                    border.color: ThemeManager.borderColor
                                     border.width: 1
 
                                     // Bug 8 fix: switched from Drag.Internal to Drag.Automatic
@@ -268,20 +290,23 @@ Rectangle {
                                         visible: false
                                     }
 
-                                    // Hover colour effect
+                                    // Hover colour effect — Q4.01: base is t.bg per design
                                     Behavior on color { ColorAnimation { duration: 80 } }
                                     property bool _cardHovered: cardMouse.containsMouse && !cardMouse.drag.active
                                     color: _cardHovered
                                            ? (root.isDarkTheme ? "#303030" : "#f5f5f5")
-                                           : root.contentColor
+                                           : ThemeManager.backgroundColor
 
                                     ColumnLayout {
                                         id: cardContent
+                                        // Q4.01 design parity: padding 8 10 (vertical 8, horizontal 10)
                                         anchors {
                                             left:   parent.left
                                             right:  parent.right
                                             top:    parent.top
-                                            margins: 12
+                                            leftMargin:  10
+                                            rightMargin: 10
+                                            topMargin:   8
                                         }
                                         spacing: 6
 
@@ -293,12 +318,14 @@ Rectangle {
                                             visible: modelData.priority < 4
                                         }
 
-                                        // Task title
+                                        // Task title — Q4.01 design parity: fontSize 12, lineHeight 1.45
                                         Text {
                                             text:            modelData.content
-                                            font.pixelSize:  FontSize.body
+                                            font.pixelSize:  FontSize.small        // 12 per design
                                             color:           root.textPrimary
                                             wrapMode:        Text.Wrap
+                                            lineHeight:      1.45
+                                            lineHeightMode:  Text.ProportionalHeight
                                             Layout.fillWidth: true
                                         }
 
