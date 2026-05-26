@@ -194,7 +194,9 @@ ColumnLayout {
                             contentItem: IconSvg {
                                 anchors.centerIn: parent
                                 name: "more-horizontal"
-                                size: 16
+                                // Q4.01 pixel-perfect: дизайн use more-horizontal size 14
+                                // (view-project.jsx:97, iconBtn — единый стандарт).
+                                size: 14
                                 color: ThemeManager.secondaryTextColor
                             }
                             // Slightly muted so it doesn't compete with the

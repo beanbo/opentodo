@@ -248,10 +248,15 @@ Rectangle {
                 // (chevron-left.svg added in this commit) so the arrow
                 // adapts to theme like every other glyph in the toolbar.
                 ToolButton {
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    padding: 0
                     contentItem: IconSvg {
                         anchors.centerIn: parent
                         name:  "chevron-left"
-                        size:  16
+                        // Q4.01 pixel-perfect: chevron nav-arrows = 14 во всех
+                        // дизайн-местах (DatePicker, SectionHeader, EditorMetaRow).
+                        size:  14
                         color: root.textPrimary
                     }
                     onClicked: root.prevPeriod()
@@ -292,10 +297,13 @@ Rectangle {
 
                 // Iter-night-24: было unicode "▶".
                 ToolButton {
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    padding: 0
                     contentItem: IconSvg {
                         anchors.centerIn: parent
                         name:  "chevron-right"
-                        size:  16
+                        size:  14
                         color: root.textPrimary
                     }
                     onClicked: root.nextPeriod()
@@ -1133,10 +1141,11 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: Spacing.sm
 
-                    // Task 17cea65b iter-3: было unicode "+".
+                    // Q4.01 pixel-perfect: PlusIcon size 14 (view-others.jsx:13
+                    // — стандартный quick-add плюс рядом с "Добавить задачу").
                     IconSvg {
                         name: "plus"
-                        size: 16
+                        size: 14
                         color: root.accentRed
                     }
 

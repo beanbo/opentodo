@@ -135,7 +135,9 @@ Rectangle {
         // search affordance matches the rest of the chrome glyphs.
         IconSvg {
             name: "search"
-            size: 14
+            // Q4.01 pixel-perfect: дизайн (.design-temp/.../app-shell.jsx:176)
+            // указывает SearchIcon size 13 в search-боксе 260×28 топ-бара.
+            size: 13
             color: root._subColor
             Layout.alignment: Qt.AlignVCenter
         }
@@ -163,7 +165,9 @@ Rectangle {
         // search affordance matches the rest of the chrome glyphs.
         IconSvg {
             name: "search"
-            size: 14
+            // Q4.01 pixel-perfect: дизайн (.design-temp/.../app-shell.jsx:176)
+            // указывает SearchIcon size 13 в search-боксе 260×28 топ-бара.
+            size: 13
             color: root._subColor
             Layout.alignment: Qt.AlignVCenter
         }

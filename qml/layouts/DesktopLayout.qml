@@ -533,24 +533,38 @@ Item {
                             spacing: 2
                             Layout.alignment: Qt.AlignVCenter
 
+                            // Q4.01 pixel-perfect: оба тоггла приведены к PillIconBtn
+                            // (view-project.jsx стр. 7-17): 28×28 box, icon size 14,
+                            // accent fill при active. Раньше list-toggle был "≡"-text
+                            // 16px + Material foreground, а calendar — IconSvg 18 —
+                            // оба тоггла визуально разные.
                             ToolButton {
-                                text: "≡"
-                                font.pixelSize: 16
                                 checked: taskViewModel.filterMode === TaskViewModel.Upcoming
                                 ToolTip.text: qsTr("Список")
                                 ToolTip.visible: hovered
-                                Material.foreground: checked ? accentRed : textSecondary
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                padding: 0
+                                contentItem: IconSvg {
+                                    anchors.centerIn: parent
+                                    name: "list"
+                                    size: 14
+                                    color: parent.checked ? accentRed : textSecondary
+                                }
                                 onClicked: taskViewModel.filterMode = TaskViewModel.Upcoming
                             }
                             ToolButton {
                                 checked: taskViewModel.filterMode === TaskViewModel.Calendar
                                 ToolTip.text: qsTr("Календарь")
                                 ToolTip.visible: hovered
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                padding: 0
                                 // Task 17cea65b iter-3: было unicode "📅".
                                 contentItem: IconSvg {
                                     anchors.centerIn: parent
                                     name: "calendar"
-                                    size: 18
+                                    size: 14
                                     color: parent.checked ? accentRed : textSecondary
                                 }
                                 onClicked: {
@@ -2316,10 +2330,10 @@ Item {
                                 spacing: Spacing.xs
                                 visible: !bottomQuickAdd.editing
 
-                                // Task 17cea65b iter-3: было unicode "+".
+                                // Q4.01 pixel-perfect: PlusIcon size 14 (view-others.jsx:13).
                                 IconSvg {
                                     name: "plus"
-                                    size: 16
+                                    size: 14
                                     color: ThemeManager.secondaryTextColor
                                     Layout.alignment: Qt.AlignVCenter
                                 }

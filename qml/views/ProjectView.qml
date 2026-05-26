@@ -240,11 +240,15 @@ Rectangle {
                     // Stroke-SVG: "projects/briefcase" и подобные пути из
                     // ProjectIconPicker. Цвет = project.color, чтобы иконка
                     // визуально читалась как маркер проекта в шапке.
+                    // Q4.01 pixel-perfect: дизайн (view-project.jsx:109) рендерит
+                    // OpenTodoMark size 22 в 22×22 контейнере — заполняет всю
+                    // площадь. Stroke icon 20 даёт минимальный 1px margin и при
+                    // этом визуально весит так же, как brand mark.
                     IconSvg {
                         anchors.centerIn: parent
                         visible: parent._isStrokeIcon
                         name: project ? project.icon : ""
-                        size: 18
+                        size: 20
                         color: project && project.color ? project.color : ThemeManager.textColor
                     }
 
@@ -1258,10 +1262,12 @@ Rectangle {
                         anchors.leftMargin: Spacing.md
                         spacing: 6
 
-                        // Task 17cea65b iter-3: было unicode "+".
+                        // Q4.01 pixel-perfect: PlusIcon size 14 — единый размер
+                        // для всех inline quick-add плюсов в дизайне
+                        // (view-others.jsx:13, view-project.jsx:148).
                         IconSvg {
                             name: "plus"
-                            size: 16
+                            size: 14
                             color: root.accentRed
                         }
                         Text {
