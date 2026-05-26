@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import OpenTodoUI
 
 // SVG icon tinter — renders an icon from resources/icons/<name>.svg in the
@@ -52,12 +53,26 @@ Item {
         return s
     }
 
+    // Rasterise at PHYSICAL pixel resolution, then let Qt downscale to the
+    // logical display size. Qt 6's Image.sourceSize is interpreted in physical
+    // pixels by the rasteriser, while the Image's width/height are in logical
+    // pixels — so on a 1.5× / 2× display, a sourceSize equal to `size` paints
+    // at logical resolution and Qt upscales the result, producing visible blur
+    // on stroke-style icons.  Multiplying by Screen.devicePixelRatio aligns
+    // rasterised pixels with the screen 1:1.  A 2× floor handles the common
+    // 1× → 1.5× transition (a 1.5× rasteriser is sharper than 1×, but a 2×
+    // rasteriser downscaled is sharper still and costs nothing for 12-24 px
+    // payloads).  Math.ceil so non-integer DPRs round up rather than truncate
+    // to the lower res.
+    readonly property int _renderDpr:
+        Math.max(2, Math.ceil(Screen.devicePixelRatio))
+
     Image {
         anchors.fill: parent
         source: root.name === "" ? "" :
                 "image://svg-tinted/" + root.name + "?color=" + root._colorHex
-        sourceSize.width:  root.size
-        sourceSize.height: root.size
+        sourceSize.width:  root.size * root._renderDpr
+        sourceSize.height: root.size * root._renderDpr
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true
