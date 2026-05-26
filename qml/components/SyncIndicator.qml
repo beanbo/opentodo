@@ -59,7 +59,7 @@ Rectangle {
         }
     }
 
-    implicitHeight: 32
+    implicitHeight: Spacing.xl
     implicitWidth: row.implicitWidth + Spacing.md
     radius: Radius.md
     color: "transparent"

@@ -1372,8 +1372,8 @@ Rectangle {
                         delegate: ToolButton {
                             required property string modelData
                             flat: true
-                            implicitWidth: 32
-                            implicitHeight: 32
+                            implicitWidth: Spacing.xl
+                            implicitHeight: Spacing.xl
                             ToolTip.text: modelData
                             ToolTip.visible: hovered
                             ToolTip.delay: 500

@@ -357,7 +357,7 @@ Rectangle {
                 }
 
                 Button {
-                    implicitHeight: 32
+                    implicitHeight: Spacing.xl
                     implicitWidth: copyBtnText.implicitWidth + 28
 
                     contentItem: Text {
