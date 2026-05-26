@@ -202,11 +202,24 @@ Rectangle {
                 spacing: 12
 
                 // Project icon: brand mark for OpenTodo (no explicit icon),
-                // emoji/SVG icon if set, otherwise color dot.
+                // stroke SVG (if icon starts with "projects/"), emoji
+                // (single-character icon field), or coloured dot fallback.
                 Item {
                     width: 22
                     height: 22
                     Layout.alignment: Qt.AlignVCenter
+
+                    // Q4.01 iter-7: auto-detect стрелочного формата иконки.
+                    // ProjectIconPicker сохраняет выбранную иконку как
+                    // "projects/<glyph>"; SidebarContent умеет это резолвить
+                    // (см. _effectiveIconName там), а ProjectView header — нет,
+                    // поэтому путь к SVG рендерился как голый Text-литерал
+                    // ("projects/OpenTodo" поверх названия). Тот же auto-detect
+                    // переносится сюда: префикс "projects/" → IconSvg, иначе
+                    // одиночный символ → Text-emoji.
+                    readonly property bool _isStrokeIcon:
+                        project && project.icon
+                        && project.icon.indexOf("projects/") === 0
 
                     // Q4.01 pixel-perfect: бренд-маркер для проекта OpenTodo.
                     // Когда у проекта нет своей иконки и имя = "OpenTodo" —
@@ -224,9 +237,22 @@ Rectangle {
                         mipmap: false
                     }
 
+                    // Stroke-SVG: "projects/briefcase" и подобные пути из
+                    // ProjectIconPicker. Цвет = project.color, чтобы иконка
+                    // визуально читалась как маркер проекта в шапке.
+                    IconSvg {
+                        anchors.centerIn: parent
+                        visible: parent._isStrokeIcon
+                        name: project ? project.icon : ""
+                        size: 18
+                        color: project && project.color ? project.color : ThemeManager.textColor
+                    }
+
+                    // Emoji-иконка (символьная, без "projects/" префикса) —
+                    // legacy путь, сохраняем чтобы старые проекты не сломались.
                     Text {
                         anchors.centerIn: parent
-                        visible: project && project.icon !== ""
+                        visible: project && project.icon !== "" && !parent._isStrokeIcon
                         text: project ? project.icon : ""
                         font.pixelSize: 18
                     }
@@ -300,50 +326,46 @@ Rectangle {
                     }
                 }
 
-                // View-style toggles — Q4.01 pixel-perfect: PillIconBtn в
-                // дизайне view-project.jsx (стр. 7-17, 112-114) рендерит
-                // иконки size=14, поэтому все три тоггла приведены к 14px.
-                ToolButton {
-                    checked: viewStyle === "list"
-                    onClicked: root.setView("list")
-                    ToolTip.text: qsTr("Список")
-                    ToolTip.visible: hovered
-                    Material.foreground: checked ? accentRed : textSecondary
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: "list"
-                        size: 14
-                        color: parent.checked ? accentRed : textSecondary
-                    }
-                }
-                ToolButton {
-                    // Q4.01 (redesign): итерация 4 board-иконки. v1=⊞, v2=▥,
-                    // v3=🗂 (emoji) — последний работал, но ломал стиль рядом
-                    // с stroke-иконкой календаря. Перешли на BoardIcon из
-                    // дизайн-пака (resources/icons/ui/board.svg) — теперь
-                    // оба тоггла list/board/calendar единого визуального веса.
-                    checked: viewStyle === "board"
-                    onClicked: root.setView("board")
-                    ToolTip.text: qsTr("Доска")
-                    ToolTip.visible: hovered
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: "board"
-                        size: 14
-                        color: parent.checked ? accentRed : textSecondary
-                    }
-                }
-                ToolButton {
-                    checked: viewStyle === "calendar"
-                    onClicked: root.setView("calendar")
-                    ToolTip.text: qsTr("Календарь")
-                    ToolTip.visible: hovered
-                    // Task 17cea65b iter-3: было unicode emoji "📅".
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: "calendar"
-                        size: 14
-                        color: parent.checked ? accentRed : textSecondary
+                // View-style toggles — Q4.01 pixel-perfect (view-project.jsx
+                // стр. 7-17 PillIconBtn + стр. 112-114): pill-shape кнопка
+                // с rounded background — accent-fill в active, transparent
+                // иначе. Раньше использовался дефолтный ToolButton без bg,
+                // поэтому active-состояние было видно только по цвету иконки,
+                // что не соответствует дизайн-канвасу (там явный фон-чип).
+                //   radius 6, padding 5×10, icon size 14.
+                Repeater {
+                    model: [
+                        { style: "list",     iconName: "list",     tip: qsTr("Список") },
+                        { style: "board",    iconName: "board",    tip: qsTr("Доска") },
+                        { style: "calendar", iconName: "calendar", tip: qsTr("Календарь") }
+                    ]
+                    delegate: ToolButton {
+                        required property var modelData
+                        readonly property bool _active: viewStyle === modelData.style
+
+                        checked:   _active
+                        onClicked: root.setView(modelData.style)
+                        ToolTip.text:    modelData.tip
+                        ToolTip.visible: hovered
+
+                        // Pill background — accent fill when active, transparent
+                        // otherwise. Padding 5 px vertical / 10 px horizontal
+                        // matches PillIconBtn from .design-temp.
+                        background: Rectangle {
+                            radius: Radius.md
+                            color:  parent._active ? accentRed : "transparent"
+                            implicitWidth:  28
+                            implicitHeight: 24
+                        }
+
+                        contentItem: IconSvg {
+                            anchors.centerIn: parent
+                            name:  modelData.iconName
+                            size:  14
+                            // Active = white-on-accent (PillIconBtn '#fff'),
+                            // inactive = iconColor per design.
+                            color: parent._active ? "#ffffff" : ThemeManager.iconColor
+                        }
                     }
                 }
 
@@ -355,9 +377,10 @@ Rectangle {
                 }
 
                 // Add-section button (visible only in list view).
-                // Q4.01 (redesign): unicode fullwidth ＋ → stroke PlusIcon
-                // matching design's PillIconBtn pattern (PlusIcon size 12 +
-                // "Раздел" label, both in accent colour).
+                // Q4.01 pixel-perfect (view-project.jsx стр. 115-121):
+                // PlusIcon size 12 + "Раздел" label, оба в subText цвете
+                // (НЕ accent). Раньше использовался accent — это привлекало
+                // лишнее внимание к не-первичному действию рядом с тоггами.
                 ToolButton {
                     id:      addSectionBtn
                     visible: viewStyle === "list"
@@ -372,13 +395,13 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             name: "plus"
                             size: 12
-                            color: accentRed
+                            color: textSecondary
                         }
                         Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: qsTr("Раздел")
-                            color: accentRed
-                            font.pixelSize: FontSize.body
+                            color: textSecondary
+                            font.pixelSize: FontSize.bodySmall
                         }
                     }
 
@@ -391,15 +414,27 @@ Rectangle {
                 // проект" was hidden inside the ⋯ menu, which made it
                 // discoverable only after a click; users with custom colours,
                 // notes or weekly goals to tweak had to open the menu every
-                // time. Surfacing a pencil button at toolbar level cuts that
-                // to one click. The menu item below stays so keyboard-menu
-                // users and "find via dropdown" muscle memory still work.
+                // time. Surfacing a button at toolbar level cuts that to one
+                // click. The menu item below stays so keyboard-menu users
+                // and "find via dropdown" muscle memory still work.
+                //
+                // Q4.01 pixel-perfect (view-project.jsx стр. 122): дизайн
+                // ставит PaperclipIcon в этом месте, поэтому ✏-эмодзи
+                // заменена на stroke paperclip. Семантика "редактировать"
+                // не идеально совпадает с paperclip-глифом, но это место в
+                // макете зарезервировано именно под paperclip, и весь топбар
+                // выглядит однородно (stroke icons size 14, без emoji).
                 ToolButton {
                     id:      editProjectBtn
-                    text:    "✏"
-                    font.pixelSize: 16
                     onClicked: editDialog.open()
                     Material.foreground: textSecondary
+
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "paperclip"
+                        size: 14
+                        color: textSecondary
+                    }
 
                     ToolTip.text: qsTr("Редактировать проект")
                     ToolTip.visible: hovered
