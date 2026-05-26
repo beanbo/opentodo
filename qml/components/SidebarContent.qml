@@ -513,7 +513,7 @@ Rectangle {
                     // sidebar badge sits in the same visual register.)
                     Row {
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: Spacing.xs
 
                         IconSvg {
                             anchors.verticalCenter: parent.verticalCenter
@@ -2309,7 +2309,7 @@ Rectangle {
             Flow {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 280
-                spacing: 8
+                spacing: Spacing.sm
 
                 Repeater {
                     model: addProjectDialog.projectColors
@@ -2444,7 +2444,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
             Label {
                 text: qsTr("Удалить проект «%1» вместе со всеми задачами и разделами? Действие необратимо.").arg(deleteProjectDialog.projectName)
                 wrapMode: Text.Wrap
@@ -2477,7 +2477,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
             Label {
                 text: qsTr("Название раздела")
                 color: ThemeManager.secondaryTextColor
@@ -2587,7 +2587,7 @@ Rectangle {
         }
 
         ColumnLayout {
-            spacing: 8
+            spacing: Spacing.sm
             width: 280
             Label {
                 text: qsTr("Новое название")

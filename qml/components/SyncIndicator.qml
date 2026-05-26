@@ -244,7 +244,7 @@ Rectangle {
         timeout: 4000
 
         contentItem: Column {
-            spacing: 4
+            spacing: Spacing.xs
             padding: 8
 
             Text {

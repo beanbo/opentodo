@@ -397,7 +397,7 @@ Rectangle {
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         contentItem: ColumnLayout {
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text: qsTr("Минут:")

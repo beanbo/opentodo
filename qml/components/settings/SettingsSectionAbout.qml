@@ -42,7 +42,7 @@ Rectangle {
 
         ColumnLayout {
             width: parent.width
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text: qsTr("Сбросить все настройки?")
@@ -283,7 +283,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.margins: 16
-                spacing: 8
+                spacing: Spacing.sm
 
                 // Header row: label + status pill
                 RowLayout {
@@ -342,7 +342,7 @@ Rectangle {
                 // Action buttons
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Button {
                         text: qsTr("Послать тестовое")
@@ -422,7 +422,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.margins: 16
-                spacing: 8
+                spacing: Spacing.sm
 
                 // Header
                 Text {
@@ -444,7 +444,7 @@ Rectangle {
                 RowLayout {
                     visible: logCardRoot._hasLogger
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -524,7 +524,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.margins: 16
-                spacing: 8
+                spacing: Spacing.sm
 
                 Label {
                     text: qsTr("Расположение данных")
@@ -554,7 +554,7 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Item { Layout.fillWidth: true }
 
@@ -605,7 +605,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.margins: 16
-                spacing: 8
+                spacing: Spacing.sm
 
                 Label {
                     text: qsTr("Экспорт / импорт настроек")
@@ -625,7 +625,7 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Button {
                         text: qsTr("Экспорт")

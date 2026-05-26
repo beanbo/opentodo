@@ -228,7 +228,7 @@ Rectangle {
                                 anchors.fill:     parent
                                 model:   column.columnTasks
                                 clip:    true
-                                spacing: 8
+                                spacing: Spacing.sm
 
                                 delegate: Rectangle {
                                     id: card
@@ -332,7 +332,7 @@ Rectangle {
                                         // Due date
                                         RowLayout {
                                             visible: modelData.dueDate !== ""
-                                            spacing: 4
+                                            spacing: Spacing.xs
 
                                             // Task 17cea65b iter-3: было "📅".
                                             IconSvg {
@@ -354,7 +354,7 @@ Rectangle {
                                         // Label chips
                                         Flow {
                                             Layout.fillWidth: true
-                                            spacing: 4
+                                            spacing: Spacing.xs
                                             visible: modelData.labels && modelData.labels.length > 0
 
                                             Repeater {
@@ -426,7 +426,7 @@ Rectangle {
 
                             RowLayout {
                                 anchors.centerIn: parent
-                                spacing: 4
+                                spacing: Spacing.xs
 
                                 // Task 17cea65b iter-3: было unicode "+".
                                 IconSvg {
@@ -468,7 +468,7 @@ Rectangle {
 
                 ColumnLayout {
                     anchors.centerIn: parent
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     // Task 17cea65b iter-3: было unicode "+".
                     IconSvg {
@@ -530,7 +530,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label { text: qsTr("Название задачи"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
@@ -566,7 +566,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
@@ -605,7 +605,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label { text: qsTr("Название раздела"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {

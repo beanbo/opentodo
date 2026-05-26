@@ -66,14 +66,17 @@ Item {
             Layout.preferredHeight: 36
             Layout.leftMargin: Spacing.md
             Layout.rightMargin: Spacing.sm
-            spacing: 4
+            spacing: Spacing.xs
 
             Item { Layout.fillWidth: true }
 
+            // Q4.01 (redesign): "📂" emoji prefix dropped — companion
+            // collapseAllButton was already stripped under the same iter, this
+            // brings the pair back to visual parity (both labels, no glyphs).
             ToolButton {
                 id: expandAllButton
                 flat: true
-                text: qsTr("📂 Развернуть всё")
+                text: qsTr("Развернуть всё")
                 font.pixelSize: FontSize.caption
                 Material.foreground: ThemeManager.secondaryTextColor
                 ToolTip.text: qsTr("Развернуть подзадачи у всех задач")

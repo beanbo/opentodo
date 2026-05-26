@@ -25,7 +25,7 @@ Item {
             id: contentColumn
             width: Math.min(parent.width, 680)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 16
+            spacing: Spacing.md
 
             // Q4.01 pixel-perfect: дизайн SettingsView header — IconSvg "settings" 22 + title.
             RowLayout {

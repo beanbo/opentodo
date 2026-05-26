@@ -606,7 +606,7 @@ Item {
                             // the dark themes, breaking the streak feel).
                             Row {
                                 anchors.centerIn: parent
-                                spacing: 4
+                                spacing: Spacing.xs
                                 IconSvg {
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: "flame"
@@ -1433,7 +1433,7 @@ Item {
                                                     leftMargin: 12
                                                     rightMargin: 12
                                                 }
-                                                spacing: 8
+                                                spacing: Spacing.sm
 
                                                 // Colour swatch
                                                 Rectangle {
@@ -1577,7 +1577,7 @@ Item {
                                                         leftMargin: 12
                                                         rightMargin: 12
                                                     }
-                                                    spacing: 8
+                                                    spacing: Spacing.sm
 
                                                     // Project colour dot
                                                     Rectangle {
@@ -3165,7 +3165,7 @@ Item {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
             Label {
                 text: qsTr("Удалить %1 задач? Действие нельзя отменить через корзину.")
                       .arg(taskViewModel.selectionCount)
@@ -3241,7 +3241,7 @@ Item {
                             leftMargin: 12
                             rightMargin: 12
                         }
-                        spacing: 16
+                        spacing: Spacing.md
 
                         Rectangle {
                             implicitWidth: keyLabel.implicitWidth + 16
@@ -3354,7 +3354,7 @@ Item {
         Row {
             id: focusExitRow
             anchors.centerIn: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             // Task 17cea65b iter-3: было unicode "✕".
             IconSvg {

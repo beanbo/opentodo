@@ -60,7 +60,7 @@ ColumnLayout {
             Row {
                 id:           aiButtonRow
                 anchors.centerIn: parent
-                spacing:      4
+                spacing:      Spacing.xs
 
                 // Q4.01 (redesign): "🤖" → "sparkles" stroke-иконка для
                 // консистентности AI-точек входа.
@@ -160,7 +160,7 @@ ColumnLayout {
             RowLayout {
                 id:     subtaskRow
                 anchors.fill: parent
-                spacing: 8
+                spacing: Spacing.sm
 
                 // Drag handle — shown on hover, sits to the left of the
                 // checkbox.  width=12 keeps it compact; cursor changes to
@@ -330,7 +330,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 32
-        spacing: 8
+        spacing: Spacing.sm
 
         Rectangle {
             width:  14

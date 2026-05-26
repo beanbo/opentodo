@@ -366,7 +366,7 @@ Rectangle {
                     onClicked: addSectionDialog.open()
 
                     contentItem: Row {
-                        spacing: 4
+                        spacing: Spacing.xs
                         anchors.centerIn: parent
                         IconSvg {
                             anchors.verticalCenter: parent.verticalCenter
@@ -1307,7 +1307,7 @@ Rectangle {
 
             Flow {
                 Layout.fillWidth: true
-                spacing: 8
+                spacing: Spacing.sm
                 Repeater {
                     model: ["#db4c3f","#ff8c00","#fad000","#afb83b","#7ecc49",
                             "#299438","#6accbc","#158fad","#14aaf5","#96c3eb",
@@ -1701,7 +1701,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text:           qsTr("Проект «%1» и все его задачи будут удалены без возможности восстановления.")
@@ -1777,7 +1777,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text: qsTr("Название раздела")
@@ -1814,7 +1814,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
             Label {
                 text: qsTr("Новое название")
                 Layout.fillWidth: true
@@ -1842,7 +1842,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
             Label {
                 text: qsTr("Удалить раздел «%1»? Задачи останутся в проекте без раздела.")
                       .arg(deleteSectionDialog.sectionName)
@@ -1886,7 +1886,7 @@ Rectangle {
 
         ColumnLayout {
             anchors.fill: parent
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text: qsTr("Название задачи")

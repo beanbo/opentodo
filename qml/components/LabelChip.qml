@@ -33,7 +33,7 @@ Rectangle {
     RowLayout {
         id: chipRow
         anchors.centerIn: parent
-        spacing: 4
+        spacing: Spacing.xs
 
         Text {
             id: labelText

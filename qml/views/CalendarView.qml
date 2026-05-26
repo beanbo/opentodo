@@ -663,7 +663,7 @@ Rectangle {
                         delegate: RowLayout {
                             required property int index
                             Layout.fillWidth: true
-                            spacing: 4
+                            spacing: Spacing.xs
 
                             // Priority dot
                             Rectangle {
@@ -970,7 +970,7 @@ Rectangle {
                 // Header row
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     // B-6.62 — pin locale to ru_RU for Russian day/month names
                     // BUG-FIX (C-1): same Qt 6.11 TypeError as the header label —
@@ -1131,7 +1131,7 @@ Rectangle {
                 // Quick-add row
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     // Task 17cea65b iter-3: было unicode "+".
                     IconSvg {
@@ -1210,7 +1210,7 @@ Rectangle {
         }
 
         contentItem: ColumnLayout {
-            spacing: 8
+            spacing: Spacing.sm
 
             Label {
                 text:           qsTr("Дата: %1").arg(Qt.formatDate(quickAddDialog.targetDate,

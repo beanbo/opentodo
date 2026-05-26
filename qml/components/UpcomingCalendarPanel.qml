@@ -225,7 +225,7 @@ Rectangle {
                     leftMargin:   8
                     rightMargin:  8
                 }
-                spacing: 4
+                spacing: Spacing.xs
 
                 // Collapse toggle (strip mode only)
                 // Iter-night-24: было unicode "▼/▶". Migrate to IconSvg so

@@ -97,7 +97,7 @@ Item {
         ColumnLayout {
             width: Math.min(parent.width, 600)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 24
+            spacing: Spacing.lg
 
             // Q4.01 pixel-perfect: view-header — icon 22 + title 20/600 как у Settings/Notifications/AI.
             RowLayout {
@@ -136,7 +136,7 @@ Item {
                     // Header row: title + daily counter
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        spacing: Spacing.sm
 
                         // Q4.01 (redesign): "🍅" префикс убран — заголовок
                         // секции уже опознавателен в контексте Productivity.
@@ -217,7 +217,7 @@ Item {
                     // so click ripple + focus still work.
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: 8
+                        spacing: Spacing.sm
 
                         Button {
                             id: pomodoroPrimaryBtn
@@ -592,7 +592,7 @@ Item {
                         visible: !pomodoroStatsCol._isEmpty
                         Layout.fillWidth: true
                         Layout.topMargin: 4
-                        spacing: 4
+                        spacing: Spacing.xs
 
                         readonly property int _maxCount: {
                             var m = 0
@@ -952,7 +952,7 @@ Item {
                     anchors.top: parent.top
                     anchors.margins: 16
                     anchors.topMargin: 16
-                    spacing: 4
+                    spacing: Spacing.xs
 
                     Text {
                         text: karmaViewModel.karmaScore.toString()
@@ -972,7 +972,7 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         visible: karmaViewModel.nextMilestone > 0
-                        spacing: 4
+                        spacing: Spacing.xs
                         Layout.topMargin: 8
 
                         RowLayout {
@@ -1028,7 +1028,7 @@ Item {
             // === Daily & Weekly Progress ===
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 16
+                spacing: Spacing.md
 
                 // Daily card
                 Rectangle {
@@ -1042,7 +1042,7 @@ Item {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 16
-                        spacing: 8
+                        spacing: Spacing.sm
 
                         Text {
                             text: qsTr("Прогресс за день")
@@ -1087,7 +1087,7 @@ Item {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 16
-                        spacing: 8
+                        spacing: Spacing.sm
 
                         Text {
                             text: qsTr("Прогресс за неделю")
@@ -1123,7 +1123,7 @@ Item {
             // === Streaks ===
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 16
+                spacing: Spacing.md
 
                 // Daily streak
                 Rectangle {
@@ -1212,7 +1212,7 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Text {
                         text: qsTr("Динамика продуктивности (30 дней)")
@@ -1485,7 +1485,7 @@ Item {
                     id: priorityChartCol
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Text {
                         text: qsTr("Задачи по приоритету")
@@ -1553,7 +1553,7 @@ Item {
 
                         delegate: RowLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: Spacing.sm
 
                             Text {
                                 text: modelData.label
@@ -1607,7 +1607,7 @@ Item {
                     id: recentDoneCol
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Text {
                         text: qsTr("Недавно завершённые")
@@ -1702,7 +1702,7 @@ Item {
                                 anchors.fill: parent
                                 anchors.leftMargin: 8
                                 anchors.rightMargin: 8
-                                spacing: 8
+                                spacing: Spacing.sm
 
                                 // Checkmark icon — task 17cea65b iter-3: было "✓".
                                 // Iter-night-23: was hardcoded "#2e8b57"
@@ -1766,7 +1766,7 @@ Item {
                     id: activityFeedCol
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     // Header: title + subtitle
                     Text {
@@ -1917,7 +1917,7 @@ Item {
 
                         delegate: RowLayout {
                             Layout.fillWidth: true
-                            spacing: 8
+                            spacing: Spacing.sm
 
                             // Emoji prefix (32 px wide)
                             Text {
@@ -1961,7 +1961,7 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Text {
                         text: qsTr("Очки за 30 дней")
@@ -2094,7 +2094,7 @@ Item {
                     id: tagCloudCol
                     anchors.fill: parent
                     anchors.margins: 16
-                    spacing: 8
+                    spacing: Spacing.sm
 
                     Text {
                         text: qsTr("Облако меток")

@@ -42,7 +42,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Проект")
@@ -116,7 +116,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
         visible: sectionCombo.count > 0
 
         Text {
@@ -183,7 +183,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Срок")
@@ -278,7 +278,7 @@ ColumnLayout {
         id: deadlineRow
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         // ITER2 #7: direct property binding so in-place task mutations (sync, undo)
         // are reflected immediately without waiting for the task object reference
@@ -372,7 +372,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Приоритет")
@@ -382,7 +382,7 @@ ColumnLayout {
         }
 
         RowLayout {
-            spacing: 4
+            spacing: Spacing.xs
 
             Repeater {
                 model: [1, 2, 3, 4]
@@ -431,7 +431,7 @@ ColumnLayout {
         id: durationRow
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         // ITER2 #7: direct property bindings so sync/undo mutations are reactive
         // without needing the task object reference to change.
@@ -505,7 +505,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Оценка")
@@ -522,7 +522,7 @@ ColumnLayout {
             // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock" из
             // stroke-пака. Тинт берёт цвет соседнего текста (theme-aware).
             contentItem: RowLayout {
-                spacing: 4
+                spacing: Spacing.xs
                 IconSvg {
                     name: "clock"
                     size: 14
@@ -598,7 +598,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Метки")
@@ -609,7 +609,7 @@ ColumnLayout {
 
         Flow {
             Layout.fillWidth: true
-            spacing: 4
+            spacing: Spacing.xs
 
             Repeater {
                 model: root._labels
@@ -666,7 +666,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         height: 36
-        spacing: 8
+        spacing: Spacing.sm
 
         Text {
             text:                 qsTr("Цвет")
@@ -681,7 +681,7 @@ ColumnLayout {
             padding: 4
 
             contentItem: RowLayout {
-                spacing: 4
+                spacing: Spacing.xs
                 Rectangle {
                     width: 12; height: 12; radius: 6
                     color: root.task && root.task.color !== "" ? root.task.color : "transparent"
