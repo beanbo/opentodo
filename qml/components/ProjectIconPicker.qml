@@ -95,7 +95,7 @@ Dialog {
             Layout.fillWidth: true
             placeholderText: qsTr("Поиск (briefcase, house, …)")
             // Иконка-лупа слева — единый стиль с глобальной строкой поиска.
-            leftPadding: 32
+            leftPadding: Spacing.xl
             Item {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter

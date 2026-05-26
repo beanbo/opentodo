@@ -512,7 +512,7 @@ ColumnLayout {
                             addReminderDialog.minuteOffsetIndex = currentIndex
 
                         contentItem: Text {
-                            leftPadding:        8
+                            leftPadding:        Spacing.sm
                             text:               minuteOffsetCombo.displayText
                             font:               minuteOffsetCombo.font
                             color:              ThemeManager.textColor

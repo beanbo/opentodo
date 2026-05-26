@@ -323,7 +323,7 @@ Rectangle {
                     }
 
                     contentItem: Text {
-                        leftPadding: 8
+                        leftPadding: Spacing.sm
                         text: syncModeCombo.displayText
                         font.pixelSize: 13
                         color: ThemeManager.textColor
@@ -430,7 +430,7 @@ Rectangle {
                     }
 
                     contentItem: Text {
-                        leftPadding: 8
+                        leftPadding: Spacing.sm
                         text: syncIntervalCombo.displayText
                         font.pixelSize: 13
                         color: ThemeManager.textColor

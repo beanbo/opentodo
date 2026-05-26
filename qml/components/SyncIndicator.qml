@@ -245,7 +245,7 @@ Rectangle {
 
         contentItem: Column {
             spacing: Spacing.xs
-            padding: 8
+            padding: Spacing.sm
 
             Text {
                 text: syncViewModel.formatLastSyncTime()

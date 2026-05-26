@@ -90,7 +90,7 @@ Rectangle {
         Row {
             id:      boardRow
             spacing: 12
-            padding: 16
+            padding: Spacing.md
             height:  parent.height
 
             // ── Columns (one per section) ─────────────────────────────────────

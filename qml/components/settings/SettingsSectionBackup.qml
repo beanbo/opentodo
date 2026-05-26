@@ -797,7 +797,7 @@ Rectangle {
                 color: ThemeManager.secondaryTextColor
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
-                bottomPadding: 8
+                bottomPadding: Spacing.sm
             }
 
             // Empty state
@@ -807,7 +807,7 @@ Rectangle {
                 font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
                 Layout.fillWidth: true
-                bottomPadding: 4
+                bottomPadding: Spacing.xs
             }
 
             // One row per backup file

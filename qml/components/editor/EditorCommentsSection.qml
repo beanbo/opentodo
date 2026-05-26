@@ -341,8 +341,8 @@ ColumnLayout {
         font.pixelSize: FontSize.bodySmall
         font.italic:   true
         color:         ThemeManager.secondaryTextColor
-        topPadding:    4
-        bottomPadding: 4
+        topPadding:    Spacing.xs
+        bottomPadding: Spacing.xs
     }
 
     // ── Add comment row ────────────────────────────────────────────────────
@@ -375,8 +375,8 @@ ColumnLayout {
             color:          ThemeManager.textColor
             wrapMode:       TextArea.Wrap
             background:     null
-            leftPadding:    8
-            rightPadding:   8
+            leftPadding:    Spacing.sm
+            rightPadding:   Spacing.sm
             topPadding:     6
             bottomPadding:  6
         }

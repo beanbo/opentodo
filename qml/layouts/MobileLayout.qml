@@ -669,7 +669,7 @@ Item {
                                 font.weight: Font.Medium
                                 color: textPrimary
                                 Layout.fillWidth: true
-                                leftPadding: 8
+                                leftPadding: Spacing.sm
                             }
                         }
                     }

@@ -81,7 +81,7 @@ ColumnLayout {
             }
 
             contentItem: Text {
-                leftPadding:       8
+                leftPadding:       Spacing.sm
                 text:              projectCombo.displayText
                 font:              projectCombo.font
                 color:             ThemeManager.textColor
@@ -517,7 +517,7 @@ ColumnLayout {
         ToolButton {
             id: estimateChip
             flat: true
-            padding: 4
+            padding: Spacing.xs
 
             // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock" из
             // stroke-пака. Тинт берёт цвет соседнего текста (theme-aware).
@@ -678,7 +678,7 @@ ColumnLayout {
         ToolButton {
             id: colorChip
             flat: true
-            padding: 4
+            padding: Spacing.xs
 
             contentItem: RowLayout {
                 spacing: Spacing.xs

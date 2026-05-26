@@ -546,7 +546,7 @@ Rectangle {
                 // с именем; legacy emoji-проекты и пустой icon работают как
                 // раньше (Text-фолбэк, "📁" для пустого).
                 contentItem: Row {
-                    leftPadding: 4
+                    leftPadding: Spacing.xs
                     spacing: 6
 
                     readonly property var _proj: root.selectedProjectId
@@ -711,7 +711,7 @@ Rectangle {
                 font.pixelSize: FontSize.small
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
-                leftPadding: 4
+                leftPadding: Spacing.xs
             }
 
             ComboBox {
@@ -742,7 +742,7 @@ Rectangle {
                 }
 
                 contentItem: Text {
-                    leftPadding: 4
+                    leftPadding: Spacing.xs
                     text:  sectionCombo.displayText
                     color: root.textCol
                     font:  sectionCombo.font
@@ -882,8 +882,8 @@ Rectangle {
                     border.color: root.borderCol
                     border.width: 1
                 }
-                leftPadding: 4
-                rightPadding: 4
+                leftPadding: Spacing.xs
+                rightPadding: Spacing.xs
 
                 Keys.onReturnPressed: root._commitLabelInput()
                 Keys.onEnterPressed:  root._commitLabelInput()
@@ -931,7 +931,7 @@ Rectangle {
                 font.pixelSize: FontSize.caption
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
-                leftPadding: 4
+                leftPadding: Spacing.xs
             }
 
             Repeater {

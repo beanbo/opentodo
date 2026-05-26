@@ -110,8 +110,8 @@ Item {
             contentItem: Row {
                 anchors.centerIn: parent
                 spacing: 6
-                leftPadding: 16
-                rightPadding: 16
+                leftPadding: Spacing.md
+                rightPadding: Spacing.md
                 IconSvg {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "plus"

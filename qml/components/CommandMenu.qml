@@ -580,7 +580,7 @@ Item {
                         visible: parent._showCat
                         anchors { top: parent.top; left: parent.left; right: parent.right }
                         height: 28
-                        leftPadding: 16
+                        leftPadding: Spacing.md
                         verticalAlignment: Text.AlignVCenter
 
                         // Translate category keys to Russian display strings
