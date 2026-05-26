@@ -10,10 +10,8 @@ ColumnLayout {
 
     property string taskId: ""
 
-    Layout.fillWidth:    true
-    Layout.leftMargin:   Spacing.md
-    Layout.rightMargin:  Spacing.md
-    Layout.bottomMargin: Spacing.xs
+    // Q4.01: TaskEditor wraps us in a Card with 14px internal padding.
+    Layout.fillWidth: true
     spacing: Spacing.xs
 
     // ── JS helpers ─────────────────────────────────────────────────────────
@@ -107,35 +105,36 @@ ColumnLayout {
     }
 
     // ── Section header row ─────────────────────────────────────────────────
+    // Q4.01 (redesign): unified section title style — 13px / Medium / text
+    // color. Matches Subtasks & Comments and the Card title from
+    // view-others.jsx.
     RowLayout {
         Layout.fillWidth: true
         spacing: Spacing.sm
 
         Text {
             text:          qsTr("Напоминания")
-            font.pixelSize: FontSize.body
-            font.weight:   Font.DemiBold
+            font.pixelSize: FontSize.bodySmall
+            font.weight:   Font.Medium
             color:         ThemeManager.textColor
         }
 
         Item { Layout.fillWidth: true }
 
-        // "+" button
+        // "+" button — 22×22 iconBtn in subText, hover surface (matches the
+        // section-add affordance from view-project.jsx).
         Rectangle {
             width:  22
             height: 22
-            radius: 11
+            radius: Radius.md
             color:  addReminderHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
-            border.color: ThemeManager.borderColor
-            border.width: 1
 
-            // Task 17cea65b iter-3: было unicode "+".
             IconSvg {
                 anchors.centerIn: parent
                 name: "plus"
                 size: 14
-                color: ThemeManager.textColor
+                color: ThemeManager.secondaryTextColor
             }
 
             MouseArea {

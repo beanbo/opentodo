@@ -4,16 +4,24 @@ import QtQuick.Layouts
 import OpenTodoUI
 
 // Vertical column with Project, Section, Due date, Priority and Labels rows.
+// Q4.01 (redesign): TaskEditor wraps this component in a Card-like
+// surface (border + radius 10). Inner rows share a unified label width
+// (100px) and label style (fontSize 13 / subText) so the card reads as
+// one unit matching the Settings Card from view-others.jsx.
 ColumnLayout {
     id: root
 
     property string taskId: ""
     property var    task:   null
 
+    // Q4.01: design label slot — keeps all 9 meta rows perfectly aligned.
+    readonly property int _labelSlot: 100
+
+    // Q4.01: TaskEditor wraps us in a Card with 14px internal padding, so
+    // we no longer need our own outer margins — driving padding from one
+    // place keeps every Card consistent.
     Layout.fillWidth:   true
-    Layout.leftMargin:  Spacing.md
-    Layout.rightMargin: Spacing.md
-    spacing: 2
+    spacing: 0
 
     // ── Priority helpers ──────────────────────────────────────────────────
     function _priorityColor(p) {
@@ -48,13 +56,16 @@ ColumnLayout {
             text:                 qsTr("Проект")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
+        // Q4.01 (redesign): match the `Select` pill in view-others.jsx —
+        // bg, 1px border, radius 6, fontSize 12, ChevronDown 11/subText.
         ComboBox {
             id: projectCombo
             Layout.fillWidth: true
-            font.pixelSize:   13
+            Layout.preferredHeight: 30
+            font.pixelSize:   FontSize.small
 
             model:     projectViewModel
             textRole:  "name"
@@ -75,17 +86,31 @@ ColumnLayout {
             }
 
             background: Rectangle {
-                color:  projectComboArea.containsMouse
-                        ? ThemeManager.hoverColor : "transparent"
-                radius: Radius.sm
+                color:        projectComboArea.containsMouse
+                              ? ThemeManager.hoverColor
+                              : ThemeManager.backgroundColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       Radius.md
+            }
+
+            indicator: IconSvg {
+                name: "chevron-down"
+                size: 11
+                color: ThemeManager.secondaryTextColor
+                anchors.right: parent.right
+                anchors.rightMargin: Spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
             }
 
             contentItem: Text {
                 leftPadding:       Spacing.sm
+                rightPadding:      Spacing.lg
                 text:              projectCombo.displayText
                 font:              projectCombo.font
                 color:             ThemeManager.textColor
                 verticalAlignment: Text.AlignVCenter
+                elide:             Text.ElideRight
             }
 
             MouseArea {
@@ -123,13 +148,14 @@ ColumnLayout {
             text:                 qsTr("Раздел")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
         ComboBox {
             id: sectionCombo
             Layout.fillWidth: true
-            font.pixelSize:   13
+            Layout.preferredHeight: 30
+            font.pixelSize:   FontSize.small
 
             // ITER1 #22: drive off projectCombo.currentValue so the list refreshes
             // immediately when the user picks a new project, without waiting for
@@ -153,6 +179,34 @@ ColumnLayout {
             }
             textRole:  "name"
             valueRole: "id"
+
+            // Q4.01 (redesign): match the `Select` pill style — same as
+            // projectCombo above.
+            background: Rectangle {
+                color:        ThemeManager.backgroundColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       Radius.md
+            }
+
+            indicator: IconSvg {
+                name: "chevron-down"
+                size: 11
+                color: ThemeManager.secondaryTextColor
+                anchors.right: parent.right
+                anchors.rightMargin: Spacing.sm
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            contentItem: Text {
+                leftPadding:       Spacing.sm
+                rightPadding:      Spacing.lg
+                text:              sectionCombo.displayText
+                font:              sectionCombo.font
+                color:             ThemeManager.textColor
+                verticalAlignment: Text.AlignVCenter
+                elide:             Text.ElideRight
+            }
 
             Component.onCompleted: {
                 if (root.task)
@@ -180,6 +234,8 @@ ColumnLayout {
     }
 
     // ── Due date row ──────────────────────────────────────────────────────
+    // Q4.01 (redesign): value is a chip with inline calendar icon (size 14)
+    // — matches the TaskChip pattern from view-project.jsx.
     RowLayout {
         Layout.fillWidth: true
         height: 36
@@ -189,31 +245,46 @@ ColumnLayout {
             text:                 qsTr("Срок")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
         Rectangle {
-            height: 26
-            width:  dueDateText.implicitWidth + 20
-            radius: Radius.sm
+            height: 28
+            width:  dueDateRow.implicitWidth + 16
+            radius: Radius.md
             color:  dueDateHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
             border.color: ThemeManager.borderColor
-            border.width: root._dueString !== "" ? 1 : 0
+            border.width: 1
 
-            Text {
-                id: dueDateText
+            Row {
+                id: dueDateRow
                 anchors {
                     verticalCenter: parent.verticalCenter
                     left:           parent.left
-                    leftMargin:     10
+                    leftMargin:     8
                 }
-                text:          root._dueString !== ""
-                               ? root._dueString : qsTr("Установить срок")
-                font.pixelSize: 13
-                color:         root._dueString !== ""
-                               ? ThemeManager.textColor
-                               : ThemeManager.secondaryTextColor
+                spacing: 6
+
+                IconSvg {
+                    name: "calendar"
+                    size: 14
+                    color: root._dueString !== ""
+                           ? ThemeManager.textColor
+                           : ThemeManager.secondaryTextColor
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    id: dueDateText
+                    text:          root._dueString !== ""
+                                   ? root._dueString : qsTr("Установить срок")
+                    font.pixelSize: 13
+                    color:         root._dueString !== ""
+                                   ? ThemeManager.textColor
+                                   : ThemeManager.secondaryTextColor
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             MouseArea {
@@ -289,31 +360,49 @@ ColumnLayout {
             text:                 qsTr("Дедлайн")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
+        // Q4.01 (redesign): chip with inline alarm icon — color picks up
+        // errorColor when deadline is set (matches TaskChip deadline pattern
+        // in view-project.jsx).
         Rectangle {
-            height: 26
-            width:  deadlineDateText.implicitWidth + 20
-            radius: Radius.sm
+            height: 28
+            width:  deadlineDateRow.implicitWidth + 16
+            radius: Radius.md
             color:  deadlineDateHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
             border.color: ThemeManager.borderColor
-            border.width: deadlineRow._deadlineStr !== "" ? 1 : 0
+            border.width: 1
 
-            Text {
-                id: deadlineDateText
+            Row {
+                id: deadlineDateRow
                 anchors {
                     verticalCenter: parent.verticalCenter
                     left:           parent.left
-                    leftMargin:     10
+                    leftMargin:     8
                 }
-                text:          deadlineRow._deadlineStr !== ""
-                               ? deadlineRow._deadlineStr : qsTr("Установить дедлайн")
-                font.pixelSize: 13
-                color:         deadlineRow._deadlineStr !== ""
-                               ? ThemeManager.textColor
-                               : ThemeManager.secondaryTextColor
+                spacing: 6
+
+                IconSvg {
+                    name: "alarm"
+                    size: 14
+                    color: deadlineRow._deadlineStr !== ""
+                           ? ThemeManager.errorColor
+                           : ThemeManager.secondaryTextColor
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    id: deadlineDateText
+                    text:          deadlineRow._deadlineStr !== ""
+                                   ? deadlineRow._deadlineStr : qsTr("Установить дедлайн")
+                    font.pixelSize: 13
+                    color:         deadlineRow._deadlineStr !== ""
+                                   ? ThemeManager.textColor
+                                   : ThemeManager.secondaryTextColor
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
 
             MouseArea {
@@ -378,7 +467,7 @@ ColumnLayout {
             text:                 qsTr("Приоритет")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
         RowLayout {
@@ -391,9 +480,11 @@ ColumnLayout {
                     required property int modelData
                     readonly property int pVal: modelData
 
-                    width:  Spacing.xl
-                    height: 26
-                    radius: Radius.sm
+                    // Q4.01 (redesign): unified chip height 28, radius 6
+                    // to match the rest of the meta row chips.
+                    width:  36
+                    height: 28
+                    radius: Radius.md
                     color:  root._priority === pVal
                             ? root._priorityColor(pVal) + "33"
                             : (flagHover.containsMouse ? ThemeManager.hoverColor : "transparent")
@@ -442,7 +533,7 @@ ColumnLayout {
             text:                 qsTr("Длительность")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
         SpinBox {
@@ -511,23 +602,30 @@ ColumnLayout {
             text:                 qsTr("Оценка")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
+        // Q4.01 (redesign): chip-style ToolButton — bordered surface, height 28,
+        // radius 6 — matches the Inbox filter pill from view-others.jsx.
         ToolButton {
             id: estimateChip
             flat: true
-            padding: Spacing.xs
+            padding: 0
+            implicitHeight: 28
 
             // Q4.01 (redesign): "⏱" emoji заменён на IconSvg "clock" из
             // stroke-пака. Тинт берёт цвет соседнего текста (theme-aware).
-            contentItem: RowLayout {
-                spacing: Spacing.xs
+            contentItem: Row {
+                spacing: 6
+                leftPadding: 10
+                rightPadding: 10
                 IconSvg {
                     name: "clock"
                     size: 14
-                    color: ThemeManager.textColor
-                    Layout.alignment: Qt.AlignVCenter
+                    color: root.task && root.task.estimateMinutes > 0
+                           ? ThemeManager.textColor
+                           : ThemeManager.secondaryTextColor
+                    anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
                     text:          root.task && root.task.estimateMinutes > 0
@@ -536,8 +634,17 @@ ColumnLayout {
                     color:         root.task && root.task.estimateMinutes > 0
                                    ? ThemeManager.textColor
                                    : ThemeManager.secondaryTextColor
-                    font.pixelSize: FontSize.body
+                    font.pixelSize: 13
+                    anchors.verticalCenter: parent.verticalCenter
                 }
+            }
+
+            background: Rectangle {
+                color:        estimateChip.hovered
+                              ? ThemeManager.hoverColor : "transparent"
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       Radius.md
             }
 
             onClicked: estimatePopup.open()
@@ -604,7 +711,7 @@ ColumnLayout {
             text:                 qsTr("Метки")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
         Flow {
@@ -633,11 +740,11 @@ ColumnLayout {
                 }
             }
 
-            // Add-label button
+            // Add-label button — Q4.01: unified chip style.
             Rectangle {
-                height: 22
-                width:  addLabelText.implicitWidth + 16
-                radius: 11
+                height: 26
+                width:  addLabelText.implicitWidth + 20
+                radius: Radius.md
                 color:  addLabelHover.containsMouse
                         ? ThemeManager.hoverColor : "transparent"
                 border.color: ThemeManager.borderColor
@@ -672,26 +779,40 @@ ColumnLayout {
             text:                 qsTr("Цвет")
             font.pixelSize:       13
             color:                ThemeManager.secondaryTextColor
-            Layout.preferredWidth: 90
+            Layout.preferredWidth: root._labelSlot
         }
 
+        // Q4.01 (redesign): same chip style as estimate.
         ToolButton {
             id: colorChip
             flat: true
-            padding: Spacing.xs
+            padding: 0
+            implicitHeight: 28
 
-            contentItem: RowLayout {
-                spacing: Spacing.xs
+            background: Rectangle {
+                color:        colorChip.hovered
+                              ? ThemeManager.hoverColor : "transparent"
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       Radius.md
+            }
+
+            contentItem: Row {
+                spacing: 6
+                leftPadding: 10
+                rightPadding: 10
                 Rectangle {
                     width: 12; height: 12; radius: 6
                     color: root.task && root.task.color !== "" ? root.task.color : "transparent"
                     border.color: ThemeManager.borderColor
                     border.width: 1
+                    anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {
                     text:          root.task && root.task.color !== "" ? root.task.color : qsTr("Не задан")
                     color:         ThemeManager.textColor
-                    font.pixelSize: FontSize.small
+                    font.pixelSize: 13
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
 
@@ -772,7 +893,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        Item { Layout.preferredWidth: 90 }
+        Item { Layout.preferredWidth: root._labelSlot }
 
         TextField {
             id: labelInput

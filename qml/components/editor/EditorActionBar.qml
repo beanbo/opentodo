@@ -79,10 +79,12 @@ Rectangle {
         }
     }
 
-    // Height: 52 px for the button row + 28 px for the timestamp footer
-    // (visible only when a task with a createdAt is loaded).
-    height: root.task && root.task.createdAt ? 80 : 52
-    color:  ThemeManager.surfaceColor
+    // Q4.01 (redesign): 48 px button row + 24 px timestamp footer (visible
+    // only when a task with a known createdAt is loaded). Action bar sits
+    // on bg color (matches editor pane) with a top 1px border separating
+    // it from the scroll area.
+    height: root.task && root.task.createdAt ? 72 : 48
+    color:  ThemeManager.backgroundColor
 
     // Top separator
     Rectangle {
@@ -93,30 +95,38 @@ Rectangle {
         color:  ThemeManager.borderColor
     }
 
+    // Q4.01 (redesign): Delete = red link, Duplicate = neutral link,
+    // Save = accent-filled primary (radius 8 / white text). Padding
+    // 16 horizontal × 12 vertical per the design pattern.
     RowLayout {
+        id: buttonRow
         anchors {
-            fill:        parent
-            leftMargin:  Spacing.md
-            rightMargin: Spacing.md
+            top:         parent.top
+            left:        parent.left
+            right:       parent.right
+            leftMargin:  16
+            rightMargin: 16
         }
+        height:  48
         spacing: Spacing.sm
 
-        // Delete button
+        // Delete — red text on transparent (errorColor).
         Rectangle {
-            height: Spacing.xl
-            width:  deleteText.implicitWidth + 24
-            radius: Radius.sm
+            height: 32
+            width:  deleteText.implicitWidth + 16
+            radius: Radius.md
             color:  deleteHover.containsMouse
-                    ? ThemeManager.accentColor + "22" : "transparent"
-            border.color: ThemeManager.accentColor
-            border.width: 1
+                    ? Qt.rgba(ThemeManager.errorColor.r,
+                              ThemeManager.errorColor.g,
+                              ThemeManager.errorColor.b, 0.10)
+                    : "transparent"
 
             Text {
                 id: deleteText
                 anchors.centerIn: parent
                 text:          qsTr("Удалить")
                 font.pixelSize: FontSize.bodySmall
-                color:         ThemeManager.accentColor
+                color:         ThemeManager.errorColor
             }
 
             MouseArea {
@@ -135,22 +145,20 @@ Rectangle {
 
         Item { Layout.fillWidth: true }
 
-        // Duplicate button
+        // Duplicate — neutral text link, transparent.
         Rectangle {
-            height: Spacing.xl
-            width:  duplicateText.implicitWidth + 24
-            radius: Radius.sm
+            height: 32
+            width:  duplicateText.implicitWidth + 16
+            radius: Radius.md
             color:  dupHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
-            border.color: ThemeManager.borderColor
-            border.width: 1
 
             Text {
                 id: duplicateText
                 anchors.centerIn: parent
                 text:          qsTr("Дублировать")
                 font.pixelSize: FontSize.bodySmall
-                color:         ThemeManager.textColor
+                color:         ThemeManager.secondaryTextColor
             }
 
             MouseArea {
@@ -165,13 +173,11 @@ Rectangle {
             }
         }
 
-        // Save button — explicitly flushes any in-progress field edit and
-        // shows a brief "Сохранено" toast. Auto-save still happens on field
-        // blur, but users coming from Todoist expect a Save button to exist.
+        // Save — primary accent fill / white text / radius 8.
         Rectangle {
-            height: Spacing.xl
+            height: 32
             width:  saveText.implicitWidth + 28
-            radius: Radius.sm
+            radius: Radius.lg   // 8
             color:  saveHover.containsMouse
                     ? Qt.darker(ThemeManager.accentColor, 1.1)
                     : ThemeManager.accentColor
@@ -223,12 +229,13 @@ Rectangle {
         id: timestampFooter
 
         // Position directly under the button row.
+        // Q4.01: padding 16 horizontal to match the button row.
         anchors {
             left:        parent.left
             right:       parent.right
             bottom:      parent.bottom
-            leftMargin:  Spacing.md
-            rightMargin: Spacing.md
+            leftMargin:  16
+            rightMargin: 16
             bottomMargin: 6
         }
 

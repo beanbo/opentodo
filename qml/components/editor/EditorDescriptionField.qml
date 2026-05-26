@@ -5,6 +5,9 @@ import OpenTodoUI
 
 // Multiline description TextArea with an optional AI-generate button.
 // The button is visible only when aiAssistant is available and configured.
+// Q4.01 (redesign): wrapped in a Card-like surface (border + radius 10)
+// matching the Card pattern from view-others.jsx so the description block
+// reads as its own section.
 ColumnLayout {
     id: root
 
@@ -12,9 +15,9 @@ ColumnLayout {
     property var    task:   null
 
     Layout.fillWidth:    true
-    Layout.leftMargin:   Spacing.md
-    Layout.rightMargin:  Spacing.md
-    Layout.bottomMargin: Spacing.sm
+    Layout.leftMargin:   12
+    Layout.rightMargin:  12
+    Layout.bottomMargin: 0
 
     spacing: 0
 
@@ -503,17 +506,34 @@ ColumnLayout {
     }
 
     // ── Description TextArea ──────────────────────────────────────────────
+    // Q4.01 (redesign): surface bg + 1px border + radius 10 + padding 12
+    // matching the Card pattern from view-others.jsx so the description
+    // reads as a self-contained block.
     TextArea {
         id: descriptionField
 
         Layout.fillWidth: true
+        Layout.topMargin: 4
 
         text:            root.task ? (root.task.description || "") : ""
         placeholderText: qsTr("Описание (поддерживается Markdown)")
         font.pixelSize:  FontSize.body
         color:           ThemeManager.textColor
         wrapMode:        TextEdit.Wrap
-        background:      null
+
+        leftPadding:   12
+        rightPadding:  12
+        topPadding:    12
+        bottomPadding: 12
+
+        background: Rectangle {
+            color:        ThemeManager.surfaceColor
+            border.color: descriptionField.activeFocus
+                          ? ThemeManager.accentColor
+                          : ThemeManager.borderColor
+            border.width: 1
+            radius:       10
+        }
 
         // Render inline Markdown so [text](url) links appear styled and emit
         // linkActivated when clicked. Qt preserves the underlying Markdown

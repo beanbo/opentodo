@@ -10,9 +10,8 @@ ColumnLayout {
     property string taskId:      ""
     property string taskContent: ""   // passed in from TaskEditor for the dialog header
 
-    Layout.fillWidth:   true
-    Layout.leftMargin:  Spacing.md
-    Layout.rightMargin: Spacing.md
+    // Q4.01: TaskEditor wraps us in a Card with 14px internal padding.
+    Layout.fillWidth: true
     spacing: Spacing.xs
 
     // B-7.8: correct Russian plural, handles the 11-14 edge case
@@ -63,10 +62,11 @@ ColumnLayout {
                 spacing:      Spacing.xs
 
                 // Q4.01 (redesign): "🤖" → "sparkles" stroke-иконка для
-                // консистентности AI-точек входа.
+                // консистентности AI-точек входа. size 14 per the inline-
+                // icon spec used throughout the Card pattern.
                 IconSvg {
                     name:  "sparkles"
-                    size:  11
+                    size:  14
                     color: ThemeManager.accentColor
                     anchors.verticalCenter: parent.verticalCenter
                 }

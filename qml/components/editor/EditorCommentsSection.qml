@@ -9,10 +9,8 @@ ColumnLayout {
 
     property string taskId: ""
 
-    Layout.fillWidth:    true
-    Layout.leftMargin:   Spacing.md
-    Layout.rightMargin:  Spacing.md
-    Layout.bottomMargin: Spacing.md
+    // Q4.01: TaskEditor wraps us in a Card with 14px internal padding.
+    Layout.fillWidth: true
     spacing: Spacing.sm
 
     // ── JS helpers ─────────────────────────────────────────────────────────
@@ -390,11 +388,14 @@ ColumnLayout {
 
         Item { Layout.fillWidth: true }
 
+        // Q4.01 (redesign): primary action — accent fill, radius 8, white
+        // label (matches AssistantView send button + Inbox CTA in
+        // view-others.jsx).
         Rectangle {
             id:     addCommentBtn
-            height: 28
-            width:  addBtnText.implicitWidth + 20
-            radius: Radius.sm
+            height: 30
+            width:  addBtnText.implicitWidth + 28
+            radius: Radius.lg   // 8
 
             readonly property bool canAdd:
                 newCommentArea.text.trim().length > 0 && root.taskId !== ""
@@ -412,7 +413,8 @@ ColumnLayout {
                 id:            addBtnText
                 anchors.centerIn: parent
                 text:          qsTr("Добавить")
-                font.pixelSize: FontSize.small
+                font.pixelSize: FontSize.bodySmall
+                font.weight:   Font.Medium
                 color:         addCommentBtn.canAdd ? "white" : ThemeManager.secondaryTextColor
             }
 

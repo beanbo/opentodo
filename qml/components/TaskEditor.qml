@@ -19,7 +19,10 @@ Rectangle {
     width:  400
     height: parent ? parent.height : 600
 
-    color:  ThemeManager.surfaceColor
+    // Q4.01 (redesign): editor pane sits on bg (not surface). Internal Cards
+    // are the ones with `surface` background + border. Matches the Card
+    // pattern from view-others.jsx (Settings/Productivity).
+    color:  ThemeManager.backgroundColor
     radius: 0
 
     // ── Left border separator ─────────────────────────────────────────────
@@ -107,7 +110,11 @@ Rectangle {
         ColumnLayout {
             id: editorColumn
             width: parent.width
-            spacing: 0
+            // Q4.01 (redesign): tight stack of Cards — no more borderless
+            // dividers. Each subsection (description, meta, subtasks,
+            // reminders, comments) wraps itself in a Card-like Rectangle
+            // (surface bg + 1px border + radius 10).
+            spacing: 12
 
             EditorHeader {
                 id: editorHeader
@@ -131,69 +138,121 @@ Rectangle {
                 task:   root.task
             }
 
-            // Divider
+            // ── Meta Card ────────────────────────────────────────────────
+            // Q4.01 (redesign): Card pattern from view-others.jsx — surface bg,
+            // 1px border, radius 10, padding 14. Wraps each section into a
+            // visually self-contained block.
             Rectangle {
                 Layout.fillWidth:    true
-                Layout.leftMargin:   Spacing.md
-                Layout.rightMargin:  Spacing.md
-                Layout.bottomMargin: Spacing.sm
-                height: 1
-                color:  ThemeManager.borderColor
+                Layout.leftMargin:   12
+                Layout.rightMargin:  12
+                Layout.preferredHeight: metaCardLayout.implicitHeight + 28
+                color:        ThemeManager.surfaceColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       10
+
+                ColumnLayout {
+                    id: metaCardLayout
+                    anchors {
+                        left:    parent.left
+                        right:   parent.right
+                        top:     parent.top
+                        margins: 14
+                    }
+                    spacing: 0
+
+                    EditorMetaRow {
+                        Layout.fillWidth: true
+                        taskId: root.taskId
+                        task:   root.task
+                    }
+                }
             }
 
-            EditorMetaRow {
-                Layout.fillWidth: true
-                taskId: root.taskId
-                task:   root.task
-            }
-
-            // Divider
+            // ── Subtasks Card ────────────────────────────────────────────
             Rectangle {
                 Layout.fillWidth:    true
-                Layout.leftMargin:   Spacing.md
-                Layout.rightMargin:  Spacing.md
-                Layout.topMargin:    12
-                Layout.bottomMargin: Spacing.xs
-                height: 1
-                color:  ThemeManager.borderColor
+                Layout.leftMargin:   12
+                Layout.rightMargin:  12
+                Layout.preferredHeight: subtasksCardLayout.implicitHeight + 28
+                color:        ThemeManager.surfaceColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       10
+
+                ColumnLayout {
+                    id: subtasksCardLayout
+                    anchors {
+                        left:    parent.left
+                        right:   parent.right
+                        top:     parent.top
+                        margins: 14
+                    }
+                    spacing: 0
+
+                    EditorSubtasksSection {
+                        Layout.fillWidth: true
+                        taskId:      root.taskId
+                        taskContent: root.task ? (root.task.content || "") : ""
+                    }
+                }
             }
 
-            EditorSubtasksSection {
-                Layout.fillWidth: true
-                taskId:      root.taskId
-                taskContent: root.task ? (root.task.content || "") : ""
-            }
-
-            // Divider
+            // ── Reminders Card ───────────────────────────────────────────
             Rectangle {
                 Layout.fillWidth:    true
-                Layout.leftMargin:   Spacing.md
-                Layout.rightMargin:  Spacing.md
-                Layout.topMargin:    12
-                Layout.bottomMargin: Spacing.xs
-                height: 1
-                color:  ThemeManager.borderColor
+                Layout.leftMargin:   12
+                Layout.rightMargin:  12
+                Layout.preferredHeight: remindersCardLayout.implicitHeight + 28
+                color:        ThemeManager.surfaceColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       10
+
+                ColumnLayout {
+                    id: remindersCardLayout
+                    anchors {
+                        left:    parent.left
+                        right:   parent.right
+                        top:     parent.top
+                        margins: 14
+                    }
+                    spacing: 0
+
+                    EditorRemindersSection {
+                        Layout.fillWidth: true
+                        taskId: root.taskId
+                    }
+                }
             }
 
-            EditorRemindersSection {
-                Layout.fillWidth: true
-                taskId: root.taskId
-            }
-
-            // Divider
+            // ── Comments Card ────────────────────────────────────────────
             Rectangle {
                 Layout.fillWidth:    true
-                Layout.leftMargin:   Spacing.md
-                Layout.rightMargin:  Spacing.md
-                Layout.topMargin:    12
-                Layout.bottomMargin: Spacing.xs
-                height: 1
-                color:  ThemeManager.borderColor
-            }
+                Layout.leftMargin:   12
+                Layout.rightMargin:  12
+                Layout.preferredHeight: commentsCardLayout.implicitHeight + 28
+                color:        ThemeManager.surfaceColor
+                border.color: ThemeManager.borderColor
+                border.width: 1
+                radius:       10
 
-            EditorCommentsSection {
-                Layout.fillWidth: true
-                taskId: root.taskId
+                ColumnLayout {
+                    id: commentsCardLayout
+                    anchors {
+                        left:    parent.left
+                        right:   parent.right
+                        top:     parent.top
+                        margins: 14
+                    }
+                    spacing: 0
+
+                    EditorCommentsSection {
+                        Layout.fillWidth: true
+                        taskId: root.taskId
+                    }
+                }
             }
         }
     }
