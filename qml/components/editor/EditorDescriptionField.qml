@@ -521,8 +521,15 @@ ColumnLayout {
         readonly property bool _isEmpty: text.length === 0 && !activeFocus
 
         Layout.fillWidth: true
-        Layout.topMargin: 4
-        Layout.preferredHeight: _isEmpty ? 32 : implicitHeight
+        Layout.topMargin: _isEmpty ? 0 : 4
+        // Q4.01 (iter-11): empty-state почти нулевой — 20px достаточно для
+        // тонкой click-зоны "type here" без visual gap'а перед Meta Card.
+        // Раньше preferredHeight=32 + topMargin=4 + spacing=12 давало ~50px
+        // пустого пространства между AI-link и meta-полями, которого в
+        // дизайне нет. maximumHeight закрепляет высоту даже если TextArea
+        // implicitHeight больше.
+        Layout.preferredHeight: _isEmpty ? 20 : implicitHeight
+        Layout.maximumHeight:   _isEmpty ? 20 : -1
 
         text:            root.task ? (root.task.description || "") : ""
         // Q4.01 (iter-9): дизайн-канвас не показывает placeholder в пустом
