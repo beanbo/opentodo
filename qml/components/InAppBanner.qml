@@ -202,7 +202,7 @@ Rectangle {
                     anchors.centerIn: parent
                     text: btn.label
                     color: "white"
-                    font.pixelSize: 12
+                    font.pixelSize: FontSize.small
                 }
 
                 MouseArea {
@@ -422,7 +422,7 @@ Rectangle {
                         : qsTr("Уведомление через %1 ч %2 мин")
                           .arg(Math.floor(customSnoozeSpin.value / 60))
                           .arg(customSnoozeSpin.value % 60))
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
                 color: ThemeManager.secondaryTextColor
             }
         }

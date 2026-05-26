@@ -115,7 +115,7 @@ Rectangle {
                 id: deleteText
                 anchors.centerIn: parent
                 text:          qsTr("Удалить")
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
                 color:         ThemeManager.accentColor
             }
 
@@ -149,7 +149,7 @@ Rectangle {
                 id: duplicateText
                 anchors.centerIn: parent
                 text:          qsTr("Дублировать")
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
                 color:         ThemeManager.textColor
             }
 
@@ -180,7 +180,7 @@ Rectangle {
                 id: saveText
                 anchors.centerIn: parent
                 text:           qsTr("Сохранить")
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
                 font.weight:    Font.Medium
                 color:          "#ffffff"
             }

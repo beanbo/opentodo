@@ -313,7 +313,7 @@ Rectangle {
 
                     ToolButton {
                         text: qsTr("Месяц")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         checked: root.viewMode === "month"
                         onClicked: root.viewMode = "month"
                         Material.foreground: root.viewMode === "month"
@@ -324,7 +324,7 @@ Rectangle {
 
                     ToolButton {
                         text: qsTr("Неделя")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         checked: root.viewMode === "week"
                         onClicked: root.viewMode = "week"
                         Material.foreground: root.viewMode === "week"
@@ -335,7 +335,7 @@ Rectangle {
 
                     ToolButton {
                         text: qsTr("Список")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         checked: root.viewMode === "agenda"
                         onClicked: {
                             // Reset agenda window to today each time we enter agenda mode
@@ -392,7 +392,7 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text:           modelData
-                            font.pixelSize: 12
+                            font.pixelSize: FontSize.small
                             font.bold:      true
                             color: {
                                 // Highlight weekends
@@ -475,7 +475,7 @@ Rectangle {
                         // Day number
                         Text {
                             text:       cellDate.getDate()
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             font.bold:  isToday
                             color: {
                                 if (isToday)         return root.accentRed
@@ -619,7 +619,7 @@ Rectangle {
                         // Full Russian day name (e.g. "понедельник")
                         Text {
                             text: Qt.locale("ru_RU").dayName(weekCell.modelData.getDay(), Locale.LongFormat)
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             font.bold:      weekCell.isToday
                             color:          weekCell.isToday ? root.accentRed : root.textPrimary
                             // Capitalize first letter
@@ -632,7 +632,7 @@ Rectangle {
                         // dd.MM date
                         Text {
                             text:  Qt.formatDate(weekCell.modelData, "dd.MM")
-                            font.pixelSize: 12
+                            font.pixelSize: FontSize.small
                             color: root.textSecondary
                         }
 
@@ -673,7 +673,7 @@ Rectangle {
 
                             Text {
                                 text:           weekCell.dayTasks[index].content
-                                font.pixelSize: 11
+                                font.pixelSize: FontSize.caption
                                 color:          root.textPrimary
                                 elide:          Text.ElideRight
                                 Layout.fillWidth: true
@@ -801,14 +801,14 @@ Rectangle {
                                                                  Locale.LongFormat)
                                         return raw.charAt(0).toUpperCase() + raw.slice(1)
                                     }
-                                    font.pixelSize: 14
+                                    font.pixelSize: FontSize.body
                                     font.bold: true
                                     color: agendaDayItem.isToday ? root.accentRed : root.textPrimary
                                 }
 
                                 Label {
                                     text: Qt.formatDate(agendaDayItem.dayDate, "dd.MM")
-                                    font.pixelSize: 12
+                                    font.pixelSize: FontSize.small
                                     color: root.textSecondary
                                 }
 
@@ -819,7 +819,7 @@ Rectangle {
                                           ? agendaDayItem.tasks.length + " " +
                                             root._taskWord(agendaDayItem.tasks.length)
                                           : "—"
-                                    font.pixelSize: 12
+                                    font.pixelSize: FontSize.small
                                     color: root.textSecondary
                                 }
                             }
@@ -866,7 +866,7 @@ Rectangle {
                                             text:             agendaTaskRow.modelData.content || ""
                                             color:            root.textPrimary
                                             elide:            Text.ElideRight
-                                            font.pixelSize:   13
+                                            font.pixelSize:   FontSize.bodySmall
                                             Layout.fillWidth: true
                                         }
                                     }
@@ -895,7 +895,7 @@ Rectangle {
                                 text:              qsTr("  Нет задач")
                                 Layout.leftMargin: 36
                                 color:             root.textSecondary
-                                font.pixelSize:    12
+                                font.pixelSize:    FontSize.small
                                 font.italic:       true
                             }
 
@@ -996,7 +996,7 @@ Rectangle {
                             id:             badgeText
                             anchors.centerIn: parent
                             text:           popupTaskList.count
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color:          "white"
                             font.bold:      true
                         }
@@ -1035,7 +1035,7 @@ Rectangle {
                         anchors.centerIn: parent
                         visible:          popupTaskList.count === 0
                         text:             qsTr("На этот день задач нет")
-                        font.pixelSize:   14
+                        font.pixelSize:   FontSize.body
                         color:            root.textSecondary
                     }
 
@@ -1074,7 +1074,7 @@ Rectangle {
                             // Task content
                             Text {
                                 text:            modelData.content
-                                font.pixelSize:  14
+                                font.pixelSize:  FontSize.body
                                 color:           root.textPrimary
                                 elide:           Text.ElideRight
                                 Layout.fillWidth: true
@@ -1146,7 +1146,7 @@ Rectangle {
                         placeholderText: qsTr("Добавить задачу…")
                         background:     Item {}
                         color:          root.textPrimary
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.body
 
                         onAccepted: {
                             var t = text.trim()
@@ -1216,7 +1216,7 @@ Rectangle {
                 text:           qsTr("Дата: %1").arg(Qt.formatDate(quickAddDialog.targetDate,
                                                                    "dd.MM.yyyy"))
                 color:          root.textSecondary
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
             }
 
             TextField {

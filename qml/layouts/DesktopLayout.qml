@@ -943,7 +943,7 @@ Item {
                                             Text {
                                                 visible: modelData.iconName === ""
                                                 text: modelData.icon
-                                                font.pixelSize: 12
+                                                font.pixelSize: FontSize.small
                                                 verticalAlignment: Text.AlignVCenter
                                             }
 
@@ -1450,7 +1450,7 @@ Item {
                                                     Layout.fillWidth: true
                                                     text: modelData.name
                                                     color: ThemeManager.textColor
-                                                    font.pixelSize: 14
+                                                    font.pixelSize: FontSize.body
                                                     elide: Text.ElideRight
                                                     verticalAlignment: Text.AlignVCenter
                                                 }
@@ -1477,7 +1477,7 @@ Item {
                                             visible: bulkLabelList.count === 0
                                             text: qsTr("Нет меток")
                                             color: ThemeManager.secondaryTextColor
-                                            font.pixelSize: 13
+                                            font.pixelSize: FontSize.bodySmall
                                         }
                                     }
                                 }
@@ -1521,7 +1521,7 @@ Item {
                                                     margins: Spacing.xs
                                                 }
                                                 placeholderText: qsTr("Поиск проекта…")
-                                                font.pixelSize: 13
+                                                font.pixelSize: FontSize.bodySmall
                                                 background: Rectangle {
                                                     color: ThemeManager.surfaceColor
                                                     radius: 6
@@ -1592,7 +1592,7 @@ Item {
                                                         Layout.fillWidth: true
                                                         text: modelData.name
                                                         color: ThemeManager.textColor
-                                                        font.pixelSize: 14
+                                                        font.pixelSize: FontSize.body
                                                         elide: Text.ElideRight
                                                         verticalAlignment: Text.AlignVCenter
                                                     }
@@ -1618,7 +1618,7 @@ Item {
                                                 visible: bulkProjectList.count === 0
                                                 text: qsTr("Нет проектов")
                                                 color: ThemeManager.secondaryTextColor
-                                                font.pixelSize: 13
+                                                font.pixelSize: FontSize.bodySmall
                                             }
                                         }
                                     }
@@ -2222,7 +2222,7 @@ Item {
                                             anchors.centerIn: parent
                                             text: bulkBar._fmtMinutes(bulkBar._totalEstimate)
                                             color: ThemeManager.secondaryTextColor
-                                            font.pixelSize: 12
+                                            font.pixelSize: FontSize.small
                                             verticalAlignment: Text.AlignVCenter
                                         }
 
@@ -3172,7 +3172,7 @@ Item {
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
             }
         }
 
@@ -3255,14 +3255,14 @@ Item {
                                 id: keyLabel
                                 anchors.centerIn: parent
                                 text: modelData.key
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color: ThemeManager.accentColor
                             }
                         }
 
                         Text {
                             text: modelData.desc
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             color: ThemeManager.textColor
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignVCenter
@@ -3308,7 +3308,7 @@ Item {
             id: gPrefixLabel
             anchors.centerIn: parent
             text: "g..."
-            font.pixelSize: 12
+            font.pixelSize: FontSize.small
             font.bold: true
             color: ThemeManager.accentColor
         }
@@ -3367,7 +3367,7 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Выйти из режима фокуса")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
                 color: ThemeManager.textColor
             }
         }

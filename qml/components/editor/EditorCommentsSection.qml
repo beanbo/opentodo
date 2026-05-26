@@ -51,7 +51,7 @@ ColumnLayout {
     // ── Section header ─────────────────────────────────────────────────────
     Text {
         text:          qsTr("Комментарии")
-        font.pixelSize: 13
+        font.pixelSize: FontSize.bodySmall
         font.weight:   Font.Medium
         color:         ThemeManager.textColor
     }
@@ -127,7 +127,7 @@ ColumnLayout {
                     Text {
                         anchors.centerIn: parent
                         text:          qsTr("Я")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         font.bold:      true
                         color:          "white"
                     }
@@ -145,7 +145,7 @@ ColumnLayout {
 
                         Text {
                             text:          qsTr("Я")
-                            font.pixelSize: 12
+                            font.pixelSize: FontSize.small
                             font.weight:   Font.Medium
                             color:         ThemeManager.textColor
                         }
@@ -153,7 +153,7 @@ ColumnLayout {
                         Text {
                             // modelData.postedAt is a QDateTime exposed as JS Date
                             text:          root._relativeTime(modelData.postedAt)
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color:         ThemeManager.secondaryTextColor
                         }
 
@@ -235,7 +235,7 @@ ColumnLayout {
                         visible:          !commentRow.editing
                         Layout.fillWidth: true
                         text:             modelData.content || ""
-                        font.pixelSize:   13
+                        font.pixelSize:   FontSize.bodySmall
                         color:            ThemeManager.textColor
                         wrapMode:         Text.WordWrap
                         textFormat:       Text.MarkdownText
@@ -249,7 +249,7 @@ ColumnLayout {
                         visible:          commentRow.editing
                         Layout.fillWidth: true
                         text:             commentRow.editing ? (modelData.content || "") : ""
-                        font.pixelSize:   13
+                        font.pixelSize:   FontSize.bodySmall
                         color:            ThemeManager.textColor
                         wrapMode:         TextArea.Wrap
                         background: Rectangle {
@@ -279,7 +279,7 @@ ColumnLayout {
                                 id:            saveEditText
                                 anchors.centerIn: parent
                                 text:          qsTr("Сохранить")
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color:         "white"
                             }
 
@@ -314,7 +314,7 @@ ColumnLayout {
                                 id:            cancelEditText
                                 anchors.centerIn: parent
                                 text:          qsTr("Отмена")
-                                font.pixelSize: 12
+                                font.pixelSize: FontSize.small
                                 color:         ThemeManager.textColor
                             }
 
@@ -338,7 +338,7 @@ ColumnLayout {
         Layout.fillWidth: true
         horizontalAlignment: Text.AlignHCenter
         text:          qsTr("Пока нет комментариев")
-        font.pixelSize: 13
+        font.pixelSize: FontSize.bodySmall
         font.italic:   true
         color:         ThemeManager.secondaryTextColor
         topPadding:    4
@@ -371,7 +371,7 @@ ColumnLayout {
                 top:    parent.top
             }
             placeholderText: qsTr("Написать комментарий… (Markdown поддерживается)")
-            font.pixelSize: 13
+            font.pixelSize: FontSize.bodySmall
             color:          ThemeManager.textColor
             wrapMode:       TextArea.Wrap
             background:     null
@@ -410,7 +410,7 @@ ColumnLayout {
                 id:            addBtnText
                 anchors.centerIn: parent
                 text:          qsTr("Добавить")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
                 color:         addCommentBtn.canAdd ? "white" : ThemeManager.secondaryTextColor
             }
 

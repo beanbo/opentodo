@@ -71,7 +71,7 @@ Rectangle {
 
             // Monospace font for query text
             font.family:  "Consolas, 'Courier New', monospace"
-            font.pixelSize: 14
+            font.pixelSize: FontSize.body
 
             color:           isDarkTheme ? "#e8e8e8" : "#202020"
             placeholderTextColor: isDarkTheme ? "#666666" : "#aaaaaa"
@@ -115,7 +115,7 @@ Rectangle {
             // Icon: checkmark or cross
             Text {
                 text:            root._isValid ? "✓" : "✗"
-                font.pixelSize:  13
+                font.pixelSize:  FontSize.bodySmall
                 font.bold:       true
                 color:           root._isValid ? "#4caf50" : "#db4c3f"
                 Layout.alignment: Qt.AlignVCenter
@@ -126,7 +126,7 @@ Rectangle {
                 id: validationMessage
                 Layout.fillWidth: true
                 text:       root._isValid ? qsTr("Запрос корректен") : root._errorText
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
                 color:      root._isValid ? "#4caf50" : "#db4c3f"
                 wrapMode:   Text.WordWrap
                 Layout.alignment: Qt.AlignVCenter
