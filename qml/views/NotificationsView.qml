@@ -121,7 +121,7 @@ Item {
                         id: badgeText
                         anchors.centerIn: parent
                         text: notificationsViewModel.unreadCount
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         font.bold: true
                         color: "white"
                     }

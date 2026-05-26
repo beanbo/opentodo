@@ -94,7 +94,7 @@ Popup {
                     required property var modelData
                     Layout.fillWidth: true
                     text: modelData.label
-                    font.pixelSize: 12
+                    font.pixelSize: FontSize.small
                     flat: true
 
                     contentItem: Text {
@@ -259,7 +259,7 @@ Popup {
                             if (dayInfo.isToday)    return root.accentRed
                             return root.textCol
                         }
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         font.weight:    dayInfo.isToday ? Font.Medium : Font.Normal
                     }
 

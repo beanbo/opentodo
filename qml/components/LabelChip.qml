@@ -38,7 +38,7 @@ Rectangle {
         Text {
             id: labelText
             text: root.labelName
-            font.pixelSize: 12
+            font.pixelSize: FontSize.small
             color: root.labelColor
             verticalAlignment: Text.AlignVCenter
         }
@@ -47,7 +47,7 @@ Rectangle {
             id: removeButton
             visible: root.removable
             text: "\u00D7"
-            font.pixelSize: 13
+            font.pixelSize: FontSize.bodySmall
             color: root.labelColor
             verticalAlignment: Text.AlignVCenter
 

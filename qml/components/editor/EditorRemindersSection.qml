@@ -184,7 +184,7 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text:             root._reminderLabel(modelData)
-                    font.pixelSize:   13
+                    font.pixelSize:   FontSize.bodySmall
                     color:            ThemeManager.textColor
                     elide:            Text.ElideRight
                 }
@@ -236,7 +236,7 @@ ColumnLayout {
         Layout.fillWidth:    true
         horizontalAlignment: Text.AlignHCenter
         text:                qsTr("Пока нет напоминаний")
-        font.pixelSize:      12
+        font.pixelSize:      FontSize.small
         font.italic:         true
         color:               ThemeManager.secondaryTextColor
         opacity:             0.7
@@ -336,7 +336,7 @@ ColumnLayout {
                         Text {
                             anchors.centerIn: parent
                             text:          modelData
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             color:         addReminderDialog.activeTab === index
                                            ? ThemeManager.textColor
                                            : ThemeManager.secondaryTextColor
@@ -376,7 +376,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Дата:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 60
                     }
@@ -396,7 +396,7 @@ ColumnLayout {
                             text:          addReminderDialog.pickedDate !== ""
                                            ? addReminderDialog.pickedDate
                                            : qsTr("Выбрать дату")
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             color:         addReminderDialog.pickedDate !== ""
                                            ? ThemeManager.textColor
                                            : ThemeManager.secondaryTextColor
@@ -427,7 +427,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Время:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 60
                     }
@@ -435,7 +435,7 @@ ColumnLayout {
                     TextField {
                         id:               timeField
                         text:             addReminderDialog.pickedTime
-                        font.pixelSize:   13
+                        font.pixelSize:   FontSize.bodySmall
                         color:            ThemeManager.textColor
                         inputMask:        "99:99"
                         placeholderText:  qsTr("ЧЧ:ММ")
@@ -463,7 +463,7 @@ ColumnLayout {
                         contentItem: Text {
                             leftPadding:   repeatCheck.indicator.width + 4
                             text:          qsTr("Повторять")
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             color:         ThemeManager.textColor
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -477,7 +477,7 @@ ColumnLayout {
                     // clears this field rather than leaving stale text.
                     text:             addReminderDialog.repeatRule
                     placeholderText:  qsTr("Правило повтора (напр. FREQ=DAILY)")
-                    font.pixelSize:   12
+                    font.pixelSize:   FontSize.small
                     color:            ThemeManager.textColor
                     onTextChanged:    addReminderDialog.repeatRule = text
                     background: Rectangle {
@@ -495,7 +495,7 @@ ColumnLayout {
 
                     Text {
                         text:                  qsTr("Напомнить:")
-                        font.pixelSize:        13
+                        font.pixelSize:        FontSize.bodySmall
                         color:                 ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 80
                     }
@@ -506,7 +506,7 @@ ColumnLayout {
                         textRole:         "label"
                         model:            addReminderDialog.offsetOptions
                         currentIndex:     addReminderDialog.minuteOffsetIndex
-                        font.pixelSize:   13
+                        font.pixelSize:   FontSize.bodySmall
 
                         onCurrentIndexChanged:
                             addReminderDialog.minuteOffsetIndex = currentIndex
@@ -536,7 +536,7 @@ ColumnLayout {
 
                             contentItem: Text {
                                 text:              modelData.label
-                                font.pixelSize:    13
+                                font.pixelSize:    FontSize.bodySmall
                                 color:             ThemeManager.textColor
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -580,7 +580,7 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text:          qsTr("Введите координаты и радиус зоны.")
-                    font.pixelSize: 12
+                    font.pixelSize: FontSize.small
                     color:         ThemeManager.secondaryTextColor
                     wrapMode:      Text.Wrap
                 }
@@ -601,7 +601,7 @@ ColumnLayout {
                         id:            useLocText
                         anchors.centerIn: parent
                         text:          qsTr("Использовать текущее местоположение")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.small
                         color:         ThemeManager.textColor
                     }
 
@@ -671,7 +671,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Широта:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
                     }
@@ -679,7 +679,7 @@ ColumnLayout {
                     TextField {
                         Layout.fillWidth: true
                         placeholderText: qsTr("напр. 55.751244")
-                        font.pixelSize:  13
+                        font.pixelSize:  FontSize.bodySmall
                         color:           ThemeManager.textColor
                         validator:       DoubleValidator { bottom: -90; top: 90 }
                         onTextChanged:   addReminderDialog.locLat = text
@@ -699,7 +699,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Долгота:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
                     }
@@ -707,7 +707,7 @@ ColumnLayout {
                     TextField {
                         Layout.fillWidth: true
                         placeholderText: qsTr("напр. 37.618423")
-                        font.pixelSize:  13
+                        font.pixelSize:  FontSize.bodySmall
                         color:           ThemeManager.textColor
                         validator:       DoubleValidator { bottom: -180; top: 180 }
                         onTextChanged:   addReminderDialog.locLon = text
@@ -727,7 +727,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Радиус, м:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
                     }
@@ -735,7 +735,7 @@ ColumnLayout {
                     TextField {
                         Layout.preferredWidth: 90
                         text:            addReminderDialog.locRadius
-                        font.pixelSize:  13
+                        font.pixelSize:  FontSize.bodySmall
                         color:           ThemeManager.textColor
                         validator:       IntValidator { bottom: 1; top: 100000 }
                         onTextChanged:   addReminderDialog.locRadius = text
@@ -755,7 +755,7 @@ ColumnLayout {
 
                     Text {
                         text:          qsTr("Название:")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
                     }
@@ -763,7 +763,7 @@ ColumnLayout {
                     TextField {
                         Layout.fillWidth: true
                         placeholderText: qsTr("необязательно")
-                        font.pixelSize:  13
+                        font.pixelSize:  FontSize.bodySmall
                         color:           ThemeManager.textColor
                         onTextChanged:   addReminderDialog.locName = text
                         background: Rectangle {
@@ -782,7 +782,7 @@ ColumnLayout {
 
                     Text {
                         text:                  qsTr("Сработать:")
-                        font.pixelSize:        13
+                        font.pixelSize:        FontSize.bodySmall
                         color:                 ThemeManager.secondaryTextColor
                         Layout.preferredWidth: 70
                     }
@@ -798,7 +798,7 @@ ColumnLayout {
                         contentItem: Text {
                             leftPadding:       triggerEnterBtn.indicator.width + 4
                             text:              triggerEnterBtn.text
-                            font.pixelSize:    13
+                            font.pixelSize:    FontSize.bodySmall
                             color:             ThemeManager.textColor
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -815,7 +815,7 @@ ColumnLayout {
                         contentItem: Text {
                             leftPadding:       triggerLeaveBtn.indicator.width + 4
                             text:              triggerLeaveBtn.text
-                            font.pixelSize:    13
+                            font.pixelSize:    FontSize.bodySmall
                             color:             ThemeManager.textColor
                             verticalAlignment: Text.AlignVCenter
                         }
@@ -844,7 +844,7 @@ ColumnLayout {
                         id:            cancelReminderText
                         anchors.centerIn: parent
                         text:          qsTr("Отмена")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         ThemeManager.textColor
                     }
 
@@ -884,7 +884,7 @@ ColumnLayout {
                         id:            saveReminderText
                         anchors.centerIn: parent
                         text:          qsTr("Сохранить")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color:         saveReminderBtn.canSave ? "white"
                                        : ThemeManager.secondaryTextColor
                     }

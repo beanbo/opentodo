@@ -31,7 +31,7 @@ ColumnLayout {
 
         Text {
             text:           qsTr("Подзадачи")
-            font.pixelSize: 13
+            font.pixelSize: FontSize.bodySmall
             font.weight:    Font.Medium
             color:          ThemeManager.textColor
         }
@@ -72,7 +72,7 @@ ColumnLayout {
                 }
                 Text {
                     text:           qsTr("Разбить на подзадачи")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color:          ThemeManager.accentColor
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -175,7 +175,7 @@ ColumnLayout {
                         anchors.centerIn: parent
                         text:            "⋮⋮"
                         color:           ThemeManager.secondaryTextColor
-                        font.pixelSize:  12
+                        font.pixelSize:  FontSize.small
                     }
 
                     MouseArea {
@@ -218,7 +218,7 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text:            modelData ? modelData.content : ""
-                    font.pixelSize:  13
+                    font.pixelSize:  FontSize.bodySmall
                     color:           modelData && modelData.isCompleted
                                      ? ThemeManager.secondaryTextColor
                                      : ThemeManager.textColor
@@ -345,7 +345,7 @@ ColumnLayout {
             id: subtaskInput
             Layout.fillWidth: true
             placeholderText:  qsTr("Добавить подзадачу…")
-            font.pixelSize:   13
+            font.pixelSize:   FontSize.bodySmall
             color:            ThemeManager.textColor
             background: null
 

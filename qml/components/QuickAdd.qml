@@ -510,7 +510,7 @@ Rectangle {
                 id: projectCombo
                 Layout.fillWidth: true
                 implicitHeight: 28
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
 
                 model: (typeof projectViewModel !== "undefined") ? projectViewModel : null
                 textRole:  "name"
@@ -630,7 +630,7 @@ Rectangle {
                                 anchors.centerIn: parent
                                 visible: !parent._isStroke && parent._icon !== ""
                                 text:    parent._icon
-                                font.pixelSize: 14
+                                font.pixelSize: FontSize.body
                             }
                             Rectangle {
                                 anchors.centerIn: parent
@@ -708,7 +708,7 @@ Rectangle {
 
             Text {
                 text: qsTr("Раздел:")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
                 leftPadding: 4
@@ -718,7 +718,7 @@ Rectangle {
                 id: sectionCombo
                 Layout.fillWidth: true
                 implicitHeight: 28
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
 
                 // Build model: "(без раздела)" + actual sections
                 model: {
@@ -793,7 +793,7 @@ Rectangle {
                 Text {
                     text: parent.parent.parsed ? parent.parent.parsed.projectName : ""
                     color: root.accentRed
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -810,7 +810,7 @@ Rectangle {
                 Text {
                     text: parent.parent.parsed ? parent.parent.parsed.dueString : ""
                     color: root.textCol
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -827,7 +827,7 @@ Rectangle {
                 Text {
                     text: "p" + (parent.parent.parsed ? parent.parent.parsed.priority : "")
                     color: root.priorityColor(parent.parent.parsed ? parent.parent.parsed.priority : 4)
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
@@ -837,7 +837,7 @@ Rectangle {
                     required property string modelData
                     text: "@" + modelData
                     color: root.subTextCol
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                 }
             }
             Item { Layout.fillWidth: true }
@@ -928,7 +928,7 @@ Rectangle {
 
             Text {
                 text: qsTr("По умолчанию:")
-                font.pixelSize: 11
+                font.pixelSize: FontSize.caption
                 color: root.subTextCol
                 Layout.alignment: Qt.AlignVCenter
                 leftPadding: 4
@@ -965,7 +965,7 @@ Rectangle {
 
                         Text {
                             text: "@" + previewChip.modelData
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color: ThemeManager.secondaryTextColor
                             Layout.alignment: Qt.AlignVCenter
                         }
@@ -975,7 +975,7 @@ Rectangle {
                         // in QSettings and will reappear next time.
                         Text {
                             text: "×"
-                            font.pixelSize: 13
+                            font.pixelSize: FontSize.bodySmall
                             color: ThemeManager.secondaryTextColor
                             Layout.alignment: Qt.AlignVCenter
                             Layout.rightMargin: 2
@@ -1019,7 +1019,7 @@ Rectangle {
                 id: cancelBtn
                 text: qsTr("Отмена")
                 flat: true
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
 
                 contentItem: Text {
                     text:  cancelBtn.text
@@ -1041,7 +1041,7 @@ Rectangle {
             Button {
                 id: addBtn
                 text: qsTr("Добавить задачу")
-                font.pixelSize: 13
+                font.pixelSize: FontSize.bodySmall
                 enabled: taskField.text.trim().length > 0
 
                 contentItem: Text {
@@ -1120,7 +1120,7 @@ Rectangle {
                     return qsTr("Входящие")
                 })())
                 color: ThemeManager.secondaryTextColor
-                font.pixelSize: 12
+                font.pixelSize: FontSize.small
                 wrapMode: Text.WordWrap
             }
 
@@ -1145,7 +1145,7 @@ Rectangle {
                             color: modelData.done
                                    ? ThemeManager.secondaryTextColor
                                    : ThemeManager.textColor
-                            font.pixelSize: 12
+                            font.pixelSize: FontSize.small
                             elide: Text.ElideRight
                         }
                     }
