@@ -128,7 +128,7 @@ Rectangle {
                     }
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: dateFormatCombo
                     implicitWidth: 240
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -154,20 +154,6 @@ Rectangle {
                         DateFormatter.setFormat(model[currentIndex].id)
                         if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                             telemetry.trackEvent("settings_date_format_changed", { "format": model[currentIndex].id })
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: dateFormatCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
                 }
             }
@@ -253,26 +239,12 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: weekStartCombo
                     model: [qsTr("Понедельник"), qsTr("Вторник"), qsTr("Среда"), qsTr("Четверг"), qsTr("Пятница"), qsTr("Суббота"), qsTr("Воскресенье")]
                     implicitWidth: 160
                     currentIndex: settingsViewModel.weekStart
                     onActivated: settingsViewModel.updateSetting("weekStart", currentIndex)
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: weekStartCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
-                    }
                 }
             }
 
@@ -306,7 +278,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: startPageCombo
                     property var pageKeys: ["Inbox", "Today", "Upcoming"]
                     model: [qsTr("Входящие"), qsTr("Сегодня"), qsTr("Предстоящие")]
@@ -321,20 +293,6 @@ Rectangle {
                         settingsViewModel.updateSetting("startPage", pageKeys[currentIndex])
                         if (typeof telemetry !== "undefined" && telemetry.enabled)
                             telemetry.trackEvent("settings_start_page_changed", { "page": pageKeys[currentIndex] })
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: startPageCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
                 }
             }
@@ -371,7 +329,7 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: nextWeekDayCombo
                     model: [qsTr("Понедельник"), qsTr("Вторник"), qsTr("Среда"), qsTr("Четверг"), qsTr("Пятница"), qsTr("Суббота"), qsTr("Воскресенье")]
                     implicitWidth: 160
@@ -381,20 +339,6 @@ Rectangle {
                         settingsViewModel.updateSetting("nextWeekDay", currentIndex + 1)
                         if (typeof telemetry !== "undefined" && telemetry.enabled)
                             telemetry.trackEvent("settings_next_week_day_changed", { "day": currentIndex + 1 })
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: nextWeekDayCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
                 }
             }
@@ -556,7 +500,7 @@ Rectangle {
                     }
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: defaultSortCombo
                     implicitWidth: 210
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -586,20 +530,6 @@ Rectangle {
                         //      a "default_sort" key in DataStore settings.
                         if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                             telemetry.trackEvent("settings_default_sort_changed", { "sort": id })
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: defaultSortCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
                 }
             }

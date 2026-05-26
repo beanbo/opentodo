@@ -133,7 +133,7 @@ Rectangle {
                         }
                     }
 
-                    ComboBox {
+                    DesignSelect {
                         id: providerCombo
                         implicitWidth: 260
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -168,20 +168,6 @@ Rectangle {
                             const id = model[currentIndex].id
                             if (id !== aiAssistant.currentProviderId)
                                 aiAssistant.currentProviderId = id
-                        }
-
-                        contentItem: Text {
-                            leftPadding: 10
-                            text: providerCombo.displayText
-                            font.pixelSize: 13
-                            color: ThemeManager.textColor
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        background: Rectangle {
-                            radius: 4
-                            color: ThemeManager.hoverColor
-                            border.color: ThemeManager.borderColor
-                            border.width: 1
                         }
                     }
                 }
@@ -429,7 +415,7 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
-                ComboBox {
+                DesignSelect {
                     id: modelCombo
                     Layout.fillWidth: true
                     editable: true

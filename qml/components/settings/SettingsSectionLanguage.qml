@@ -123,7 +123,7 @@ Rectangle {
                     }
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: languagePicker
                     implicitWidth: 220
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -155,20 +155,6 @@ Rectangle {
                         if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                             telemetry.trackEvent("settings_language_changed", { "lang": id })
                         restartHint.visible = true
-                    }
-
-                    contentItem: Text {
-                        leftPadding: 10
-                        text: languagePicker.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
                 }
             }

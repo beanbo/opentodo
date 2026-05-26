@@ -289,7 +289,7 @@ Rectangle {
                     }
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: syncModeCombo
                     implicitWidth: 200
                     Layout.preferredWidth: 200
@@ -320,22 +320,6 @@ Rectangle {
                             syncModeCombo.currentIndex =
                                 syncModeCombo._indexForMode(settingsViewModel.syncMode)
                         }
-                    }
-
-                    contentItem: Text {
-                        leftPadding: Spacing.sm
-                        text: syncModeCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                    }
-
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
 
                     onActivated: {
@@ -401,7 +385,7 @@ Rectangle {
                     }
                 }
 
-                ComboBox {
+                DesignSelect {
                     id: syncIntervalCombo
                     implicitWidth: 150
                     Layout.preferredWidth: 150
@@ -427,22 +411,6 @@ Rectangle {
                                 syncIntervalContainer._indexForSeconds(
                                     settingsViewModel.syncInterval)
                         }
-                    }
-
-                    contentItem: Text {
-                        leftPadding: Spacing.sm
-                        text: syncIntervalCombo.displayText
-                        font.pixelSize: 13
-                        color: ThemeManager.textColor
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
-                    }
-
-                    background: Rectangle {
-                        radius: 4
-                        color: ThemeManager.hoverColor
-                        border.color: ThemeManager.borderColor
-                        border.width: 1
                     }
 
                     onActivated: {
