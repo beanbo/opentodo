@@ -1151,7 +1151,7 @@ Rectangle {
                                                ThemeManager.accentColor.b, 0.18)
                                 border.color: ThemeManager.accentColor
                                 border.width: 1
-                                radius: 4
+                                radius: Radius.sm
                                 visible: false
                                 z: 9
                             }

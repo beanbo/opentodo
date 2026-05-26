@@ -501,7 +501,7 @@ Rectangle {
                     // Q4.01 pixel-perfect: дизайн badge — radius 8 (`borderRadius: 8`).
                     width: overdueBadgeText.implicitWidth + 26
                     height: 18
-                    radius: 8
+                    radius: Radius.lg
                     color: ThemeManager.errorColor || "#E74C3C"
                     z: 2
 
@@ -1207,7 +1207,7 @@ Rectangle {
                             color: ThemeManager.surfaceColor
                             border.color: ThemeManager.accentColor
                             border.width: 1
-                            radius: 4
+                            radius: Radius.sm
                             z: 50
 
                             TextField {
@@ -1342,7 +1342,7 @@ Rectangle {
                                 color: Qt.rgba(ThemeManager.accentColor.r,
                                                ThemeManager.accentColor.g,
                                                ThemeManager.accentColor.b, 0.20)
-                                radius: 4
+                                radius: Radius.sm
                                 visible: projTreeDropArea.containsDrag
                                 z: -1   // за содержимым строки, над её фоном
                             }
@@ -1448,7 +1448,7 @@ Rectangle {
                                 color: Qt.rgba(ThemeManager.accentColor.r,
                                                ThemeManager.accentColor.g,
                                                ThemeManager.accentColor.b, 0.20)
-                                radius: 4
+                                radius: Radius.sm
                                 z: -1
                             }
 
@@ -1512,7 +1512,7 @@ Rectangle {
                             anchors.topMargin: 4
                             anchors.bottomMargin: 4
                             visible: rootDrop.containsDrag
-                            radius: 4
+                            radius: Radius.sm
                             color: Qt.rgba(ThemeManager.accentColor.r,
                                            ThemeManager.accentColor.g,
                                            ThemeManager.accentColor.b, 0.18)
@@ -1984,7 +1984,7 @@ Rectangle {
                             color: Qt.rgba(ThemeManager.accentColor.r,
                                            ThemeManager.accentColor.g,
                                            ThemeManager.accentColor.b, 0.20)
-                            radius: 4
+                            radius: Radius.sm
                             visible: labelDropArea.containsDrag
                             z: -1   // за содержимым строки, над её фоном
                         }

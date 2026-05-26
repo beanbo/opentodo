@@ -523,7 +523,7 @@ Item {
                 Rectangle {
                     width: escLabel.implicitWidth + 12
                     height: 22
-                    radius: 4
+                    radius: Radius.sm
                     color: root._itemHover
                     Layout.alignment: Qt.AlignVCenter
 
@@ -613,7 +613,7 @@ Item {
                             rightMargin: 6
                         }
                         height: 40
-                        radius: 6
+                        radius: Radius.md
 
                         color: (root._selectedIndex === index || rowHover.containsMouse)
                                ? root._selColor : "transparent"

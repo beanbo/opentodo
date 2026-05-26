@@ -422,7 +422,7 @@ Rectangle {
                     Rectangle {
                         anchors.fill:   parent
                         anchors.margins: 1
-                        radius: 4
+                        radius: Radius.sm
 
                         color: {
                             if (cell._selected && cell._today)
@@ -489,7 +489,7 @@ Rectangle {
                                     anchors.centerIn: parent
                                     visible:  cell._count > 3
                                     width:    badgeTxt.implicitWidth + 4
-                                    height:   12; radius: 6
+                                    height:   12; radius: Radius.md
                                     color: (cell._selected && cell._today)
                                            ? Qt.rgba(1, 1, 1, 0.3)
                                            : root._accent

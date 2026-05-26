@@ -77,7 +77,7 @@ ColumnLayout {
             background: Rectangle {
                 color:  projectComboArea.containsMouse
                         ? ThemeManager.hoverColor : "transparent"
-                radius: 4
+                radius: Radius.sm
             }
 
             contentItem: Text {
@@ -195,7 +195,7 @@ ColumnLayout {
         Rectangle {
             height: 26
             width:  dueDateText.implicitWidth + 20
-            radius: 4
+            radius: Radius.sm
             color:  dueDateHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
             border.color: ThemeManager.borderColor
@@ -295,7 +295,7 @@ ColumnLayout {
         Rectangle {
             height: 26
             width:  deadlineDateText.implicitWidth + 20
-            radius: 4
+            radius: Radius.sm
             color:  deadlineDateHover.containsMouse
                     ? ThemeManager.hoverColor : "transparent"
             border.color: ThemeManager.borderColor
@@ -393,7 +393,7 @@ ColumnLayout {
 
                     width:  32
                     height: 26
-                    radius: 4
+                    radius: Radius.sm
                     color:  root._priority === pVal
                             ? root._priorityColor(pVal) + "33"
                             : (flagHover.containsMouse ? ThemeManager.hoverColor : "transparent")
@@ -558,7 +558,7 @@ ColumnLayout {
                     color:        ThemeManager.surfaceColor
                     border.color: ThemeManager.borderColor
                     border.width: 1
-                    radius:       6
+                    radius:       Radius.md
                 }
 
                 contentItem: ColumnLayout {
@@ -707,7 +707,7 @@ ColumnLayout {
                     color:        ThemeManager.surfaceColor
                     border.color: ThemeManager.borderColor
                     border.width: 1
-                    radius:       6
+                    radius:       Radius.md
                 }
 
                 contentItem: GridLayout {
@@ -784,7 +784,7 @@ ColumnLayout {
                 color:        ThemeManager.backgroundColor
                 border.color: ThemeManager.borderColor
                 border.width: 1
-                radius:       4
+                radius:       Radius.sm
             }
 
             onAccepted: {

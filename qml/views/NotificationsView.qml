@@ -369,7 +369,7 @@ Item {
             width: 3
             visible: !delegateRoot.isRead
             color: accentColor
-            radius: 2
+            radius: Radius.xs
         }
 
         RowLayout {

@@ -58,7 +58,7 @@ Popup {
     // ─── Background ────────────────────────────────────────────────────────────
     background: Rectangle {
         color:        root.bgColor
-        radius:       8
+        radius:       Radius.lg
         border.color: root.borderCol
         border.width: 1
 
@@ -106,7 +106,7 @@ Popup {
                     }
 
                     background: Rectangle {
-                        radius: 4
+                        radius: Radius.sm
                         color:  parent.hovered ? root.hoverCol : root.borderCol
                     }
 
@@ -147,7 +147,7 @@ Popup {
                 }
 
                 background: Rectangle {
-                    radius: 4
+                    radius: Radius.sm
                     color:  prevBtn.hovered ? root.hoverCol : "transparent"
                 }
 
@@ -180,7 +180,7 @@ Popup {
                 }
 
                 background: Rectangle {
-                    radius: 4
+                    radius: Radius.sm
                     color:  nextBtn.hovered ? root.hoverCol : "transparent"
                 }
 

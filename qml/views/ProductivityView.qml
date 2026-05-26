@@ -192,7 +192,7 @@ Item {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 4
-                        radius: 2
+                        radius: Radius.xs
                         color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
                         Rectangle {
                             width: {
@@ -202,7 +202,7 @@ Item {
                                 return parent.width * (elapsed / pomodoroService.cycleSeconds)
                             }
                             height: parent.height
-                            radius: 2
+                            radius: Radius.xs
                             color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
                             Behavior on width { NumberAnimation { duration: 800 } }
                         }
@@ -317,7 +317,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: pomodoroStatsCol.implicitHeight + 32
                 color: contentColor
-                radius: 8
+                radius: Radius.lg
                 border.color: borderColor
                 border.width: 1
 
@@ -628,7 +628,7 @@ Item {
                                             // bars remain visible on the surface.
                                             return Math.max(2, Math.round(74 * ratio))
                                         }
-                                        radius: 2
+                                        radius: Radius.xs
                                         color: modelData.count > 0
                                                ? ThemeManager.accentColor
                                                : Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.10)
@@ -681,7 +681,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: projectChartCol.implicitHeight + 32
                 color: contentColor
-                radius: 8
+                radius: Radius.lg
                 border.color: borderColor
                 border.width: 1
 
@@ -834,7 +834,7 @@ Item {
                                 id: barTrack
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 9
-                                radius: 4
+                                radius: Radius.sm
                                 color: Qt.rgba(ThemeManager.accentColor.r,
                                                ThemeManager.accentColor.g,
                                                ThemeManager.accentColor.b,
@@ -1372,7 +1372,7 @@ Item {
                                 delegate: Rectangle {
                                     width: 14
                                     height: 14
-                                    radius: 2
+                                    radius: Radius.xs
 
                                     // col and row within the grid (column-major)
                                     readonly property int col: Math.floor(index / 7)
@@ -1450,7 +1450,7 @@ Item {
                             delegate: Rectangle {
                                 width: 14
                                 height: 14
-                                radius: 2
+                                radius: Radius.xs
                                 color: {
                                     var n = modelData
                                     if (n === 0)
@@ -1685,7 +1685,7 @@ Item {
                         delegate: Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 44
-                            radius: 4
+                            radius: Radius.sm
                             color: rowHover.containsMouse
                                 ? Qt.rgba(textPrimary.r, textPrimary.g, textPrimary.b, 0.06)
                                 : "transparent"
@@ -1758,7 +1758,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: activityFeedCol.implicitHeight + 32
                 color: contentColor
-                radius: 8
+                radius: Radius.lg
                 border.color: borderColor
                 border.width: 1
 

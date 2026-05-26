@@ -73,7 +73,7 @@ ColumnLayout {
 
         background: Rectangle {
             color:       "transparent"
-            radius:      4
+            radius:      Radius.sm
             border.color: aiGenerateBtn.hovered && aiGenerateBtn.enabled
                               ? ThemeManager.accentColor
                               : "transparent"
@@ -221,7 +221,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: boldBtn.hovered ? ThemeManager.hoverColor
                                            : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.wrapSelection("**", "**")
@@ -250,7 +250,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: italicBtn.hovered ? ThemeManager.hoverColor
                                              : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.wrapSelection("*", "*")
@@ -278,7 +278,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: codeBtn.hovered ? ThemeManager.hoverColor
                                            : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.wrapSelection("`", "`")
@@ -304,7 +304,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: linkBtn.hovered ? ThemeManager.hoverColor
                                            : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.openLinkPopup()
@@ -332,7 +332,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: bulletBtn.hovered ? ThemeManager.hoverColor
                                              : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.prependLineMarker("- ")
@@ -360,7 +360,7 @@ ColumnLayout {
                 background: Rectangle {
                     color: numberedBtn.hovered ? ThemeManager.hoverColor
                                                : "transparent"
-                    radius: 4
+                    radius: Radius.sm
                 }
                 onClicked: {
                     mdToolbar.prependLineMarker("1. ")
@@ -419,7 +419,7 @@ ColumnLayout {
             color:        ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
             border.width: 1
-            radius:       6
+            radius:       Radius.md
         }
 
         function _accept() {
@@ -616,7 +616,7 @@ ColumnLayout {
             color:        ThemeManager.surfaceColor
             border.color: ThemeManager.borderColor
             border.width: 1
-            radius:       6
+            radius:       Radius.md
         }
 
         ColumnLayout {

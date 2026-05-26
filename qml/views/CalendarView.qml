@@ -492,7 +492,7 @@ Rectangle {
                             delegate: Rectangle {
                                 required property int index
                                 Layout.fillWidth: true
-                                height: 16; radius: 2
+                                height: 16; radius: Radius.xs
                                 color: root.isDarkTheme ? "#333333" : "#f0f0f0"
 
                                 // Priority accent left border

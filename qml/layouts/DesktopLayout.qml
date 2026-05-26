@@ -567,7 +567,7 @@ Item {
                             Layout.preferredWidth: 110
                             Layout.preferredHeight: 24
                             Layout.alignment: Qt.AlignVCenter
-                            radius: 12
+                            radius: Radius.xl
                             color: Qt.rgba(ThemeManager.textColor.r,
                                            ThemeManager.textColor.g,
                                            ThemeManager.textColor.b, 0.06)
@@ -1278,7 +1278,7 @@ Item {
                                                            ThemeManager.accentColor.b, 0.18)
                                             border.color: ThemeManager.accentColor
                                             border.width: 1
-                                            radius: 4
+                                            radius: Radius.sm
                                             visible: false
                                             z: 9
                                         }
@@ -1400,7 +1400,7 @@ Item {
 
                                     background: Rectangle {
                                         color: ThemeManager.backgroundColor
-                                        radius: 8
+                                        radius: Radius.lg
                                         border.color: ThemeManager.borderColor
                                         border.width: 1
                                     }
@@ -1425,7 +1425,7 @@ Item {
                                             width: bulkLabelList.width
                                             height: 36
                                             color: "transparent"
-                                            radius: 4
+                                            radius: Radius.sm
 
                                             RowLayout {
                                                 anchors {
@@ -1499,7 +1499,7 @@ Item {
 
                                     background: Rectangle {
                                         color: ThemeManager.backgroundColor
-                                        radius: 8
+                                        radius: Radius.lg
                                         border.color: ThemeManager.borderColor
                                         border.width: 1
                                     }
@@ -1524,7 +1524,7 @@ Item {
                                                 font.pixelSize: FontSize.bodySmall
                                                 background: Rectangle {
                                                     color: ThemeManager.surfaceColor
-                                                    radius: 6
+                                                    radius: Radius.md
                                                     border.color: ThemeManager.borderColor
                                                     border.width: 1
                                                 }
@@ -1569,7 +1569,7 @@ Item {
                                                 width: bulkProjectList.width
                                                 height: 36
                                                 color: "transparent"
-                                                radius: 4
+                                                radius: Radius.sm
 
                                                 RowLayout {
                                                     anchors {
@@ -1637,7 +1637,7 @@ Item {
 
                                     background: Rectangle {
                                         color: ThemeManager.backgroundColor
-                                        radius: 8
+                                        radius: Radius.lg
                                         border.color: ThemeManager.borderColor
                                         border.width: 1
                                     }
@@ -1728,7 +1728,7 @@ Item {
                                                                   ThemeManager.accentColor.g,
                                                                   ThemeManager.accentColor.b, 0.10)
                                                         : "transparent"
-                                                    radius: 4
+                                                    radius: Radius.sm
 
                                                     Text {
                                                         anchors.left: parent.left
@@ -3246,7 +3246,7 @@ Item {
                         Rectangle {
                             implicitWidth: keyLabel.implicitWidth + 16
                             height: 22
-                            radius: 4
+                            radius: Radius.sm
                             color: ThemeManager.isDark ? "#333333" : "#e8e8e8"
                             Layout.alignment: Qt.AlignVCenter
                             Layout.minimumWidth: 110
@@ -3297,7 +3297,7 @@ Item {
         }
         width: gPrefixLabel.implicitWidth + 16
         height: 24
-        radius: 4
+        radius: Radius.sm
         color: ThemeManager.isDark ? "#333333" : "#e8e8e8"
         border.width: 1
         border.color: ThemeManager.borderColor
