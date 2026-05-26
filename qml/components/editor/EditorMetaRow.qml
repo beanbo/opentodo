@@ -24,12 +24,19 @@ ColumnLayout {
     spacing: 0
 
     // ── Priority helpers ──────────────────────────────────────────────────
+    // Q4.01 (night iter-3): theme-aware токены вместо hardcoded hex. Раньше
+    // priority цвета здесь были зафиксированы для classic_light/dark и не
+    // переключались при выборе kale/blueberry/lavender etc. — P-чипы в
+    // editor оставались red/orange/blue/gray, а priority circle в TaskItem
+    // (через root._priorityColor байндинг ThemeManager.priorityP*Color)
+    // менялся под тему. Несогласованность между TaskItem и editor под
+    // не-default темами.
     function _priorityColor(p) {
         switch (p) {
-            case 1:  return "#db4c3f"
-            case 2:  return "#f49c18"
-            case 3:  return "#4073ff"
-            default: return "#808080"
+            case 1:  return ThemeManager.priorityP1Color
+            case 2:  return ThemeManager.priorityP2Color
+            case 3:  return ThemeManager.priorityP3Color
+            default: return ThemeManager.priorityP4Color
         }
     }
     function _priorityLabel(p) {
