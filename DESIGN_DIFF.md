@@ -10,6 +10,7 @@
 | 4 | `e441f6c` | Productivity card titles 16→14/DemiBold, ProjectView header spacing 12 + title viewHeader, EmptyState message 13 + maxWidth 320 + button radius 20 + label 13, TaskItem right padding md + lineHeight 1.4 + overdue color → ThemeManager.errorColor |
 | 5 | `acb2062` | topBar color bg, RowLayout spacing 14, mainColumn paddingTop 6 (drop bottomPadding 8), overdue badge fontWeight 600, NavItem idle icon color → ThemeManager.iconColor, EmptyState gap 16 |
 | 6 | `633d260` | Pomodoro timer 56/Light/letterSpacing -2, stats cells 24/DemiBold + radius 8 + bg, action buttons pill radius 16, AIView suggestion chips radius 18 + fontSize 12, input box height 38 + radius 8 + bordered surface, send button height 38 radius 8 accent + icon, BoardView columns 220 + radius 10, header padding 10/12 + title small/Medium, card bg backgroundColor + small + lineHeight 1.45 |
+| 7 | `088d39d` | NotificationDelegate: container 60/radius 6, padding 12/14, icon badge 26 + IconSvg 14, title 13/Medium, subtitle/time caption(11). Sidebar SectionLabel height 40→30 (top-align + topMargin 14), archive/add btns 20→16 + IconSvg 12 (PlusIcon 12 per design). SettingsSectionGeneral/Appearance: section header body/DemiBold, row labels bodySmall, hints caption — tokenized 16+ literal fontSize usages |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
