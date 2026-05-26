@@ -19,6 +19,7 @@
 | 13 | `ac8c556` | Final mass 52 literals tokenized. EditorRemindersSection 27 (reminder list + dialogs + repeat/geofence rows). QuickAdd 15 (chips + section labels + combos + buttons + priority icon). EditorSubtasksSection 5. LabelChip + DatePicker + NotificationsView 5 finals. Whitespace alignment preserved verbatim |
 | 14 | `e8c4c75` | font.bold(=700) → Font.DemiBold(=600) for card/section titles per design fontWeight 600. ProductivityView 16, CalendarView 3, DesktopLayout 1, Main.qml 3, InAppBanner 1 = 24 conversions. Tiny badges (caption/small/bodySmall) kept Bold (chip-bold semantic) |
 | 15 | `932cc6b` | Hardcoded hex colors → ThemeManager refs. ProductivityView priority palette → priorityP1-P4 + flame → errorColor. TaskItem/EditorSubtasks subtask checkbox "#808080" → secondaryTextColor. ShareLinkDialog/SubtaskGenerator warning glyphs → errorColor. SyncIndicator pendingBadge → accentColor. SettingsSectionSync warning dot → warningColor. Brand "#4285f4" Google + "#ffffff" on-accent contrast kept |
+| 16 | `c96b3c4` | Radius literals → Radius tokens (xs/sm/md/lg/xl). 55 conversions across 11 files: ProductivityView 11, SidebarContent 6, ProjectView 1, NotificationsView 1, CalendarView 1, CommandMenu 2, DatePicker 4, UpcomingCalendarPanel 2, DesktopLayout 11, EditorMetaRow 7, EditorDescriptionField 9 (full markdown toolbar). Circle/dot radii (width/2 semantic) and special non-standard values kept literal |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
