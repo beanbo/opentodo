@@ -193,12 +193,20 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             height: 56
-            color: contentColor
+            // Q4.01 pixel-perfect: дизайн (view-project.jsx стр. 103-108) не
+            // ставит явный bg на project header — он inherit от родителя.
+            // Раньше мы рисовали surfaceColor (contentColor) — header был
+            // светлее task list area. Теперь bg → всё на одном тоне, разделено
+            // только borderBottom.
+            color: bgColor
 
             RowLayout {
                 anchors.fill:        parent
                 anchors.leftMargin:  Spacing.lg
-                anchors.rightMargin: Spacing.sm
+                // Q4.01 pixel-perfect: дизайн (view-project.jsx стр. 105)
+                // — padding 16×24, симметричный L/R. Раньше rightMargin
+                // был Spacing.sm = 8, более кнопок к правому краю.
+                anchors.rightMargin: Spacing.lg
                 spacing: 12
 
                 // Project icon: brand mark for OpenTodo (no explicit icon),
@@ -849,7 +857,10 @@ Rectangle {
                     // reserve 48px for this Rectangle. ListView slots down
                     // by 48px, no overlap geometrically possible.
                     Layout.preferredHeight: 48
-                    color: contentColor
+                    // Q4.01 pixel-perfect: quick-add bar — view-project.jsx стр.
+                    // 142-150 без явного bg. На bgColor родителя, выделен
+                    // borderBottom (см. ниже).
+                    color: bgColor
 
                     RowLayout {
                         anchors.fill:        parent
@@ -932,11 +943,18 @@ Rectangle {
                             implicitWidth: width
                             height: 36
                             implicitHeight: height
+                            // Q4.01 pixel-perfect: дизайн (view-project.jsx
+                            // SectionHeader, стр. 82-86) не ставит явный bg —
+                            // header сидит на bgColor родителя, отделён только
+                            // borderBottom. Раньше использовался hardcoded
+                            // "#222"/"#f5f5f5", который давал section header
+                            // светлее tasks (теперь tasks тоже на bgColor —
+                            // единая палитра).
                             color:  sectionDrop.containsDrag
                                     ? Qt.rgba(root.accentRed.r,
                                               root.accentRed.g,
                                               root.accentRed.b, 0.18)
-                                    : (root.isDarkTheme ? "#222" : "#f5f5f5")
+                                    : ThemeManager.backgroundColor
 
                             property string sectionName: {
                                 if (sectionId === "") return qsTr("(Без раздела)")

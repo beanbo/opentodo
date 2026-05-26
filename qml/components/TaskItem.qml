@@ -290,7 +290,12 @@ Item {
         }
     }
 
-    readonly property color _bgColor:     ThemeManager.surfaceColor
+    // Q4.01 pixel-perfect: дизайн (.design-temp/.../view-project.jsx TaskRow
+    // стр. 55) рисует строку с `background: 'transparent'` — задача сидит
+    // на bgColor родительского контейнера. Раньше у нас был surfaceColor
+    // (#282828), что давало карточкам task'ов "светлее, чем фон" вид,
+    // которого в макете нет.
+    readonly property color _bgColor:     ThemeManager.backgroundColor
     readonly property color _hoverColor:  ThemeManager.hoverColor
     readonly property color _textColor:   ThemeManager.textColor
     readonly property color _subColor:    ThemeManager.secondaryTextColor

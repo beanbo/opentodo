@@ -853,7 +853,10 @@ Item {
                             Layout.preferredHeight: (quickAddLoader.item
                                                      ? quickAddLoader.item.height
                                                      : 56) + 12
-                            color: contentColor
+                            // Q4.01 pixel-perfect: quick-add bar — view-others.jsx
+                            // стр. 12-15 без явного bg. Inherits bg родителя,
+                            // выделен только borderBottom.
+                            color: bgColor
 
                             Behavior on Layout.preferredHeight {
                                 NumberAnimation {
