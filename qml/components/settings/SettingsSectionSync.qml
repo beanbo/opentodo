@@ -69,8 +69,8 @@ Rectangle {
 
             Text {
                 text: qsTr("Синхронизация")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
@@ -94,11 +94,12 @@ Rectangle {
                 }
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
-                leftPadding: 8
+                Layout.leftMargin: 8
             }
         }
 
@@ -255,7 +256,7 @@ Rectangle {
             Layout.topMargin: -8
             Layout.bottomMargin: 8
             text: ""
-            font.pixelSize: 11
+            font.pixelSize: FontSize.caption
             color: ThemeManager.secondaryTextColor
         }
 
@@ -278,12 +279,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Когда выполнять синхронизацию")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Режим автоматической синхронизации")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                     }
                 }
@@ -390,12 +391,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Интервал синхронизации")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Как часто выполнять автоматическую синхронизацию")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                     }
                 }
@@ -562,7 +563,7 @@ Rectangle {
             Layout.topMargin: 4
             Layout.bottomMargin: 4
             text: ""
-            font.pixelSize: 11
+            font.pixelSize: FontSize.caption
             color: ThemeManager.secondaryTextColor
         }
 

@@ -317,15 +317,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Резервная копия")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -372,12 +373,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Экспорт / Импорт")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Сохранить или восстановить все задачи и проекты в формате JSON")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -458,8 +459,8 @@ Rectangle {
 
                 Text {
                     text: qsTr("Импорт из Todoist")
-                    font.pixelSize: 14
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -506,12 +507,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Из файла бэкапа (.zip)")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Todoist → Настройки → Резервные копии → Скачать")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                     }
                 }
@@ -558,12 +559,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Через API-токен")
-                        font.pixelSize: 13
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Todoist → Настройки → Интеграции → Разработчикам")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                     }
                 }
@@ -633,7 +634,7 @@ Rectangle {
 
                 Text {
                     id: importPhaseText
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                 }
             }
@@ -665,12 +666,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Экспорт задач")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Сохранить все задачи в формате CSV или Markdown")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -785,14 +786,14 @@ Rectangle {
             // Section label
             Text {
                 text: qsTr("История бэкапов")
-                font.pixelSize: 14
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 bottomPadding: 2
             }
             Text {
                 text: qsTr("Локальные копии state.json. Сохраняются перед каждым записью данных.")
-                font.pixelSize: 11
+                font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -803,7 +804,7 @@ Rectangle {
             Text {
                 visible: backupHistoryCol.backups.length === 0
                 text: qsTr("Бэкапов пока нет. Они появятся после первого сохранения.")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
                 Layout.fillWidth: true
                 bottomPadding: 4
@@ -840,7 +841,7 @@ Rectangle {
 
                             Text {
                                 text: modelData.name
-                                font.pixelSize: 13
+                                font.pixelSize: FontSize.bodySmall
                                 font.family: "Consolas, monospace"
                                 color: ThemeManager.textColor
                                 elide: Text.ElideRight
@@ -856,7 +857,7 @@ Rectangle {
                                 // and every backup row showed `undefined · ...`.
                                 text: backupHistoryCol._formatSize(modelData.size) + " · "
                                       + backupHistoryCol._formatMtime(modelData.mtime)
-                                font.pixelSize: 11
+                                font.pixelSize: FontSize.caption
                                 color: ThemeManager.secondaryTextColor
                             }
                         }

@@ -73,15 +73,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Продуктивность")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -128,7 +129,7 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Дневная цель")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
@@ -201,7 +202,7 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Недельная цель")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
@@ -275,7 +276,7 @@ Rectangle {
 
                     Text {
                         text: qsTr("Режим отпуска")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
 
@@ -337,7 +338,7 @@ Rectangle {
                         spacing: 2
                         Text {
                             text: qsTr("Время уведомления о ежедневном обзоре")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.bodySmall
                             color: ThemeManager.textColor
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
@@ -392,7 +393,7 @@ Rectangle {
 
                     Text {
                         text: ":"
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         font.bold: true
                         color: ThemeManager.textColor
                         Layout.alignment: Qt.AlignVCenter
@@ -474,8 +475,8 @@ Rectangle {
                 // Section title — Q4.01 (redesign): "🍅" префикс убран.
                 Text {
                     text: "Pomodoro"
-                    font.pixelSize: 14
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
@@ -483,7 +484,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Применяется со следующего цикла, если идёт сессия")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true

@@ -55,15 +55,16 @@ Rectangle {
             }
             Text {
                 text: qsTr("AI помощник")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): "▾"/"▸" → stroke chevron IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -119,13 +120,13 @@ Rectangle {
 
                         Text {
                             text: qsTr("Провайдер")
-                            font.pixelSize: 14
+                            font.pixelSize: FontSize.bodySmall
                             color: ThemeManager.textColor
                             Layout.fillWidth: true
                         }
                         Text {
                             text: qsTr("Какой LLM использовать для генерации. ● — ключ уже сохранён, ○ — пусто.")
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color: ThemeManager.secondaryTextColor
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
@@ -216,13 +217,13 @@ Rectangle {
 
                 Text {
                     text: qsTr("Base URL")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
                 Text {
                     text: qsTr("Корень OpenAI-совместимого API (без /v1). Пресеты: openrouter.ai/api, api.groq.com/openai, localhost:11434 для Ollama.")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
@@ -319,7 +320,7 @@ Rectangle {
 
                     Text {
                         text: qsTr("API ключ")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
@@ -327,7 +328,7 @@ Rectangle {
                         text: aiAssistant.providerHasKey(root.activeProviderId)
                             ? qsTr("ключ сохранён")
                             : qsTr("не настроен")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: aiAssistant.providerHasKey(root.activeProviderId)
                             ? "#3fa34d"
                             : ThemeManager.secondaryTextColor
@@ -379,7 +380,7 @@ Rectangle {
                 Text {
                     text: qsTr("Получить ключ: ") + "<a href=\"" + aiAssistant.providerConsoleUrl(root.activeProviderId) + "\">"
                           + aiAssistant.providerConsoleUrl(root.activeProviderId) + "</a>"
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     onLinkActivated: (url) => Qt.openUrlExternally(url)
                     textFormat: Text.RichText
@@ -417,13 +418,13 @@ Rectangle {
 
                 Text {
                     text: qsTr("Модель")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
                 Text {
                     text: qsTr("Выбери из пресетов или впиши свой идентификатор. Для Gemini рекомендую gemini-2.5-flash-lite — самый щедрый бесплатный тариф.")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true

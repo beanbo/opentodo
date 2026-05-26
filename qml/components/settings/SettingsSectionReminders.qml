@@ -44,15 +44,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Напоминания")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -99,12 +100,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Звук уведомлений")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Воспроизводить системный звук при показе уведомлений")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -148,7 +149,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Время напоминания по умолчанию")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -202,12 +203,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Авто-напоминание (за сколько до срока)")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Минут до срока выполнения")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                     }
                 }
@@ -267,12 +268,12 @@ Rectangle {
                     spacing: 2
                     Text {
                         text: qsTr("Разрешение на уведомления")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                     }
                     Text {
                         text: qsTr("Запросить у системы разрешение на показ уведомлений")
-                        font.pixelSize: 12
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
