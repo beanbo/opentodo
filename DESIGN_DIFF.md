@@ -29,6 +29,7 @@
 | 23 | `33ff328` | Migrate Material Switch → DesignSwitch across 5 settings files: Reminders 1 (sound), Productivity 1 (vacation), General 2 (daily review + sort reversed), Sidebar 3 (inbox/today/upcoming counts), About 1 (telemetry). 8 toggles total, all bindings + handlers + ids + telemetry preserved |
 | 24 | `68a261e` | New DesignPill component (AbstractButton, padding 4/10, radius md, fontSize small, active accent/white + idle border/subText). 12/24-hour selector in SettingsSectionGeneral migrated from RadioButton to DesignPill in ButtonGroup. settingsViewModel.timeFormat int binding preserved |
 | 25 | `46a4841` | New DesignSelect component (ComboBox styled per design Select spec: padding 5/10, radius md, height 28, minWidth 180, fontSize small, IconSvg chevron-down 11, supports primitive + object models, popup with hover highlight). Registered in CMakeLists.txt. Settings ComboBox migration in next round |
+| 26 | `0e20898` | Migrate Material ComboBox → DesignSelect across 4 settings files: General 5 (dateFormat/weekStart/startPage/nextWeekDay/defaultSort), Language 1 (languagePicker), Sync 2 (syncMode/syncInterval), AI 2 (provider/model). 10 ComboBox total. Removed Material inline overrides (~130 lines deleted vs +10 added) — all bindings/handlers/ids preserved |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
