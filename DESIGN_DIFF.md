@@ -16,6 +16,7 @@
 | 10 | `8e250a2` | Editor + Dialogs typography: EditorDescriptionField popup title DemiBold, EditorRemindersSection section + dialog headers tokenized; ProjectIconPicker body→bodySmall, DatePicker month/weekday tokenized; PriorityPicker row label bodySmall, QuickJumpDialog searchInput/rows tokenized, CommandMenu input/labels/hints tokenized — ~15 literals replaced |
 | 11 | `02ff5b7` | ProductivityView mass tokenization (41 literals → FontSize tokens, covering Pomodoro labels, project chart, karma hero, goal cards, all card titles, priority/recent/feed/tag-cloud rows). TrashView count badge + BoardView card due-date hint final cleanup |
 | 12 | `8725b87` | 49 more literals → tokens across 6 files. CalendarView 18 (month/week/agenda/day-detail views, weekday labels, day numbers, task content, empty-states). DesktopLayout 12 (bulk-edit overlays, quick-jump dialog, focus-mode pill, quick-filter chip icon). FilterQueryInput 3 (DSL input + validation). InAppBanner 2. EditorActionBar 3 (delete/duplicate/save). EditorCommentsSection 11 (full comment widget) |
+| 13 | `ac8c556` | Final mass 52 literals tokenized. EditorRemindersSection 27 (reminder list + dialogs + repeat/geofence rows). QuickAdd 15 (chips + section labels + combos + buttons + priority icon). EditorSubtasksSection 5. LabelChip + DatePicker + NotificationsView 5 finals. Whitespace alignment preserved verbatim |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
