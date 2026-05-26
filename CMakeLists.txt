@@ -455,6 +455,7 @@ set(QML_FILES
     qml/components/UpcomingCalendarPanel.qml
     qml/components/DatePicker.qml
     qml/components/DesignPill.qml
+    qml/components/DesignSelect.qml
     qml/components/DesignSwitch.qml
     qml/components/PriorityPicker.qml
     qml/components/LabelChip.qml
