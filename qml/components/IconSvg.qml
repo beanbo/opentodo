@@ -54,6 +54,14 @@ Item {
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true
+        // CRITICAL: layer.enabled forces the Image to render into an offscreen
+        // FBO texture even though visible:false skips scene-graph painting.
+        // Without `layer.enabled: true`, MultiEffect's internal layer fails to
+        // capture the source (Qt skips invisible subtrees entirely), and the
+        // effect ends up colourising an empty texture — which renders as solid
+        // black on every theme.  This is the documented Qt 6 pattern (see
+        // https://doc.qt.io/qt-6/qml-qtquick-effects-multieffect.html).
+        layer.enabled: true
         // Hide the un-tinted version — the MultiEffect renders the colorised
         // pixels on top. Without this the original stroke colour would peek
         // through when the colour matches transparency.
