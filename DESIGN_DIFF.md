@@ -18,6 +18,7 @@
 | 12 | `8725b87` | 49 more literals → tokens across 6 files. CalendarView 18 (month/week/agenda/day-detail views, weekday labels, day numbers, task content, empty-states). DesktopLayout 12 (bulk-edit overlays, quick-jump dialog, focus-mode pill, quick-filter chip icon). FilterQueryInput 3 (DSL input + validation). InAppBanner 2. EditorActionBar 3 (delete/duplicate/save). EditorCommentsSection 11 (full comment widget) |
 | 13 | `ac8c556` | Final mass 52 literals tokenized. EditorRemindersSection 27 (reminder list + dialogs + repeat/geofence rows). QuickAdd 15 (chips + section labels + combos + buttons + priority icon). EditorSubtasksSection 5. LabelChip + DatePicker + NotificationsView 5 finals. Whitespace alignment preserved verbatim |
 | 14 | `e8c4c75` | font.bold(=700) → Font.DemiBold(=600) for card/section titles per design fontWeight 600. ProductivityView 16, CalendarView 3, DesktopLayout 1, Main.qml 3, InAppBanner 1 = 24 conversions. Tiny badges (caption/small/bodySmall) kept Bold (chip-bold semantic) |
+| 15 | `932cc6b` | Hardcoded hex colors → ThemeManager refs. ProductivityView priority palette → priorityP1-P4 + flame → errorColor. TaskItem/EditorSubtasks subtask checkbox "#808080" → secondaryTextColor. ShareLinkDialog/SubtaskGenerator warning glyphs → errorColor. SyncIndicator pendingBadge → accentColor. SettingsSectionSync warning dot → warningColor. Brand "#4285f4" Google + "#ffffff" on-accent contrast kept |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
