@@ -79,9 +79,11 @@ Popup {
                 anchors.rightMargin: Spacing.md
                 spacing: Spacing.sm
 
-                Text {
-                    text: "🔎"
-                    font.pixelSize: 18
+                // Q4.01 (redesign): "🔎" emoji → stroke search icon
+                IconSvg {
+                    name: "search"
+                    size: 18
+                    color: ThemeManager.secondaryTextColor
                 }
 
                 TextField {
@@ -90,7 +92,8 @@ Popup {
                     placeholderText: qsTr("Перейти к задаче…")
                     background: Item {}
                     color: ThemeManager.textColor
-                    font.pixelSize: 16
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
 
                     onTextChanged: {
                         root._refresh()
@@ -154,7 +157,7 @@ Popup {
                         color: modelData.isCompleted
                             ? "#2e8b57"
                             : ThemeManager.secondaryTextColor
-                        font.pixelSize: FontSize.body
+                        font.pixelSize: FontSize.bodySmall
                     }
                     Text {
                         Layout.fillWidth: true
@@ -162,7 +165,7 @@ Popup {
                         color: ThemeManager.textColor
                         font.strikeout: modelData.isCompleted
                         elide: Text.ElideRight
-                        font.pixelSize: FontSize.body
+                        font.pixelSize: FontSize.bodySmall
                     }
                     Text {
                         visible: {

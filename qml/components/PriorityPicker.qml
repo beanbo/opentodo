@@ -77,11 +77,11 @@ Popup {
                     spacing: 10
 
                     // Flag icon
-                    Text {
-                        text:            "\u2691"   // ⚑
-                        font.pixelSize:  16
-                        color:           modelData.flagColor
-                        verticalAlignment: Text.AlignVCenter
+                    // Q4.01 (redesign): unicode flag (U+2691) → stroke IconSvg "flag"
+                    IconSvg {
+                        name: "flag"
+                        size: 14
+                        color: modelData.flagColor
                         Layout.alignment: Qt.AlignVCenter
                     }
 
@@ -90,7 +90,7 @@ Popup {
                         Layout.fillWidth: true
                         text:  modelData.label
                         color: root.textCol
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         verticalAlignment: Text.AlignVCenter
                     }
 

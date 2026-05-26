@@ -138,12 +138,12 @@ Popup {
                 implicitHeight: 28
                 padding: 0
 
-                contentItem: Text {
-                    text:                "‹"
-                    font.pixelSize:      18
+                // Q4.01 (redesign): "‹" unicode → stroke chevron-left IconSvg
+                contentItem: IconSvg {
+                    name:                "chevron-left"
+                    size:                14
                     color:               root.textCol
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
+                    anchors.centerIn:    parent
                 }
 
                 background: Rectangle {
@@ -159,7 +159,7 @@ Popup {
                 Layout.fillWidth: true
                 text: root.monthYearLabel(root.viewYear, root.viewMonth)
                 color: root.textCol
-                font { pixelSize: 13; weight: Font.Medium }
+                font { pixelSize: FontSize.body; weight: Font.DemiBold }
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment:   Text.AlignVCenter
             }
@@ -171,12 +171,12 @@ Popup {
                 implicitHeight: 28
                 padding: 0
 
-                contentItem: Text {
-                    text:                "›"
-                    font.pixelSize:      18
+                // Q4.01 (redesign): "›" unicode → stroke chevron-right IconSvg
+                contentItem: IconSvg {
+                    name:                "chevron-right"
+                    size:                14
                     color:               root.textCol
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
+                    anchors.centerIn:    parent
                 }
 
                 background: Rectangle {
@@ -201,7 +201,7 @@ Popup {
                     width:  (contentCol.width) / 7
                     text:   modelData
                     color:  root.subCol
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     horizontalAlignment: Text.AlignHCenter
                 }
             }

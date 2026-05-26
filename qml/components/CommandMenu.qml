@@ -491,7 +491,8 @@ Item {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
                     placeholderText: qsTr("Введите команду…")
-                    font.pixelSize: 15
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: root._textColor
                     background: Item {}
                     leftPadding: 0
@@ -530,7 +531,7 @@ Item {
                         id: escLabel
                         anchors.centerIn: parent
                         text: "Esc"
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: root._subColor
                     }
                 }
@@ -658,7 +659,7 @@ Item {
                             // Label (fills remaining space)
                             Text {
                                 text: modelData.label
-                                font.pixelSize: 14
+                                font.pixelSize: FontSize.bodySmall
                                 color: root._selectedIndex === index
                                        ? root._accent : root._textColor
                                 elide: Text.ElideRight
@@ -681,7 +682,7 @@ Item {
                                     id: shortcutText
                                     anchors.centerIn: parent
                                     text: modelData.shortcut || ""
-                                    font.pixelSize: 11
+                                    font.pixelSize: FontSize.caption
                                     color: root._hintColor
                                 }
                             }
@@ -706,7 +707,7 @@ Item {
                     Text {
                         anchors.centerIn: parent
                         text: qsTr("Команды не найдены")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: root._subColor
                     }
                 }

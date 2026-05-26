@@ -113,8 +113,8 @@ ColumnLayout {
 
         Text {
             text:          qsTr("Напоминания")
-            font.pixelSize: 13
-            font.weight:   Font.Medium
+            font.pixelSize: FontSize.body
+            font.weight:   Font.DemiBold
             color:         ThemeManager.textColor
         }
 
@@ -201,10 +201,12 @@ ColumnLayout {
                                         ThemeManager.accentColor.b, 0.15)
                               : "transparent"
 
-                    Text {
+                    // Q4.01 (redesign): 🗑 emoji → stroke IconSvg "trash"
+                    IconSvg {
                         anchors.centerIn: parent
-                        text:          "\u{1F5D1}"
-                        font.pixelSize: 12
+                        name: "trash"
+                        size: 12
+                        color: ThemeManager.secondaryTextColor
                     }
 
                     MouseArea {
@@ -269,8 +271,8 @@ ColumnLayout {
                     verticalCenter: parent.verticalCenter
                 }
                 text:          qsTr("Добавить напоминание")
-                font.pixelSize: 15
-                font.weight:   Font.Medium
+                font.pixelSize: FontSize.body
+                font.weight:   Font.DemiBold
                 color:         ThemeManager.textColor
             }
         }

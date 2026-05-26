@@ -287,21 +287,19 @@ ColumnLayout {
             }
 
             // Link
+            // Q4.01 (redesign): "🔗" emoji → stroke link icon.
             ToolButton {
                 id: linkBtn
                 flat: true
-                text: "🔗"
-                font.pixelSize: FontSize.body
                 Layout.preferredHeight: 28
                 Layout.preferredWidth:  32
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Вставить ссылку (Ctrl+K)")
-                contentItem: Text {
-                    text: parent.text
-                    font: parent.font
+                contentItem: IconSvg {
+                    name: "link"
+                    size: 14
                     color: ThemeManager.textColor
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment:   Text.AlignVCenter
+                    anchors.centerIn: parent
                 }
                 background: Rectangle {
                     color: linkBtn.hovered ? ThemeManager.hoverColor
@@ -630,7 +628,7 @@ ColumnLayout {
                 text: qsTr("Открыть ссылку?")
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
-                font.bold: true
+                font.weight: Font.DemiBold
             }
             Label {
                 Layout.fillWidth: true

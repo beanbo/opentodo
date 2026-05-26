@@ -143,7 +143,7 @@ Dialog {
                 Text {
                     text: qsTr("Без иконки (цветная точка)")
                     color: ThemeManager.textColor
-                    font.pixelSize: FontSize.body
+                    font.pixelSize: FontSize.bodySmall
                     Layout.alignment: Qt.AlignVCenter
                     Layout.fillWidth: true
                 }
