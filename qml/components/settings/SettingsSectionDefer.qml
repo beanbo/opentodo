@@ -49,15 +49,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Длительность отложенного")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): "▾"/"▸" → stroke chevron IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -131,7 +132,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Отложить #1 (минут)")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -193,7 +194,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Отложить #2 (минут)")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -255,7 +256,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Отложить #3 (минут)")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -317,7 +318,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Отложить #4 (минут)")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -379,7 +380,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Отложить #5 (минут)")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }

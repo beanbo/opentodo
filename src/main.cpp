@@ -12,6 +12,8 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QIcon>
+#include <QFont>
+#include <QFontDatabase>
 #include <QTimer>
 #include <QHash>
 #include <QLocale>
@@ -93,6 +95,41 @@ int main(int argc, char *argv[])
     app.setOrganizationName(QStringLiteral("OpenTodo"));
     app.setOrganizationDomain(QStringLiteral("opentodo.org"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
+
+    // Q4.01 pixel-perfect: the design canvas
+    // (.design-temp/opentodo/project/OpenTodo Redesign.html) uses Inter as the
+    // primary type face. Try the system-installed Inter first (Microsoft Edge
+    // ships it on Windows 11, many Linux distros pull it in via webfonts
+    // packages, and modern macOS users frequently install it from Google
+    // Fonts). If the family is not available, QFont silently falls back to
+    // the platform's default sans-serif (Segoe UI on Windows, San Francisco
+    // on macOS, the configured default on Linux) — Qt never aborts on a
+    // missing family, so this is safe at every install.
+    //
+    // QFont::setStyleHint(SansSerif) makes the fallback explicit rather than
+    // relying on Qt's generic family matcher, and matches the design's
+    // `font-family: 'Inter', -apple-system, system-ui, sans-serif;` cascade.
+    {
+        const bool interAvailable =
+            QFontDatabase::families().contains(QStringLiteral("Inter"),
+                                               Qt::CaseInsensitive);
+        QFont appFont(interAvailable ? QStringLiteral("Inter")
+                                     : QGuiApplication::font().family());
+        appFont.setStyleHint(QFont::SansSerif);
+        // Pixel size 13 mirrors the design canvas body baseline. Individual
+        // QML components that set their own pixelSize keep overriding this
+        // (they read ThemeManager / hard-coded values), so this only affects
+        // controls that inherit the application font (most QtQuick.Controls
+        // text rendering).
+        appFont.setPixelSize(13);
+        QGuiApplication::setFont(appFont);
+        if (!interAvailable) {
+            qInfo("OpenTodo: 'Inter' font not installed; using platform default '%s' "
+                  "as the application font. Install Inter from "
+                  "https://fonts.google.com/specimen/Inter for design-canvas parity.",
+                  qPrintable(appFont.family()));
+        }
+    }
 
     // Load translations. We have two layers:
     //   1. Qt's own translations (qtbase_<lang>.qm) — fills in standardButtons

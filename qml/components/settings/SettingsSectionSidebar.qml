@@ -33,15 +33,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Боковая панель")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -85,7 +86,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Показывать счётчик Входящих")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -125,7 +126,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Показывать счётчик Сегодня")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -165,7 +166,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Показывать счётчик Предстоящих")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }

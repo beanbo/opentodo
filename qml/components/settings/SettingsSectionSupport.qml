@@ -10,10 +10,10 @@ import OpenTodoUI
 // PURPOSE
 // -------
 // "Поддержать разработчика" — donation page with crypto wallet addresses for
-// BTC / ETH / TON / USDT (both TRC-20 and ERC-20). Each row has an emoji
-// glyph, currency name, network notes, the wallet address (monospace) and a
-// "Скопировать" button. After a successful copy an inline "Скопировано ✓"
-// hint shows for ~2 seconds.
+// BTC / ETH / TON / USDT (both TRC-20 and ERC-20). Each row has a brand-coloured
+// SVG glyph (resources/icons/ui/bitcoin|ethereum|ton|usdt.svg), currency name,
+// network notes, the wallet address (monospace) and a "Скопировать" button.
+// After a successful copy an inline "Скопировано ✓" hint shows for ~2 seconds.
 //
 // CLIPBOARD MECHANISM
 // -------------------
@@ -75,15 +75,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Поддержать разработчика")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -132,8 +133,8 @@ Rectangle {
 
                 Text {
                     text: qsTr("Поддержать разработчика")
-                    font.pixelSize: 22
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
@@ -141,7 +142,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Если приложение оказалось полезным — можно поддержать разработку:")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.secondaryTextColor
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
@@ -154,7 +155,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            glyph: "₿"
+            iconName: "bitcoin"
+            iconColor: "#f7931a"
             currencyName: "Bitcoin"
             networkLabel: qsTr("Сеть: Bitcoin")
             walletAddress: root.btcAddress
@@ -164,7 +166,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            glyph: "Ξ"
+            iconName: "ethereum"
+            iconColor: "#6079e0"
             currencyName: "Ethereum"
             networkLabel: qsTr("Сеть: Ethereum (ERC-20)")
             walletAddress: root.ethAddress
@@ -174,7 +177,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            glyph: "💎"
+            iconName: "ton"
+            iconColor: "#3aabea"
             currencyName: "TON"
             networkLabel: qsTr("Сеть: The Open Network")
             walletAddress: root.tonAddress
@@ -184,7 +188,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            glyph: "₮"
+            iconName: "usdt"
+            iconColor: "#3aa84e"
             currencyName: "USDT (TRC-20)"
             networkLabel: qsTr("Сеть: Tron (TRC-20)")
             walletAddress: root.usdtTrcAddress
@@ -194,7 +199,8 @@ Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            glyph: "₮"
+            iconName: "usdt"
+            iconColor: "#3aa84e"
             currencyName: "USDT (ERC-20)"
             networkLabel: qsTr("Сеть: Ethereum (ERC-20)")
             walletAddress: root.usdtErcAddress
@@ -208,8 +214,8 @@ Rectangle {
             Layout.topMargin: 4
             Layout.bottomMargin: 20
             text: qsTr("Спасибо! 🙏")
-            font.pixelSize: 14
-            font.bold: true
+            font.pixelSize: FontSize.body
+            font.weight: Font.DemiBold
             color: ThemeManager.textColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -225,6 +231,12 @@ Rectangle {
         id: cardRoot
 
         // Public properties — set from the call site above.
+        // Q4.01 (redesign): unicode glyphs were swapped for the stroke SVG
+        // pack (bitcoin / ethereum / ton / usdt under resources/icons/ui/).
+        // `iconName` + `iconColor` drive the coloured tile; `glyph` is kept
+        // for the legacy fallback path only.
+        property string iconName:      ""
+        property color  iconColor:     ThemeManager.accentColor
         property string glyph:         ""
         property string currencyName:  ""
         property string networkLabel:  ""
@@ -276,14 +288,25 @@ Rectangle {
                 spacing: 12
 
                 // Currency glyph in a coloured tile, same shape as the
-                // app-icon tile in SettingsSectionAbout.
+                // app-icon tile in SettingsSectionAbout. The brand colour is
+                // injected per-wallet so each tile reads instantly even in
+                // monochrome themes.
                 Rectangle {
                     width: 36; height: 36; radius: 8
-                    color: ThemeManager.accentColor
+                    color: cardRoot.iconColor
                     Layout.alignment: Qt.AlignTop
+
+                    IconSvg {
+                        anchors.centerIn: parent
+                        visible: cardRoot.iconName !== ""
+                        name: cardRoot.iconName
+                        size: 18
+                        color: "white"
+                    }
 
                     Text {
                         anchors.centerIn: parent
+                        visible: cardRoot.iconName === ""
                         text: cardRoot.glyph
                         color: "white"
                         font.pixelSize: 20
@@ -297,8 +320,8 @@ Rectangle {
 
                     Text {
                         text: cardRoot.currencyName
-                        font.pixelSize: 16
-                        font.bold: true
+                        font.pixelSize: FontSize.body
+                        font.weight: Font.DemiBold
                         color: ThemeManager.textColor
                     }
 

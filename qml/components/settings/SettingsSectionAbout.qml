@@ -79,15 +79,16 @@ Rectangle {
 
             Text {
                 text: qsTr("О программе")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): "▾"/"▸" → stroke chevron IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -160,8 +161,8 @@ Rectangle {
                         spacing: 2
                         Text {
                             text: "OpenTodo"
-                            font.pixelSize: 18
-                            font.bold: true
+                            font.pixelSize: FontSize.body
+                            font.weight: Font.DemiBold
                             color: ThemeManager.textColor
                         }
                         Text {
@@ -174,7 +175,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Приватный планировщик задач с открытым исходным кодом.")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.topMargin: 4
                 }
@@ -232,8 +233,8 @@ Rectangle {
 
                     Label {
                         text: qsTr("Анонимная статистика")
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: FontSize.body
+                        font.weight: Font.DemiBold
                         color: ThemeManager.textColor
                     }
                     Label {
@@ -291,8 +292,8 @@ Rectangle {
 
                     Text {
                         text: qsTr("Уведомления")
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: FontSize.body
+                        font.weight: Font.DemiBold
                         color: ThemeManager.textColor
                     }
 
@@ -426,8 +427,8 @@ Rectangle {
                 // Header
                 Text {
                     text: qsTr("Журнал ошибок")
-                    font.pixelSize: 14
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                 }
 
@@ -452,7 +453,7 @@ Rectangle {
                         Text {
                             text: logCardRoot._hasLogger ? crashLogger.logFilePath() : ""
                             font.family: "Consolas"
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color: ThemeManager.textColor
                             elide: Text.ElideMiddle
                             Layout.fillWidth: true
@@ -473,7 +474,7 @@ Rectangle {
                                     : iso.replace("T", " ").substring(0, 16)
                                 return qsTr("%1 · обновлён %2").arg(sizeStr).arg(dateStr)
                             }
-                            font.pixelSize: 11
+                            font.pixelSize: FontSize.caption
                             color: ThemeManager.secondaryTextColor
                         }
                     }
@@ -527,14 +528,14 @@ Rectangle {
 
                 Label {
                     text: qsTr("Расположение данных")
-                    font.pixelSize: 14
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                 }
 
                 Label {
                     text: qsTr("Здесь хранятся state.json, бэкапы, логи и pending-commits для синхронизации.")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
@@ -543,7 +544,7 @@ Rectangle {
                 Label {
                     text: dataPathRoot._dataDir !== "" ? dataPathRoot._dataDir : qsTr("недоступно")
                     font.family: "Consolas"
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.textColor
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -608,14 +609,14 @@ Rectangle {
 
                 Label {
                     text: qsTr("Экспорт / импорт настроек")
-                    font.pixelSize: 14
-                    font.bold: true
+                    font.pixelSize: FontSize.body
+                    font.weight: Font.DemiBold
                     color: ThemeManager.textColor
                 }
 
                 Label {
                     text: qsTr("Сохраните настройки в JSON или восстановите из ранее сохранённого файла.")
-                    font.pixelSize: 11
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
@@ -759,14 +760,14 @@ Rectangle {
 
                     Label {
                         text: qsTr("Сбросить прогресс")
-                        font.pixelSize: 14
-                        font.bold: true
+                        font.pixelSize: FontSize.body
+                        font.weight: Font.DemiBold
                         color: ThemeManager.textColor
                     }
 
                     Label {
                         text: qsTr("Очистить очки, уровень, серии, достижения и историю прогресса.")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
