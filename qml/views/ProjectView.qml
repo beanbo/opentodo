@@ -424,10 +424,17 @@ Rectangle {
                 // не идеально совпадает с paperclip-глифом, но это место в
                 // макете зарезервировано именно под paperclip, и весь топбар
                 // выглядит однородно (stroke icons size 14, без emoji).
+                // Q4.01 pixel-perfect: icon button константы из дизайна
+                // (.design-temp/.../app-shell.jsx iconBtn — 28×28 box +
+                // borderRadius 6, icon size 14 для toolbar-уровня).
+                // Material default ToolButton ~36-40px box ломал ряд.
                 ToolButton {
                     id:      editProjectBtn
                     onClicked: editDialog.open()
                     Material.foreground: textSecondary
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    padding: 0
 
                     contentItem: IconSvg {
                         anchors.centerIn: parent
@@ -445,10 +452,13 @@ Rectangle {
                 ToolButton {
                     id:      moreBtn
                     onClicked: projectMenu.open()
+                    implicitWidth: 28
+                    implicitHeight: 28
+                    padding: 0
                     contentItem: IconSvg {
                         anchors.centerIn: parent
                         name: "more-horizontal"
-                        size: 18
+                        size: 14
                         color: textSecondary
                     }
                 }
@@ -544,6 +554,19 @@ Rectangle {
         }
 
         // ── Notes card — visible only when the project has notes ─────────────
+        // Q4.01 (iter-7): полностью переписан под дизайн-канвас
+        // (.design-temp/.../view-project.jsx стр. 126-140). Дизайн использует
+        // panel-teaser — одну строку с иконкой, заголовком/подзаголовком и
+        // chevron-down справа. Тело самой заметки в макете НЕ показывается
+        // в шапке проекта; полный текст открывается отдельным разворотом
+        // под teaser (по клику на chevron). Раньше тело рендерилось inline,
+        // прижатое к левому краю карточки, что ломало пиксель-в-пиксель
+        // (3 разных проблемы: тело без отступа, неправильная высота,
+        // overlap с quick-add при анимации). Новая структура:
+        //   header row (всегда видна, 36 px)
+        //   ↓ chevron click
+        //   expanded body (Flickable, отдельный padded блок ниже header)
+        //
         // Q3.29: third rewrite — the Q3.28 implicit-height pipeline still
         // produced overlap with the «Добавить задачу» bar in list mode.
         // Symptom: the card's drawn area extended past its allocated layout
@@ -664,11 +687,14 @@ Rectangle {
             radius: Radius.lg
             clip: true
 
-            // Expanded by default for short notes (the whole point of having
-            // a notes card is to see them); collapsed by default for long
-            // notes so they don't dominate the project view.
-            property bool _expanded: !!project && !!project.notes
-                                     && project.notes.length < 200
+            // Q4.01 (iter-7): дизайн-канвас рендерит note panel ВСЕГДА как
+            // teaser-строку (icon + title + subtitle + chevron) без inline
+            // тела. Раскрытие — только по клику на chevron. Старая логика
+            // авто-разворачивала короткие заметки на стартовом рендере, что
+            // ломало пиксель-перфект (видно тело "Тест заметок" сразу при
+            // переходе в проект). Сейчас стартуем закрытыми — пользователь
+            // открывает теасер один раз, если хочет почитать.
+            property bool _expanded: false
 
             Behavior on Layout.preferredHeight {
                 NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
@@ -923,11 +949,15 @@ Rectangle {
                                 // Q3.27: collapse/expand chevron. Hidden for the
                                 // synthetic "(Без раздела)" header — there's no
                                 // Section model to toggle on.
+                                // Q4.01 pixel-perfect: SectionHeader chevron
+                                // (.design-temp/.../view-project.jsx line 87):
+                                // ChevronRightIcon size 12, subText color.
                                 ToolButton {
                                     visible:        sectionHeaderRect.sectionId !== ""
                                     flat:           true
-                                    Layout.preferredWidth:  Spacing.lg
-                                    Layout.preferredHeight: Spacing.lg
+                                    Layout.preferredWidth:  28
+                                    Layout.preferredHeight: 28
+                                    padding: 0
                                     ToolTip.text: sectionHeaderRect.isCollapsed
                                                       ? qsTr("Развернуть раздел")
                                                       : qsTr("Свернуть раздел")
@@ -943,7 +973,7 @@ Rectangle {
                                     // Task 17cea65b iter-2: was unicode "▸"/"▾".
                                     contentItem: IconSvg {
                                         name: sectionHeaderRect.isCollapsed ? "chevron-right" : "chevron-down"
-                                        size: 16
+                                        size: 12
                                         color: root.textSecondary
                                         anchors.centerIn: parent
                                     }
@@ -958,7 +988,13 @@ Rectangle {
                                     Layout.fillWidth: true
                                 }
 
+                                // Q4.01 pixel-perfect: SectionHeader +/⋯
+                                // (.design-temp/.../view-project.jsx lines 96-97):
+                                // PlusIcon/MoreIcon size 14 inside iconBtn 28×28.
                                 ToolButton {
+                                    Layout.preferredWidth:  28
+                                    Layout.preferredHeight: 28
+                                    padding: 0
                                     ToolTip.text: qsTr("Добавить задачу в раздел")
                                     ToolTip.visible: hovered
                                     onClicked: {
@@ -969,7 +1005,7 @@ Rectangle {
                                     contentItem: IconSvg {
                                         anchors.centerIn: parent
                                         name: "plus"
-                                        size: 16
+                                        size: 14
                                         color: root.textSecondary
                                     }
                                 }
@@ -979,6 +1015,9 @@ Rectangle {
                                 // This avoids the recycled-delegate / stale-Menu-state bug.
                                 ToolButton {
                                     visible: sectionHeaderRect.sectionId !== ""
+                                    Layout.preferredWidth:  28
+                                    Layout.preferredHeight: 28
+                                    padding: 0
                                     onClicked: {
                                         root._activeSectionId   = sectionHeaderRect.sectionId
                                         root._activeSectionName = sectionHeaderRect.sectionName
@@ -988,7 +1027,7 @@ Rectangle {
                                     contentItem: IconSvg {
                                         anchors.centerIn: parent
                                         name: "more-horizontal"
-                                        size: 16
+                                        size: 14
                                         color: root.textSecondary
                                     }
                                 }

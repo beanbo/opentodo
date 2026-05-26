@@ -415,7 +415,13 @@ Item {
                             objectName: "sidebarToggleButton"
                             // Q4.01 pixel-perfect: дизайн использует stroke SVG MenuIcon
                             // вместо юникод-символа ☰ (см. .design-temp/.../app-shell.jsx
-                            // строка 120). Иконка size 18, цвет — themed iconColor.
+                            // строка 120 + iconBtn lines 187-192 — box 28×28,
+                            // borderRadius 6, icon size 18). Material default
+                            // ToolButton рисует 36-40px box, который ломает ряд:
+                            // hamburger становится крупнее остальных топбар-кнопок.
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            padding: 0
                             contentItem: IconSvg {
                                 anchors.centerIn: parent
                                 name: "menu"
@@ -643,13 +649,15 @@ Item {
                         }
 
                         // Hide-completed toggle — not shown in full-page views or compact modes.
-                        // Q4.01 (redesign): was "👁" / "🙈" emoji, now stroke
-                        // IconSvg eye/eye-off pair so the toggle matches the rest of the topbar
-                        // glyphs and re-tints under each theme.
+                        // Q4.01 pixel-perfect: 28×28 box per app-shell.jsx iconBtn
+                        // helper, чтобы все топбар-иконки были однородны.
                         ToolButton {
                             id: hideCompletedBtn
                             visible: !root.isFullPageView && !root.isNarrow
                             flat: true
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            padding: 0
                             contentItem: IconSvg {
                                 name: taskViewModel.showCompleted ? "eye" : "eye-off"
                                 size: 18
@@ -684,6 +692,9 @@ Item {
                             id: expandAllBtn
                             visible: !root.isFullPageView && !root.isNarrow
                             flat: true
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            padding: 0
                             contentItem: IconSvg {
                                 anchors.centerIn: parent
                                 name: "folder"
@@ -703,6 +714,9 @@ Item {
                             id: collapseAllBtn
                             visible: !root.isFullPageView && !root.isNarrow
                             flat: true
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            padding: 0
                             ToolTip.text: qsTr("Свернуть подзадачи у всех задач")
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
