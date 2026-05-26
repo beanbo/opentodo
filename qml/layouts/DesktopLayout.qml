@@ -565,7 +565,7 @@ Item {
                                      && !root.isFullPageView
                                      && !root.isNarrow
                             Layout.preferredWidth: 110
-                            Layout.preferredHeight: 24
+                            Layout.preferredHeight: Spacing.lg
                             Layout.alignment: Qt.AlignVCenter
                             radius: Radius.xl
                             color: Qt.rgba(ThemeManager.textColor.r,
@@ -734,7 +734,7 @@ Item {
                             visible: !root._narrowUltraCompact
                             Layout.preferredWidth: root._narrowCompact ? 100 : 160
                             Layout.maximumWidth: root._narrowCompact ? 100 : 160
-                            Layout.preferredHeight: 32
+                            Layout.preferredHeight: Spacing.xl
                             Layout.rightMargin: Spacing.sm
                         }
                     }
@@ -906,7 +906,7 @@ Item {
 
                                         readonly property bool _active: root._quickChip === modelData.chipId
 
-                                        Layout.preferredHeight: 24
+                                        Layout.preferredHeight: Spacing.lg
                                         Layout.preferredWidth:  _chipLabel.implicitWidth + _chipIcon.implicitWidth + Spacing.sm + 24
                                         radius: 16
 

@@ -1923,7 +1923,7 @@ Item {
                             Text {
                                 text: modelData.emoji
                                 font.pixelSize: 16
-                                Layout.preferredWidth: 32
+                                Layout.preferredWidth: Spacing.xl
                                 Layout.alignment: Qt.AlignVCenter
                                 horizontalAlignment: Text.AlignHCenter
                             }

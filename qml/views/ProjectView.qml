@@ -656,7 +656,7 @@ Rectangle {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 24
+                    Layout.preferredHeight: Spacing.lg
                     spacing: 10  // Q4.01 pixel-perfect: gap icon-text 10
 
                     // Q4.01 pixel-perfect: icon 16, цвет accent (дизайн).
@@ -689,8 +689,8 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                     ToolButton {
                         flat: true
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: Spacing.lg
+                        Layout.preferredHeight: Spacing.lg
                         padding: 0
                         ToolTip.text: notesCard._expanded
                                       ? qsTr("Свернуть заметки")
@@ -891,8 +891,8 @@ Rectangle {
                                 ToolButton {
                                     visible:        sectionHeaderRect.sectionId !== ""
                                     flat:           true
-                                    Layout.preferredWidth:  24
-                                    Layout.preferredHeight: 24
+                                    Layout.preferredWidth:  Spacing.lg
+                                    Layout.preferredHeight: Spacing.lg
                                     ToolTip.text: sectionHeaderRect.isCollapsed
                                                       ? qsTr("Развернуть раздел")
                                                       : qsTr("Свернуть раздел")

@@ -208,7 +208,7 @@ ColumnLayout {
                 font.pixelSize: FontSize.body
                 font.bold: true
                 Layout.preferredHeight: 28
-                Layout.preferredWidth:  32
+                Layout.preferredWidth:  Spacing.xl
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Полужирный (Ctrl+B)")
                 contentItem: Text {
@@ -237,7 +237,7 @@ ColumnLayout {
                 font.pixelSize: FontSize.body
                 font.italic: true
                 Layout.preferredHeight: 28
-                Layout.preferredWidth:  32
+                Layout.preferredWidth:  Spacing.xl
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Курсив (Ctrl+I)")
                 contentItem: Text {
@@ -292,7 +292,7 @@ ColumnLayout {
                 id: linkBtn
                 flat: true
                 Layout.preferredHeight: 28
-                Layout.preferredWidth:  32
+                Layout.preferredWidth:  Spacing.xl
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Вставить ссылку (Ctrl+K)")
                 contentItem: IconSvg {
@@ -319,7 +319,7 @@ ColumnLayout {
                 text: "•"
                 font.pixelSize: FontSize.body
                 Layout.preferredHeight: 28
-                Layout.preferredWidth:  32
+                Layout.preferredWidth:  Spacing.xl
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Маркированный список")
                 contentItem: Text {
@@ -347,7 +347,7 @@ ColumnLayout {
                 text: "1."
                 font.pixelSize: FontSize.body
                 Layout.preferredHeight: 28
-                Layout.preferredWidth:  32
+                Layout.preferredWidth:  Spacing.xl
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Нумерованный список")
                 contentItem: Text {

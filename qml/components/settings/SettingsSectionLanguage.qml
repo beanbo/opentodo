@@ -217,7 +217,7 @@ Rectangle {
                     enabled: typeof settingsViewModel !== "undefined"
                              && typeof settingsViewModel.canRestartApp === "function"
                              && settingsViewModel.canRestartApp()
-                    Layout.preferredHeight: 32
+                    Layout.preferredHeight: Spacing.xl
                     Layout.preferredWidth: 130
                     Layout.alignment: Qt.AlignVCenter
 

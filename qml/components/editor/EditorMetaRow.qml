@@ -578,7 +578,7 @@ ColumnLayout {
                         delegate: ItemDelegate {
                             required property var modelData
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 32
+                            Layout.preferredHeight: Spacing.xl
                             Layout.preferredWidth:  180
                             text:        modelData.label
                             highlighted: root.task && root.task.estimateMinutes === modelData.minutes

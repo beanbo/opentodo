@@ -658,7 +658,7 @@ Item {
             Item {
                 id: expandToggleItem
                 Layout.preferredWidth:  12
-                Layout.preferredHeight: 16
+                Layout.preferredHeight: Spacing.md
                 Layout.alignment: Qt.AlignTop
                 Layout.topMargin: 3
                 visible: !root.isSubtask
@@ -1215,8 +1215,8 @@ Item {
             // ── Right side: drag handle (shown on hover) ──────────────────
             Item {
                 id: dragHandleItem
-                Layout.preferredWidth:  24
-                Layout.preferredHeight: 24
+                Layout.preferredWidth:  Spacing.lg
+                Layout.preferredHeight: Spacing.lg
                 Layout.alignment: Qt.AlignVCenter
                 opacity: (mouseArea.containsMouse || root.dragActive) ? 1.0 : 0.0
 

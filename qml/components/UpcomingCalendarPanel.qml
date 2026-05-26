@@ -239,8 +239,8 @@ Rectangle {
                         size:  14
                         color: root._dim
                     }
-                    Layout.preferredWidth:  24
-                    Layout.preferredHeight: 24
+                    Layout.preferredWidth:  Spacing.lg
+                    Layout.preferredHeight: Spacing.lg
                     onClicked: root.collapsed = !root.collapsed
                     ToolTip.text: root.collapsed ? qsTr("Развернуть календарь") : qsTr("Свернуть календарь")
                     ToolTip.visible: hovered
@@ -257,8 +257,8 @@ Rectangle {
                         size:  14
                         color: root._dim
                     }
-                    Layout.preferredWidth:  24
-                    Layout.preferredHeight: 24
+                    Layout.preferredWidth:  Spacing.lg
+                    Layout.preferredHeight: Spacing.lg
                     onClicked: root._prevMonth()
                     ToolTip.text:    qsTr("Предыдущий месяц")
                     ToolTip.visible: hovered
@@ -288,8 +288,8 @@ Rectangle {
                         size:  14
                         color: root._dim
                     }
-                    Layout.preferredWidth:  24
-                    Layout.preferredHeight: 24
+                    Layout.preferredWidth:  Spacing.lg
+                    Layout.preferredHeight: Spacing.lg
                     onClicked: root._nextMonth()
                     ToolTip.text:    qsTr("Следующий месяц")
                     ToolTip.visible: hovered
@@ -301,8 +301,8 @@ Rectangle {
                     text:     qsTr("•")
                     font.pixelSize: 16
                     Material.foreground: root._accent
-                    Layout.preferredWidth:  24
-                    Layout.preferredHeight: 24
+                    Layout.preferredWidth:  Spacing.lg
+                    Layout.preferredHeight: Spacing.lg
                     onClicked: {
                         var today = new Date()
                         today.setDate(1)
