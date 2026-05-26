@@ -68,7 +68,7 @@ endif()
 # Qt::Widgets is not meaningful in a WASM/QML-only build but it IS available
 # in Qt WASM builds (statically bundled).  We keep it in REQUIRED so that
 # the same CMakeLists.txt works unchanged for desktop, Android, and WASM.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Network Widgets QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Network Widgets QuickControls2 Svg)
 find_package(Qt6 OPTIONAL_COMPONENTS CorePrivate)
 
 # Qt.labs.settings is an OPTIONAL plugin — without an explicit dependency the
@@ -229,6 +229,7 @@ set(INFRA_SOURCES
     src/services/taskexporter.cpp
     src/services/icsexporter.cpp
     src/services/claudecodelauncher.cpp
+    src/services/tintedsvgimageprovider.cpp
     src/import/todoist_csv_parser.cpp
     src/import/todoist_api_client.cpp
     src/import/todoistimporter.cpp
@@ -264,6 +265,7 @@ set(INFRA_HEADERS
     src/services/taskexporter.h
     src/services/icsexporter.h
     src/services/claudecodelauncher.h
+    src/services/tintedsvgimageprovider.h
     src/import/todoist_types.h
     src/import/todoist_csv_parser.h
     src/import/todoist_api_client.h
@@ -340,6 +342,7 @@ target_link_libraries(OpenTodoInfra PUBLIC
     Qt6::Network
     Qt6::Widgets
     Qt6::Quick
+    Qt6::Svg
 )
 
 # Qt6::CorePrivate is optional — it is only available when Qt was built with

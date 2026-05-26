@@ -64,6 +64,7 @@
 #include "services/dailyreviewservice.h"
 #include "services/pomodoroservice.h"
 #include "services/claudecodelauncher.h"
+#include "services/tintedsvgimageprovider.h"
 
 #include "import/todoistimporter.h"
 
@@ -670,6 +671,18 @@ int main(int argc, char *argv[])
 
     // QML engine
     QQmlApplicationEngine engine;
+
+    // Register the SVG-tinting image provider so that QML's IconSvg.qml can
+    // request runtime-coloured icons via image://svg-tinted/<name>?color=<rgb>.
+    // Ownership transfers to the engine.
+    // Why this exists: Qt's QSvgRenderer renders stroke="currentColor" as
+    // black (no CSS context), and QtQuick.Effects.MultiEffect's colorization
+    // preserves luminance — so black stays black no matter the
+    // colorizationColor. We replace currentColor in the SVG text at fetch
+    // time, which produces correctly-tinted icons with zero shader plumbing.
+    // See src/services/tintedsvgimageprovider.{h,cpp} and qml/components/IconSvg.qml.
+    engine.addImageProvider(QStringLiteral("svg-tinted"),
+                            new TintedSvgImageProvider());
 
     // Add the deployed Qt.labs.* plugins directory to the QML import path.
     // CMake's POST_BUILD step copies qmlsettingsplugin.dll + qmldir into
