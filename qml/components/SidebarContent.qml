@@ -2691,8 +2691,12 @@ Rectangle {
         signal addClicked()
         signal archiveToggleClicked()
 
-        height: 40
-        // top margin 24px, bottom margin 8px, text ~8px => ~40px total row
+        // Q4.01 pixel-perfect: дизайн SectionLabel `padding: '14px 16px 4px'`
+        // → 14 top + ~12 шрифт + 4 bottom ≈ 30. Раньше было height: 40 с
+        // центровкой текста через verticalCenterOffset: 4 — лишние 10 px.
+        // Текст теперь top-aligned с topMargin 14, кнопки центрируются
+        // по уменьшённой высоте 30 без offset.
+        height: 30
 
         Rectangle {
             anchors.fill: parent
@@ -2704,8 +2708,8 @@ Rectangle {
             anchors {
                 left: parent.left
                 leftMargin: Spacing.md
-                verticalCenter: parent.verticalCenter
-                verticalCenterOffset: 4
+                top: parent.top
+                topMargin: 14
             }
             text: sectionHeader.title.toUpperCase()
             font.pixelSize: FontSize.tiny
@@ -2735,11 +2739,12 @@ Rectangle {
                 right: addBtn.visible ? addBtn.left : parent.right
                 rightMargin: addBtn.visible ? 4 : 8
                 verticalCenter: parent.verticalCenter
-                verticalCenterOffset: 4
             }
-            width: 20
-            height: 20
-            radius: 10
+            // Q4.01 pixel-perfect: уменьшен до 16×16, чтобы поместиться
+            // в новую height: 30 (старое 20×20 переполняло bottom-padding 4).
+            width: 16
+            height: 16
+            radius: 8
             color: sectionHeader.archiveActive
                    ? (sectionHeader.isDarkTheme ? "#5a3a1a" : "#fff3e0")
                    : archiveBtnMouse.containsMouse
@@ -2751,7 +2756,10 @@ Rectangle {
             IconSvg {
                 anchors.centerIn: parent
                 name: "archive"
-                size: 14
+                // Q4.01 pixel-perfect: иконка уменьшена с 14 до 12 пропорционально
+                // уменьшению контейнера archiveToggleBtn (20→16) при новой
+                // высоте sectionHeader 30.
+                size: 12
                 color: sectionHeader.archiveActive
                        ? ThemeManager.accentColor
                        : ThemeManager.secondaryTextColor
@@ -2774,11 +2782,12 @@ Rectangle {
                 right: parent.right
                 rightMargin: 8
                 verticalCenter: parent.verticalCenter
-                verticalCenterOffset: 4
             }
-            width: 20
-            height: 20
-            radius: 10
+            // Q4.01 pixel-perfect: уменьшен до 16×16, чтобы поместиться
+            // в новую height: 30 (старое 20×20 переполняло bottom-padding 4).
+            width: 16
+            height: 16
+            radius: 8
             color: addBtnMouse.containsMouse
                    ? (sectionHeader.isDarkTheme ? "#444444" : "#e8e8e8")
                    : "transparent"
@@ -2793,7 +2802,10 @@ Rectangle {
             IconSvg {
                 anchors.centerIn: parent
                 name: "plus"
-                size: 16
+                // Q4.01 pixel-perfect: иконка уменьшена с 16 до 12 — соответствует
+                // дизайн-спеке PlusIcon size 12 в app-shell.jsx, и помещается
+                // внутри уменьшенного addBtn 16×16 при новой высоте 30.
+                size: 12
                 color: ThemeManager.secondaryTextColor
             }
 

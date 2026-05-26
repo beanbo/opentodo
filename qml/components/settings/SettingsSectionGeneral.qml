@@ -34,15 +34,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Общие")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -113,14 +114,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Формат даты")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Используется во всех частях приложения")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -196,7 +197,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Формат времени")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -257,7 +258,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Начало недели")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -310,7 +311,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Стартовая страница")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -375,7 +376,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("День, считающийся следующей неделей")
-                    font.pixelSize: 14
+                    font.pixelSize: FontSize.bodySmall
                     color: ThemeManager.textColor
                     Layout.fillWidth: true
                 }
@@ -437,14 +438,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Авто-архивирование старых проектов")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Архивировать проекты, в которых все задачи выполнены и нет активности более N дней. 0 = выключено.")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -496,14 +497,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Ежедневный итог в 18:00")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Уведомление в 18:00 о незавершённых задачах текущего дня.")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -551,14 +552,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Сортировка задач по умолчанию")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Применяется ко всем спискам, кроме календаря и доски.")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -642,14 +643,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Обратный порядок сортировки")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Переворачивает текущий порядок задач")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true
@@ -693,14 +694,14 @@ Rectangle {
 
                     Text {
                         text: qsTr("Плотность задач")
-                        font.pixelSize: 14
+                        font.pixelSize: FontSize.bodySmall
                         color: ThemeManager.textColor
                         Layout.fillWidth: true
                     }
 
                     Text {
                         text: qsTr("Компактный режим уменьшает высоту строк.")
-                        font.pixelSize: 11
+                        font.pixelSize: FontSize.caption
                         color: ThemeManager.secondaryTextColor
                         wrapMode: Text.WordWrap
                         Layout.fillWidth: true

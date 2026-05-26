@@ -62,15 +62,16 @@ Rectangle {
 
             Text {
                 text: qsTr("Тема")
-                font.pixelSize: 16
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
                 Layout.fillWidth: true
             }
 
-            Text {
-                text: root.expanded ? "▾" : "▸"
-                font.pixelSize: 14
+            // Q4.01 (redesign): chevron unicode → stroke IconSvg
+            IconSvg {
+                name: root.expanded ? "chevron-down" : "chevron-right"
+                size: 14
                 color: ThemeManager.secondaryTextColor
             }
         }
@@ -279,8 +280,8 @@ Rectangle {
             // Section title
             Text {
                 text: qsTr("Свой цвет акцента")
-                font.pixelSize: 14
-                font.bold: true
+                font.pixelSize: FontSize.body
+                font.weight: Font.DemiBold
                 color: ThemeManager.textColor
             }
 
@@ -354,7 +355,7 @@ Rectangle {
 
                 Text {
                     text: qsTr("Быстрый выбор:")
-                    font.pixelSize: 12
+                    font.pixelSize: FontSize.caption
                     color: ThemeManager.secondaryTextColor
                 }
 
@@ -396,7 +397,7 @@ Rectangle {
                 id: customAccentError
                 visible: false
                 text: qsTr("Неверный формат: используйте #RRGGBB")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.caption
                 color: ThemeManager.errorColor
             }
 
@@ -405,7 +406,7 @@ Rectangle {
             Text {
                 id: customAccentCaption
                 text: qsTr("Перекрывает цвет акцента темы")
-                font.pixelSize: 12
+                font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
 
                 // Brief green flash when an Apply call succeeds.

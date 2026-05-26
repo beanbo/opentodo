@@ -343,14 +343,19 @@ Item {
             return qsTr("дней")
         }
 
-        height: 72
+        // Q4.01 (redesign): height aligned with design padding 12/14 → 12+26+12 = 50,
+        // with extra room for the two-line text column. 60 keeps comfortable rhythm.
+        height: 60
+        radius: Radius.md
 
         // B-6.92 — state-driven color binding; no direct mutation in onEntered/onExited
         property bool _hovered: hoverArea.containsMouse
         property color unreadColor: isDarkTheme
             ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.06)
             : Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.04)
-        property color readColor:   "transparent"
+        // Q4.01 (redesign): base background = surface (matches design `background: t.surface`).
+        // Hover/unread overlays preserved on top of surface to keep state cues.
+        property color readColor:   contentColor
         property color hoverColor:  Qt.rgba(accentColor.r, accentColor.g, accentColor.b,
                                             isDarkTheme ? 0.08 : 0.06)
 
@@ -369,23 +374,29 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 20
-            anchors.rightMargin: Spacing.md
-            spacing: Spacing.md
+            // Q4.01 (redesign): padding 12/14 from design canvas (view-others.jsx
+            // notification card). Left padding stays at 14 (accent bar is 3 px,
+            // visual content still starts at the same offset for read items).
+            anchors.topMargin: 12
+            anchors.bottomMargin: 12
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
+            spacing: 12
 
             // Kind icon bubble
-            // Q4.01 (redesign): эмодзи в Text заменён на IconSvg из stroke-
-            // пака. Цвет берётся из kindIconColor, фон бубна — из kindTint.
+            // Q4.01 (redesign): 26×26 круг, иконка size 14 (per design canvas
+            // notification card). Цвет фона/иконки сохраняется по kind — kindTint
+            // фон + kindIconColor иконка (исторически работающее по типу поведение).
             Rectangle {
-                width: 38
-                height: 38
-                radius: 19
+                width: 26
+                height: 26
+                radius: 13
                 color: delegateRoot.kindTint
 
                 IconSvg {
                     anchors.centerIn: parent
                     name: delegateRoot.kindIcon
-                    size: 18
+                    size: 14
                     color: delegateRoot.kindIconColor
                 }
             }
@@ -393,12 +404,13 @@ Item {
             // Text column
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: 2  // design: marginTop 2 для subtitle
 
                 Text {
                     text: delegateRoot.title
-                    font.pixelSize: FontSize.body
-                    font.weight: delegateRoot.isRead ? Font.Normal : Font.DemiBold
+                    // Q4.01 (redesign): bodySmall (13) + Medium (500) per design canvas.
+                    font.pixelSize: FontSize.bodySmall
+                    font.weight: delegateRoot.isRead ? Font.Normal : Font.Medium
                     color: textPrimary
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -406,7 +418,8 @@ Item {
 
                 Text {
                     text: delegateRoot.body
-                    font.pixelSize: FontSize.small
+                    // Q4.01 (redesign): caption (11) per design canvas.
+                    font.pixelSize: FontSize.caption
                     color: textSecondary
                     Layout.fillWidth: true
                     elide: Text.ElideRight
@@ -414,20 +427,22 @@ Item {
             }
 
             // Relative timestamp — refreshes every minute via refreshTick binding
+            // Q4.01 (redesign): caption (11) per design canvas.
             Text {
                 text: delegateRoot.relativeTime(delegateRoot.timestamp)
-                font.pixelSize: 10
+                font.pixelSize: FontSize.caption
                 color: textSecondary
                 horizontalAlignment: Text.AlignRight
             }
         }
 
         // Bottom separator (inset from left edge of icon)
+        // Q4.01 (redesign): aligned with new padding (14) + bubble (26) + gap (12) = 52
         Rectangle {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: 20 + 38 + Spacing.md  // align with text column
+            anchors.leftMargin: 14 + 26 + 12  // align with text column
             height: 1
             color: borderColor
             opacity: 0.5
