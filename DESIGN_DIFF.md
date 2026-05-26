@@ -15,6 +15,7 @@
 | 9 | `70951c8` | Last 4 settings sections tokenized (Defer, Sidebar, About, Support — 20+ literals → FontSize). Plus Inter font app-wide via QGuiApplication::setFont in src/main.cpp — QFontDatabase checks system Inter, falls back to platform default with SansSerif hint if unavailable |
 | 10 | `8e250a2` | Editor + Dialogs typography: EditorDescriptionField popup title DemiBold, EditorRemindersSection section + dialog headers tokenized; ProjectIconPicker body→bodySmall, DatePicker month/weekday tokenized; PriorityPicker row label bodySmall, QuickJumpDialog searchInput/rows tokenized, CommandMenu input/labels/hints tokenized — ~15 literals replaced |
 | 11 | `02ff5b7` | ProductivityView mass tokenization (41 literals → FontSize tokens, covering Pomodoro labels, project chart, karma hero, goal cards, all card titles, priority/recent/feed/tag-cloud rows). TrashView count badge + BoardView card due-date hint final cleanup |
+| 12 | `8725b87` | 49 more literals → tokens across 6 files. CalendarView 18 (month/week/agenda/day-detail views, weekday labels, day numbers, task content, empty-states). DesktopLayout 12 (bulk-edit overlays, quick-jump dialog, focus-mode pill, quick-filter chip icon). FilterQueryInput 3 (DSL input + validation). InAppBanner 2. EditorActionBar 3 (delete/duplicate/save). EditorCommentsSection 11 (full comment widget) |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
