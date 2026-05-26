@@ -27,6 +27,7 @@
 | 21 | `7271dfe` | width/height standalone literals → Spacing tokens. 26 conversions across 11 files: SidebarContent 6, EditorActionBar 3, EditorSubtasksSection 3, CalendarView 3, ReadingModeOverlay 2, ProductivityView 2, ProjectIconPicker 2, SyncIndicator 2, DesktopLayout 1, QuickAdd 1, EditorMetaRow 1. Dot patterns (radius=N/2) и pill capsules kept literal — geometric coupling preserved |
 | 22 | `3bad504` | Final implicit literals 4 → Spacing.xl + new DesignSwitch component (qml/components/DesignSwitch.qml). Pill 36×20 radius 10 + 16×16 knob radius 8 white, color/x animations 150ms — drop-in replacement for Material Switch. Registered in CMakeLists.txt. Settings section migration pending |
 | 23 | `33ff328` | Migrate Material Switch → DesignSwitch across 5 settings files: Reminders 1 (sound), Productivity 1 (vacation), General 2 (daily review + sort reversed), Sidebar 3 (inbox/today/upcoming counts), About 1 (telemetry). 8 toggles total, all bindings + handlers + ids + telemetry preserved |
+| 24 | `68a261e` | New DesignPill component (AbstractButton, padding 4/10, radius md, fontSize small, active accent/white + idle border/subText). 12/24-hour selector in SettingsSectionGeneral migrated from RadioButton to DesignPill in ButtonGroup. settingsViewModel.timeFormat int binding preserved |
 
 **Сгенерировано:** 2026-05-25 (после прохода pixel-perfect раундов).
 **Источники:**
