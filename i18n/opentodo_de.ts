@@ -2508,8 +2508,8 @@
     </message>
     <message>
         <location line="+44"/>
-        <source>Запусти первый Pomodoro в селе</source>
-        <translation>Starte den ersten Pomodoro der Sitzung</translation>
+        <source>Запусти первый Pomodoro дня</source>
+        <translation>Starte den ersten Pomodoro des Tages</translation>
     </message>
     <message>
         <location line="+175"/>

@@ -172,10 +172,12 @@ Item {
                         }
                     }
 
-                    // Phase label
+                    // Phase label. Q4.01 night iter-31: design canvas
+                    // view-others.jsx:87 says fontSize 12 (FontSize.small),
+                    // was using FontSize.body (14).
                     Text {
                         Layout.alignment: Qt.AlignHCenter
-                        font.pixelSize: FontSize.body
+                        font.pixelSize: FontSize.small
                         color: textSecondary
                         text: {
                             if (pomodoroService.phase === "work")  return qsTr("Работа")
@@ -574,11 +576,15 @@ Item {
                         pomodoroStatsCol._stats.today === 0 &&
                         pomodoroStatsCol._stats.week  === 0
 
+                    // Q4.01 night iter-31: was "Запусти первый Pomodoro в селе"
+                    // (typo/grammatically wrong). Design canvas view-others.jsx:127
+                    // says "Запусти первый Pomodoro дня". Also design fontSize 11
+                    // (FontSize.caption), not 12 (small).
                     Text {
                         visible: pomodoroStatsCol._isEmpty
-                        text: qsTr("Запусти первый Pomodoro в селе")
+                        text: qsTr("Запусти первый Pomodoro дня")
                         color: textSecondary
-                        font.pixelSize: FontSize.small
+                        font.pixelSize: FontSize.caption
                         font.italic: true
                         horizontalAlignment: Text.AlignHCenter
                         Layout.fillWidth: true

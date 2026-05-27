@@ -2508,7 +2508,7 @@
     </message>
     <message>
         <location line="+44"/>
-        <source>Запусти первый Pomodoro в селе</source>
+        <source>Запусти первый Pomodoro дня</source>
         <translation>Start your first Pomodoro session</translation>
     </message>
     <message>
