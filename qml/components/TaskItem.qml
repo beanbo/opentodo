@@ -1186,15 +1186,33 @@ Item {
                     }
                 }
 
-                Text {
+                // Q4.01 (night iter-5): "✓ N/M" замена text-emoji на
+                // IconSvg "check" + Text. Раньше галочка рендерилась как
+                // Unicode ✓ в font (FontSize.caption=11px) — выглядела
+                // тонкой/мелкой и font-style-dependent. Теперь stroke svg
+                // 10px рядом с цифрами, единая визуальная семья со всеми
+                // галочками в app (priority circle, EmptyState badge).
+                Row {
                     id: badgeText
                     anchors.centerIn: parent
-                    text: "✓ " + _subtaskDone + "/" + _subtaskTotal
-                    font.pixelSize: FontSize.caption
-                    color: subtaskBadge._allDone
-                        ? "#2e8b57"
-                        : ThemeManager.accentColor
-                    font.bold: subtaskBadge._allDone
+                    spacing: 3
+                    IconSvg {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "check"
+                        size: 10
+                        color: subtaskBadge._allDone
+                            ? "#2e8b57"
+                            : ThemeManager.accentColor
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: _subtaskDone + "/" + _subtaskTotal
+                        font.pixelSize: FontSize.caption
+                        color: subtaskBadge._allDone
+                            ? "#2e8b57"
+                            : ThemeManager.accentColor
+                        font.bold: subtaskBadge._allDone
+                    }
                 }
 
                 // Click → toggle expand/collapse, mirroring the ▶/▼ caret.
