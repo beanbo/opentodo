@@ -18,7 +18,11 @@ Rectangle {
     readonly property color textColor: ThemeManager.textColor
     readonly property color secondaryTextColor: ThemeManager.secondaryTextColor
     readonly property color borderColor: ThemeManager.borderColor
-    readonly property color iconColor: isDarkTheme ? "#aaaaaa" : "#555555"
+    // Q4.01 (night iter-11): theme-aware (was "#aaaaaa" / "#555555"
+    // hardcoded). ThemeManager.iconColor уже определён в каждой теме
+    // (#aaaaaa в dark/classic_light как раньше, но kale/blueberry/
+    // raspberry/etc. имеют свои оттенки иконок).
+    readonly property color iconColor: ThemeManager.iconColor
 
     width: 220
     color: bgColor
@@ -303,7 +307,8 @@ Rectangle {
                             height: 18
                             width: Math.max(18, pinnedCountBadgeText.implicitWidth + 10)
                             radius: 9
-                            color: sidebarContent.isDarkTheme ? "#3a3a3a" : "#ebebeb"
+                            // Q4.01 (night iter-11): theme-aware count badge bg
+                            color: ThemeManager.hoverColor
 
                             Text {
                                 id: pinnedCountBadgeText

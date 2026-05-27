@@ -410,8 +410,9 @@ Rectangle {
                             font.bold:      true
                             color: {
                                 // Highlight weekends
+                                // Q4.01 (night iter-11): theme-aware grey
                                 if (modelData === qsTr("Сб") || modelData === qsTr("Вс"))
-                                    return root.isDarkTheme ? "#888" : "#999"
+                                    return ThemeManager.secondaryTextColor
                                 return root.textSecondary
                             }
                         }
@@ -556,7 +557,7 @@ Rectangle {
                     // Hover highlight overlay
                     Rectangle {
                         anchors.fill: parent
-                        color:        root.isDarkTheme ? "#ffffff" : "#000000"
+                        color:        ThemeManager.textColor
                         opacity:      cellHover.containsMouse ? 0.04 : 0
                         Behavior on opacity { NumberAnimation { duration: 80 } }
                     }
@@ -720,7 +721,8 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
-                    color:        root.isDarkTheme ? "#ffffff" : "#000000"
+                    // Q4.01 (night iter-11): theme-aware hover overlay
+                    color:        ThemeManager.textColor
                     opacity:      weekCellHover.containsMouse ? 0.04 : 0
                     Behavior on opacity { NumberAnimation { duration: 80 } }
                 }
@@ -868,7 +870,7 @@ Rectangle {
                                     // Subtle hover highlight
                                     Rectangle {
                                         anchors.fill: parent
-                                        color:        root.isDarkTheme ? "#ffffff" : "#000000"
+                                        color:        ThemeManager.textColor
                                         opacity:      agendaTaskHover.containsMouse ? 0.04 : 0
                                         Behavior on opacity { NumberAnimation { duration: 80 } }
                                     }
