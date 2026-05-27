@@ -163,7 +163,7 @@ Item {
                         font.pixelSize: 56
                         font.weight: Font.Light
                         font.letterSpacing: -2
-                        color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
+                        color: pomodoroService.phase === "break" ? ThemeManager.successColor : ThemeManager.accentColor
                         text: {
                             var sec = pomodoroService.remainingSeconds
                             var m = Math.floor(sec / 60)
@@ -203,7 +203,7 @@ Item {
                             }
                             height: parent.height
                             radius: Radius.xs
-                            color: pomodoroService.phase === "break" ? "#2e8b57" : ThemeManager.accentColor
+                            color: pomodoroService.phase === "break" ? ThemeManager.successColor : ThemeManager.accentColor
                             Behavior on width { NumberAnimation { duration: 800 } }
                         }
                     }
@@ -1055,7 +1055,7 @@ Item {
                             text: karmaViewModel.completedToday + " / " + karmaViewModel.dailyGoal
                             font.pixelSize: 28
                             font.weight: Font.DemiBold
-                            color: karmaViewModel.dailyGoalMet ? "#4caf50" : textPrimary
+                            color: karmaViewModel.dailyGoalMet ? ThemeManager.successColor : textPrimary
                         }
 
                         // Progress bar
@@ -1100,7 +1100,7 @@ Item {
                             text: karmaViewModel.completedThisWeek + " / " + karmaViewModel.weeklyGoal
                             font.pixelSize: 28
                             font.weight: Font.DemiBold
-                            color: karmaViewModel.weeklyGoalMet ? "#4caf50" : textPrimary
+                            color: karmaViewModel.weeklyGoalMet ? ThemeManager.successColor : textPrimary
                         }
 
                         Rectangle {
@@ -1256,7 +1256,7 @@ Item {
                             var chartH = h - padding * 2
 
                             // Draw grid lines
-                            ctx.strokeStyle = darkTheme ? "#363636" : "#e0e0e0"
+                            ctx.strokeStyle = ThemeManager.borderColor.toString()
                             ctx.lineWidth = 0.5
                             for (var g = 0; g < 4; g++) {
                                 var gy = padding + (chartH / 3) * g
@@ -1267,7 +1267,7 @@ Item {
                             }
 
                             // Draw line
-                            ctx.strokeStyle = "#db4c3f"
+                            ctx.strokeStyle = ThemeManager.accentColor.toString()
                             ctx.lineWidth = 2
                             ctx.lineJoin = "round"
                             ctx.beginPath()

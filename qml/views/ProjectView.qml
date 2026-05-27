@@ -313,7 +313,7 @@ Rectangle {
                                        (parent.width - 4) * parent._completedNow / project.weeklyGoal)
                             : 0
                         radius: parent.radius - 2
-                        color: parent._achieved ? "#2e8b57" : ThemeManager.accentColor
+                        color: parent._achieved ? ThemeManager.successColor : ThemeManager.accentColor
                         Behavior on width { NumberAnimation { duration: 300 } }
                     }
 
@@ -321,7 +321,7 @@ Rectangle {
                         anchors.centerIn: parent
                         text: qsTr("%1/%2 за неделю").arg(parent._completedNow).arg(project ? project.weeklyGoal : 0)
                         font.pixelSize: FontSize.caption
-                        color: parent._completedNow > 0 ? "#ffffff" : ThemeManager.textColor
+                        color: parent._completedNow > 0 ? ThemeManager.accentForeground : ThemeManager.textColor
                         z: 1
                     }
 
@@ -376,7 +376,7 @@ Rectangle {
                             size:  14
                             // Active = white-on-accent (PillIconBtn '#fff'),
                             // inactive = iconColor per design.
-                            color: parent._active ? "#ffffff" : ThemeManager.iconColor
+                            color: parent._active ? ThemeManager.accentForeground : ThemeManager.iconColor
                         }
                     }
                 }

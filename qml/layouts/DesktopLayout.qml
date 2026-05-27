@@ -616,7 +616,7 @@ Item {
                                                (parent.width - 4) * parent._completedToday / parent._goal)
                                     : 0
                                 radius: parent.radius - 2
-                                color: parent._achieved ? "#2e8b57" : ThemeManager.accentColor
+                                color: parent._achieved ? ThemeManager.successColor : ThemeManager.accentColor
                                 Behavior on width { NumberAnimation { duration: 300 } }
                             }
 
@@ -631,14 +631,14 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: "flame"
                                     size: 12
-                                    color: todayGoalIndicator._completedToday > 0 ? "#ffffff" : "#e05050"
+                                    color: todayGoalIndicator._completedToday > 0 ? ThemeManager.accentForeground : ThemeManager.errorColor
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: todayGoalIndicator._completedToday + " / " + todayGoalIndicator._goal
                                     font.pixelSize: FontSize.caption
                                     font.bold: todayGoalIndicator._completedToday > 0
-                                    color: todayGoalIndicator._completedToday > 0 ? "#ffffff" : ThemeManager.textColor
+                                    color: todayGoalIndicator._completedToday > 0 ? ThemeManager.accentForeground : ThemeManager.textColor
                                 }
                             }
 

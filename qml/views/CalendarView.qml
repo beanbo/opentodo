@@ -347,7 +347,7 @@ Rectangle {
                         contentItem: Text {
                             text:               parent.text
                             font:               parent.font
-                            color:              parent._active ? "#ffffff" : root.textSecondary
+                            color:              parent._active ? ThemeManager.accentForeground : root.textSecondary
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment:   Text.AlignVCenter
                         }
