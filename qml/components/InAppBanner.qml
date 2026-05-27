@@ -110,7 +110,7 @@ Rectangle {
             Text {
                 id: titleText
                 text: root.bannerTitle
-                color: "white"
+                color: ThemeManager.accentForeground
                 font.pixelSize: FontSize.body
                 font.weight: Font.DemiBold
                 Layout.fillWidth: true
@@ -146,7 +146,7 @@ Rectangle {
         Text {
             visible: root.bannerTaskId.length > 0
             text: qsTr("Открыть задачу →")
-            color: "white"
+            color: ThemeManager.accentForeground
             font.pixelSize: FontSize.small
             font.underline: true
 
@@ -201,7 +201,7 @@ Rectangle {
                     id: btnLabel
                     anchors.centerIn: parent
                     text: btn.label
-                    color: "white"
+                    color: ThemeManager.accentForeground
                     font.pixelSize: FontSize.small
                 }
 

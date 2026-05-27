@@ -224,7 +224,10 @@ ApplicationWindow {
 
             Text {
                 text: undoSnackbar.message
-                color: "white"
+                // Q4.01 (night iter-18): snackbar bg is cardColor (iter-15);
+                // text must invert per theme — was hardcoded "white", invisible
+                // on classic_light/sunflower (cardColor near-white).
+                color: ThemeManager.textColor
                 font.pixelSize: FontSize.body
                 Layout.fillWidth: true
                 elide: Text.ElideRight
