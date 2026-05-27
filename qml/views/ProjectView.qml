@@ -365,7 +365,9 @@ Rectangle {
                         // matches PillIconBtn from .design-temp.
                         background: Rectangle {
                             radius: Radius.md
-                            color:  parent._active ? accentRed : "transparent"
+                            color:  parent._active ? accentRed
+                                  : parent.hovered ? ThemeManager.hoverColor
+                                                   : "transparent"
                             implicitWidth:  28
                             implicitHeight: 24
                         }

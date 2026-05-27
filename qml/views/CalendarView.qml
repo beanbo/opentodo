@@ -342,7 +342,9 @@ Rectangle {
 
                         background: Rectangle {
                             radius: Radius.md
-                            color:  parent._active ? root.accentRed : "transparent"
+                            color:  parent._active   ? root.accentRed
+                                  : parent.hovered   ? ThemeManager.hoverColor
+                                                     : "transparent"
                         }
                         contentItem: Text {
                             text:               parent.text
