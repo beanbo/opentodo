@@ -1650,7 +1650,8 @@ Item {
                         anchors.top:    parent.top
                         anchors.bottom: parent.bottom
                         width: 1
-                        color: isDarkTheme ? "#363636" : "#e8e8e8"
+                        // Q4.01 (night iter-13): theme-aware subtask connector line
+                        color: ThemeManager.borderColor
                     }
 
                     RowLayout {

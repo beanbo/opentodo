@@ -1598,7 +1598,7 @@ Rectangle {
                                     height: 36
                                     radius: Radius.md
                                     color: archRowMouse.containsMouse
-                                           ? (sidebarContent.isDarkTheme ? "#2a2a2a" : "#f0f0f0")
+                                           ? ThemeManager.hoverColor
                                            : "transparent"
                                     opacity: 0.7
 
@@ -1624,7 +1624,7 @@ Rectangle {
                                         text: parent.parent.projectName
                                         font.pixelSize: FontSize.body
                                         elide: Text.ElideRight
-                                        color: sidebarContent.isDarkTheme ? "#666666" : "#aaaaaa"
+                                        color: ThemeManager.secondaryTextColor
                                     }
 
                                     MouseArea {
@@ -3006,9 +3006,11 @@ Rectangle {
                     height: 18
                     width: Math.max(18, badgeText.implicitWidth + 10)
                     radius: 9
+                    // Q4.01 (night iter-13): count badge — accentColor active,
+                    // hoverColor idle. Раньше hardcoded "#db4c3f"/"#3a3a3a"/"#ebebeb".
                     color: sidebarItem.active
-                           ? "#db4c3f"
-                           : (sidebarItem.isDarkTheme ? "#3a3a3a" : "#ebebeb")
+                           ? ThemeManager.accentColor
+                           : ThemeManager.hoverColor
 
                     Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -3018,9 +3020,11 @@ Rectangle {
                         text: sidebarItem.count > 99 ? "99+" : sidebarItem.count.toString()
                         font.pixelSize: FontSize.caption
                         font.weight: Font.Medium
+                        // Q4.01 (night iter-13): badge text — accentForeground when
+                        // active (white on accent), secondaryTextColor idle.
                         color: sidebarItem.active
-                               ? "#ffffff"
-                               : (sidebarItem.isDarkTheme ? "#aaaaaa" : "#666666")
+                               ? ThemeManager.accentForeground
+                               : ThemeManager.secondaryTextColor
                     }
                 }
             }
