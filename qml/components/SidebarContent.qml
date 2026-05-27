@@ -2988,9 +2988,12 @@ Rectangle {
                 // (red accent default-палитры), normal = light gray hardcoded.
                 // Под kale/blueberry/etc. selected sidebar item должен быть
                 // tинтован accent темы, не red.
+                // Q4.01 night iter-33: inactive color was textColor but design
+                // app-shell.jsx:69 uses t.sidebarText (slightly muted vs main
+                // text — e.g. kale text=#d8e8d6, sidebarText=#c8d8c6).
                 color: sidebarItem.active
                        ? ThemeManager.accentColor
-                       : ThemeManager.textColor
+                       : ThemeManager.sidebarTextColor
 
                 Behavior on color { ColorAnimation { duration: 150 } }
             }
