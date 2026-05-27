@@ -49,7 +49,10 @@ Rectangle {
             id: arrowText
             name: "chevron-right"
             size: 12
-            color: ThemeManager.textColor
+            // Q4.01 night iter-32: design view-project.jsx:87 uses subText for
+            // section-header chevron — was textColor here, breaking the design
+            // hierarchy (title is text, chevron is muted).
+            color: ThemeManager.secondaryTextColor
 
             transform: Rotation {
                 id: arrowRotation
@@ -112,7 +115,9 @@ Rectangle {
             id: addButton
             name: "plus"
             size: 14
-            color: ThemeManager.iconColor
+            // Q4.01 night iter-32: design view-project.jsx:96 says subText,
+            // not iconColor. iconColor is slightly stronger.
+            color: ThemeManager.secondaryTextColor
             visible: headerHover.hovered
             opacity: addHover.hovered ? 1.0 : 0.7
             z: 2
@@ -139,7 +144,8 @@ Rectangle {
             id: moreButton
             name: "more"
             size: 14
-            color: ThemeManager.iconColor
+            // Q4.01 night iter-32: design view-project.jsx:97 says subText.
+            color: ThemeManager.secondaryTextColor
             visible: headerHover.hovered
             opacity: moreHover.hovered ? 1.0 : 0.7
             z: 2
