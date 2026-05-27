@@ -287,7 +287,7 @@ Rectangle {
 
                     contentItem: Text {
                         text: parent.text
-                        color: "white"
+                        color: ThemeManager.accentForeground
                         font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter

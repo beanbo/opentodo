@@ -1023,7 +1023,7 @@ Rectangle {
                             anchors.centerIn: parent
                             text:           popupTaskList.count
                             font.pixelSize: FontSize.caption
-                            color:          "white"
+                            color:          ThemeManager.accentForeground
                             font.bold:      true
                         }
                     }

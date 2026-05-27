@@ -223,7 +223,8 @@ Rectangle {
 
                     contentItem: Text {
                         text: parent.text
-                        color: "white"
+                        // Connected → accent bg (theme-aware fg); Disconnected → Google blue bg (always white).
+                        color: root.driveConnected ? ThemeManager.accentForeground : "white"
                         font.pixelSize: 13
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter

@@ -232,7 +232,7 @@ Item {
                             contentItem: Text {
                                 text: pomodoroPrimaryBtn.text
                                 font: pomodoroPrimaryBtn.font
-                                color: "white"
+                                color: ThemeManager.accentForeground
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
@@ -958,13 +958,14 @@ Item {
                         text: karmaViewModel.karmaScore.toString()
                         font.pixelSize: 48
                         font.weight: Font.DemiBold
-                        color: "white"
+                        color: ThemeManager.accentForeground
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {
                         text: qsTr("Продуктивность · %1").arg(karmaViewModel.karmaLevel)
                         font.pixelSize: 16
-                        color: Qt.rgba(1, 1, 1, 0.85)
+                        color: ThemeManager.accentForeground
+                        opacity: 0.85
                         Layout.alignment: Qt.AlignHCenter
                     }
 
@@ -981,7 +982,8 @@ Item {
                             Text {
                                 text: qsTr("До %1 очков:").arg(karmaViewModel.nextMilestone)
                                 font.pixelSize: FontSize.small
-                                color: Qt.rgba(1, 1, 1, 0.75)
+                                color: ThemeManager.accentForeground
+                                opacity: 0.75
                             }
                             Item { Layout.fillWidth: true }
                             Text {
@@ -989,7 +991,7 @@ Item {
                                 text: qsTr("%1 %2").arg(_remaining).arg(_milestoneSuffix(_remaining))
                                 font.pixelSize: FontSize.small
                                 font.bold: true
-                                color: "white"
+                                color: ThemeManager.accentForeground
                             }
                         }
 
@@ -1016,7 +1018,7 @@ Item {
                                     var ratio = Math.max(0, Math.min(1, (_cur - _prev) / (_next - _prev)))
                                     return parent.width * ratio
                                 }
-                                color: "white"
+                                color: ThemeManager.accentForeground
                                 opacity: 0.90
                                 Behavior on width { NumberAnimation { duration: 600; easing.type: Easing.OutQuad } }
                             }
