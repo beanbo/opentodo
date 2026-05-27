@@ -318,7 +318,7 @@ Rectangle {
                                       : mainColumn._pinnedTotal.toString()
                                 font.pixelSize: FontSize.caption
                                 font.weight: Font.Medium
-                                color: sidebarContent.isDarkTheme ? "#aaaaaa" : "#666666"
+                                color: ThemeManager.secondaryTextColor
                             }
                         }
 
@@ -1055,7 +1055,7 @@ Rectangle {
                             height: Spacing.md
                             radius: 3
                             color: chevronMouse.containsMouse
-                                   ? (sidebarContent.isDarkTheme ? "#444444" : "#e0e0e0")
+                                   ? ThemeManager.hoverColor
                                    : "transparent"
 
                             // Task 17cea65b iter-2: было unicode "▾"/"▸".
@@ -2750,10 +2750,16 @@ Rectangle {
             width: 16
             height: 16
             radius: 8
+            // Q4.01 (night iter-12): theme-aware. archiveActive используется
+            // редко, маркер архивного режима. warningColor в палитре —
+            // оранжевый/amber токен (#e08e10), даёт правильный hint без
+            // hardcoded brown.
             color: sectionHeader.archiveActive
-                   ? (sectionHeader.isDarkTheme ? "#5a3a1a" : "#fff3e0")
+                   ? Qt.rgba(ThemeManager.warningColor.r,
+                             ThemeManager.warningColor.g,
+                             ThemeManager.warningColor.b, 0.18)
                    : archiveBtnMouse.containsMouse
-                     ? (sectionHeader.isDarkTheme ? "#444444" : "#e8e8e8")
+                     ? ThemeManager.hoverColor
                      : "transparent"
 
             Behavior on color { ColorAnimation { duration: 100 } }
@@ -2793,8 +2799,9 @@ Rectangle {
             width: 16
             height: 16
             radius: 8
+            // Q4.01 (night iter-12): theme-aware hover bg
             color: addBtnMouse.containsMouse
-                   ? (sectionHeader.isDarkTheme ? "#444444" : "#e8e8e8")
+                   ? ThemeManager.hoverColor
                    : "transparent"
 
             Behavior on color { ColorAnimation { duration: 100 } }
@@ -2881,10 +2888,14 @@ Rectangle {
             }
 
             radius: Radius.md
+            // Q4.01 (night iter-12): theme-aware. Раньше "#3d2020"/"#ffede8"
+            // (мутный темно-красный/розоватый) и "#333333"/"#f5f5f5" были
+            // привязаны к default-палитре accent. ThemeManager.sidebarActiveColor
+            // тюнится под каждую тему (kale=зелёный оттенок и т.д.).
             color: sidebarItem.active
-                   ? (sidebarItem.isDarkTheme ? "#3d2020" : "#ffede8")
+                   ? ThemeManager.sidebarActiveColor
                    : hoverMouse.containsMouse
-                     ? (sidebarItem.isDarkTheme ? "#333333" : "#f5f5f5")
+                     ? ThemeManager.hoverColor
                      : "transparent"
 
             Behavior on color { ColorAnimation { duration: 150 } }
@@ -2969,9 +2980,13 @@ Rectangle {
                 font.pixelSize: FontSize.bodySmall
                 font.weight: sidebarItem.active ? Font.Medium : Font.Normal
                 elide: Text.ElideRight
+                // Q4.01 (night iter-12): theme-aware. Раньше active = "#db4c3f"
+                // (red accent default-палитры), normal = light gray hardcoded.
+                // Под kale/blueberry/etc. selected sidebar item должен быть
+                // tинтован accent темы, не red.
                 color: sidebarItem.active
-                       ? "#db4c3f"
-                       : (sidebarItem.isDarkTheme ? "#e0e0e0" : "#202020")
+                       ? ThemeManager.accentColor
+                       : ThemeManager.textColor
 
                 Behavior on color { ColorAnimation { duration: 150 } }
             }
