@@ -25,8 +25,11 @@ Item {
     readonly property color _itemHover:   ThemeManager.hoverColor
     readonly property color _selColor:    ThemeManager.sidebarActiveColor
     readonly property color _accent:      ThemeManager.accentColor
-    readonly property color _hintColor:   isDarkTheme ? "#666666" : "#aaaaaa"
-    readonly property color _catColor:    isDarkTheme ? "#444444" : "#bbbbbb"
+    // Q4.01 (night iter-10): theme-aware. _hintColor was hardcoded grey
+    // pair, _catColor was even darker. Both map cleanly to secondaryText
+    // (subtle) / borderColor (divider-like category labels).
+    readonly property color _hintColor:   ThemeManager.secondaryTextColor
+    readonly property color _catColor:    ThemeManager.borderColor
     readonly property color _divider:     ThemeManager.borderColor
 
     // Fill the overlay — parent should be ApplicationWindow or root window

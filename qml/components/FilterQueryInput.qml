@@ -24,10 +24,12 @@ Rectangle {
     implicitHeight: column.implicitHeight + 16
     implicitWidth:  300
     radius:         8
-    color:          isDarkTheme ? "#282828" : "#ffffff"
+    // Q4.01 (night iter-10): theme-aware. Раньше всё hardcoded для
+    // dark/classic_light, неподходяще для kale/blueberry/raspberry.
+    color:          ThemeManager.surfaceColor
     border.color:   textField.activeFocus
-                    ? "#db4c3f"
-                    : (isDarkTheme ? "#363636" : "#f0f0f0")
+                    ? ThemeManager.accentColor
+                    : ThemeManager.borderColor
     border.width:   textField.activeFocus ? 2 : 1
 
     Behavior on border.color { ColorAnimation { duration: 120 } }
@@ -73,8 +75,8 @@ Rectangle {
             font.family:  "Consolas, 'Courier New', monospace"
             font.pixelSize: FontSize.body
 
-            color:           isDarkTheme ? "#e8e8e8" : "#202020"
-            placeholderTextColor: isDarkTheme ? "#666666" : "#aaaaaa"
+            color:           ThemeManager.textColor
+            placeholderTextColor: ThemeManager.secondaryTextColor
 
             // Remove the default TextField frame; the parent Rectangle is the border
             background: Item {}
