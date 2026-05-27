@@ -277,30 +277,36 @@ Item {
             }
         }
 
-        // Q4.01 (redesign): акцентный цвет иконки для каждого kind — берём
-        // непрозрачную версию того же оттенка, что у kindTint фона бубна.
+        // Q4.01 night iter-30: kind icon colors — use semantic tokens so
+        // they track theme palette. Achievement (5) keeps a gold-tone
+        // literal because none of the semantic tokens carry "trophy" meaning.
         readonly property color kindIconColor: {
             switch (delegateRoot.kind) {
-                case 0: return Qt.rgba(76/255, 175/255,  80/255, 1.0)
-                case 1: return Qt.rgba(255/255, 152/255,  0/255, 1.0)
-                case 2: return Qt.rgba(33/255,  150/255, 243/255, 1.0)
-                case 3: return Qt.rgba(76/255,  175/255,  80/255, 1.0)
-                case 4: return Qt.rgba(244/255,  67/255,  54/255, 1.0)
-                case 5: return Qt.rgba(255/255, 193/255,   7/255, 1.0)
+                case 0: return ThemeManager.successColor   // TaskCompleted
+                case 1: return ThemeManager.warningColor   // TaskOverdue
+                case 2: return ThemeManager.infoColor      // ReminderFired
+                case 3: return ThemeManager.successColor   // SyncSuccess
+                case 4: return ThemeManager.errorColor     // SyncFailure
+                case 5: return "#ffc107"                   // Achievement — gold trophy
                 default: return textSecondary
             }
         }
 
+        // Q4.01 night iter-30: bubble tint = 15% alpha of the kind's semantic
+        // colour, so the tint tracks palette (warningColor in graphite is
+        // muted-brown, in dark is bright orange, etc.).
         readonly property color kindTint: {
+            var c
             switch (delegateRoot.kind) {
-                case 0: return Qt.rgba(76/255, 175/255,  80/255, 0.15) // green
-                case 1: return Qt.rgba(255/255, 152/255,  0/255, 0.15) // amber
-                case 2: return Qt.rgba(33/255,  150/255, 243/255, 0.15) // blue
-                case 3: return Qt.rgba(76/255,  175/255,  80/255, 0.12) // green light
-                case 4: return Qt.rgba(244/255,  67/255,  54/255, 0.15) // red
-                case 5: return Qt.rgba(255/255, 193/255,   7/255, 0.15) // gold
-                default: return Qt.rgba(128/255, 128/255, 128/255, 0.1)
+                case 0: c = ThemeManager.successColor; break  // TaskCompleted
+                case 1: c = ThemeManager.warningColor; break  // TaskOverdue
+                case 2: c = ThemeManager.infoColor;    break  // ReminderFired
+                case 3: c = ThemeManager.successColor; break  // SyncSuccess
+                case 4: c = ThemeManager.errorColor;   break  // SyncFailure
+                case 5: c = "#ffc107";                 break  // Achievement gold
+                default: c = ThemeManager.secondaryTextColor
             }
+            return Qt.rgba(c.r, c.g, c.b, delegateRoot.kind === 3 ? 0.12 : 0.15)
         }
 
         // R-6.91 — consumes refreshTick as a binding dependency so Qt re-evaluates
