@@ -119,7 +119,7 @@ Rectangle {
                 text:            root._isValid ? "✓" : "✗"
                 font.pixelSize:  FontSize.bodySmall
                 font.bold:       true
-                color:           root._isValid ? "#4caf50" : "#db4c3f"
+                color:           root._isValid ? ThemeManager.successColor : ThemeManager.errorColor
                 Layout.alignment: Qt.AlignVCenter
             }
 
@@ -129,7 +129,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text:       root._isValid ? qsTr("Запрос корректен") : root._errorText
                 font.pixelSize: FontSize.bodySmall
-                color:      root._isValid ? "#4caf50" : "#db4c3f"
+                color:      root._isValid ? ThemeManager.successColor : ThemeManager.errorColor
                 wrapMode:   Text.WordWrap
                 Layout.alignment: Qt.AlignVCenter
             }

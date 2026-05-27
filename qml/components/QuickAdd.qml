@@ -28,10 +28,12 @@ Rectangle {
     readonly property color textCol:    ThemeManager.textColor
     readonly property color subTextCol: ThemeManager.secondaryTextColor
 
-    readonly property color p1Color: "#db4c3f"
-    readonly property color p2Color: "#f49c18"
-    readonly property color p3Color: "#4073ff"
-    readonly property color p4Color: "#808080"
+    // Q4.01 (night iter-14): theme-aware priority colors (was hardcoded
+    // hex, не подстраивались под kale/blueberry/etc.).
+    readonly property color p1Color: ThemeManager.priorityP1Color
+    readonly property color p2Color: ThemeManager.priorityP2Color
+    readonly property color p3Color: ThemeManager.priorityP3Color
+    readonly property color p4Color: ThemeManager.priorityP4Color
 
     // ─── Sizing / animation target ─────────────────────────────────────────────
     // ITER2 #3: remove hardcoded expandedH=216 which clipped the submit row when
@@ -1052,11 +1054,15 @@ Rectangle {
                     verticalAlignment:   Text.AlignVCenter
                 }
 
+                // Q4.01 (night iter-14): theme-aware accent for primary
+                // submit button. Раньше hardcoded "#db4c3f" — default accent.
                 background: Rectangle {
                     radius: Radius.sm
                     color:  addBtn.enabled
-                             ? (addBtn.hovered ? Qt.darker("#db4c3f", 1.1) : "#db4c3f")
-                             : (root.isDark ? "#444444" : "#dddddd")
+                             ? (addBtn.hovered
+                                ? Qt.darker(ThemeManager.accentColor, 1.1)
+                                : ThemeManager.accentColor)
+                             : ThemeManager.borderColor
                 }
 
                 onClicked: root.submitTask()

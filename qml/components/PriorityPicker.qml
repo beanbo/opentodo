@@ -19,11 +19,14 @@ Popup {
     readonly property color hoverCol:  ThemeManager.hoverColor
 
     // Priority definitions
+    // Q4.01 (night iter-14): theme-aware. Раньше hardcoded hex для P1-P4
+    // не подстраивались под темы kale/blueberry/etc. TaskItem priority
+    // circle уже использует ThemeManager.priorityP*Color — синхронизируем.
     readonly property var priorities: [
-        { value: 1, label: qsTr("Приоритет 1"), flagColor: "#db4c3f" },
-        { value: 2, label: qsTr("Приоритет 2"), flagColor: "#f49c18" },
-        { value: 3, label: qsTr("Приоритет 3"), flagColor: "#4073ff" },
-        { value: 4, label: qsTr("Приоритет 4"), flagColor: "#808080" }
+        { value: 1, label: qsTr("Приоритет 1"), flagColor: ThemeManager.priorityP1Color },
+        { value: 2, label: qsTr("Приоритет 2"), flagColor: ThemeManager.priorityP2Color },
+        { value: 3, label: qsTr("Приоритет 3"), flagColor: ThemeManager.priorityP3Color },
+        { value: 4, label: qsTr("Приоритет 4"), flagColor: ThemeManager.priorityP4Color }
     ]
 
     // ─── Popup geometry ────────────────────────────────────────────────────────
