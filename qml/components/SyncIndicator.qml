@@ -76,10 +76,14 @@ Rectangle {
     }
 
     // Subtle hover background
+    // Q4.01 (night iter-9): theme-aware (was hardcoded white/black with
+    // opacity 0.06; under kale/blueberry/etc. это давало нейтральный
+    // overlay, что неплохо — но lookup через ThemeManager.textColor
+    // делает поведение явным и не лоченным под dark/light.
     Rectangle {
         anchors.fill: parent
         radius: root.radius
-        color: isDarkTheme ? "#ffffff" : "#000000"
+        color: ThemeManager.textColor
         opacity: hoverHandler.hovered ? 0.06 : 0
         Behavior on opacity { NumberAnimation { duration: Duration.fast } }
     }
@@ -200,11 +204,11 @@ Rectangle {
             font.pixelSize: 13
             color: {
                 switch (syncViewModel.syncStatus) {
-                case "synced":   return isDarkTheme ? "#cccccc" : "#555555"
+                case "synced":   return ThemeManager.secondaryTextColor
                 case "syncing":  return colorSyncing
                 case "error":    return colorError
                 case "offline":  return colorOffline
-                default:         return isDarkTheme ? "#cccccc" : "#555555"
+                default:         return ThemeManager.secondaryTextColor
                 }
             }
 
@@ -250,14 +254,14 @@ Rectangle {
             Text {
                 text: syncViewModel.formatLastSyncTime()
                 font.pixelSize: 13
-                color: isDarkTheme ? "#e0e0e0" : "#333333"
+                color: ThemeManager.textColor
             }
 
             Text {
                 visible: syncViewModel.pendingCommits > 0
                 text: qsTr("%n несохранённых изменений", "", syncViewModel.pendingCommits)
                 font.pixelSize: 13
-                color: isDarkTheme ? "#e0e0e0" : "#333333"
+                color: ThemeManager.textColor
             }
 
             Text {
@@ -271,8 +275,9 @@ Rectangle {
         }
 
         background: Rectangle {
-            color: isDarkTheme ? "#3a3a3a" : "#ffffff"
-            border.color: isDarkTheme ? "#4a4a4a" : "#e0e0e0"
+            // Q4.01 (night iter-9): tooltip popup — theme-aware
+            color: ThemeManager.surfaceColor
+            border.color: ThemeManager.borderColor
             border.width: 1
             radius: Radius.md
         }
