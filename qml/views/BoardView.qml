@@ -347,8 +347,12 @@ Rectangle {
                                                                 ? modelData.dueString
                                                                 : modelData.dueDate
                                                 font.pixelSize: FontSize.caption
+                                                // Q4.01 night iter-28: overdue → errorColor
+                                                // (was accentRed/accentColor — wrong semantic, also
+                                                // accent doesn't mean "warning/error" on non-default
+                                                // themes like kale/sunflower).
                                                 color:          root._isOverdue(modelData.dueDate)
-                                                                ? root.accentRed
+                                                                ? ThemeManager.errorColor
                                                                 : root.textSecondary
                                             }
                                         }
@@ -373,7 +377,12 @@ Rectangle {
                                                         id:             chipLabel
                                                         anchors.centerIn: parent
                                                         text:           modelData
-                                                        font.pixelSize: FontSize.xs
+                                                        // Q4.01 night iter-28: was FontSize.xs which
+                                                        // doesn't exist in FontSize singleton (only
+                                                        // tiny/caption/small/...). The undefined
+                                                        // resolved to default font size, breaking
+                                                        // the chip's design intent (small 10px).
+                                                        font.pixelSize: FontSize.tiny
                                                         color:          root.textSecondary
                                                     }
                                                 }
