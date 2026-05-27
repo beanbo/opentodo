@@ -1862,7 +1862,7 @@ Item {
 
                                     Text {
                                         text: qsTr("Выделено: %1").arg(taskViewModel.selectionCount)
-                                        color: "white"
+                                        color: ThemeManager.accentForeground
                                         font.pixelSize: FontSize.body
                                         Layout.leftMargin: Spacing.sm
                                         Layout.fillWidth: true
@@ -1895,12 +1895,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "pin"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: bulkPinBtn.allPinned ? qsTr("Открепить") : qsTr("Закрепить")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -1934,12 +1934,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "projects/palette"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: qsTr("Цвет")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -1972,12 +1972,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "calendar"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: qsTr("Срок")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -2015,12 +2015,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "alarm"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: qsTr("Дедлайн")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -2055,12 +2055,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "archive"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: qsTr("Архив")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -2088,12 +2088,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "note"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: "MD"
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -2124,12 +2124,12 @@ Item {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 name: "check"
                                                 size: 14
-                                                color: "white"
+                                                color: ThemeManager.accentForeground
                                             }
                                             Text {
                                                 anchors.verticalCenter: parent.verticalCenter
                                                 text: qsTr("Завершить")
-                                                color: "white"
+                                                color: ThemeManager.accentForeground
                                                 font.pixelSize: FontSize.body
                                             }
                                         }
@@ -2156,12 +2156,12 @@ Item {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     name: "trash"
                                                     size: 14
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     text: qsTr("Удалить")
-                                                    color: "white"
+                                                    color: ThemeManager.accentForeground
                                                     font.pixelSize: FontSize.body
                                                 }
                                             }
@@ -2180,7 +2180,7 @@ Item {
                                         id: bulkPriorityBtn
                                         contentItem: Text {
                                             text: qsTr("⚑ Приоритет")
-                                            color: "white"
+                                            color: ThemeManager.accentForeground
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
@@ -2203,7 +2203,7 @@ Item {
                                         id: bulkLabelBtn
                                         contentItem: Text {
                                             text: qsTr("@ Метка")
-                                            color: "white"
+                                            color: ThemeManager.accentForeground
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
@@ -2226,7 +2226,7 @@ Item {
                                         id: bulkProjectBtn
                                         contentItem: Text {
                                             text: qsTr("# Проект")
-                                            color: "white"
+                                            color: ThemeManager.accentForeground
                                             font.pixelSize: FontSize.body
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter

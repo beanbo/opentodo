@@ -127,7 +127,7 @@ ColumnLayout {
                         text:          qsTr("Я")
                         font.pixelSize: FontSize.caption
                         font.bold:      true
-                        color:          "white"
+                        color:          ThemeManager.accentForeground
                     }
                 }
 
@@ -280,7 +280,7 @@ ColumnLayout {
                                 anchors.centerIn: parent
                                 text:          qsTr("Сохранить")
                                 font.pixelSize: FontSize.small
-                                color:         "white"
+                                color:         ThemeManager.accentForeground
                             }
 
                             MouseArea {

@@ -379,12 +379,12 @@ Item {
                     IconSvg {
                         name: "send"
                         size: 13
-                        color: "white"
+                        color: ThemeManager.accentForeground
                         Layout.alignment: Qt.AlignVCenter
                     }
                     Text {
                         text: aiAssistant.isResponding ? "..." : qsTr("Отправить")
-                        color: "white"
+                        color: ThemeManager.accentForeground
                         font.pixelSize: FontSize.bodySmall
                         verticalAlignment: Text.AlignVCenter
                         Layout.alignment: Qt.AlignVCenter

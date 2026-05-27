@@ -676,7 +676,7 @@ Rectangle {
                                 text:            weekCell.dayTasks.length
                                 font.pixelSize:  10
                                 font.bold:       true
-                                color:           "white"
+                                color:           ThemeManager.accentForeground
                             }
                         }
                     }
