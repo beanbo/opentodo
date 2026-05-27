@@ -613,7 +613,7 @@ ApplicationWindow {
                             Button {
                                 text: qsTr("Скачать")
                                 Material.background: ThemeManager.accentColor
-                                Material.foreground: "white"
+                                Material.foreground: ThemeManager.accentForeground
                                 onClicked: {
                                     updateChecker.openReleaseInBrowser()
                                     updateDialog.close()

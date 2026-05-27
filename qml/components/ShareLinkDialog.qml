@@ -134,7 +134,7 @@ Dialog {
                           ? qsTr("Скопировано")
                           : qsTr("Копировать")
                     Material.background: ThemeManager.accentColor
-                    Material.foreground: "#ffffff"
+                    Material.foreground: ThemeManager.accentForeground
                     property bool _copied: false
                     onClicked: {
                         urlField.selectAll()
@@ -177,7 +177,7 @@ Dialog {
                     text: qsTr("Отозвать")
                     enabled: root.fileId !== ""
                     flat: true
-                    Material.foreground: "#db4c3f"
+                    Material.foreground: ThemeManager.errorColor
                     onClicked: {
                         if (root.fileId !== "") {
                             shareManager.revokeShare(root.fileId)

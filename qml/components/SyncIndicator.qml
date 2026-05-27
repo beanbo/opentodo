@@ -64,11 +64,13 @@ Rectangle {
     radius: Radius.md
     color: "transparent"
 
-    // Colors
-    readonly property color colorSynced:  "#4caf50"
-    readonly property color colorError:   "#db4c3f"
-    readonly property color colorOffline: "#9e9e9e"
-    readonly property color colorSyncing: "#db4c3f"
+    // Colors — Q4.01 night iter-23: token-aware via ThemeManager so
+    // sync indicator colors track the active palette (kale green-on-green
+    // would have been red without this).
+    readonly property color colorSynced:  ThemeManager.successColor
+    readonly property color colorError:   ThemeManager.errorColor
+    readonly property color colorOffline: ThemeManager.secondaryTextColor
+    readonly property color colorSyncing: ThemeManager.accentColor
 
     // Hover detection
     HoverHandler {

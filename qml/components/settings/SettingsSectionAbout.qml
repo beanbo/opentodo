@@ -323,8 +323,8 @@ Rectangle {
                             color: !notifCardRoot._hasNotifSvc
                                 ? ThemeManager.secondaryTextColor
                                 : notifCardRoot._granted
-                                    ? "#2e8b57"
-                                    : "#db4c3f"
+                                    ? ThemeManager.successColor
+                                    : ThemeManager.errorColor
                         }
                     }
                 }
@@ -777,7 +777,7 @@ Rectangle {
                 Button {
                     text: qsTr("Сбросить")
                     flat: true
-                    Material.foreground: "#db4c3f"
+                    Material.foreground: ThemeManager.errorColor
                     onClicked: resetKarmaDialog.open()
                 }
             }

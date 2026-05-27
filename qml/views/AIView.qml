@@ -37,7 +37,7 @@ Item {
                 text: qsTr("Очистить")
                 DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                 Material.background: ThemeManager.accentColor
-                Material.foreground: "white"
+                Material.foreground: ThemeManager.accentForeground
             }
             Button {
                 text: qsTr("Отмена")

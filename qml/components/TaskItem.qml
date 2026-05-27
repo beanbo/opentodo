@@ -262,9 +262,9 @@ Item {
 
     readonly property color _deadlineColor: {
         if (!_hasDeadline) return root._subColor
-        if (deadline < _today)  return "#db4c3f"          // overdue — red
-        if (deadline === _today) return ThemeManager.accentColor  // today — accent
-        return root._subColor                              // future — muted
+        if (deadline < _today)  return ThemeManager.errorColor      // overdue — semantic red
+        if (deadline === _today) return ThemeManager.accentColor    // today — accent
+        return root._subColor                                        // future — muted
     }
 
     // ── Estimate label helper ─────────────────────────────────────────────

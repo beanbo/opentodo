@@ -282,7 +282,7 @@ Popup {
                 text:    qsTr("Сгенерировать")
                 enabled: !root._loading && root.taskContent.length > 0
                 Material.background: ThemeManager.accentColor
-                Material.foreground: "white"
+                Material.foreground: ThemeManager.accentForeground
                 onClicked: _generate()
             }
 
@@ -328,7 +328,7 @@ Popup {
                 }
                 enabled:  _checkedCount() > 0
                 Material.background: ThemeManager.accentColor
-                Material.foreground: "white"
+                Material.foreground: ThemeManager.accentForeground
                 onClicked: _accept()
             }
         }

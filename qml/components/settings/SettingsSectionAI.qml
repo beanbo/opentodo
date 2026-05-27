@@ -344,7 +344,7 @@ Rectangle {
                             : qsTr("Сохранить")
                         enabled: keyField.text.trim().length > 0
                         Material.background: ThemeManager.accentColor
-                        Material.foreground: "white"
+                        Material.foreground: ThemeManager.accentForeground
                         onClicked: {
                             aiAssistant.setApiKeyFor(root.activeProviderId, keyField.text.trim())
                             keyField.text = ""

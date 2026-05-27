@@ -186,10 +186,10 @@ Rectangle {
 
             function _priorityColor(p) {
                 switch (p) {
-                    case 1:  return "#db4c3f"
-                    case 2:  return "#f49c18"
-                    case 3:  return "#4073ff"
-                    default: return "#808080"
+                    case 1:  return ThemeManager.priorityP1Color
+                    case 2:  return ThemeManager.priorityP2Color
+                    case 3:  return ThemeManager.priorityP3Color
+                    default: return ThemeManager.priorityP4Color
                 }
             }
 
@@ -2954,12 +2954,15 @@ Rectangle {
                 }
 
                 // Emoji icon — user-typed glyph on a project, or legacy default.
+                // Q4.01 night iter-23: active emoji color was hardcoded red
+                // ("#db4c3f"), flashed wrong on non-default themes (kale, lavender,
+                // etc.). Use accentColor so the emoji tracks the palette.
                 Text {
                     visible: iconArea._effectiveIconName === "" && !sidebarItem.iconIsText
                     anchors.centerIn: parent
                     text: sidebarItem.iconText
                     font.pixelSize: FontSize.body
-                    color: sidebarItem.active ? "#db4c3f" : ThemeManager.iconColor
+                    color: sidebarItem.active ? ThemeManager.accentColor : ThemeManager.iconColor
                 }
             }
 
