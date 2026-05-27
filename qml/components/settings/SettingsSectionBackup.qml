@@ -210,7 +210,7 @@ Rectangle {
                     enabled: tokenField.text.trim().length > 0
                     contentItem: Text {
                         text: parent.text
-                        color: "#ffffff"
+                        color: parent.enabled ? ThemeManager.accentForeground : ThemeManager.secondaryTextColor
                         font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -743,7 +743,7 @@ Rectangle {
 
                         contentItem: Text {
                             text: parent.text
-                            color: "#ffffff"
+                            color: ThemeManager.accentForeground
                             font.pixelSize: 13
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter

@@ -2128,7 +2128,7 @@ Item {
                     enabled: snoozeDatePicker._pendingDate !== ""
                     contentItem: Text {
                         text: snoozeApplyBtn.text
-                        color: "#ffffff"
+                        color: ThemeManager.accentForeground
                         font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter

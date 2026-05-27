@@ -190,7 +190,7 @@ Rectangle {
                     id: badgeText
                     anchors.centerIn: parent
                     text: syncViewModel.pendingCommits > 99 ? "99+" : syncViewModel.pendingCommits.toString()
-                    color: "#ffffff"
+                    color: ThemeManager.accentForeground
                     font.pixelSize: 8
                     font.bold: true
                 }
