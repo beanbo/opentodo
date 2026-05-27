@@ -138,7 +138,10 @@ Rectangle {
         selectByMouse: true
         color: root.textCol
         selectionColor: root.accentRed
-        selectedTextColor: "white"
+        // Q4.01 night iter-27: selectedTextColor was hardcoded "white" —
+        // invisible on sunflower's yellow accent selection. Use
+        // accentForeground for theme-aware contrast.
+        selectedTextColor: ThemeManager.accentForeground
         font.pixelSize: FontSize.bodySmall
 
         // Manual placeholder — visible only when empty, never floats.

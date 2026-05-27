@@ -353,7 +353,7 @@ Rectangle {
                     font.pixelSize: 12
                     color: ThemeManager.textColor
                     selectionColor: ThemeManager.accentColor
-                    selectedTextColor: "white"
+                    selectedTextColor: ThemeManager.accentForeground
                 }
 
                 Button {

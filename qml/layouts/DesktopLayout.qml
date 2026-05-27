@@ -2340,23 +2340,26 @@ Item {
                             }
 
                             // ── Placeholder row (collapsed state) ─────────────
+                            // Q4.01 night iter-27: align with design canvas
+                            // view-others.jsx:13 — PlusIcon color={t.accent},
+                            // text fontSize 13 (was 14), gap 10 (was xs/6).
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: Spacing.md
-                                spacing: Spacing.xs
+                                spacing: Spacing.sm
                                 visible: !bottomQuickAdd.editing
 
                                 // Q4.01 pixel-perfect: PlusIcon size 14 (view-others.jsx:13).
                                 IconSvg {
                                     name: "plus"
                                     size: 14
-                                    color: ThemeManager.secondaryTextColor
+                                    color: ThemeManager.accentColor
                                     Layout.alignment: Qt.AlignVCenter
                                 }
                                 Text {
                                     text: qsTr("Добавить задачу")
                                     color: ThemeManager.secondaryTextColor
-                                    font.pixelSize: FontSize.body
+                                    font.pixelSize: FontSize.bodySmall
                                     Layout.fillWidth: true
                                     Layout.alignment: Qt.AlignVCenter
                                     opacity: quickAddHover.containsMouse ? 1.0 : 0.6

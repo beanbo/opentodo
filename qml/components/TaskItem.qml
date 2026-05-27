@@ -816,6 +816,10 @@ Item {
                         color:          root._textColor
                         selectByMouse:  true
                         selectionColor: ThemeManager.accentColor
+                        // Q4.01 night iter-27: explicit selectedTextColor —
+                        // platform default would have been white, broken on
+                        // sunflower's yellow accent.
+                        selectedTextColor: ThemeManager.accentForeground
                         // Single-line — Enter commits via onAccepted.
                         background: Rectangle {
                             color: ThemeManager.surfaceColor
