@@ -81,8 +81,10 @@ ApplicationWindow {
         visible: opacity > 0
         opacity: 0
         radius: Radius.md
-        color: kind === "error"   ? "#d33"
-             : kind === "success" ? "#2e8b57"
+        // Q4.01 (night iter-15): theme-aware toast colors. Раньше hardcoded
+        // "#d33" / "#2e8b57" — не подстраивались под палитру.
+        color: kind === "error"   ? ThemeManager.errorColor
+             : kind === "success" ? ThemeManager.successColor
                                   : ThemeManager.surfaceColor
         border.color: ThemeManager.borderColor
         border.width: 1
@@ -198,7 +200,10 @@ ApplicationWindow {
         width: Math.min(360, parent.width - 2*Spacing.lg)  // B-6.3: don't overshoot narrow windows
         height: 48
         radius: Radius.lg
-        color: ThemeManager.isDark ? "#404040" : "#202020"
+        // Q4.01 (night iter-15): theme-aware. Раньше hardcoded "#404040" /
+        // "#202020" — toast выглядел чужим в kale/raspberry/etc. cardColor
+        // даёт легкий tone-on-tone оттенок surface.
+        color: ThemeManager.cardColor
         z: 1000
 
         visible: opacity > 0

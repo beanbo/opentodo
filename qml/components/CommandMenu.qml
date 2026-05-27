@@ -354,7 +354,8 @@ Item {
         } else if (action === "add_project") {
             if (typeof projectViewModel !== "undefined"
                     && typeof projectViewModel.addProject === "function")
-                projectViewModel.addProject("", "#db4c3f")
+                // Q4.01 (night iter-15): default new-project color via theme
+                projectViewModel.addProject("", ThemeManager.accentColor.toString())
         } else if (action === "add_filter") {
             root.addFilterRequested()
         } else if (action === "add_label") {
