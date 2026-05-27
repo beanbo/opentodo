@@ -190,7 +190,8 @@ Rectangle {
                 text:           qsTr("Сохранить")
                 font.pixelSize: FontSize.bodySmall
                 font.weight:    Font.Medium
-                color:          "#ffffff"
+                // Q4.01 (night iter-17): on-accent → accentForeground
+                color:          ThemeManager.accentForeground
             }
 
             MouseArea {

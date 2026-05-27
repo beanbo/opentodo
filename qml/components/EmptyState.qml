@@ -112,16 +112,19 @@ Item {
                 spacing: 6
                 leftPadding: Spacing.md
                 rightPadding: Spacing.md
+                // Q4.01 (night iter-17): on-accent text/icon → accentForeground
+                // (theme-aware contrast — critical для sunflower yellow accent
+                // где white-on-yellow invisible).
                 IconSvg {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "plus"
                     size: 14
-                    color: "white"
+                    color: ThemeManager.accentForeground
                 }
                 Label {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.actionLabel
-                    color: "white"
+                    color: ThemeManager.accentForeground
                     font.pixelSize: FontSize.bodySmall
                     font.weight: Font.Medium
                 }

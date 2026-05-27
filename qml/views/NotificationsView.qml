@@ -123,7 +123,8 @@ Item {
                         text: notificationsViewModel.unreadCount
                         font.pixelSize: FontSize.caption
                         font.bold: true
-                        color: "white"
+                        // Q4.01 (night iter-17): on-accent → accentForeground
+                        color: ThemeManager.accentForeground
                     }
                 }
 
