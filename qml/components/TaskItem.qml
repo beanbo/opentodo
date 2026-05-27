@@ -999,10 +999,12 @@ Item {
                         delegate: LabelChip {
                             required property string modelData
                             labelName: modelData
+                            // Q4.01 night iter-26: "charcoal" / unset label
+                            // → secondaryTextColor (was hardcoded #808080).
                             labelColor: {
                                 const lbl = dataStore.labelByName(modelData)
                                 return (lbl && lbl.color && lbl.color !== "charcoal")
-                                       ? lbl.color : "#808080"
+                                       ? lbl.color : ThemeManager.secondaryTextColor
                             }
                         }
                     }
@@ -1194,6 +1196,8 @@ Item {
                 // тонкой/мелкой и font-style-dependent. Теперь stroke svg
                 // 10px рядом с цифрами, единая визуальная семья со всеми
                 // галочками в app (priority circle, EmptyState badge).
+                // Q4.01 night iter-26: "#2e8b57" → successColor so the
+                // "all subtasks done" green tracks theme palette.
                 Row {
                     id: badgeText
                     anchors.centerIn: parent
@@ -1203,7 +1207,7 @@ Item {
                         name: "check"
                         size: 10
                         color: subtaskBadge._allDone
-                            ? "#2e8b57"
+                            ? ThemeManager.successColor
                             : ThemeManager.accentColor
                     }
                     Text {
@@ -1211,7 +1215,7 @@ Item {
                         text: _subtaskDone + "/" + _subtaskTotal
                         font.pixelSize: FontSize.caption
                         color: subtaskBadge._allDone
-                            ? "#2e8b57"
+                            ? ThemeManager.successColor
                             : ThemeManager.accentColor
                         font.bold: subtaskBadge._allDone
                     }

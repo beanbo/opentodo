@@ -1162,8 +1162,9 @@ Rectangle {
                             }
                             text: projTreeDelegate._completedTasks + "/" + projTreeDelegate._totalTasks
                             font.pixelSize: FontSize.caption
+                            // Q4.01 night iter-26: all-done green → successColor
                             color: projTreeDelegate._completedTasks === projTreeDelegate._totalTasks
-                                   ? "#2e8b57"
+                                   ? ThemeManager.successColor
                                    : ThemeManager.secondaryTextColor
 
                             HoverHandler { id: badgeHoverHandler }

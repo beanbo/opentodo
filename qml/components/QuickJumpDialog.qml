@@ -154,8 +154,9 @@ Popup {
 
                     Text {
                         text: modelData.isCompleted ? "✓" : "○"
+                        // Q4.01 night iter-26: "#2e8b57" → successColor
                         color: modelData.isCompleted
-                            ? "#2e8b57"
+                            ? ThemeManager.successColor
                             : ThemeManager.secondaryTextColor
                         font.pixelSize: FontSize.bodySmall
                     }
