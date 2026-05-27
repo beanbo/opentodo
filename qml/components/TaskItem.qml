@@ -237,12 +237,14 @@ Item {
     implicitHeight: mainRow.height + subtaskSection.implicitHeight
 
     // ── Internal helpers ──────────────────────────────────────────────────
+    // Q4.01 night iter-25: tokenize priority hex constants so themes can
+    // shift them (sunflower has warmer red, graphite has muted variants).
     readonly property color _priorityColor: {
         switch (priority) {
-            case 1:  return "#db4c3f"
-            case 2:  return "#f49c18"
-            case 3:  return "#4073ff"
-            default: return "#808080"
+            case 1:  return ThemeManager.priorityP1Color
+            case 2:  return ThemeManager.priorityP2Color
+            case 3:  return ThemeManager.priorityP3Color
+            default: return ThemeManager.priorityP4Color
         }
     }
 
@@ -2050,9 +2052,11 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             text: dayInfo.inMonth ? dayInfo.day : ""
+                            // Q4.01 night iter-25: selected day on accent →
+                            // accentForeground (theme-aware contrast).
                             color: {
                                 if (!dayInfo.inMonth)   return "transparent"
-                                if (dayInfo.isSelected) return "#ffffff"
+                                if (dayInfo.isSelected) return ThemeManager.accentForeground
                                 if (dayInfo.isToday)    return ThemeManager.accentColor
                                 return ThemeManager.textColor
                             }

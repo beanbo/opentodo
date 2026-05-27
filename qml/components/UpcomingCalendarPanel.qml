@@ -445,18 +445,24 @@ Rectangle {
                             anchors.margins: 2
                             spacing:         1
 
-                            // Day number
+                            // Day number. Q4.01 night iter-25: tokenize
+                            // hardcoded grays/whites — selected+today sits on
+                            // accent (use accentForeground); off-month/weekend
+                            // use secondaryTextColor + opacity for theme reach.
                             Text {
                                 Layout.fillWidth: true
                                 horizontalAlignment: Text.AlignHCenter
                                 text: cell._date.getDate()
                                 font.pixelSize: Math.min(12, calGrid._cellH * 0.40)
                                 font.bold:      cell._today
+                                opacity: !cell._curMonth ? 0.45
+                                       : cell._weekend   ? 0.7
+                                                         : 1.0
                                 color: {
-                                    if (cell._selected && cell._today) return "#ffffff"
-                                    if (cell._today)   return root._accent
-                                    if (!cell._curMonth) return root._dark ? "#555" : "#ccc"
-                                    if (cell._weekend)   return root._dark ? "#999" : "#888"
+                                    if (cell._selected && cell._today) return ThemeManager.accentForeground
+                                    if (cell._today)                   return root._accent
+                                    if (!cell._curMonth)               return ThemeManager.secondaryTextColor
+                                    if (cell._weekend)                 return ThemeManager.secondaryTextColor
                                     return root._text
                                 }
                             }

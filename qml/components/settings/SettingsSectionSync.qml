@@ -75,15 +75,16 @@ Rectangle {
                 Layout.fillWidth: true
             }
 
-            // Sync status indicator dot
+            // Sync status indicator dot. Q4.01 night iter-25: hex
+            // colors → semantic tokens so dot colors track theme.
             Rectangle {
                 width: 8
                 height: 8
                 radius: 4
                 color: {
-                    if (syncViewModel.isSyncing) return "#f49c18"
-                    if (syncViewModel.lastError !== "") return ThemeManager.accentColor
-                    return "#4caf50"
+                    if (syncViewModel.isSyncing) return ThemeManager.warningColor
+                    if (syncViewModel.lastError !== "") return ThemeManager.errorColor
+                    return ThemeManager.successColor
                 }
 
                 SequentialAnimation on opacity {

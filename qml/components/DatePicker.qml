@@ -253,9 +253,12 @@ Popup {
                     Text {
                         anchors.centerIn: parent
                         text:  dayInfo.inMonth ? dayInfo.day : ""
+                        // Q4.01 night iter-25: selected day sits on accent
+                        // bg → accentForeground for sunflower (was hardcoded
+                        // "#ffffff", invisible on yellow).
                         color: {
                             if (!dayInfo.inMonth)  return "transparent"
-                            if (dayInfo.isSelected) return "#ffffff"
+                            if (dayInfo.isSelected) return ThemeManager.accentForeground
                             if (dayInfo.isToday)    return root.accentRed
                             return root.textCol
                         }
