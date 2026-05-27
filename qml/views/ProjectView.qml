@@ -415,7 +415,9 @@ Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             text: qsTr("Раздел")
                             color: textSecondary
-                            font.pixelSize: FontSize.bodySmall
+                            // Q4.01 night iter-29: design (view-project.jsx:115-121)
+                            // says fontSize 12 (FontSize.small), not 13 (bodySmall).
+                            font.pixelSize: FontSize.small
                         }
                     }
 
