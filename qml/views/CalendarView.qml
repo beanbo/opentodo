@@ -463,11 +463,18 @@ Rectangle {
                     // This removes 35 × 4 = 140 live signal connections from the graph.
                     property var  dayTasks: { root._calendarKick; return root._tasksForDate(cellDate) }
 
+                    // Q4.01 (night iter-6): theme-aware cell colors. Раньше:
+                    //   selected: "#3a2020" / "#fff0ee" (только classic_light/dark)
+                    //   !isCurrentMonth: "#1a1a1a" / "#f5f5f5" (то же)
+                    // Под kale/blueberry/raspberry эти hex'ы выглядели чужими
+                    // (тёмно-красноватый select на зелёном фоне). Переводим
+                    // на ThemeManager.selectionColor (уже alpha-tint accent)
+                    // и на ThemeManager.backgroundColor для off-month cells.
                     color: {
                         if (isSelected)
-                            return root.isDarkTheme ? "#3a2020" : "#fff0ee"
+                            return ThemeManager.selectionColor
                         if (!isCurrentMonth)
-                            return root.isDarkTheme ? "#1a1a1a" : "#f5f5f5"
+                            return ThemeManager.backgroundColor
                         // ~8 % accent tint on days that have at least one task
                         // (subtle hint of activity, doesn't fight today's red border).
                         if (dayTasks.length > 0)
@@ -507,7 +514,8 @@ Rectangle {
                                 required property int index
                                 Layout.fillWidth: true
                                 height: Spacing.md; radius: Radius.xs
-                                color: root.isDarkTheme ? "#333333" : "#f0f0f0"
+                                // Q4.01 (night iter-6): theme-aware task chip bg
+                                color: ThemeManager.hoverColor
 
                                 // Priority accent left border
                                 Rectangle {
@@ -607,9 +615,11 @@ Rectangle {
 
                 width:  ListView.view.width
                 height: 92
+                // Q4.01 (night iter-6): theme-aware selection (was hardcoded
+                // "#3a2020" / "#fff0ee" — only worked for classic_light/dark).
                 color: {
                     if (root._sameDay(modelData, root.selectedDate))
-                        return root.isDarkTheme ? "#3a2020" : "#fff0ee"
+                        return ThemeManager.selectionColor
                     return root.contentColor
                 }
                 border.color: root._sameDay(modelData, new Date()) ? root.accentRed : root.borderColor
