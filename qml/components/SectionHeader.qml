@@ -20,12 +20,15 @@ Rectangle {
     color: "transparent"
 
     // Bottom border line
+    // Q4.01 (night iter-7): theme-aware border — был "#363636" / "#f0f0f0",
+    // только для dark/classic_light. kale/blueberry/raspberry получали
+    // тёмно-серую полоску на своём accent-tинтованном фоне.
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         height: 1
-        color: root.isDarkTheme ? "#363636" : "#f0f0f0"
+        color: ThemeManager.borderColor
     }
 
     HoverHandler {
@@ -46,7 +49,7 @@ Rectangle {
             id: arrowText
             name: "chevron-right"
             size: 12
-            color: root.isDarkTheme ? "#cccccc" : "#333333"
+            color: ThemeManager.textColor
 
             transform: Rotation {
                 id: arrowRotation
@@ -66,7 +69,7 @@ Rectangle {
             text: root.title
             font.pixelSize: FontSize.small
             font.weight: Font.Medium
-            color: root.isDarkTheme ? "#cccccc" : "#333333"
+            color: ThemeManager.textColor
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
         }
@@ -109,7 +112,7 @@ Rectangle {
             id: addButton
             name: "plus"
             size: 14
-            color: root.isDarkTheme ? "#cccccc" : "#555555"
+            color: ThemeManager.iconColor
             visible: headerHover.hovered
             opacity: addHover.hovered ? 1.0 : 0.7
             z: 2
@@ -136,7 +139,7 @@ Rectangle {
             id: moreButton
             name: "more"
             size: 14
-            color: root.isDarkTheme ? "#cccccc" : "#555555"
+            color: ThemeManager.iconColor
             visible: headerHover.hovered
             opacity: moreHover.hovered ? 1.0 : 0.7
             z: 2
