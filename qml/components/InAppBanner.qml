@@ -118,10 +118,13 @@ Rectangle {
             }
 
             // Dismiss button — task 17cea65b iter-3: было unicode "✕".
+            // Q4.01 night iter-24: was Qt.rgba(1,1,1,0.75) — white-on-yellow
+            // invisible for sunflower. Use accentForeground + opacity instead.
             IconSvg {
                 name: "close"
                 size: 14
-                color: Qt.rgba(1, 1, 1, 0.75)
+                color: ThemeManager.accentForeground
+                opacity: 0.75
                 Layout.alignment: Qt.AlignTop
 
                 MouseArea {
@@ -136,7 +139,9 @@ Rectangle {
             id: bodyText
             visible: root.bannerBody.length > 0
             text: root.bannerBody
-            color: Qt.rgba(1, 1, 1, 0.88)
+            // Q4.01 night iter-24: theme-aware contrast on accent gradient bg.
+            color: ThemeManager.accentForeground
+            opacity: 0.88
             font.pixelSize: FontSize.small
             wrapMode: Text.WordWrap
             Layout.fillWidth: true

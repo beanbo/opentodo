@@ -544,14 +544,17 @@ Item {
                     }
                 }
 
-                // Ripple hint on tap
+                // Ripple hint on tap. Q4.01 night iter-24: was hardcoded
+                // white (1,1,1,0.25) — invisible on sunflower yellow FAB.
+                // Use accentForeground so the ripple darkens (or lightens
+                // depending on palette) instead of always white.
                 Rectangle {
                     id: fabRipple
                     anchors.centerIn: parent
                     width: 0
                     height: 0
                     radius: fabSize / 2
-                    color: Qt.rgba(1, 1, 1, 0.25)
+                    color: ThemeManager.accentForeground
                     opacity: 0
 
                     ParallelAnimation {

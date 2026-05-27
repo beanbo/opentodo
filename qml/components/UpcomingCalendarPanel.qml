@@ -484,7 +484,11 @@ Rectangle {
                                     }
                                 }
 
-                                // Count badge (4+)
+                                // Count badge (4+).
+                                // Q4.01 night iter-24: text was hardcoded
+                                // "#ffffff" in both branches (dead ternary) —
+                                // white-on-yellow invisible on sunflower.
+                                // Use accentForeground for theme contrast.
                                 Rectangle {
                                     anchors.centerIn: parent
                                     visible:  cell._count > 3
@@ -499,9 +503,7 @@ Rectangle {
                                         anchors.centerIn: parent
                                         text:       cell._count
                                         font.pixelSize: 8
-                                        color: (cell._selected && cell._today)
-                                               ? "#ffffff"
-                                               : "#ffffff"
+                                        color: ThemeManager.accentForeground
                                     }
                                 }
                             }
