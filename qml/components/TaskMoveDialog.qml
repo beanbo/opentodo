@@ -1,4 +1,3 @@
-// TODO CMakeLists.txt: register qml/components/TaskMoveDialog.qml in QML_FILES
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
