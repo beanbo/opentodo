@@ -293,8 +293,10 @@ Rectangle {
                                     // Hover colour effect — Q4.01: base is t.bg per design
                                     Behavior on color { ColorAnimation { duration: 80 } }
                                     property bool _cardHovered: cardMouse.containsMouse && !cardMouse.drag.active
+                                    // Q4.01 (night iter-8): hover bg → theme-aware
+                                    // hoverColor (был "#303030" / "#f5f5f5" hardcoded).
                                     color: _cardHovered
-                                           ? (root.isDarkTheme ? "#303030" : "#f5f5f5")
+                                           ? ThemeManager.hoverColor
                                            : ThemeManager.backgroundColor
 
                                     ColumnLayout {
@@ -364,7 +366,8 @@ Rectangle {
                                                     height: 18
                                                     width:  chipLabel.implicitWidth + 8
                                                     radius: Radius.pill
-                                                    color:  root.isDarkTheme ? "#3a3a3a" : "#eeeeee"
+                                                    // Q4.01 (night iter-8): theme-aware label chip
+                                                    color:  ThemeManager.hoverColor
 
                                                     Text {
                                                         id:             chipLabel
@@ -420,8 +423,9 @@ Rectangle {
                         Rectangle {
                             Layout.fillWidth: true
                             height: 36; radius: Radius.xs
+                            // Q4.01 (night iter-8): theme-aware add-card hover
                             color:  addCardHover.containsMouse
-                                    ? (root.isDarkTheme ? "#333333" : "#eeeeee")
+                                    ? ThemeManager.hoverColor
                                     : "transparent"
 
                             RowLayout {

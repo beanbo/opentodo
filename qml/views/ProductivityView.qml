@@ -193,7 +193,7 @@ Item {
                         Layout.fillWidth: true
                         height: Spacing.xs
                         radius: Radius.xs
-                        color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                        color: ThemeManager.borderColor
                         Rectangle {
                             width: {
                                 if (pomodoroService.phase === "idle") return 0
@@ -1063,12 +1063,12 @@ Item {
                             Layout.fillWidth: true
                             height: 6
                             radius: 3
-                            color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                            color: ThemeManager.borderColor
                             Rectangle {
                                 width: parent.width * Math.min(karmaViewModel.dailyProgress, 1.0)
                                 height: parent.height
                                 radius: 3
-                                color: karmaViewModel.dailyGoalMet ? "#4caf50" : "#db4c3f"
+                                color: karmaViewModel.dailyGoalMet ? ThemeManager.successColor : ThemeManager.accentColor
                                 Behavior on width { NumberAnimation { duration: 300 } }
                             }
                         }
@@ -1107,12 +1107,12 @@ Item {
                             Layout.fillWidth: true
                             height: 6
                             radius: 3
-                            color: isDarkTheme ? "#3a3a3a" : "#e0e0e0"
+                            color: ThemeManager.borderColor
                             Rectangle {
                                 width: parent.width * Math.min(karmaViewModel.weeklyProgress, 1.0)
                                 height: parent.height
                                 radius: 3
-                                color: karmaViewModel.weeklyGoalMet ? "#4caf50" : "#db4c3f"
+                                color: karmaViewModel.weeklyGoalMet ? ThemeManager.successColor : ThemeManager.accentColor
                                 Behavior on width { NumberAnimation { duration: 300 } }
                             }
                         }
