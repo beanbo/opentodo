@@ -110,7 +110,13 @@ Rectangle {
 
     function _rebuildCache() {
         var cache = {}
-        var tasks = dataStore.allTasks()
+        // Q4.01 night iter-51: was dataStore.allTasks() (QList<Task*>), whose
+        // `.length` is undefined in QML (Qt 6.11 doesn't convert it to a JS
+        // array) — so this loop iterated 0× and _taskCache stayed empty, hiding
+        // every per-day task indicator in the upcoming mini-calendar.
+        // allTasksData() returns a real JS array (camelCase keys: isCompleted /
+        // isDeleted / dueDate / dueDatetime read exactly as before).
+        var tasks = dataStore.allTasksData()
         var y  = root.currentMonth.getFullYear()
         var mo = root.currentMonth.getMonth()
         // Build ISO prefix for the displayed month: "yyyy-MM"
@@ -268,10 +274,21 @@ Rectangle {
                 Label {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
-                    // BUG-FIX (C-1 pattern): use toLocaleDateString to avoid Qt 6.11
-                    // TypeError when `property date` materialises as QDateTime.
-                    text: root.currentMonth.toLocaleDateString(
-                              Qt.locale("ru_RU"), "MMMM yyyy")
+                    // BUG-FIX (C-1 pattern): avoid the 3-arg Qt.formatDate Qt 6.11
+                    // TypeError on a `property date` (QDateTime) by going through
+                    // getMonth()/getFullYear().
+                    // Q4.01 night iter-51: was toLocaleDateString(ru,"MMMM yyyy"),
+                    // which renders the *format* (genitive) month lowercased — "мая
+                    // 2026". For a bare month header the nominative "Май 2026" is
+                    // correct (same fix as CalendarView, iter-46). QML Locale month
+                    // methods are 0-based, so getMonth() maps directly.
+                    text: {
+                        var loc = Qt.locale("ru_RU")
+                        var mn  = loc.standaloneMonthName(root.currentMonth.getMonth(),
+                                                          Locale.LongFormat)
+                        return mn.charAt(0).toUpperCase() + mn.slice(1)
+                               + " " + root.currentMonth.getFullYear()
+                    }
                     font.pixelSize: 13
                     font.bold:      true
                     color:          root._text
