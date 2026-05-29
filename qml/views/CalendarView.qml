@@ -286,9 +286,21 @@ Rectangle {
                         // BUG-FIX (C-1): Qt 6.11 tightened the 3-arg Qt.formatDate
                         // overload to require a QDate (not QDateTime) for arg 1,
                         // throwing TypeError on the QML `property date` value that
-                        // materialises as QDateTime. Use JS Date.toLocaleDateString
-                        // instead — it accepts a QML date directly.
-                        return root.currentMonth.toLocaleDateString(Qt.locale("ru_RU"), "MMMM yyyy")
+                        // materialises as QDateTime — so Qt.formatDate is avoided here.
+                        //
+                        // Q4.01 night iter-46: previously
+                        //   currentMonth.toLocaleDateString(ru, "MMMM yyyy")
+                        // which renders the *format* (genitive) month form, lowercased
+                        // — "мая 2026". That reads as "of May" and is wrong for a bare
+                        // month header; native ru calendars (Google/Yandex/Todoist) show
+                        // the nominative "Май 2026". The genitive is only correct when a
+                        // day number precedes it, as in the week/agenda labels
+                        // ("25–31 мая"). Use the *standalone* (nominative) month name,
+                        // capitalized. NB: QML Locale month methods are 0-based, so
+                        // getMonth() (0–11) maps directly.
+                        var loc = Qt.locale("ru_RU")
+                        var mn  = loc.standaloneMonthName(root.currentMonth.getMonth(), Locale.LongFormat)
+                        return mn.charAt(0).toUpperCase() + mn.slice(1) + " " + root.currentMonth.getFullYear()
                     }
                     font.pixelSize: 20
                     font.weight:    Font.DemiBold
