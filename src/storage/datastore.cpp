@@ -612,6 +612,8 @@ QVariantList DataStore::tasksToData(const QList<Task *> &list)
                      ? t->completedAt().toString(Qt::ISODate) : QString());
         m.insert(QStringLiteral("dueDate"),     t->dueDate());
         m.insert(QStringLiteral("dueDatetime"), t->dueDatetime());
+        m.insert(QStringLiteral("deadline"),    t->deadline());
+        m.insert(QStringLiteral("isPinned"),    t->isPinned());
         out.append(m);
     }
     return out;

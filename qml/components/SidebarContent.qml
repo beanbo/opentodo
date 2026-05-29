@@ -96,7 +96,7 @@ Rectangle {
             property int _overdueCount: 0
 
             function _recomputeOverdue() {
-                if (typeof dataStore === "undefined" || !dataStore || typeof dataStore.allTasks !== "function") {
+                if (typeof dataStore === "undefined" || !dataStore || typeof dataStore.allTasksData !== "function") {
                     _overdueCount = 0
                     return
                 }
@@ -105,15 +105,21 @@ Rectangle {
                 var todayM = now.getMonth()
                 var todayD = now.getDate()
                 var n = 0
-                var arr = dataStore.allTasks() || []
+                // Q4.01 night iter-54: was dataStore.allTasks() (QList<Task*>,
+                // .length undefined in QML → loop ran 0× → overdue badge stuck at 0).
+                // allTasksData() is a real JS array. Also: the old code read
+                // t.due (an object {date} / string) which Task never exposes —
+                // it has flat dueDate / dueDatetime / deadline — so the scheduled
+                // date was never read; only the deadline fallback ever fired.
+                var arr = dataStore.allTasksData() || []
                 for (var i = 0; i < arr.length; ++i) {
                     var t = arr[i]
                     if (!t || t.isCompleted || t.isDeleted) continue
-                    // Prefer task.due (the scheduled date); fall back to deadline if no due.
-                    var dateStr = ""
-                    if (t.due && typeof t.due === "object" && t.due.date) dateStr = t.due.date
-                    else if (typeof t.due === "string" && t.due.length > 0) dateStr = t.due
-                    if (!dateStr && typeof t.deadline === "string" && t.deadline.length > 0) dateStr = t.deadline
+                    // Prefer the scheduled date (dueDate, then datetime's date part),
+                    // fall back to the deadline.
+                    var dateStr = t.dueDate || ""
+                    if (!dateStr && t.dueDatetime) dateStr = String(t.dueDatetime).substring(0, 10)
+                    if (!dateStr && t.deadline) dateStr = t.deadline
                     if (!dateStr) continue
                     var d = new Date(dateStr)
                     if (isNaN(d.getTime())) continue
@@ -197,7 +203,10 @@ Rectangle {
                 const out = []
                 let total = 0
                 if (typeof dataStore !== "undefined" && dataStore) {
-                    const all = dataStore.allTasks()
+                    // Q4.01 night iter-54: allTasks() (QList<Task*>) has no usable
+                    // .length in QML → pinned section was always empty. allTasksData()
+                    // is a real JS array (now carries isPinned).
+                    const all = dataStore.allTasksData()
                     if (all) {
                         for (let i = 0; i < all.length; ++i) {
                             const t = all[i]
@@ -785,7 +794,9 @@ Rectangle {
                         projectTreeColumn.projectCountsMap = map
                         return
                     }
-                    const tasks = dataStore.allTasks() || []
+                    // Q4.01 night iter-54: allTasks() (QList<Task*>) .length is
+                    // undefined in QML → per-project count badges were always empty.
+                    const tasks = dataStore.allTasksData() || []
                     const todayStr = Qt.formatDate(new Date(), "yyyy-MM-dd")
                     for (let i = 0; i < tasks.length; i++) {
                         const t = tasks[i]
@@ -2536,7 +2547,9 @@ Rectangle {
                 function _rebuild() {
                     const items = [{ id: "", name: qsTr("(нет — корневой)") }]
                     if (typeof projectViewModel !== "undefined" && typeof dataStore !== "undefined") {
-                        const allProjs = dataStore.allProjects()
+                        // Q4.01 night iter-54: allProjects() (QList<Project*>) .length
+                        // is undefined in QML → parent-project picker was empty.
+                        const allProjs = dataStore.allProjectsData()
                         for (let i = 0; i < allProjs.length; ++i) {
                             const p = allProjs[i]
                             if (!p) continue
