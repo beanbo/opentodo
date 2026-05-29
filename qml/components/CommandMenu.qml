@@ -117,17 +117,28 @@ Item {
                     action: "notifications" })
 
         // ── Projects (dynamic) ──────────────────────────────────────────────
-        // Primary: dataStore.allProjects() — gives full model objects with color.
+        // Primary: dataStore.allProjectsData() — JS-friendly project list.
         // Fallback: projectViewModel row iteration for compatibility.
+        //
+        // Q4.01 night iter-53: was dataStore.allProjects() (QList<Project*>),
+        // whose `.length` is undefined in QML (Qt 6.11 doesn't convert it to a
+        // JS array) — the loop ran 0× yet still set _projectsAdded=true, so the
+        // projectViewModel fallback never fired either → the command palette
+        // listed NO projects. Also the skip-test read snake_case
+        // project.is_deleted / is_archived, which don't exist on the Project
+        // QObject (props are camelCase), so those reads were no-ops and the
+        // "skip inbox" the comment promised never happened. allProjectsData()
+        // returns a real JS array with camelCase keys.
         var _projectsAdded = false
         try {
             if (typeof dataStore !== "undefined" && dataStore
-                && typeof dataStore.allProjects === "function") {
-                var allProjects = dataStore.allProjects()
+                && typeof dataStore.allProjectsData === "function") {
+                var allProjects = dataStore.allProjectsData()
                 for (var pi = 0; pi < allProjects.length; pi++) {
                     var project = allProjects[pi]
                     // Skip archived / soft-deleted / inbox pseudo-projects
-                    if (!project || !project.id || project.is_deleted || project.is_archived)
+                    if (!project || !project.id
+                            || project.isDeleted || project.isArchived || project.isInbox)
                         continue
                     list.push({
                         id:       "project_" + project.id,
@@ -138,8 +149,8 @@ Item {
                         shortcut: "",
                         action:   "project:" + project.id
                     })
+                    _projectsAdded = true
                 }
-                _projectsAdded = true
             }
         } catch(e) {}
 
