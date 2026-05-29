@@ -30,8 +30,12 @@ Popup {
         const snapshot = []
         if (typeof dataStore !== "undefined"
                 && dataStore
-                && typeof dataStore.allProjects === "function") {
-            const all = dataStore.allProjects()
+                && typeof dataStore.allProjectsData === "function") {
+            // Q4.01 night iter-52: was dataStore.allProjects() (QList<Project*>),
+            // whose `.length` is undefined in QML — this loop ran 0× so the
+            // move-to-project list was always empty (couldn't move tasks).
+            // allProjectsData() is a real JS array (camelCase keys).
+            const all = dataStore.allProjectsData()
             for (let i = 0; i < all.length; i++) {
                 const p = all[i]
                 if (!p) continue

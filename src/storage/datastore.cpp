@@ -626,6 +626,41 @@ QVariantList DataStore::tasksForProjectData(const QString &projectId) const
 {
     return tasksToData(tasksForProject(projectId));
 }
+// JS-friendly search results (same QList<Task*>-doesn't-convert rationale).
+QVariantList DataStore::searchTasksData(const QString &query, bool accentSensitive) const
+{
+    return tasksToData(searchTasks(query, accentSensitive));
+}
+
+// Project → QVariantMap converter (camelCase keys mirroring Project's
+// Q_PROPERTY names). Same Qt-6.11 reason as tasksToData(): a Q_INVOKABLE
+// returning QList<Project*> is not a usable JS array in QML (.length
+// undefined), which silently emptied the command palette, the move-to-project
+// dialog and other JS iterations over allProjects().
+QVariantList DataStore::projectsToData(const QList<Project *> &list)
+{
+    QVariantList out;
+    out.reserve(list.size());
+    for (auto *p : list) {
+        if (!p) continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("id"),         p->id());
+        m.insert(QStringLiteral("name"),       p->name());
+        m.insert(QStringLiteral("color"),      p->color());
+        m.insert(QStringLiteral("icon"),       p->icon());
+        m.insert(QStringLiteral("parentId"),   p->parentId());
+        m.insert(QStringLiteral("isFavorite"), p->isFavorite());
+        m.insert(QStringLiteral("isInbox"),    p->isInbox());
+        m.insert(QStringLiteral("isArchived"), p->isArchived());
+        m.insert(QStringLiteral("isDeleted"),  p->isDeleted());
+        m.insert(QStringLiteral("weeklyGoal"), p->weeklyGoal());
+        m.insert(QStringLiteral("viewStyle"),  p->viewStyle());
+        out.append(m);
+    }
+    return out;
+}
+
+QVariantList DataStore::allProjectsData() const { return projectsToData(allProjects()); }
 
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const
 {

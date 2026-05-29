@@ -46,8 +46,11 @@ Popup {
             _selectedIndex = 0
             return
         }
-        // Use existing DataStore search (returns Task* list)
-        const tasks = dataStore.searchTasks(q)
+        // Q4.01 night iter-52: was dataStore.searchTasks(q) (QList<Task*>),
+        // whose `.length` is undefined in QML — this loop ran 0× so quick-jump
+        // never returned any results. searchTasksData() is a real JS array
+        // (camelCase keys: id/content/projectId/isCompleted/isDeleted).
+        const tasks = dataStore.searchTasksData(q)
         const out = []
         for (let i = 0; i < tasks.length && i < 50; i++) {
             const t = tasks[i]

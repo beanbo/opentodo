@@ -92,6 +92,11 @@ public:
     Q_INVOKABLE QVariantList tasksForTodayData() const;
     Q_INVOKABLE QVariantList overdueTasksData() const;
     Q_INVOKABLE QVariantList tasksForProjectData(const QString &projectId) const;
+    Q_INVOKABLE QVariantList searchTasksData(const QString &query,
+                                             bool accentSensitive = false) const;
+    // JS-friendly project list (see allTasksData rationale; QList<Project*>
+    // likewise doesn't convert to a JS array in QML).
+    Q_INVOKABLE QVariantList allProjectsData() const;
     // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
     QList<Task *> allTasksIncludingDeleted() const;
     Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;
@@ -343,6 +348,7 @@ private:
     // QVariantList<QVariantMap> with camelCase keys mirroring Task's
     // Q_PROPERTY names. Centralised so every accessor exposes one shape.
     static QVariantList tasksToData(const QList<Task *> &list);
+    static QVariantList projectsToData(const QList<Project *> &list);
 
     // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
     void stampEntityField(const QString &entityId,
