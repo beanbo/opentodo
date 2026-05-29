@@ -429,28 +429,50 @@ Rectangle {
                         }
 
                         // ── Add card button ───────────────────────────────────
+                        // Q4.01 night iter-45 design parity: the footer row was a
+                        // centered 36px button with body(14) text + plus(16) and NO
+                        // separating border. The design canvas (view-others.jsx
+                        // BoardView footer) specifies borderTop 1px, left-aligned
+                        // content inset 12px, plus + caption(11) text, gap 6 — a subtle
+                        // footer mirroring the header's border-bottom treatment.
                         Rectangle {
                             Layout.fillWidth: true
-                            height: 36; radius: Radius.xs
+                            Layout.preferredHeight: addCardRow.implicitHeight + 16  // padding 8 top + 8 bottom
+                            radius: Radius.xs
                             // Q4.01 (night iter-8): theme-aware add-card hover
                             color:  addCardHover.containsMouse
                                     ? ThemeManager.hoverColor
                                     : "transparent"
 
+                            // 1px top border separating the footer from the card list
+                            Rectangle {
+                                anchors.top:   parent.top
+                                anchors.left:  parent.left
+                                anchors.right: parent.right
+                                height:        1
+                                color:         ThemeManager.borderColor
+                            }
+
                             RowLayout {
-                                anchors.centerIn: parent
-                                spacing: Spacing.xs
+                                id: addCardRow
+                                anchors.left:           parent.left
+                                anchors.right:          parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin:     12
+                                anchors.rightMargin:    12
+                                spacing: 6
 
                                 // Task 17cea65b iter-3: было unicode "+".
                                 IconSvg {
                                     name: "plus"
-                                    size: 16
+                                    size: 12
                                     color: root.textSecondary
                                 }
                                 Text {
-                                    text:           qsTr("Добавить задачу")
-                                    color:          root.textSecondary
-                                    font.pixelSize: FontSize.body
+                                    text:             qsTr("Добавить задачу")
+                                    color:            root.textSecondary
+                                    font.pixelSize:   FontSize.caption   // 11 per design
+                                    Layout.fillWidth: true
                                 }
                             }
 
