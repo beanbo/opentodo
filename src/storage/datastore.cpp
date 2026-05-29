@@ -12,6 +12,8 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QStandardPaths>
+#include <QVariantList>
+#include <QVariantMap>
 #include <algorithm>
 
 DataStore::DataStore(QObject *parent)
@@ -566,6 +568,45 @@ QList<Task *> DataStore::allTasks() const
         if (!t->isDeleted()) result.append(t);
     }
     return result;
+}
+
+// JS-friendly counterpart of allTasks() for QML consumers.
+//
+// A Q_INVOKABLE returning QList<Task*> does NOT convert to a usable JS array
+// in Qt 6.11: from QML the value is `typeof === "object"` but `Array.isArray`
+// is false and `.length` is `undefined`, so any `for (i; i < x.length; i++)`
+// loop silently iterates zero times. That quietly broke every QML aggregation
+// built on dataStore.allTasks()/tasksForToday()/etc. (productivity charts,
+// sidebar/badge counts, the daily-briefing count). Returning a
+// QVariantList<QVariantMap> — the same pattern the view-models already use for
+// subtasksOf() — hands QML a real JS array. Keys are camelCase to mirror the
+// Task Q_PROPERTY names so existing dot-access (t.isCompleted, t.projectId, …)
+// keeps working unchanged after a call-site swap. Soft-deleted tasks are
+// excluded, exactly like allTasks().
+QVariantList DataStore::allTasksData() const
+{
+    QVariantList out;
+    out.reserve(m_tasks.size());
+    for (auto *t : m_tasks) {
+        if (!t || t->isDeleted()) continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("id"),          t->id());
+        m.insert(QStringLiteral("content"),     t->content());
+        m.insert(QStringLiteral("projectId"),   t->projectId());
+        m.insert(QStringLiteral("sectionId"),   t->sectionId());
+        m.insert(QStringLiteral("parentId"),    t->parentId());
+        m.insert(QStringLiteral("priority"),    t->priority());
+        m.insert(QStringLiteral("labels"),      t->labels());
+        m.insert(QStringLiteral("isCompleted"), t->isCompleted());
+        m.insert(QStringLiteral("isDeleted"),   t->isDeleted());
+        m.insert(QStringLiteral("completedAt"),
+                 t->completedAt().isValid()
+                     ? t->completedAt().toString(Qt::ISODate) : QString());
+        m.insert(QStringLiteral("dueDate"),     t->dueDate());
+        m.insert(QStringLiteral("dueDatetime"), t->dueDatetime());
+        out.append(m);
+    }
+    return out;
 }
 
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const

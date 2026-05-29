@@ -714,7 +714,14 @@ Item {
                             _projectChartData = []
                             return
                         }
-                        var tasks = dataStore.allTasks()
+                        // Q4.01 night iter-48: was dataStore.allTasks() (QList<Task*>),
+                        // whose `.length` is undefined in QML (Qt 6.11 doesn't convert it
+                        // to a JS array) — so this aggregation loop iterated 0 times and the
+                        // card always showed "Нет проектов с задачами" despite real data.
+                        // allTasksData() returns a proper JS array (QVariantList<QVariantMap>,
+                        // camelCase keys), so t.projectId / t.isCompleted / t.isDeleted read
+                        // exactly as before.
+                        var tasks = dataStore.allTasksData()
                         // Aggregate per-project totals & completion counts.
                         var agg = ({}) // { projectId: { total, completed } }
                         for (var i = 0; i < tasks.length; i++) {
@@ -814,15 +821,43 @@ Item {
                             Layout.fillWidth: true
                             spacing: 10
 
-                            // Project icon emoji (or accent dot fallback)
-                            Text {
-                                text: modelData.icon && modelData.icon !== ""
-                                      ? modelData.icon : "•"
-                                font.pixelSize: 16
-                                color: modelData.icon && modelData.icon !== ""
-                                       ? textPrimary : modelData.color
+                            // Project icon — Q4.01 night iter-48: was a bare Text that
+                            // printed modelData.icon directly. That only worked for legacy
+                            // emoji glyphs; the new SVG-name format ("projects/flag") was
+                            // rendered as the literal path string overlapping the name (the
+                            // same class as the already-fixed sidebar/ProjectView-header
+                            // bug). Mirror the sidebar's auto-detect: "projects/…" → IconSvg,
+                            // a glyph → Text, empty → an accent dot.
+                            Item {
+                                id: projIconCell
                                 Layout.preferredWidth: 20
-                                horizontalAlignment: Text.AlignHCenter
+                                Layout.preferredHeight: 20
+                                Layout.alignment: Qt.AlignVCenter
+
+                                readonly property string _icon: modelData.icon || ""
+                                readonly property bool   _isSvg: _icon.indexOf("projects/") === 0
+
+                                IconSvg {
+                                    visible: projIconCell._isSvg
+                                    anchors.centerIn: parent
+                                    name: projIconCell._icon
+                                    size: 16
+                                    color: textPrimary
+                                }
+                                Text {
+                                    visible: !projIconCell._isSvg && projIconCell._icon !== ""
+                                    anchors.centerIn: parent
+                                    text: projIconCell._icon
+                                    font.pixelSize: 16
+                                    color: textPrimary
+                                }
+                                Rectangle {
+                                    visible: projIconCell._icon === ""
+                                    anchors.centerIn: parent
+                                    width: Spacing.sm; height: Spacing.sm
+                                    radius: Radius.sm
+                                    color: modelData.color
+                                }
                             }
 
                             // Project name (elided)

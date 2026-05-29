@@ -6,6 +6,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QQmlEngine>
+#include <QVariant>
+#include <QVariantList>
+#include <QVariantMap>
 
 #include "model/task.h"
 #include "model/project.h"
@@ -78,6 +81,12 @@ public:
     // produced (the soft-delete tombstone has already propagated, if any).
     Q_INVOKABLE bool purgeTask(const QString &id);
     Q_INVOKABLE QList<Task *> allTasks() const;
+    // JS-friendly counterpart of allTasks() for QML. Returns QVariantList of
+    // QVariantMap (camelCase keys mirroring Task's Q_PROPERTY names) because a
+    // Q_INVOKABLE returning QList<Task*> does NOT convert to a usable JS array
+    // in Qt 6.11 (`.length` is undefined, Array.isArray() is false), which
+    // silently breaks every QML `for (i < x.length)` aggregation over it.
+    Q_INVOKABLE QVariantList allTasksData() const;
     // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
     QList<Task *> allTasksIncludingDeleted() const;
     Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;
