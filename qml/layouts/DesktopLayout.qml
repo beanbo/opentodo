@@ -926,9 +926,15 @@ Item {
                                     // calendar / red flame / clock. iconColor lets "Просрочено"
                                     // render its flame in design's "#e05050" red instead of the
                                     // default themed icon colour.
+                                    // Q4.01 night iter-36: "Просрочено" flame uses
+                                    // the "error" sentinel (resolved to errorColor in
+                                    // the delegate) instead of a hardcoded "#e05050" —
+                                    // theme-reactive, consistent with TaskItem overdue
+                                    // (iter-23). Model arrays don't re-bind on theme
+                                    // change, hence the sentinel + delegate resolution.
                                     model: [
                                         { chipId: "today",   label: qsTr("Сегодня"),    icon: "📅", iconName: "today", iconColor: "" },
-                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🔥", iconName: "flame", iconColor: "#e05050" },
+                                        { chipId: "overdue", label: qsTr("Просрочено"), icon: "🔥", iconName: "flame", iconColor: "error" },
                                         { chipId: "no_date", label: qsTr("Без даты"),   icon: "🕒", iconName: "clock", iconColor: "" }
                                     ]
 
@@ -965,9 +971,12 @@ Item {
                                                 size: 12
                                                 // Q4.01 pixel-perfect: icon сохраняет свой
                                                 // цвет даже в active (red flame остаётся red).
-                                                color: modelData.iconColor && modelData.iconColor !== ""
-                                                    ? modelData.iconColor
-                                                    : ThemeManager.textColor
+                                                // iter-36: "error" sentinel → errorColor (theme-reactive).
+                                                color: modelData.iconColor === "error"
+                                                    ? ThemeManager.errorColor
+                                                    : (modelData.iconColor && modelData.iconColor !== ""
+                                                       ? modelData.iconColor
+                                                       : ThemeManager.textColor)
                                                 Layout.alignment: Qt.AlignVCenter
                                             }
 
