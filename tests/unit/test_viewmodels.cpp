@@ -80,6 +80,11 @@ private slots:
 
         vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
 
+        // Q3.24: refresh() is debounced (30 ms) and setFilterMode(Inbox) is a
+        // no-op here (Inbox is the default mode), so the only refresh trigger is
+        // the debounced tasksChanged from addTask — spin the loop until it fires.
+        QTRY_VERIFY(vm.rowCount() > 0);
+
         bool foundInbox = false;
         bool foundOther = false;
         for (int i = 0; i < vm.rowCount(); ++i) {
@@ -192,8 +197,9 @@ private slots:
         const QString id = vm.addTask(QStringLiteral("New inbox task"));
         QVERIFY(!id.isEmpty());
 
-        // After addTask, a dataChanged / tasksChanged signal should cause VM to refresh.
-        QCOMPARE(vm.rowCount(), before + 1);
+        // After addTask, a dataChanged / tasksChanged signal causes the VM to
+        // refresh — but refresh() is debounced (Q3.24, 30 ms), so poll for it.
+        QTRY_COMPARE(vm.rowCount(), before + 1);
 
         delete store;
     }
@@ -218,12 +224,15 @@ private slots:
         vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
 
         const QString id = vm.addTask(QStringLiteral("Will be completed"));
-        QVERIFY(vm.rowCount() > 0);
+        QTRY_VERIFY(vm.rowCount() > 0);   // wait for debounced refresh (Q3.24)
 
         bool ok = vm.completeTask(id);
         QVERIFY(ok);
 
-        // Task should no longer appear in the inbox (active) view.
+        // Task should no longer appear in the inbox (active) view. completeTask
+        // also refreshes via the debounce, so poll until the row is gone — the
+        // sole task was just completed, so the active view becomes empty.
+        QTRY_COMPARE(vm.rowCount(), 0);
         for (int i = 0; i < vm.rowCount(); ++i) {
             const QString tid = vm.data(vm.index(i), TaskViewModel::IdRole).toString();
             QVERIFY(tid != id);
@@ -357,6 +366,8 @@ private slots:
         QVERIFY(t);
         QVERIFY(t->sectionId().isEmpty());
 
+        // Q3.24: refresh() is debounced; wait for the row to appear before lookup.
+        QTRY_VERIFY(vm.rowCount() > 0);
         // Find the row in the view model
         for (int i = 0; i < vm.rowCount(); ++i) {
             const auto idx = vm.index(i);
@@ -386,6 +397,8 @@ private slots:
         store->taskById(id)->setSectionId(secId);
         emit store->tasksChanged();
 
+        // Q3.24: refresh() is debounced; wait for the row before lookup.
+        QTRY_VERIFY(vm.rowCount() > 0);
         for (int i = 0; i < vm.rowCount(); ++i) {
             const auto idx = vm.index(i);
             if (vm.data(idx, TaskViewModel::IdRole).toString() == id) {

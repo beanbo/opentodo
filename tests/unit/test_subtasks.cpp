@@ -227,6 +227,11 @@ private slots:
         const QString subId    = vm.addSubtask(parentId, QStringLiteral("Subtask"));
         QVERIFY(!subId.isEmpty());
 
+        // Q3.24: refresh() is debounced and setFilterMode(Inbox) is a no-op
+        // (Inbox is default) — wait for the parent row to appear. The subtask
+        // (parentId set) is excluded from the top-level list regardless.
+        QTRY_VERIFY(vm.rowCount() > 0);
+
         // The subtask must NOT appear in the main list
         bool foundParent  = false;
         bool foundSubtask = false;

@@ -298,6 +298,9 @@ private slots:
         vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
         const QStringList ids = seedInboxTasks(store, 5);
 
+        // Q3.24: refresh() is debounced and setFilterMode(Inbox) is a no-op
+        // (Inbox is default), so wait for the rows before selecting all visible.
+        QTRY_COMPARE(vm.rowCount(), ids.size());
         selectAllVisible(&vm);
 
         QCOMPARE(vm.selectionCount(), ids.size());

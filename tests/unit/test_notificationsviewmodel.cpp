@@ -581,22 +581,25 @@ private slots:
     }
 
     // =====================================================================
-    // 17) SyncEngine-driven notifications: syncCompleted pushes a
-    //     SyncSuccess notification; syncFailed pushes a SyncFailure
-    //     notification with the supplied error in the body.
+    // 17) SyncEngine-driven notifications.
+    //     Q3.15: syncCompleted is intentionally NOT surfaced as a notification
+    //     — sync runs after every action + on a 5 s debounce, so a
+    //     "Синхронизация выполнена" entry every time was pure noise (the live
+    //     status lives in SyncIndicator instead). Only syncFailed creates a
+    //     notification, because failures are actionable (network/auth/quota).
+    //     See NotificationsViewModel ctor (only syncFailed is connected).
     // =====================================================================
     void sync_signals_push_sync_kind_notifications()
     {
         Fixture *f = makeFixture(/*withSync=*/true);
         NotificationsViewModel vm(f->store, f->sync);
 
+        // Routine success → no notification (Q3.15).
         f->sync->fireSyncCompleted();
-        QCOMPARE(vm.rowCount(), 1);
-        QCOMPARE(roleAt(vm, 0, NotificationsViewModel::KindRole).toInt(),
-                 int(Notification::SyncSuccess));
+        QCOMPARE(vm.rowCount(), 0);
 
         f->sync->fireSyncFailed(QStringLiteral("Quota exceeded"));
-        QCOMPARE(vm.rowCount(), 2);
+        QCOMPARE(vm.rowCount(), 1);
         // Newest at row 0.
         QCOMPARE(roleAt(vm, 0, NotificationsViewModel::KindRole).toInt(),
                  int(Notification::SyncFailure));
@@ -604,7 +607,7 @@ private slots:
                  QStringLiteral("Quota exceeded"));
         // Empty error string falls back to a default body, not the empty string.
         f->sync->fireSyncFailed(QString());
-        QCOMPARE(vm.rowCount(), 3);
+        QCOMPARE(vm.rowCount(), 2);
         QVERIFY(!roleAt(vm, 0, NotificationsViewModel::BodyRole).toString().isEmpty());
 
         delete f;

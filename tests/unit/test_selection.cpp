@@ -111,6 +111,10 @@ private slots:
         TaskViewModel vm(store);
         vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
         const QStringList ids = addTasks(store, 5);
+        // Q3.24: refresh() is debounced and setFilterMode(Inbox) is a no-op
+        // (Inbox is default), so wait for the rows before selectRange — it
+        // operates on the VM's visible row order.
+        QTRY_COMPARE(vm.rowCount(), ids.size());
 
         // ids are in inbox order; selectRange from first to third (indices 0-2)
         vm.selectRange(ids[0], ids[2]);
@@ -130,6 +134,7 @@ private slots:
         TaskViewModel vm(store);
         vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
         const QStringList ids = addTasks(store, 5);
+        QTRY_COMPARE(vm.rowCount(), ids.size());   // wait for debounced refresh (Q3.24)
 
         // Reverse order: from last to first in the range
         vm.selectRange(ids[3], ids[1]);
