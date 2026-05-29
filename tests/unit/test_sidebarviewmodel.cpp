@@ -150,11 +150,11 @@ private slots:
         child->setParentId(parent->id());
 
         // updateCounts() runs from constructor + on data signals; nudge it.
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
         // 3 top-level inbox tasks (Inbox 1, Inbox 2, Inbox parent); the child
         // and Work 1 are excluded.
-        QCOMPARE(f->sidebar->inboxCount(), 3);
+        QTRY_COMPARE(f->sidebar->inboxCount(), 3);
 
         delete f;
     }
@@ -167,9 +167,9 @@ private slots:
         Task *t2 = f->store->addTask(QStringLiteral("B"), f->inboxId);
         t2->setIsCompleted(true);
 
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
-        QCOMPARE(f->sidebar->inboxCount(), 1);
+        QTRY_COMPARE(f->sidebar->inboxCount(), 1);
         Q_UNUSED(t1);
         delete f;
     }
@@ -190,9 +190,9 @@ private slots:
         Task *b = f->store->addTask(QStringLiteral("Due tomorrow"), f->inboxId);
         b->setDueDate(isoDate(tomorrow));
 
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
-        QCOMPARE(f->sidebar->todayCount(), 1);
+        QTRY_COMPARE(f->sidebar->todayCount(), 1);
 
         delete f;
     }
@@ -205,10 +205,10 @@ private slots:
         Task *t = f->store->addTask(QStringLiteral("Overdue"), f->inboxId);
         t->setDueDate(isoDate(today.addDays(-3)));
 
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
         // updateCounts() treats any due date <= today as "today".
-        QCOMPARE(f->sidebar->todayCount(), 1);
+        QTRY_COMPARE(f->sidebar->todayCount(), 1);
 
         delete f;
     }
@@ -222,7 +222,7 @@ private slots:
         t->setDueDate(isoDate(today));
         t->setIsCompleted(true);
 
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
         QCOMPARE(f->sidebar->todayCount(), 0);
 
@@ -251,12 +251,12 @@ private slots:
         Task *t4 = f->store->addTask(QStringLiteral("Today"), f->inboxId);
         t4->setDueDate(isoDate(today));
 
-        emit f->store->tasksChanged();
+        emit f->store->tasksChanged();   // starts the 50 ms counts debounce
 
         // SidebarViewModel::updateCounts() counts ANY future-dated open task
         // as upcoming (no 7-day cap in the implementation), so all three
         // future tasks count.
-        QCOMPARE(f->sidebar->upcomingCount(), 3);
+        QTRY_COMPARE(f->sidebar->upcomingCount(), 3);
         QCOMPARE(f->sidebar->todayCount(),    1);
 
         delete f;
@@ -580,9 +580,10 @@ private slots:
         QCOMPARE(f->sidebar->inboxCount(), 0);
 
         f->store->addTask(QStringLiteral("New"), f->inboxId);
-        // addTask emits tasksChanged synchronously; updateCounts has run.
-
-        QCOMPARE(f->sidebar->inboxCount(), 1);
+        // addTask emits tasksChanged, but updateCounts() runs via the 50 ms
+        // debounce timer (Q3.24), not synchronously — QTRY_COMPARE polls until
+        // the debounce fires.
+        QTRY_COMPARE(f->sidebar->inboxCount(), 1);
         delete f;
     }
 
