@@ -570,25 +570,27 @@ QList<Task *> DataStore::allTasks() const
     return result;
 }
 
-// JS-friendly counterpart of allTasks() for QML consumers.
+// JS-friendly task accessors for QML consumers.
 //
 // A Q_INVOKABLE returning QList<Task*> does NOT convert to a usable JS array
 // in Qt 6.11: from QML the value is `typeof === "object"` but `Array.isArray`
 // is false and `.length` is `undefined`, so any `for (i; i < x.length; i++)`
 // loop silently iterates zero times. That quietly broke every QML aggregation
 // built on dataStore.allTasks()/tasksForToday()/etc. (productivity charts,
-// sidebar/badge counts, the daily-briefing count). Returning a
-// QVariantList<QVariantMap> — the same pattern the view-models already use for
-// subtasksOf() — hands QML a real JS array. Keys are camelCase to mirror the
-// Task Q_PROPERTY names so existing dot-access (t.isCompleted, t.projectId, …)
-// keeps working unchanged after a call-site swap. Soft-deleted tasks are
-// excluded, exactly like allTasks().
-QVariantList DataStore::allTasksData() const
+// sidebar/badge counts, the daily-briefing count). The *Data() accessors below
+// return QVariantList<QVariantMap> — the same pattern the view-models already
+// use for subtasksOf() — which hands QML a real JS array. Keys are camelCase
+// to mirror the Task Q_PROPERTY names so existing dot-access (t.isCompleted,
+// t.projectId, …) keeps working unchanged after a call-site swap. QDateTime
+// fields are serialised as ISO-8601 strings (parseable by `new Date()` and
+// sortable via localeCompare). The conversion is centralised in tasksToData()
+// so every accessor exposes an identical shape.
+QVariantList DataStore::tasksToData(const QList<Task *> &list)
 {
     QVariantList out;
-    out.reserve(m_tasks.size());
-    for (auto *t : m_tasks) {
-        if (!t || t->isDeleted()) continue;
+    out.reserve(list.size());
+    for (auto *t : list) {
+        if (!t) continue;
         QVariantMap m;
         m.insert(QStringLiteral("id"),          t->id());
         m.insert(QStringLiteral("content"),     t->content());
@@ -599,6 +601,12 @@ QVariantList DataStore::allTasksData() const
         m.insert(QStringLiteral("labels"),      t->labels());
         m.insert(QStringLiteral("isCompleted"), t->isCompleted());
         m.insert(QStringLiteral("isDeleted"),   t->isDeleted());
+        m.insert(QStringLiteral("createdAt"),
+                 t->createdAt().isValid()
+                     ? t->createdAt().toString(Qt::ISODate) : QString());
+        m.insert(QStringLiteral("updatedAt"),
+                 t->updatedAt().isValid()
+                     ? t->updatedAt().toString(Qt::ISODate) : QString());
         m.insert(QStringLiteral("completedAt"),
                  t->completedAt().isValid()
                      ? t->completedAt().toString(Qt::ISODate) : QString());
@@ -608,6 +616,11 @@ QVariantList DataStore::allTasksData() const
     }
     return out;
 }
+
+// Soft-deleted tasks are excluded, exactly like allTasks().
+QVariantList DataStore::allTasksData() const      { return tasksToData(allTasks()); }
+QVariantList DataStore::tasksForTodayData() const { return tasksToData(tasksForToday()); }
+QVariantList DataStore::overdueTasksData() const  { return tasksToData(overdueTasks()); }
 
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const
 {

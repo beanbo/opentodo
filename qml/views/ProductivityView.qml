@@ -53,19 +53,18 @@ Item {
     function _briefingMessage(kick) {
         // `kick` is read so the binding re-evaluates when the counter changes.
         void kick
-        // Q4.01 night iter-47: dataStore.tasksForToday()/overdueTasks() return
-        // QList<Task*>, which can come back falsy/non-array in QML — other
-        // callers (Main.qml, SidebarContent.qml) already guard these with
-        // `|| []`. The unguarded `.length` here produced `undefined`, so
-        // `remaining = total - done` became NaN and the briefing rendered the
-        // user-facing "Сегодня nan задач". Guard with `|| []` and coerce the
-        // count via `| 0` (same idiom as the pomodoro stats below) so `total`
-        // and `overdueCount` are always clean integers — an empty today now
-        // correctly falls into the `total === 0` "свободный день" branch.
-        var todayTasks   = dataStore.tasksForToday()   || []
-        var overdueTasks = dataStore.overdueTasks()    || []
-        var total        = todayTasks.length   | 0
-        var overdueCount = overdueTasks.length | 0
+        // Q4.01 night iter-49: was dataStore.tasksForToday()/overdueTasks()
+        // (QList<Task*>), whose `.length` is undefined in QML (Qt 6.11 doesn't
+        // convert it to a JS array). The iter-47 `|| [] / | 0` workaround only
+        // masked it — the value is a truthy non-array, so `|| []` never fires —
+        // leaving `total` permanently 0, which pinned the briefing to
+        // "свободный день" even with tasks due today (and earlier produced the
+        // "Сегодня nan задач" NaN). Use the JS-friendly *Data() accessors so the
+        // counts are real arrays.
+        var todayTasks   = dataStore.tasksForTodayData()
+        var overdueTasks = dataStore.overdueTasksData()
+        var total        = todayTasks.length
+        var overdueCount = overdueTasks.length
         var done         = 0
         for (var i = 0; i < todayTasks.length; i++) {
             if (todayTasks[i].isCompleted) done++
@@ -1553,7 +1552,9 @@ Item {
                     function _computeCounts() {
                         void _kick   // establish reactive dependency
                         const result = { p1: 0, p2: 0, p3: 0, p4: 0 }
-                        const all = dataStore.allTasks()
+                        // Q4.01 night iter-49: allTasks() (QList<Task*>) has no
+                        // usable .length in QML; allTasksData() is a real JS array.
+                        const all = dataStore.allTasksData()
                         for (let i = 0; i < all.length; i++) {
                             const t = all[i]
                             if (!t || t.isDeleted || t.isCompleted) continue
@@ -1674,11 +1675,13 @@ Item {
 
                     function _computeRecent() {
                         void _kick   // reactive dependency
-                        const all = (typeof dataStore.completedTasks === "function")
-                            ? dataStore.completedTasks()
-                            : dataStore.allTasks().filter(function(t) {
-                                  return t && !t.isDeleted && t.isCompleted
-                              })
+                        // Q4.01 night iter-49: dataStore.completedTasks()/allTasks()
+                        // return QList<Task*> (no usable .length/.filter in QML).
+                        // allTasksData() is a real JS array (deleted already excluded)
+                        // — filter to completed.
+                        const all = dataStore.allTasksData().filter(function(t) {
+                            return t && t.isCompleted
+                        })
                         const arr = []
                         for (let i = 0; i < all.length; i++) {
                             const t = all[i]
@@ -1889,7 +1892,10 @@ Item {
                     // Build [{kind, content, when, sortKey}] for the feed.
                     function rebuildFeed() {
                         void _kick   // reactive dependency
-                        var all = dataStore.allTasks()
+                        // Q4.01 night iter-49: allTasks() (QList<Task*>) has no usable
+                        // .length in QML; allTasksData() is a real JS array and now also
+                        // carries createdAt/updatedAt/completedAt as ISO strings.
+                        var all = dataStore.allTasksData()
                         var entries = []
                         for (var i = 0; i < all.length; i++) {
                             var t = all[i]
@@ -2165,7 +2171,9 @@ Item {
                     function _computeTagData() {
                         void _kick   // establish reactive dependency
                         const counts = {}
-                        const all = dataStore.allTasks()
+                        // Q4.01 night iter-49: allTasks() (QList<Task*>) has no usable
+                        // .length in QML; allTasksData() is a real JS array.
+                        const all = dataStore.allTasksData()
                         for (let i = 0; i < all.length; i++) {
                             const t = all[i]
                             if (!t || t.isDeleted) continue

@@ -87,6 +87,10 @@ public:
     // in Qt 6.11 (`.length` is undefined, Array.isArray() is false), which
     // silently breaks every QML `for (i < x.length)` aggregation over it.
     Q_INVOKABLE QVariantList allTasksData() const;
+    // JS-friendly counterparts of tasksForToday()/overdueTasks() — same shape
+    // and rationale as allTasksData(). Used by the productivity daily briefing.
+    Q_INVOKABLE QVariantList tasksForTodayData() const;
+    Q_INVOKABLE QVariantList overdueTasksData() const;
     // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
     QList<Task *> allTasksIncludingDeleted() const;
     Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;
@@ -334,6 +338,11 @@ signals:
     void dataChanged();
 
 private:
+    // Shared converter for the *Data() accessors: Task* list →
+    // QVariantList<QVariantMap> with camelCase keys mirroring Task's
+    // Q_PROPERTY names. Centralised so every accessor exposes one shape.
+    static QVariantList tasksToData(const QList<Task *> &list);
+
     // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
     void stampEntityField(const QString &entityId,
                           QMap<QString, QJsonObject> &metaMap,
