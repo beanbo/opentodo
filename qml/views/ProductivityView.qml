@@ -53,10 +53,19 @@ Item {
     function _briefingMessage(kick) {
         // `kick` is read so the binding re-evaluates when the counter changes.
         void kick
-        var todayTasks   = dataStore.tasksForToday()
-        var overdueTasks = dataStore.overdueTasks()
-        var total        = todayTasks.length
-        var overdueCount = overdueTasks.length
+        // Q4.01 night iter-47: dataStore.tasksForToday()/overdueTasks() return
+        // QList<Task*>, which can come back falsy/non-array in QML — other
+        // callers (Main.qml, SidebarContent.qml) already guard these with
+        // `|| []`. The unguarded `.length` here produced `undefined`, so
+        // `remaining = total - done` became NaN and the briefing rendered the
+        // user-facing "Сегодня nan задач". Guard with `|| []` and coerce the
+        // count via `| 0` (same idiom as the pomodoro stats below) so `total`
+        // and `overdueCount` are always clean integers — an empty today now
+        // correctly falls into the `total === 0` "свободный день" branch.
+        var todayTasks   = dataStore.tasksForToday()   || []
+        var overdueTasks = dataStore.overdueTasks()    || []
+        var total        = todayTasks.length   | 0
+        var overdueCount = overdueTasks.length | 0
         var done         = 0
         for (var i = 0; i < todayTasks.length; i++) {
             if (todayTasks[i].isCompleted) done++
