@@ -621,6 +621,11 @@ QVariantList DataStore::tasksToData(const QList<Task *> &list)
 QVariantList DataStore::allTasksData() const      { return tasksToData(allTasks()); }
 QVariantList DataStore::tasksForTodayData() const { return tasksToData(tasksForToday()); }
 QVariantList DataStore::overdueTasksData() const  { return tasksToData(overdueTasks()); }
+// Mirrors tasksForProject() (top-level only — subtasks excluded).
+QVariantList DataStore::tasksForProjectData(const QString &projectId) const
+{
+    return tasksToData(tasksForProject(projectId));
+}
 
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const
 {

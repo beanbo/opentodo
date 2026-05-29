@@ -24,7 +24,11 @@ ApplicationWindow {
 
     function _pendingCountCompute() {
         if (typeof dataStore === "undefined" || !dataStore) return 0
-        var tasks = dataStore.allTasks()
+        // Q4.01 night iter-50: allTasks() (QList<Task*>) has no usable .length
+        // in QML (the `if (!tasks)` guard never fired — the value is a truthy
+        // non-array), so this loop iterated 0× and the pending-task count was
+        // stuck at 0. allTasksData() is a real JS array (deleted excluded).
+        var tasks = dataStore.allTasksData()
         if (!tasks) return 0
         var n = 0
         for (var i = 0; i < tasks.length; i++) {

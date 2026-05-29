@@ -91,6 +91,7 @@ public:
     // and rationale as allTasksData(). Used by the productivity daily briefing.
     Q_INVOKABLE QVariantList tasksForTodayData() const;
     Q_INVOKABLE QVariantList overdueTasksData() const;
+    Q_INVOKABLE QVariantList tasksForProjectData(const QString &projectId) const;
     // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
     QList<Task *> allTasksIncludingDeleted() const;
     Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;

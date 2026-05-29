@@ -596,7 +596,10 @@ Item {
                                 // Read kick to register dependency on tasksChanged
                                 const _ = root.todayGoalKick
                                 if (typeof dataStore === "undefined" || !dataStore) return 0
-                                const tasks = dataStore.tasksForToday()
+                                // Q4.01 night iter-50: tasksForToday() (QList<Task*>) has no
+                                // usable .length in QML — this loop iterated 0× so the daily
+                                // goal "done" was stuck at 0. tasksForTodayData() is a real JS array.
+                                const tasks = dataStore.tasksForTodayData()
                                 let done = 0
                                 for (let i = 0; i < tasks.length; i++)
                                     if (tasks[i] && tasks[i].isCompleted) done++

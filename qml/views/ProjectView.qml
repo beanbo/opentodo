@@ -50,7 +50,11 @@ Rectangle {
         monday.setHours(0, 0, 0, 0)
         const isoMonday = monday.toISOString().substring(0, 10)
 
-        const tasks = dataStore.tasksForProject(projectId)
+        // Q4.01 night iter-50: tasksForProject() (QList<Task*>) has no usable
+        // .length in QML — this loop iterated 0× so the weekly-goal "done"
+        // count was stuck at 0. tasksForProjectData() is a real JS array
+        // (camelCase keys; completedAt as an ISO string, as this code expects).
+        const tasks = dataStore.tasksForProjectData(projectId)
         let done = 0
         for (let i = 0; i < tasks.length; i++) {
             const t = tasks[i]
