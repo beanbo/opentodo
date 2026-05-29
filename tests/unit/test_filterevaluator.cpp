@@ -350,6 +350,27 @@ private slots:
         QVERIFY(!matches(*m_eval, "search: groceries", m_taskToday));
     }
 
+    // Q4.01 iter-41 regression: a bare number is a valid filter and
+    // content-matches like any other bare word. Previously the tokenizer
+    // emitted a NumberLiteral token for a standalone number (one not followed
+    // by "days"), but neither parseAtom() nor FilterEval handled NumberLiteral,
+    // so "5" parse-errored ("Unexpected token") and the filter was rejected.
+    // Fix emits Identifier instead → content substring match via TextSearch.
+    void bareNumber_isValidAndContentMatches()
+    {
+        FilterParser parser;
+        AstNode *ast = parser.parse(QStringLiteral("5"));
+        QVERIFY2(ast != nullptr, qPrintable(parser.lastError()));
+        delete ast;
+
+        Task *t5 = m_store->addTask(QStringLiteral("review PR 5 today"), m_workProjectId);
+        QVERIFY(matches(*m_eval, "5", t5));             // content contains "5"
+        QVERIFY(!matches(*m_eval, "5", m_taskSearch));  // "buy groceries" has no "5"
+
+        // "N days" must still tokenize as the Days predicate, not content.
+        QVERIFY(FilterParser().isValid(QStringLiteral("5 days")));
+    }
+
     // -----------------------------------------------------------------------
     // before / after date predicates
     // -----------------------------------------------------------------------

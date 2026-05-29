@@ -501,7 +501,15 @@ QList<Token> FilterParser::tokenize(const QString &input)
                         tokens.append(Token(TokenType::Days, word, num, startPos));
                     } else {
                         i = saved;
-                        tokens.append(Token(TokenType::NumberLiteral, word, num, startPos));
+                        // Q4.01 night iter-41 (BUG-FIX): a bare number not
+                        // followed by "days" used to emit a NumberLiteral token,
+                        // but neither parseAtom() nor FilterEval handles
+                        // NumberLiteral — so a filter like "5" parse-errored
+                        // ("Unexpected token") and was rejected as invalid.
+                        // Emit Identifier instead so a standalone number
+                        // content-matches like any other bare word (routed
+                        // through TextSearch in FilterEval, same as "buy").
+                        tokens.append(Token(TokenType::Identifier, word, startPos));
                     }
                 } else {
                     tokens.append(Token(TokenType::Identifier, word, startPos));
