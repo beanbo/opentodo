@@ -1,6 +1,7 @@
 opentodo_add_unit_test(test_smoke          App)
 opentodo_add_unit_test(test_models         Domain)
 opentodo_add_unit_test(test_datastore      Infra)
+opentodo_add_unit_test(test_datastore_data_accessors Infra)
 opentodo_add_unit_test(test_filemanager    Infra)
 opentodo_add_unit_test(test_dateparser_ru  Domain)
 opentodo_add_unit_test(test_dateparser_en  Domain)
