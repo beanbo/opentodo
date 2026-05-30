@@ -282,6 +282,40 @@ private slots:
         QVERIFY(!ds.removeSection(QStringLiteral("ghost-id")));
     }
 
+    // night iter-116 regression: the delete-section UI promises "Задачи
+    // останутся в проекте без раздела". removeSection must therefore reassign
+    // the section's tasks to no-section ("") rather than leaving them pointing
+    // at the tombstoned sectionId — otherwise they vanish from the board (no
+    // matching column, and not sectionId=="" either) and sink below every real
+    // section in the list, with no header.
+    void datastore_removeSection_reassigns_tasks_to_no_section()
+    {
+        DataStore ds;
+        Project *p = ds.addProject(QStringLiteral("P"));
+        Section *s = ds.addSection(QStringLiteral("Doomed"), p->id());
+
+        Task *inSection = ds.addTask(QStringLiteral("in section"), p->id());
+        inSection->setSectionId(s->id());
+        Task *loose = ds.addTask(QStringLiteral("loose"), p->id()); // sectionId == ""
+        QCOMPARE(inSection->sectionId(), s->id());
+
+        QSignalSpy taskSpy(&ds, &DataStore::tasksChanged);
+        QVERIFY(ds.removeSection(s->id()));
+
+        // The section's task moved to no-section and is NOT deleted (the
+        // dialog promises it stays in the project).
+        QVERIFY2(inSection->sectionId().isEmpty(),
+                 "removeSection must reassign in-section tasks to no-section \"\"");
+        QVERIFY2(!inSection->isDeleted(),
+                 "removeSection must NOT delete the tasks");
+        // The loose task is untouched.
+        QCOMPARE(loose->sectionId(), QString());
+        QVERIFY(!loose->isDeleted());
+        // A tasksChanged signal fired so the list/board refresh the moved task.
+        QVERIFY2(taskSpy.count() >= 1,
+                 "removeSection must emit tasksChanged when it moves tasks");
+    }
+
     void datastore_sectionsForProject_preserves_addition_order()
     {
         // Multiple sections under the same project should appear in the

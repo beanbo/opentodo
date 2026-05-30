@@ -1185,13 +1185,39 @@ bool DataStore::removeSection(const QString &id)
     auto *section = m_sectionIndex.value(id);
     if (!section) return false;
 
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+
     section->setIsDeleted(true);
-    section->setUpdatedAt(QDateTime::currentDateTimeUtc());
+    section->setUpdatedAt(now);
     // B-1.9: stamp CRDT fields so tombstone survives merge.
     stampEntityField(id, m_sectionMeta, QStringLiteral("is_deleted"));
     stampEntityField(id, m_sectionMeta, QStringLiteral("updated_at"));
 
+    // night iter-116: the delete-section dialog promises "Задачи останутся в
+    // проекте без раздела", but tombstoning the section alone left its tasks
+    // pointing at a now-deleted sectionId. On the board those tasks matched no
+    // column — and weren't sectionId=="" either — so they vanished entirely;
+    // in the list they sank below every real section with no header. Reassign
+    // every task still in this section to no-section ("") so the promise holds
+    // and the tasks resurface in the "(Без раздела)" group/column. Stamp
+    // section_id per-field (snake_case, matching TaskViewModel::moveTask) so
+    // the move survives CRDT merge; applying a peer's section_delete then
+    // self-heals the same way on every device.
+    bool anyTaskMoved = false;
+    for (auto *t : m_tasks) {
+        if (!t->isDeleted() && t->sectionId() == id) {
+            const QString tid = t->id();
+            t->setSectionId(QString());
+            t->setUpdatedAt(now);
+            stampEntityField(tid, m_taskMeta, QStringLiteral("section_id"));
+            stampEntityField(tid, m_taskMeta, QStringLiteral("updated_at"));
+            anyTaskMoved = true;
+        }
+    }
+
     emit sectionsChanged();
+    if (anyTaskMoved)
+        emit tasksChanged();
     emit dataChanged();
     return true;
 }
