@@ -1373,7 +1373,10 @@ Rectangle {
                 : []
             nameField.text        = editName
             descriptionField.text = editDescription
-            iconField.text        = editIcon
+            // Q4.05 night iter-80: emoji-only; SVG icons ("projects/…") render
+            // via iconPreview, so keep this field empty for them (else the path
+            // string truncates+corrupts editIcon — see iconField comment).
+            iconField.text        = (editIcon.indexOf("projects/") === 0 ? "" : editIcon)
             weeklyGoalSpin.value  = editWeeklyGoal
             notesField.text       = editNotes
             linkedRepoPathField.text = editLinkedRepoPath
@@ -1448,7 +1451,17 @@ Rectangle {
                 TextField {
                     id: iconField
                     Layout.preferredWidth: 60
-                    text: editDialog.editIcon
+                    // Q4.05 night iter-80: emoji-only field. Previously
+                    // `text: editDialog.editIcon` + onTextChanged piped the
+                    // project's icon string through here; an SVG icon
+                    // ("projects/<glyph>", up to 16 chars) was truncated by
+                    // maximumLength:8 to "projects" (shown clipped as ")") and
+                    // written straight back, corrupting editIcon to "projects"
+                    // the moment the dialog opened — Save then persisted a broken
+                    // icon path. Fix: no text binding (set imperatively in
+                    // onOpened, empty for "projects/" icons); write back ONLY on
+                    // real user edits (onTextEdited, not onTextChanged); SVG icons
+                    // render via the iconPreview overlay below.
                     placeholderText: "🐢"
                     font.pixelSize: 22
                     horizontalAlignment: Text.AlignHCenter
@@ -1459,7 +1472,24 @@ Rectangle {
                         border.width: 1
                         radius: Radius.sm
                     }
-                    onTextChanged: editDialog.editIcon = text
+                    onTextEdited: editDialog.editIcon = text
+
+                    // Cover the 🐢 placeholder (and any residual text) with the
+                    // field's own background, then render the SVG icon on top.
+                    Rectangle {
+                        id: iconPreview
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        radius: Radius.sm
+                        visible: editDialog.editIcon.indexOf("projects/") === 0
+                        color: ThemeManager.surfaceColor
+                        IconSvg {
+                            anchors.centerIn: parent
+                            name: editDialog.editIcon
+                            size: 22
+                            color: ThemeManager.textColor
+                        }
+                    }
                 }
 
                 // Q4.01 (redesign): эмодзи-набор заменён на 12 stroke-иконок
@@ -1490,7 +1520,10 @@ Rectangle {
                                 color: ThemeManager.textColor
                             }
                             onClicked: {
-                                iconField.text = modelData
+                                // Q4.05 night iter-80: clear the emoji field; the
+                                // chosen SVG renders via iconPreview (don't pipe the
+                                // path string through the maxLength-8 TextField).
+                                iconField.text = ""
                                 editDialog.editIcon = modelData
                             }
                         }
