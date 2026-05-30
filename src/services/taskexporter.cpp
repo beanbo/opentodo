@@ -94,13 +94,22 @@ QString TaskExporter::exportToCsv(const QString &dir)
         if (t->isDeleted()) continue;
         Project *p = m_store->projectById(t->projectId());
         Section *s = m_store->sectionById(t->sectionId());
+        // night iter-109: datetime-only tasks carry an empty dueDate but a set
+        // dueDatetime (B-1.28/B-1.30) — keying the due_date column off dueDate
+        // alone left it blank for every timed task, silently dropping their
+        // schedule from the CSV. Mirror the markdown-export fix (iter-116):
+        // fall back to the datetime's date part for a homogeneous date-only
+        // column. The full time is preserved in the ICS export.
+        QString dueDateCell = t->dueDate();
+        if (dueDateCell.isEmpty() && !t->dueDatetime().isEmpty())
+            dueDateCell = t->dueDatetime().left(10);
         out << csvEscape(t->id()) << ","
             << csvEscape(p ? p->name() : QString()) << ","
             << csvEscape(s ? s->name() : QString()) << ","
             << csvEscape(t->content()) << ","
             << csvEscape(t->description()) << ","
             << t->priority() << ","
-            << csvEscape(t->dueDate()) << ","
+            << csvEscape(dueDateCell) << ","
             << csvEscape(t->labels().join(QChar('|'))) << ","
             << (t->isCompleted() ? "true" : "false") << ","
             << csvEscape(t->createdAt().toString(Qt::ISODate)) << "\n";

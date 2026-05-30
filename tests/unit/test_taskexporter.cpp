@@ -261,6 +261,49 @@ private slots:
         QCOMPARE(cols.at(8), QStringLiteral("true"));
     }
 
+    // ── CSV: datetime-only task still populates the due_date column ───────────
+    //
+    // night iter-109 regression. A task scheduled with a time carries an empty
+    // dueDate but a set dueDatetime (B-1.28/B-1.30). Keying the due_date column
+    // off dueDate alone left it blank for every timed task — the schedule was
+    // silently dropped from the CSV. This is the sibling of the iter-116
+    // markdown-export fix (83418a4), which was applied to the markdown path but
+    // missed in the CSV path of the same file. The column must carry the
+    // datetime's date part.
+    void csv_datetime_only_task_populates_due_date_column()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+
+        DataStore ds;
+        Project *p = ds.addProject(QStringLiteral("Timed"));
+        Task *t = ds.addTask(QStringLiteral("Standup call"), p->id());
+        // Datetime-only: empty dueDate, set dueDatetime (as the NLP parser
+        // produces for "today at 9am" / "сегодня в 9").
+        t->setDueDatetime(QStringLiteral("2026-05-17T09:00:00"));
+        QVERIFY(t->dueDate().isEmpty());
+
+        TaskExporter exp(&ds);
+        const QString path = exp.exportToCsv(tmp.path());
+        QVERIFY(!path.isEmpty());
+
+        const QString text = normaliseEol(readUtf8(path));
+        QString dataRow;
+        for (const QString &ln : text.split(QChar('\n'), Qt::SkipEmptyParts)) {
+            if (ln.contains(QStringLiteral("Standup call"))) { dataRow = ln; break; }
+        }
+        QVERIFY2(!dataRow.isEmpty(), "Data row not found");
+
+        // Order: id,project,section,content,description,priority,due_date,labels,is_completed,created_at
+        const QStringList cols = dataRow.split(QChar(','));
+        QVERIFY(cols.size() >= 10);
+        QVERIFY2(cols.at(6) == QStringLiteral("2026-05-17"),
+                 qPrintable(QStringLiteral(
+                     "iter-109 regression: due_date column for a datetime-only "
+                     "task should be the date part '2026-05-17', got '%1'. "
+                     "Full row: %2").arg(cols.at(6), dataRow)));
+    }
+
     // ── CSV: soft-deleted tasks excluded ──────────────────────────────────────
 
     void csv_soft_deleted_tasks_excluded()
