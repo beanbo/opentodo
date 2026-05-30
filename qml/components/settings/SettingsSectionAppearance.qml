@@ -157,12 +157,25 @@ Rectangle {
                     }
 
                     // Theme name label
+                    // Q4.01 night iter-55: was anchored to horizontalCenter with no
+                    // width constraint, so the long "Высокая контрастность" overflowed
+                    // both edges of the 130px tile (short names looked fine). Constrain
+                    // to the tile width and auto-shrink long names via HorizontalFit
+                    // (down to 9px, then elide) so the full accessibility name stays
+                    // readable and contained.
                     Text {
                         anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
                         anchors.bottomMargin: 8
-                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        horizontalAlignment: Text.AlignHCenter
                         text: root.themeLabel(modelData)
                         font.pixelSize: 12
+                        fontSizeMode: Text.HorizontalFit
+                        minimumPixelSize: 9
+                        elide: Text.ElideRight
                         font.bold: settingsViewModel.theme === modelData
                         color: themeCard.themeData ? themeCard.themeData.textColor : ThemeManager.textColor
                     }
