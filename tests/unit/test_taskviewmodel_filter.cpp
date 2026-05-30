@@ -355,6 +355,42 @@ private slots:
                  "not by sectionId UUID");
     }
 
+    // night iter-122: reordering a section (setSectionOrder, from the reorder
+    // menu) must re-sort the list. Since iter-121 the list orders section groups
+    // by section.order, and setSectionOrder emits sectionsChanged (not
+    // tasksChanged) — TaskViewModel now reloads on sectionsChanged too.
+    void section_reorder_resorts_the_list()
+    {
+        DataStore store;
+        Project *p = store.addProject(QStringLiteral("P"));
+        Section *secA = store.addSection(QStringLiteral("A"), p->id()); // order 0
+        Section *secB = store.addSection(QStringLiteral("B"), p->id()); // order 1
+        QVERIFY(secA && secB);
+
+        Task *tA = store.addTask(QStringLiteral("in A"), p->id());
+        tA->setSectionId(secA->id());
+        Task *tB = store.addTask(QStringLiteral("in B"), p->id());
+        tB->setSectionId(secB->id());
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(p->id());
+
+        const QStringList before = visibleIds(vm);
+        QVERIFY2(before.indexOf(tA->id()) < before.indexOf(tB->id()),
+                 "initial: section A (order 0) precedes section B (order 1)");
+
+        // Reorder so B comes first (B.order = 0, A.order = 1).
+        store.setSectionOrder(secA->id(), 1);
+        store.setSectionOrder(secB->id(), 0);
+        QTest::qWait(100); // let the 30 ms refresh debounce fire
+
+        const QStringList after = visibleIds(vm);
+        QVERIFY2(after.indexOf(tB->id()) < after.indexOf(tA->id()),
+                 "after reorder: section B (now order 0) must precede A — the "
+                 "list re-sorted in response to sectionsChanged");
+    }
+
     void project_mode_with_currentProjectId_shows_only_that_project()
     {
         Fixture *f = makeFixture();

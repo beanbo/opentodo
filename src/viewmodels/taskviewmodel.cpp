@@ -33,6 +33,15 @@ TaskViewModel::TaskViewModel(DataStore *store, QObject *parent)
     connect(&m_refreshDebounce, &QTimer::timeout, this, &TaskViewModel::refresh);
 
     connect(m_store, &DataStore::tasksChanged, this, &TaskViewModel::onTasksChanged);
+    // night iter-122: also re-sort when sections change. Since iter-121 the
+    // project/board/calendar list orders section GROUPS by section.order, so
+    // reordering a section (setSectionOrder, from the «Переместить вверх/вниз»
+    // menu) must re-sort the list. setSectionOrder emits sectionsChanged (not
+    // tasksChanged), so without this the list stayed in the old section order
+    // until the next task mutation. Routes through the same debounce; refresh()
+    // resets only when the task order actually differs (reorder) — collapse /
+    // rename leave the order unchanged → cheap dataChanged, no reset/churn.
+    connect(m_store, &DataStore::sectionsChanged, this, &TaskViewModel::onTasksChanged);
     connect(m_store, &DataStore::aboutToReset, this, [this]() {
         // Bug #1 (May 2026): clear m_selectedTask BEFORE the DataStore
         // qDeleteAll's every Task. The QML editor binding to the
