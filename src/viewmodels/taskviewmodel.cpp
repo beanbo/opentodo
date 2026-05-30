@@ -2365,7 +2365,19 @@ void TaskViewModel::sortTasks()
         auto overdueEnd = std::stable_partition(pinnedEnd, m_tasks.end(),
             [&today](const Task *t) {
                 if (!t || t->isDeleted()) return false;
-                const QString d = t->dueDate();
+                // night iter-109: the Today view lists overdue tasks too
+                // (fetchTasks merges DataStore::overdueTasks), which include
+                // datetime-only ones (empty dueDate, set dueDatetime — B-1.28).
+                // Keying the lift off dueDate alone left a timed task rolled
+                // over from a previous day stranded in the lower due-today band
+                // instead of the overdue band. Resolve the effective date the
+                // same way the date-sort effDate below does. Date-level "< today"
+                // is the right test here: the band means "carried over from an
+                // earlier day", so a task timed for earlier *today* correctly
+                // stays out of it.
+                QString d = t->dueDate();
+                if (d.isEmpty() && !t->dueDatetime().isEmpty())
+                    d = t->dueDatetime().left(10);
                 return !d.isEmpty() && d < today;
             });
 

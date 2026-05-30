@@ -223,6 +223,58 @@ private slots:
         delete f;
     }
 
+    // night iter-109: a datetime-only overdue task (empty dueDate, set
+    // dueDatetime carried over from a previous day) must lift into the Today
+    // view's "overdue" band — above due-today tasks — exactly like a date-only
+    // overdue task. Pre-fix the lift partition in sortTasks() keyed off dueDate
+    // alone, so a timed overdue task sank below the due-today tasks instead of
+    // rising to the top with its date-only siblings.
+    void today_overdue_lift_includes_datetime_only_overdue()
+    {
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        const QDate today = QDate::currentDate();
+        const QString fmt = QStringLiteral("yyyy-MM-dd");
+
+        // Insertion order deliberately puts the due-today task FIRST: absent the
+        // lift it would precede the overdue tasks (all share dayOrder 0, so the
+        // initial sort falls back to insertion order). The lift must reorder
+        // BOTH overdue tasks above it.
+        Task *dueToday = store.addTask(QStringLiteral("due today"), inbox->id());
+        dueToday->setDueDate(today.toString(fmt));
+
+        Task *overdueDate = store.addTask(QStringLiteral("overdue date-only"), inbox->id());
+        overdueDate->setDueDate(today.addDays(-1).toString(fmt));
+
+        Task *overdueDt = store.addTask(QStringLiteral("overdue datetime-only"), inbox->id());
+        overdueDt->setDueDatetime(today.addDays(-1).toString(fmt) + QStringLiteral("T14:00:00"));
+        QVERIFY(overdueDt->dueDate().isEmpty());
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Today);
+
+        const QStringList ids = visibleIds(vm);
+        // All three are in the Today view (overdue ∪ due-today, incomplete).
+        QCOMPARE(ids.size(), 3);
+
+        const int idxToday       = ids.indexOf(dueToday->id());
+        const int idxOverdueDt   = ids.indexOf(overdueDt->id());
+        const int idxOverdueDate = ids.indexOf(overdueDate->id());
+        QVERIFY(idxToday >= 0 && idxOverdueDt >= 0 && idxOverdueDate >= 0);
+
+        // Both overdue tasks must precede the due-today task (overdue band).
+        QVERIFY2(idxOverdueDate < idxToday,
+                 "date-only overdue task should lift above the due-today task");
+        QVERIFY2(idxOverdueDt < idxToday,
+                 qPrintable(QStringLiteral(
+                     "iter-109 regression: datetime-only overdue task (idx %1) "
+                     "must lift into the overdue band above the due-today task "
+                     "(idx %2). Order: %3")
+                     .arg(idxOverdueDt).arg(idxToday).arg(ids.join(QChar(',')))));
+    }
+
     void upcoming_mode_includes_today_and_future_incomplete()
     {
         // The production rule is `dueDate >= today` (today is included),
