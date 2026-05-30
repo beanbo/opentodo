@@ -137,20 +137,19 @@ private slots:
 
     void parser_priorities_mapped_correctly()
     {
-        // B-5.43: Todoist CSV priority inversion — in the CSV export, Todoist uses
-        // 4=urgent (p1), 3=high (p2), 2=medium (p3), 1=normal (p4).
-        // The importer now maps CSV→internal as: 4→4, 3→3, 2→2, 1→1.
-        // Wait — actually the NEW mapping per B-5.43 is the INVERSION:
-        //   CSV 1 (normal/p4) → internal 4 (urgent/p1)
-        //   CSV 4 (urgent/p1) → internal 1 (normal/p4)
-        // i.e. CSV and internal use opposite scales.
-        // This matches the Todoist REST API convention where priority 4=urgent.
+        // Priority-inversion fix: a Todoist CSV export uses 1=urgent (p1),
+        // 2=high, 3=medium, 4=normal (p4) -- the SAME scale as OpenTodo's
+        // canonical internal priority (1=p1 urgent … 4=p4 normal). So the
+        // CSV -> internal mapping is the IDENTITY.
+        // (The Todoist REST/Sync API, by contrast, uses 4=urgent and the
+        // importer inverts there -- see the api_client priority sites and
+        // test_todoist_importer_extended.cpp.)
         const QString csv =
             QStringLiteral("TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT\n")
-            + QStringLiteral("task,p1 task,,4,1,,,,en,,\n")   // CSV 4 → internal 1
-            + QStringLiteral("task,p2 task,,3,1,,,,en,,\n")   // CSV 3 → internal 2
-            + QStringLiteral("task,p3 task,,2,1,,,,en,,\n")   // CSV 2 → internal 3
-            + QStringLiteral("task,p4 task,,1,1,,,,en,,\n");  // CSV 1 → internal 4
+            + QStringLiteral("task,p1 task,,1,1,,,,en,,\n")   // CSV 1 (urgent) -> internal 1
+            + QStringLiteral("task,p2 task,,2,1,,,,en,,\n")   // CSV 2 (high)   -> internal 2
+            + QStringLiteral("task,p3 task,,3,1,,,,en,,\n")   // CSV 3 (medium) -> internal 3
+            + QStringLiteral("task,p4 task,,4,1,,,,en,,\n");  // CSV 4 (normal) -> internal 4
 
         const auto result = TodoistCsvParser::parse(csv, QStringLiteral("p"));
         QCOMPARE(result.tasks[0].priority, 1);
@@ -303,14 +302,16 @@ private slots:
         QCOMPARE(result.tasks[0].content, QStringLiteral("Buy milk, bread, eggs"));
     }
 
-    void parser_malformed_priority_defaults_to_1()
+    void parser_malformed_priority_defaults_to_normal()
     {
+        // Priority-inversion fix: an unparseable PRIORITY column defaults to
+        // internal 4 (Normal/p4), not 1 (which is now p1/urgent).
         const QString csv =
             QStringLiteral("TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT\n")
             + QStringLiteral("task,Bad prio,,xyz,1,,,,en,,\n");
 
         const auto result = TodoistCsvParser::parse(csv, QStringLiteral("p"));
-        QCOMPARE(result.tasks[0].priority, 1);
+        QCOMPARE(result.tasks[0].priority, 4);
     }
 
     // ── Mapping: TodoistImportData → DataStore ────────────────────────────────

@@ -381,7 +381,10 @@ TodoistImportData TodoistApiClient::parseSyncResponse(const QByteArray &json,
         t.projectId   = jStr(o, QStringLiteral("project_id"));
         t.sectionId   = jStr(o, QStringLiteral("section_id"));
         t.parentId    = jStr(o, QStringLiteral("parent_id"));
-        t.priority    = jInt(o, QStringLiteral("priority"), 1);
+        // Todoist Sync API uses 4=urgent … 1=normal; OpenTodo internal is the
+        // inverse (1=urgent … 4=normal), so invert here. A missing value
+        // defaults to API-normal (1) -> internal 4 (normal). [priority-inversion fix]
+        t.priority    = 5 - jInt(o, QStringLiteral("priority"), 1);
         t.order       = jInt(o, QStringLiteral("child_order"));
         t.isCompleted = jBool(o, QStringLiteral("checked")) ||
                         jBool(o, QStringLiteral("is_completed"));
@@ -456,7 +459,9 @@ void TodoistApiClient::parseCompletedResponse(const QByteArray &json,
         t.content     = jStr(o, QStringLiteral("content"));
         t.projectId   = jStr(o, QStringLiteral("project_id"));
         t.sectionId   = jStr(o, QStringLiteral("section_id"));
-        t.priority    = jInt(o, QStringLiteral("priority"), 1);
+        // Invert Todoist API priority (4=urgent) to OpenTodo internal
+        // (1=urgent). Missing -> 1 -> internal 4 (normal). [priority-inversion fix]
+        t.priority    = 5 - jInt(o, QStringLiteral("priority"), 1);
         t.isCompleted = true;
         t.createdAt   = jDateTime(o, QStringLiteral("added_at"));
         if (!t.createdAt.isValid())

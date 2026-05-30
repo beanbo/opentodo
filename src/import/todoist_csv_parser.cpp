@@ -84,44 +84,40 @@ static QString safeField(const QStringList &row, int idx)
 }
 
 // ---------------------------------------------------------------------------
-// Priority mapping [B-5.43] — INVERSION REQUIRED for CSV path.
+// Priority mapping [B-5.43 / priority-inversion fix].
 //
 // Todoist CSV export encoding:      1 = Urgent (p1/highest shown in UI)
 //                                   2 = High   (p2)
 //                                   3 = Medium (p3)
 //                                   4 = Normal (p4/lowest shown in UI)
 //
-// Todoist Sync API / OpenTodo internal encoding (TodoistTask.priority):
-//                                   1 = Normal (lowest)
-//                                   4 = Urgent (highest/p1)
+// OpenTodo internal encoding (canonical -- used by the UI, quick-add and
+// export; TodoistTask.priority now also carries this convention):
+//                                   1 = Urgent (highest/p1, red flag)
+//                                   4 = Normal (lowest/p4, no flag)
 //
-// The two conventions are INVERTED relative to each other.  The API path
-// stores raw API values (4=urgent), so no conversion is needed there.
-// The CSV path receives CSV values (1=urgent) and must invert them to match
-// the internal convention used by applyImport() → setPriority().
+// The Todoist CSV scale and the OpenTodo internal scale are IDENTICAL
+// (1 = urgent in both), so the CSV -> internal mapping is the IDENTITY and
+// no conversion is needed. (The Todoist Sync API path uses the OPPOSITE
+// scale, 4 = urgent, so todoist_api_client.cpp inverts with 5-v there.)
 //
-// Inversion formula: internal = (5 - csv)
-//   csv 1 (Urgent) → internal 4  ✓
-//   csv 2 (High)   → internal 3  ✓
-//   csv 3 (Medium) → internal 2  ✓
-//   csv 4 (Normal) → internal 1  ✓
-//
-// F-Q2.24-C #3: Todoist's API emits PRIORITY=0 as a null sentinel meaning
-// "no explicit priority set". The CSV path inherits this. We map it to
-// internal 1 (Normal/p4), exactly the same bucket where an EXPLICIT Normal
-// also lands. This is documented LOSSY behaviour — distinguishing the two
-// would require a `Task::hasPriority` flag (schema change, out of scope).
-// The parser counts these rows so the importer can surface a single user-
-// facing notice rather than silently collapsing them.
+// F-Q2.24-C #3: Todoist's export emits PRIORITY=0 as a null sentinel meaning
+// "no explicit priority set". We map it to internal 4 (Normal/p4), exactly
+// the same bucket where an EXPLICIT Normal also lands. This is documented
+// LOSSY behaviour -- distinguishing the two would require a Task::hasPriority
+// flag (schema change, out of scope). The parser counts these rows so the
+// importer can surface a single user-facing notice rather than silently
+// collapsing them. Any other invalid / out-of-range value also -> internal 4.
 // ---------------------------------------------------------------------------
 int TodoistCsvParser::todoistPriority(const QString &raw)
 {
     bool ok = false;
     int v = raw.toInt(&ok);
-    if (!ok) return 1; // default: Normal
-    if (v < 1 || v > 4) return 1;
-    // Invert CSV scale (1=urgent) to internal scale (4=urgent) [B-5.43]
-    return 5 - v;
+    if (!ok) return 4; // default: Normal (internal p4)
+    if (v < 1 || v > 4) return 4; // null sentinel / out-of-range -> Normal
+    // Todoist CSV (1=urgent) and OpenTodo internal (1=urgent) share the same
+    // scale -> identity mapping, no inversion. [B-5.43 / priority-inversion fix]
+    return v;
 }
 
 // ---------------------------------------------------------------------------

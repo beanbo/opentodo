@@ -23,9 +23,9 @@
 //
 //   (b) Todoist CSV-via-ZIP path — synthesize a Todoist-format CSV that
 //       round-trips an OpenTodo task graph through the import side. This is
-//       lossy by design (priority is inverted, _meta is dropped, tombstones
-//       are not represented in the format, etc.) but exercises the actual
-//       exporter intent of "produce something importable elsewhere".
+//       lossy by design (_meta is dropped, tombstones are not represented in
+//       the format, etc.) but exercises the actual exporter intent of
+//       "produce something importable elsewhere".
 //
 // We document any field that does not survive each path via qInfo() and only
 // QCOMPARE the fields that the format actually carries.
@@ -279,8 +279,9 @@ static QString csvField(const QString &s)
 }
 
 // Build a minimal Todoist-format CSV for one project's tasks.  The header
-// matches the 12-column schema the importer expects.  Priority is inverted
-// (CSV 1=normal..4=urgent ↔ internal 4..1) — see test_todoist_import.cpp
+// matches the 12-column schema the importer expects.  A Todoist CSV and the
+// OpenTodo internal priority use the SAME scale (1=urgent..4=normal), so the
+// priority round-trips as the identity — see test_todoist_import.cpp
 // "parser_priorities_mapped_correctly" for the contract.
 static QByteArray buildTodoistCsv(const QList<Task *> &tasks)
 {
@@ -290,8 +291,8 @@ static QByteArray buildTodoistCsv(const QList<Task *> &tasks)
                           "DURATION_UNIT\n");
     for (const Task *t : tasks) {
         if (t->isDeleted()) continue;
-        // Internal 1..4 → CSV 4..1
-        const int csvPrio = 5 - t->priority();
+        // Internal 1..4 <-> CSV 1..4 (identity; both use 1=urgent)
+        const int csvPrio = t->priority();
         out += QStringLiteral("task,") + csvField(t->content())
             + QChar(',') + csvField(t->description())
             + QChar(',') + QString::number(csvPrio)

@@ -216,8 +216,8 @@ private slots:
         QCOMPARE(r.tasks.size(), 1);
         QCOMPARE(r.tasks[0].content,        QStringLiteral("Buy milk"));
         QCOMPARE(r.tasks[0].description,    QStringLiteral("A description"));
-        // CSV priority 2 → internal 3 (5 - 2)
-        QCOMPARE(r.tasks[0].priority,       3);
+        // CSV priority 2 -> internal 2 (identity; CSV and internal both use 1=urgent)
+        QCOMPARE(r.tasks[0].priority,       2);
         QCOMPARE(r.tasks[0].due.date,       QStringLiteral("2026-05-09"));
         QCOMPARE(r.tasks[0].due.timezone,   QStringLiteral("UTC"));
         QCOMPARE(r.tasks[0].durationAmount, 30);
@@ -281,8 +281,8 @@ private slots:
         QVERIFY(r.error.isEmpty());
         QCOMPARE(r.tasks.size(), 1);
         QCOMPARE(r.tasks[0].content,  QStringLiteral("Minimal task"));
-        // Bad/empty priority → defaults to 1
-        QCOMPARE(r.tasks[0].priority, 1);
+        // Bad/empty priority → defaults to internal 4 (Normal/p4)
+        QCOMPARE(r.tasks[0].priority, 4);
         QVERIFY(r.tasks[0].due.date.isEmpty());
         QVERIFY(r.tasks[0].due.string.isEmpty());
         QCOMPARE(r.tasks[0].durationAmount, 0);

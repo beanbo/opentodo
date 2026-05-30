@@ -23,10 +23,10 @@
 //        - file with NO header at all
 //
 //   4. Invalid Todoist priority values
-//        - "0" (Todoist's null sentinel) → must default to internal 1
-//        - "5" out-of-range → must default to internal 1
-//        - "-1" negative → must default to internal 1
-//        - "high" / "low" English words → must default to internal 1
+//        - "0" (Todoist's null sentinel) → must default to internal 4 (Normal)
+//        - "5" out-of-range → must default to internal 4 (Normal)
+//        - "-1" negative → must default to internal 4 (Normal)
+//        - "high" / "low" English words → must default to internal 4 (Normal)
 //
 //   5. Natural-language date variants that the parser does NOT understand
 //        - "today", "tomorrow", "next week" (English fallback)
@@ -686,7 +686,7 @@ private slots:
     {
         // All four malformed values exercise different branches of
         // todoistPriority(): bad parse ("high"/"low"), out-of-range high (5),
-        // out-of-range low (-1, 0). All must collapse to internal 1.
+        // out-of-range low (-1, 0). All must collapse to internal 4 (Normal).
         const QString csv = kHeader
             + QStringLiteral("task,Zero,,0,1,,,,en,,,\n")    // Todoist null
             + QStringLiteral("task,Five,,5,1,,,,en,,,\n")    // OOB high
@@ -698,9 +698,9 @@ private slots:
         QVERIFY(r.error.isEmpty());
         QCOMPARE(r.tasks.size(), 5);
         for (const auto &t : r.tasks) {
-            QVERIFY2(t.priority == 1,
+            QVERIFY2(t.priority == 4,
                      qPrintable(QStringLiteral(
-                         "Invalid priority for '%1' produced %2, expected 1")
+                         "Invalid priority for '%1' produced %2, expected 4")
                          .arg(t.content).arg(t.priority)));
         }
 

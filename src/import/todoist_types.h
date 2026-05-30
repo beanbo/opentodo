@@ -26,7 +26,7 @@ struct TodoistTask {
     QString projectId;    // maps to TodoistProject.id
     QString sectionId;    // maps to TodoistSection.id (may be empty)
     QString parentId;     // subtask parent (may be empty)
-    int     priority = 1; // Todoist: 1=normal … 4=urgent → same in OpenTodo
+    int     priority = 4; // OpenTodo internal: 1=p1 urgent … 4=p4 normal (default: normal)
     int     order    = 0;
     QStringList labelNames; // label names (CSV) or ids (API, resolved later)
     TodoistDue due;
