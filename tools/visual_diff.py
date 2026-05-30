@@ -343,8 +343,10 @@ def render_design(artboard: str, theme: str, out_path: Path) -> None:
     import time
     try:
         # Ждём: 4с старт окна + babel fetch/transpile + poll'инг ~10с
-        # + 1с шрифты Inter с Google + render frame.
-        time.sleep(14.0)
+        # + 1с шрифты Inter с Google + render frame. Большой запас:
+        # на холодном профиле Edge стартует медленнее, babel может
+        # 10+ секунд транспилировать 5 jsx по очереди.
+        time.sleep(22.0)
 
         # --app= окно наследует title из <title> страницы (мы выставляем
         # "visual_diff render: {artboard}"). Ищем по подстроке.
