@@ -143,7 +143,15 @@ Item {
                     list.push({
                         id:       "project_" + project.id,
                         category: "Projects",
-                        icon:     "●",
+                        // Q4.06 night iter-84: show the project's real icon for
+                        // consistency with the sidebar. A "projects/<glyph>" SVG
+                        // renders via iconName→IconSvg; a custom emoji falls back to
+                        // the `icon` text; projects with no icon keep the "●" dot.
+                        // (Was always "●", so SVG-icon projects showed a generic dot.)
+                        iconName: (project.icon && project.icon.indexOf("projects/") === 0)
+                                  ? project.icon : "",
+                        icon:     (project.icon && project.icon.indexOf("projects/") !== 0
+                                   && project.icon !== "") ? project.icon : "●",
                         label:    qsTr("Перейти к проекту: %1").arg(project.name),
                         keywords: (project.name || "") + " " + (project.color || ""),
                         shortcut: "",
