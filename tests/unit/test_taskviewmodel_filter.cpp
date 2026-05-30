@@ -7,6 +7,7 @@
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
+#include "model/section.h"
 #include "model/label.h"
 #include "model/filter.h"
 #include "viewmodels/taskviewmodel.h"
@@ -316,6 +317,42 @@ private slots:
         QVERIFY2(idxEarlier < idxLater,
                  "datetime-only task (earlier date) must sort before the later "
                  "plain-dueDate task when sorting by date");
+    }
+
+    // night iter-121: the project/board/calendar list must group sections by
+    // section.order (the user's arrangement, set by the reorder menu) — NOT by
+    // sectionId (a random UUID). Pre-fix the sort comparators ordered groups by
+    // sectionId string, so the list ignored section reordering and disagreed
+    // with BoardView (which sorts columns by section.order).
+    void list_groups_sections_by_section_order_not_uuid()
+    {
+        DataStore store;
+        Project *p = store.addProject(QStringLiteral("P"));
+
+        Section *secA = store.addSection(QStringLiteral("A"), p->id()); // order 0
+        Section *secB = store.addSection(QStringLiteral("B"), p->id()); // order 1
+        QVERIFY(secA && secB);
+        // Simulate "Переместить вверх" on B: now B.order = 0, A.order = 1.
+        store.setSectionOrder(secA->id(), 1);
+        store.setSectionOrder(secB->id(), 0);
+
+        Task *tA = store.addTask(QStringLiteral("in A"), p->id());
+        tA->setSectionId(secA->id());
+        Task *tB = store.addTask(QStringLiteral("in B"), p->id());
+        tB->setSectionId(secB->id());
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(p->id());
+
+        const QStringList ids = visibleIds(vm);
+        const int idxA = ids.indexOf(tA->id());
+        const int idxB = ids.indexOf(tB->id());
+        QVERIFY2(idxA >= 0 && idxB >= 0, "both tasks must be visible");
+        QVERIFY2(idxB < idxA,
+                 "task in section B (section.order 0) must sort before task in "
+                 "section A (section.order 1) — the list groups by section.order, "
+                 "not by sectionId UUID");
     }
 
     void project_mode_with_currentProjectId_shows_only_that_project()

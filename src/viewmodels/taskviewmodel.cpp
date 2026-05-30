@@ -2382,6 +2382,28 @@ void TaskViewModel::sortTasks()
                                  m_filterMode == FilterMode::Board ||
                                  m_filterMode == FilterMode::Calendar);
 
+    // night iter-121: order section GROUPS by section.order (the user's
+    // arrangement, set by the reorder menu) — matching BoardView (iter-110).
+    // Previously every comparator ordered groups by sectionId (a random UUID
+    // string), so the project/board/calendar LIST ignored section reordering
+    // and disagreed with the board. "" (no section) ranks first (the
+    // "(Без раздела)" group); unknown sections fall last. sectionId stays a
+    // deterministic tiebreak so equal-order sections still group contiguously
+    // (required by ListView's section delegate).
+    QHash<QString, int> _secRank;
+    if (groupBySection && m_store) {
+        const auto _secs = m_store->sectionsForProject(m_currentProjectId);
+        for (auto *s : _secs)
+            if (s) _secRank.insert(s->id(), s->order());
+    }
+    auto secGroupLess = [&_secRank](const Task *a, const Task *b) -> bool {
+        const QString sa = a->sectionId(), sb = b->sectionId();
+        const int ra = sa.isEmpty() ? -1 : _secRank.value(sa, 1 << 30);
+        const int rb = sb.isEmpty() ? -1 : _secRank.value(sb, 1 << 30);
+        if (ra != rb) return ra < rb;
+        return sa < sb;
+    };
+
     if (m_sortBy == QStringLiteral("date")) {
         // night iter-115: effective due-date for sorting. Datetime-only tasks
         // carry an empty dueDate but a set dueDatetime, so keying the sort off
@@ -2395,9 +2417,9 @@ void TaskViewModel::sortTasks()
             const QString dt = t->dueDatetime();
             return dt.isEmpty() ? QString() : dt.left(10);
         };
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &effDate](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &effDate, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             const QString da = effDate(a);
             const QString db = effDate(b);
             if (da.isEmpty() && db.isEmpty()) return a->order() < b->order();
@@ -2407,41 +2429,41 @@ void TaskViewModel::sortTasks()
             return a->order() < b->order();
         });
     } else if (m_sortBy == QStringLiteral("priority")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             if (a->priority() != b->priority()) return a->priority() > b->priority();
             return a->order() < b->order();
         });
     } else if (m_sortBy == QStringLiteral("name")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             return a->content().compare(b->content(), Qt::CaseInsensitive) < 0;
         });
     } else if (m_sortBy == QStringLiteral("created")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             return a->createdAt() > b->createdAt();
         });
     } else if (m_sortBy == QStringLiteral("createdAt")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             return a->createdAt() < b->createdAt();
         });
     } else if (m_sortBy == QStringLiteral("createdAtDesc")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             return a->createdAt() > b->createdAt();
         });
     } else {
         // Default: by order, with optional section grouping for project views.
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
-                return a->sectionId() < b->sectionId();
+                return secGroupLess(a, b);
             return a->order() < b->order();
         });
     }
