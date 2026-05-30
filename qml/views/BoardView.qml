@@ -54,11 +54,22 @@ Rectangle {
         for (var i = 0; i < taskViewModel.count; i++) {
             var t = taskViewModel.taskAt(i)
             if (t && t.sectionId === sectionId && !t.isCompleted) {
+                // night iter-112: datetime-only tasks carry an empty dueDate but
+                // a set dueDatetime (B-1.28/B-1.30). Keying the card's date chip
+                // off dueDate alone hid the date for every timed task and never
+                // flagged them overdue. Resolve the effective date (dueDate, else
+                // the dueDatetime's date part) into the card model so the chip +
+                // overdue colour work for timed tasks too — same rule as
+                // DataStore::overdueTasks and the CSV/markdown exporters. The
+                // human dueString (e.g. "30 мая 14:00") still shows when present.
+                var effDue = t.dueDate || ""
+                if (effDue === "" && t.dueDatetime)
+                    effDue = String(t.dueDatetime).substring(0, 10)
                 tasks.push({
                     id:        t.id,
                     content:   t.content,
                     priority:  t.priority,
-                    dueDate:   t.dueDate   || "",
+                    dueDate:   effDue,
                     dueString: t.dueString || "",
                     labels:    t.labels    || [],
                     sectionId: t.sectionId
