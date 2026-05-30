@@ -31,7 +31,7 @@ private slots:
         QVERIFY(t.updatedAt().isValid());
         QVERIFY(!t.isDeleted());
         QVERIFY(!t.isCompleted());
-        QCOMPARE(t.priority(), 1);
+        QCOMPARE(t.priority(), 4); // canonical default: p4 normal (was 1 pre-fix)
         QVERIFY(t.labels().isEmpty());
         QVERIFY(t.parentId().isEmpty());
         QVERIFY(t.due().isNull());

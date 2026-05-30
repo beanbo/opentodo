@@ -234,7 +234,7 @@ private slots:
         TaskViewModel vm(store);
         const QStringList ids = addTasks(store, 3);
 
-        // Default priority is 1; set ids[0] and ids[2] to priority 2,
+        // Default priority is 4 (normal); set ids[0] and ids[2] to priority 2,
         // then verify only those two changed.
         vm.selectTask(ids[0]);
         vm.selectTask(ids[2]);
@@ -242,8 +242,8 @@ private slots:
 
         QCOMPARE(store->taskById(ids[0])->priority(), 2);
         QCOMPARE(store->taskById(ids[2])->priority(), 2);
-        // ids[1] was not selected — stays at default priority (1)
-        QCOMPARE(store->taskById(ids[1])->priority(), 1);
+        // ids[1] was not selected — stays at default priority (4)
+        QCOMPARE(store->taskById(ids[1])->priority(), 4);
 
         delete store;
     }

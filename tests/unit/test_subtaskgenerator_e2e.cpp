@@ -147,10 +147,10 @@ private slots:
         for (Task *kid : kids) {
             QCOMPARE(kid->projectId(), parentProjectId);
             QCOMPARE(kid->parentId(), parentId);
-            // Reasonable defaults: not completed, not deleted, default p1.
+            // Reasonable defaults: not completed, not deleted, default p4 normal.
             QVERIFY(!kid->isCompleted());
             QVERIFY(!kid->isDeleted());
-            QCOMPARE(kid->priority(), 1);
+            QCOMPARE(kid->priority(), 4);
         }
     }
 

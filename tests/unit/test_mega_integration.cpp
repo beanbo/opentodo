@@ -145,7 +145,9 @@ private:
     {
         Task *t = m_store->addTask(content, projectId);
         if (!t) return nullptr;
-        if (priority != 1) t->setPriority(priority);
+        // Set priority unconditionally: the Task default is now 4 (normal),
+        // so callers asking for p1 must have it applied explicitly.
+        t->setPriority(priority);
         if (!due.isEmpty()) t->setDueDate(due);
         ++m_expectedLiveTasks;
         return t;

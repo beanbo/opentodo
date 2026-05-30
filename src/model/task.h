@@ -202,7 +202,7 @@ private:
     QString m_sectionId;
     QString m_parentId;
     int m_order = 0;
-    int m_priority = 1;
+    int m_priority = 4; // canonical: 1=p1 urgent … 4=p4 normal; default = normal
     QStringList m_labels;
     bool m_isCompleted = false;
     QDateTime m_completedAt;

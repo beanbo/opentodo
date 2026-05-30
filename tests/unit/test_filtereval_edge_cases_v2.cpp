@@ -160,15 +160,23 @@ private slots:
             QStringLiteral("Hello unicode 2"), m_unicodeProjectId);
         m_taskUnicode2->setPriority(2);
 
+        // NOTE: the Task default priority is now 4 (normal). Several fixture
+        // tasks below previously relied on the OLD default of p1 (see the
+        // slot01 precedence test, which counts p1/p4 matches). To keep this
+        // fixture's behaviour identical to before that change, the tasks that
+        // don't otherwise set a priority are pinned to explicit p1 here.
+
         // Midnight task — only dueDatetime is set (no dueDate), at 00:00:00
         // local time today. Exercises the effectiveDueDate fallback.
         m_taskMidnight = m_store->addTask(QStringLiteral("Midnight task"), inbox->id());
+        m_taskMidnight->setPriority(1);
         const QDateTime midnightDt(today, QTime(0, 0, 0));
         m_taskMidnight->setDueDatetime(midnightDt.toString(Qt::ISODate));
 
         // recurring with malformed/empty rrule
         m_taskRecurringMalformed = m_store->addTask(
             QStringLiteral("Recurring malformed"), inbox->id());
+        m_taskRecurringMalformed->setPriority(1);
         m_taskRecurringMalformed->setDueDate(todayStr);
         m_taskRecurringMalformed->setDueIsRecurring(true);
         m_taskRecurringMalformed->setDueRecurrenceRule(
@@ -177,10 +185,12 @@ private slots:
         // content with regex metachars
         m_taskWeirdSearch = m_store->addTask(
             QStringLiteral("Path: .*\\d+ then $end"), inbox->id());
+        m_taskWeirdSearch->setPriority(1);
 
         // content with embedded quotes
         m_taskHelloWorld = m_store->addTask(
             QString::fromUtf8("hello \"world\""), inbox->id());
+        m_taskHelloWorld->setPriority(1);
 
         m_eval = new FilterEvaluator(m_store, this);
     }

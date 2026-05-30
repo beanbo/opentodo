@@ -212,7 +212,7 @@ Task *Task::fromJson(const QJsonObject &json, QObject *parent)
     task->m_sectionId = json[QStringLiteral("section_id")].toString();
     task->m_parentId = json[QStringLiteral("parent_id")].toString();
     task->m_order = json[QStringLiteral("order")].toInt();
-    task->m_priority = json[QStringLiteral("priority")].toInt(1);
+    task->m_priority = json[QStringLiteral("priority")].toInt(4); // default: normal (p4)
 
     const auto labelsArr = json[QStringLiteral("labels")].toArray();
     for (const auto &v : labelsArr)

@@ -326,8 +326,9 @@ private slots:
         const QString md = readUtf8(mdPath);
         QVERIFY(md.contains(QStringLiteral("## ")));
         // Empty-content task: exporter renders "- [ ] " then the content
-        // (empty) -- but priority defaults to 1, so a trailing " <flag>P1"
-        // is appended. The checkbox prefix must still be present.
+        // (empty). Priority now defaults to 4 (normal), so NO " <flag>P*" is
+        // appended (the exporter flags only priority < 4). The checkbox prefix
+        // must still be present.
         QVERIFY2(md.contains(QStringLiteral("- [ ] ")),
                  qPrintable(QStringLiteral("MD missing '- [ ] ' checkbox prefix. Got:\n%1").arg(md.left(200))));
 
