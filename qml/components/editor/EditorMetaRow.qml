@@ -549,7 +549,13 @@ ColumnLayout {
             to:    9999
             value: durationRow._amount
             font.pixelSize: 13
-            implicitWidth: 90
+            editable: true
+            // Q4.04 night iter-77: was implicitWidth 90 — too narrow for the
+            // Material SpinBox's square up/down indicators, which squeezed the
+            // value area to a sliver (the "0" rendered as a clipped ")"). Widen
+            // to 120 (mirrors the working auto-archive SpinBox in Settings) so
+            // the 1–4 digit value renders, and make it editable for keyboard entry.
+            implicitWidth: 120
 
             onValueModified: {
                 durationRow._amount = value
