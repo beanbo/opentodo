@@ -628,30 +628,37 @@ Rectangle {
                     }
                 }
 
+                // Q4.03 night iter-74: was raw ToolButtons (plain coloured text)
+                // — inconsistent with the DesignPill segmented toggle used by
+                // "Формат времени" in this same section. Migrated to DesignPill so
+                // both binary toggles in Общие render as matching filled pills.
                 RowLayout {
-                    spacing: 2
+                    spacing: Spacing.sm
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    ButtonGroup { id: densityGroup }
 
-                    ToolButton {
+                    DesignPill {
                         text: qsTr("Удобный")
+                        checkable: true
                         checked: !settingsViewModel.compactDensity
+                        ButtonGroup.group: densityGroup
                         onClicked: {
                             settingsViewModel.compactDensity = false
                             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                                 telemetry.trackEvent("settings_density_changed", { "value": "comfortable" })
                         }
-                        Material.foreground: checked ? ThemeManager.accentColor : ThemeManager.secondaryTextColor
                     }
 
-                    ToolButton {
+                    DesignPill {
                         text: qsTr("Компактный")
+                        checkable: true
                         checked: settingsViewModel.compactDensity
+                        ButtonGroup.group: densityGroup
                         onClicked: {
                             settingsViewModel.compactDensity = true
                             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                                 telemetry.trackEvent("settings_density_changed", { "value": "compact" })
                         }
-                        Material.foreground: checked ? ThemeManager.accentColor : ThemeManager.secondaryTextColor
                     }
                 }
             }
