@@ -125,3 +125,18 @@ i18n/*.qm
 # are the source of truth; these dicts are one-shot scratch.
 tools/translations_*.json
 tools/untranslated.json
+
+# ────────────────────────────────────────────────────────────────────────
+# GUI pixel-perfect / night-cycle loop scratch (dev-only)
+# ────────────────────────────────────────────────────────────────────────
+# PrintWindow screenshots + crops captured while driving the running app for
+# the pixel-perfect comparison loop, and the visual-diff pipeline outputs.
+# All throwaway — regenerated on demand; never shipping assets. Root-anchored
+# and "_"-prefixed so tracked assets (resources/icons/*.svg etc.) are untouched.
+/_*.png
+/_*.txt
+visual_diff*.png
+visual_diff_intermediate/
+# Win32 click/scroll/snap PowerShell helpers used to automate the app for
+# screenshots (kept on disk for reuse; not part of the shipping project).
+tools/_*.ps1
