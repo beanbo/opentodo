@@ -247,7 +247,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  dateBtn.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  dateBtn.hovered ? ThemeManager.hoverColor : "transparent"
                 }
 
                 ToolTip.visible: hovered
@@ -286,7 +286,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  recurChip.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  recurChip.hovered ? ThemeManager.hoverColor : "transparent"
                 }
 
                 ToolTip.visible: hovered
@@ -403,7 +403,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  prioBtn.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  prioBtn.hovered ? ThemeManager.hoverColor : "transparent"
                 }
 
                 ToolTip.visible: hovered
@@ -463,7 +463,7 @@ Rectangle {
                 background: Rectangle {
                     radius: Radius.sm
                     color:  aiPriorityBtn.hovered && aiPriorityBtn.enabled
-                              ? (root.isDark ? "#3a3a3a" : "#eeeeee")
+                              ? ThemeManager.hoverColor
                               : "transparent"
                 }
 
@@ -498,7 +498,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  labelBtn.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  labelBtn.hovered ? ThemeManager.hoverColor : "transparent"
                 }
 
                 ToolTip.visible: hovered
@@ -681,7 +681,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  projectCombo.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  projectCombo.hovered ? ThemeManager.hoverColor : "transparent"
                     border.color: root.borderCol
                     border.width: 1
                 }
@@ -757,7 +757,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  sectionCombo.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  sectionCombo.hovered ? ThemeManager.hoverColor : "transparent"
                     border.color: root.borderCol
                     border.width: 1
                 }
@@ -1036,7 +1036,7 @@ Rectangle {
 
                 background: Rectangle {
                     radius: Radius.sm
-                    color:  cancelBtn.hovered ? (root.isDark ? "#3a3a3a" : "#eeeeee") : "transparent"
+                    color:  cancelBtn.hovered ? ThemeManager.hoverColor : "transparent"
                 }
 
                 onClicked: root.collapse()
