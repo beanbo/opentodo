@@ -441,9 +441,17 @@ Rectangle {
                         anchors.margins: 1
                         radius: Radius.sm
 
+                        // night iter-111: today+selected used to fill the whole
+                        // cell with SOLID accent. In the wide Upcoming side panel
+                        // cells are ~130px tall, and today IS the selected day by
+                        // default — so the very first thing the user sees is a
+                        // jarring full-height red bar with the date floating in
+                        // it. Treat today+selected like any other selected day
+                        // (subtle 0.18 tint) and let the accent ring + accent
+                        // day-number below mark "today". This also makes the
+                        // selection tint consistent across every day instead of
+                        // today being a special solid block.
                         color: {
-                            if (cell._selected && cell._today)
-                                return root._accent
                             if (cell._selected)
                                 return Qt.rgba(root._accent.r, root._accent.g,
                                                root._accent.b, 0.18)
@@ -476,10 +484,12 @@ Rectangle {
                                        : cell._weekend   ? 0.7
                                                          : 1.0
                                 color: {
-                                    if (cell._selected && cell._today) return ThemeManager.accentForeground
-                                    if (cell._today)                   return root._accent
-                                    if (!cell._curMonth)               return ThemeManager.secondaryTextColor
-                                    if (cell._weekend)                 return ThemeManager.secondaryTextColor
+                                    // night iter-111: no more solid today+selected
+                                    // bg, so the day number is the accent color on
+                                    // today (was accentForeground/white-on-solid).
+                                    if (cell._today)     return root._accent
+                                    if (!cell._curMonth) return ThemeManager.secondaryTextColor
+                                    if (cell._weekend)   return ThemeManager.secondaryTextColor
                                     return root._text
                                 }
                             }
@@ -500,9 +510,11 @@ Rectangle {
                                         model: cell._count
                                         delegate: Rectangle {
                                             width:  4; height: 4; radius: 2
-                                            color: (cell._selected && cell._today)
-                                                   ? "#ffffff"
-                                                   : root._accent
+                                            // night iter-111: today+selected no
+                                            // longer has a solid accent bg, so the
+                                            // task dots are the accent color like
+                                            // every other day (was white-on-solid).
+                                            color: root._accent
                                         }
                                     }
                                 }
@@ -517,9 +529,11 @@ Rectangle {
                                     visible:  cell._count > 3
                                     width:    badgeTxt.implicitWidth + 4
                                     height:   12; radius: Radius.md
-                                    color: (cell._selected && cell._today)
-                                           ? Qt.rgba(1, 1, 1, 0.3)
-                                           : root._accent
+                                    // night iter-111: today+selected lost its solid
+                                    // accent bg, so the count badge is accent-filled
+                                    // like every other day (was a translucent-white
+                                    // chip meant to sit on the old solid block).
+                                    color: root._accent
 
                                     Text {
                                         id: badgeTxt
