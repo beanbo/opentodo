@@ -1342,6 +1342,15 @@ Rectangle {
         title:   qsTr("Редактировать проект")
         modal:   true
         anchors.centerIn: Overlay.overlay
+        // Q4.07 night iter-85: cap size to the overlay so the dialog never exceeds
+        // the window; the form scrolls inside editFlick. Width matches the natural
+        // ~560 (driven by the colour-swatch row).
+        width:  Math.min(560, Overlay.overlay.width - Spacing.xl)
+        height: Math.min(topPadding + bottomPadding + implicitHeaderHeight
+                         + implicitFooterHeight
+                         + Math.max(editCol.implicitHeight,
+                                    editBottomSentinel.y + editBottomSentinel.height + Spacing.md),
+                         Overlay.overlay.height - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string editName:        project ? project.name        : ""
@@ -1400,9 +1409,31 @@ Rectangle {
             }
         }
 
+        // Q4.07 night iter-85: scrollable content so the dialog works on windows
+        // shorter than the form. Was a bare ColumnLayout contentItem; when the
+        // content exceeded the window height the bottom fields (Цель на неделю,
+        // Приоритет по умолчанию, Метки по умолчанию) were clipped with no way to
+        // reach them. The Dialog size is capped to the overlay below.
+        contentItem: Flickable {
+            id: editFlick
+            clip: true
+            contentWidth: width
+            // Q4.07 night iter-85: bind to a zero-height sentinel placed as the
+            // LAST child of the ColumnLayout (editBottomSentinel). Its `y` is the
+            // bottom of all laid-out content — accurate even though the
+            // ColumnLayout's own implicitHeight/childrenRect UNDER-report it (a
+            // child Flow reports only its single-row implicitHeight to the layout,
+            // so the lower fields fell outside the scroll area). implicitHeight
+            // stays as a Math.max floor.
+            contentHeight: Math.max(editCol.implicitHeight,
+                                    editBottomSentinel.y + editBottomSentinel.height + Spacing.md)
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
         ColumnLayout {
+            id: editCol
             spacing: 12
-            width: 320
+            width: editFlick.width - Spacing.md
 
             Label { text: qsTr("Название проекта"); font.pixelSize: FontSize.small; color: root.textSecondary }
             TextField {
@@ -1824,7 +1855,16 @@ Rectangle {
                     }
                 }
             }
+
+            // Q4.07 night iter-85: zero-height sentinel as the LAST child. Its
+            // `y` (assigned by the ColumnLayout) equals the bottom of all laid-out
+            // content — accurate even though a child Flow (colour swatches,
+            // default-labels) reports only its single-row implicitHeight to the
+            // layout, making editCol.implicitHeight/childrenRect under-report the
+            // wrapped total. The Flickable's contentHeight binds to this.
+            Item { id: editBottomSentinel; Layout.fillWidth: true; implicitHeight: 0 }
         }
+        }   // Flickable (editFlick) — Q4.07 night iter-85
     }
 
     // ── Delete confirmation dialog ────────────────────────────────────────────
