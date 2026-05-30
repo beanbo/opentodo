@@ -209,7 +209,9 @@ Rectangle {
 
                     contentItem: Text {
                         text: restartBtn.text
-                        color: restartBtn.enabled ? "white" : ThemeManager.secondaryTextColor
+                        // Q4.01 night iter-59: on-accent text → accentForeground
+                        // (white was unreadable on yellow themes).
+                        color: restartBtn.enabled ? ThemeManager.accentForeground : ThemeManager.secondaryTextColor
                         font.pixelSize: 12
                         font.bold: true
                         horizontalAlignment: Text.AlignHCenter

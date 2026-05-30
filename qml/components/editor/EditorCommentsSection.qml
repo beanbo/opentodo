@@ -415,7 +415,8 @@ ColumnLayout {
                 text:          qsTr("Добавить")
                 font.pixelSize: FontSize.bodySmall
                 font.weight:   Font.Medium
-                color:         addCommentBtn.canAdd ? "white" : ThemeManager.secondaryTextColor
+                // Q4.01 night iter-59: on-accent text → accentForeground.
+                color:         addCommentBtn.canAdd ? ThemeManager.accentForeground : ThemeManager.secondaryTextColor
             }
 
             MouseArea {

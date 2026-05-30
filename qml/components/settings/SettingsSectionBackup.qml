@@ -578,7 +578,9 @@ Rectangle {
 
                     contentItem: Text {
                         text: parent.text
-                        color: parent.enabled ? "#ffffff"
+                        // Q4.01 night iter-59: on-accent text → accentForeground
+                        // (white was unreadable on yellow themes).
+                        color: parent.enabled ? ThemeManager.accentForeground
                                               : ThemeManager.secondaryTextColor
                         font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter

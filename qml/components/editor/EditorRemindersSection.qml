@@ -884,7 +884,8 @@ ColumnLayout {
                         anchors.centerIn: parent
                         text:          qsTr("Сохранить")
                         font.pixelSize: FontSize.bodySmall
-                        color:         saveReminderBtn.canSave ? "white"
+                        // Q4.01 night iter-59: on-accent text → accentForeground.
+                        color:         saveReminderBtn.canSave ? ThemeManager.accentForeground
                                        : ThemeManager.secondaryTextColor
                     }
 

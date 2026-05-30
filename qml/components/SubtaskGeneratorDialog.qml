@@ -136,8 +136,10 @@ Popup {
                         text:             modelData
                         font.pixelSize:   FontSize.body
                         font.weight:      Font.Medium
+                        // Q4.01 night iter-59: selected chip text sits on the accent
+                        // bg → accentForeground (white was unreadable on yellow themes).
                         color:            root._countChoice === modelData
-                                          ? "white"
+                                          ? ThemeManager.accentForeground
                                           : ThemeManager.textColor
                     }
 
