@@ -1627,7 +1627,15 @@ Rectangle {
                     // padding (6 px) so the text doesn't kiss the border.
                     background: null
                     onTextChanged: {
-                        if (text.length > 500) text = text.substring(0, 500)
+                        // night iter-126: enforce the length cap on USER edits
+                        // only (activeFocus), NOT on the binding-set that fires
+                        // when the dialog opens. Pre-fix, opening a project whose
+                        // description already exceeded 500 chars (e.g. imported or
+                        // synced from a peer) truncated it on open and the loss
+                        // persisted on Save. TextArea has no onTextEdited and this
+                        // field is not autofocused, so activeFocus is false during
+                        // the open-time population — existing text is preserved.
+                        if (activeFocus && text.length > 500) text = text.substring(0, 500)
                         editDialog.editDescription = text
                     }
                 }
@@ -1663,7 +1671,11 @@ Rectangle {
                     color: root.textPrimary
                     background: null
                     onTextChanged: {
-                        if (text.length > 5000) text = text.substring(0, 5000)
+                        // night iter-126: cap on USER edits only (activeFocus),
+                        // not on the open-time binding-set — see descriptionField
+                        // above. Otherwise an existing >5000-char notes (import /
+                        // sync) was truncated on open and the loss persisted on Save.
+                        if (activeFocus && text.length > 5000) text = text.substring(0, 5000)
                         editDialog.editNotes = text
                     }
                 }
