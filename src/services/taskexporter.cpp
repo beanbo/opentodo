@@ -125,7 +125,14 @@ static void renderMdTaskRecursive(QTextStream &out,
     const QString indent(depth * 2, QChar(' '));
     const QChar mark = t->isCompleted() ? QChar('x') : QChar(' ');
     out << indent << "- [" << mark << "] " << t->content();
-    if (!t->dueDate().isEmpty()) out << " \xF0\x9F\x93\x85 " << t->dueDate();
+    // night iter-116: show the due date for datetime-only tasks too (empty
+    // dueDate, set dueDatetime) — keying off dueDate alone omitted the date for
+    // timed tasks from the markdown export. Use the datetime's date part for a
+    // consistent date-level annotation (the ICS export carries the full time).
+    if (!t->dueDate().isEmpty())
+        out << " \xF0\x9F\x93\x85 " << t->dueDate();
+    else if (!t->dueDatetime().isEmpty())
+        out << " \xF0\x9F\x93\x85 " << t->dueDatetime().left(10);
     if (t->priority() < 4) out << " \xE2\x9A\x91P" << t->priority();
     out << "\n";
     if (!t->description().isEmpty()) {
