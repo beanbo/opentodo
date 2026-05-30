@@ -244,6 +244,44 @@ private slots:
         delete f;
     }
 
+    // night iter-114 (B-1.30): a datetime-only task — empty dueDate but a set
+    // dueDatetime — must still appear in Upcoming AND the global Calendar.
+    // fetchTasks() previously keyed Upcoming/Calendar off dueDate alone, so a
+    // task scheduled e.g. "tomorrow 15:00" was silently dropped from both views.
+    void upcoming_and_calendar_include_datetime_only_tasks()
+    {
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        const QString tomorrow =
+            QDate::currentDate().addDays(1).toString(QStringLiteral("yyyy-MM-dd"));
+
+        // Plain dueDate control (tomorrow) — confirms Upcoming works at all.
+        Task *plain = store.addTask(QStringLiteral("plain +1"), inbox->id());
+        plain->setDueDate(tomorrow);
+
+        // Datetime-only future task: dueDatetime set, dueDate left EMPTY.
+        Task *dt = store.addTask(QStringLiteral("datetime +1 15:00"), inbox->id());
+        dt->setDueDatetime(tomorrow + QStringLiteral("T15:00:00"));
+        QVERIFY2(dt->dueDate().isEmpty(),
+                 "precondition: datetime-only task must have empty dueDate");
+
+        TaskViewModel vm(&store);
+
+        vm.setFilterMode(TaskViewModel::FilterMode::Upcoming);
+        const QStringList up = visibleIds(vm);
+        QVERIFY2(up.contains(dt->id()),
+                 "datetime-only task must appear in Upcoming (keyed off dueDatetime)");
+        QVERIFY(up.contains(plain->id()));
+
+        vm.setFilterMode(TaskViewModel::FilterMode::Calendar);
+        const QStringList cal = visibleIds(vm);
+        QVERIFY2(cal.contains(dt->id()),
+                 "datetime-only task must appear in the global Calendar");
+        QVERIFY(cal.contains(plain->id()));
+    }
+
     void project_mode_with_currentProjectId_shows_only_that_project()
     {
         Fixture *f = makeFixture();

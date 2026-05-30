@@ -1780,14 +1780,22 @@ QList<Task *> TaskViewModel::fetchTasks() const
             if (!result.contains(t)) result.append(t);
         }
     } else if (m_filterMode == FilterMode::Upcoming) {
-        // All tasks with a due date in the future
+        // All tasks with a due date today or later. B-1.30 (night iter-114):
+        // datetime-only tasks carry an empty dueDate but a set dueDatetime, so
+        // keying off dueDate alone dropped a task scheduled e.g. "tomorrow 15:00"
+        // from Upcoming entirely. Resolve the effective date the same way
+        // DataStore::tasksForToday / overdueTasks do (dueDate, else the
+        // dueDatetime's date part) so datetime-only future tasks are listed too.
         const auto all = m_store->allTasks();
         const QDate today = QDate::currentDate();
         for (auto *t : all) {
-            if (!t->isCompleted() && !t->dueDate().isEmpty()) {
-                QDate d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
-                if (d >= today) result.append(t);
-            }
+            if (t->isCompleted()) continue;
+            QDate d;
+            if (!t->dueDate().isEmpty())
+                d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
+            else if (!t->dueDatetime().isEmpty())
+                d = QDate::fromString(t->dueDatetime().left(10), QStringLiteral("yyyy-MM-dd"));
+            if (d.isValid() && d >= today) result.append(t);
         }
     } else if (m_filterMode == FilterMode::Project
                || m_filterMode == FilterMode::Board) {
@@ -1810,14 +1818,19 @@ QList<Task *> TaskViewModel::fetchTasks() const
             else
                 result = m_store->tasksForProject(m_currentProjectId);
         } else {
+            // Mirror the Upcoming branch (B-1.30, night iter-114): include
+            // datetime-only tasks (empty dueDate, set dueDatetime) keyed off the
+            // datetime's date so they appear on the calendar too.
             const auto all = m_store->allTasks();
             const QDate today = QDate::currentDate();
             for (auto *t : all) {
-                if (!t->isCompleted() && !t->dueDate().isEmpty()) {
-                    QDate d = QDate::fromString(t->dueDate(),
-                                                 QStringLiteral("yyyy-MM-dd"));
-                    if (d >= today) result.append(t);
-                }
+                if (t->isCompleted()) continue;
+                QDate d;
+                if (!t->dueDate().isEmpty())
+                    d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
+                else if (!t->dueDatetime().isEmpty())
+                    d = QDate::fromString(t->dueDatetime().left(10), QStringLiteral("yyyy-MM-dd"));
+                if (d.isValid() && d >= today) result.append(t);
             }
         }
     } else if (m_filterMode == FilterMode::Label) {
