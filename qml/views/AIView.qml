@@ -338,7 +338,10 @@ Item {
                 id: inputField
                 Layout.fillWidth: true
                 Layout.preferredHeight: 38
-                placeholderText: qsTr("Спроси что-нибудь… например, 'распланируй мою неделю'")
+                // Q4.01 night iter-56: straight quotes '…' → Russian guillemets «…»
+                // to match the design canvas and the «» convention used 55× across
+                // the rest of the QML (this placeholder was the lone outlier).
+                placeholderText: qsTr("Спроси что-нибудь… например, «распланируй мою неделю»")
                 placeholderTextColor: ThemeManager.secondaryTextColor
                 color: ThemeManager.textColor
                 font.pixelSize: FontSize.bodySmall
