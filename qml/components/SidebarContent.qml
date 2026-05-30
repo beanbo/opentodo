@@ -811,8 +811,19 @@ Rectangle {
                         if (!e) { e = { total: 0, done: 0, overdue: 0, today: 0 }; map[pid] = e }
                         e.total++
                         if (t.isCompleted) { e.done++; continue }
-                        if (t.dueDate && t.dueDate < todayStr) e.overdue++
-                        if (t.dueDate === todayStr) e.today++
+                        // Q4.07 night iter-86: resolve the effective scheduled
+                        // date the way DataStore::tasksForToday / overdueTasks do
+                        // (B-1.28 / B-1.30) — datetime-only tasks carry an empty
+                        // dueDate but a set dueDatetime, so checking dueDate alone
+                        // under-reported them in the project-row
+                        // «Просрочено / На сегодня» hover tooltips.
+                        var due = t.dueDate || ""
+                        if (!due && t.dueDatetime)
+                            due = String(t.dueDatetime).substring(0, 10)
+                        if (due) {
+                            if (due < todayStr)        e.overdue++
+                            else if (due === todayStr) e.today++
+                        }
                     }
                     projectTreeColumn.projectCountsMap = map
                 }
