@@ -1307,7 +1307,22 @@ Item {
                             var h = height
                             ctx.clearRect(0, 0, w, h)
 
-                            var data = karmaViewModel.karmaTrend
+                            // Q4.07 night iter-92: karmaViewModel.karmaTrend (the raw
+                            // QSettings array) is never populated — its ONLY writer,
+                            // calculateKarma(), is dead code (Q_INVOKABLE with zero
+                            // callers anywhere), so this "Динамика продуктивности"
+                            // chart painted permanently blank. Build the cumulative
+                            // score curve from karmaTrendByDay() instead — computed
+                            // live from completions (same robust source as the
+                            // "Очки за 30 дней" chart). Running sum → a rising curve,
+                            // distinct from that per-day chart.
+                            var perDay = karmaViewModel.karmaTrendByDay(30)
+                            var data = []
+                            var runningTotal = 0
+                            for (var pi = 0; pi < perDay.length; pi++) {
+                                runningTotal += (perDay[pi].score || 0)
+                                data.push({ date: perDay[pi].date, score: runningTotal })
+                            }
                             if (!data || data.length === 0) return
 
                             // Find min/max
