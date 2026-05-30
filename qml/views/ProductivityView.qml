@@ -524,7 +524,10 @@ Item {
                     // ── Header ─────────────────────────────────────────────
                     // Q4.01 (redesign): "🍅" префикс убран.
                     Text {
-                        text: qsTr("Pomodoro статистика")
+                        // Q4.07 night iter-87: match design canvas word order
+                        // ("Статистика Pomodoro", view-others.jsx) — also the more
+                        // natural Russian genitive vs the English-style order.
+                        text: qsTr("Статистика Pomodoro")
                         font.pixelSize: FontSize.body
                         font.weight: Font.DemiBold
                         color: textPrimary
@@ -1003,6 +1006,23 @@ Item {
                     anchors.topMargin: Spacing.md
                     spacing: Spacing.xs
 
+                    // Q4.07 night iter-87: karmaViewModel.karmaLevel returns an
+                    // internal English key (beginner/novice/…) used for storage,
+                    // logic and the unit tests. Map it to a localized Russian label
+                    // for display so the Russian UI never shows raw "beginner".
+                    // Unknown keys fall back to the raw value.
+                    function _levelName(lvl) {
+                        switch (lvl) {
+                        case "beginner":     return qsTr("Новичок")
+                        case "novice":       return qsTr("Ученик")
+                        case "intermediate": return qsTr("Опытный")
+                        case "expert":       return qsTr("Эксперт")
+                        case "master":       return qsTr("Мастер")
+                        case "grandmaster":  return qsTr("Грандмастер")
+                        default:             return lvl
+                        }
+                    }
+
                     Text {
                         text: karmaViewModel.karmaScore.toString()
                         font.pixelSize: 48
@@ -1011,7 +1031,7 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     Text {
-                        text: qsTr("Продуктивность · %1").arg(karmaViewModel.karmaLevel)
+                        text: qsTr("Продуктивность · %1").arg(karmaHeroCol._levelName(karmaViewModel.karmaLevel))
                         font.pixelSize: 16
                         color: ThemeManager.accentForeground
                         opacity: 0.85
