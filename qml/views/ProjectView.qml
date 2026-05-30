@@ -1771,7 +1771,7 @@ Rectangle {
 
             // Empty-state hint when there are no labels at all in the system.
             Label {
-                visible: dataStore.allLabels().length === 0
+                visible: dataStore.allLabelsData().length === 0
                 text: qsTr("В системе пока нет меток. Создай метки в разделе «Метки», чтобы выбирать их здесь.")
                 font.pixelSize: FontSize.caption
                 color: root.textSecondary
@@ -1782,14 +1782,14 @@ Rectangle {
             // Wrapping flow of label checkboxes — one per available label.
             Flow {
                 id: defaultLabelsFlow
-                visible: dataStore.allLabels().length > 0
+                visible: dataStore.allLabelsData().length > 0
                 Layout.fillWidth: true
                 spacing: Spacing.xs
 
                 Repeater {
                     // Re-evaluated every time the dialog opens because
                     // editDefaultLabels resets in onOpened.
-                    model: dataStore.allLabels()
+                    model: dataStore.allLabelsData()
 
                     delegate: Rectangle {
                         id: labelChip

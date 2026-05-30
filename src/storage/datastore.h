@@ -162,6 +162,10 @@ public:
     // still showing the old chip text until the next loadFromJson.
     Q_INVOKABLE bool renameLabel(const QString &id, const QString &newName);
     Q_INVOKABLE QList<Label *> allLabels() const;
+    // JS-friendly label list (see allTasksData rationale; a QList<Label*> does
+    // not convert to a JS array in QML, so allLabels().length is `undefined` —
+    // visibility checks like `allLabels().length === 0` silently evaluate false).
+    Q_INVOKABLE QVariantList allLabelsData() const;
     void addExistingLabel(Label *label);
 
     // --- Filters ---
@@ -349,6 +353,7 @@ private:
     // Q_PROPERTY names. Centralised so every accessor exposes one shape.
     static QVariantList tasksToData(const QList<Task *> &list);
     static QVariantList projectsToData(const QList<Project *> &list);
+    static QVariantList labelsToData(const QList<Label *> &list);
 
     // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
     void stampEntityField(const QString &entityId,

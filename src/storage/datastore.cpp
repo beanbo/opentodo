@@ -664,6 +664,32 @@ QVariantList DataStore::projectsToData(const QList<Project *> &list)
 
 QVariantList DataStore::allProjectsData() const { return projectsToData(allProjects()); }
 
+// Q4.07 night iter-88: JS-friendly label list. allLabels() returns
+// QList<Label*>, whose `.length` is undefined in QML (Qt 6.11) — the project
+// edit dialog's default-labels picker hid both its "no labels" hint
+// (`length === 0`) and its chip Flow (`length > 0`) because both compared
+// `undefined`. Mirrors projectsToData; keys match the Label Q_PROPERTY names so
+// existing modelData.id / .name / .color delegate access keeps working.
+QVariantList DataStore::labelsToData(const QList<Label *> &list)
+{
+    QVariantList out;
+    out.reserve(list.size());
+    for (auto *l : list) {
+        if (!l) continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("id"),         l->id());
+        m.insert(QStringLiteral("name"),       l->name());
+        m.insert(QStringLiteral("color"),      l->color());
+        m.insert(QStringLiteral("order"),      l->order());
+        m.insert(QStringLiteral("isFavorite"), l->isFavorite());
+        m.insert(QStringLiteral("isDeleted"),  l->isDeleted());
+        out.append(m);
+    }
+    return out;
+}
+
+QVariantList DataStore::allLabelsData() const { return labelsToData(allLabels()); }
+
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const
 {
     QList<Task *> result;
