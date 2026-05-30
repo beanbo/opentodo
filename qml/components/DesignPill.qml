@@ -12,7 +12,16 @@ AbstractButton {
     topPadding: 4
     bottomPadding: 4
 
-    property bool active: control.checked || control.highlighted
+    // night iter-123: was `control.checked || control.highlighted`, but the
+    // root is an AbstractButton which has NO `highlighted` property (that's a
+    // Button/ItemDelegate addition). So `control.highlighted` evaluated to
+    // undefined and `false || undefined` → undefined, spamming
+    // "Unable to assign [undefined] to bool" on every unchecked pill. Every
+    // DesignPill caller drives state via `checkable`+`checked` (see
+    // SettingsSectionGeneral time-format / density toggles); none sets
+    // highlighted. Bind to `checked` alone — same result (undefined was falsy),
+    // minus the warning.
+    property bool active: control.checked
 
     background: Rectangle {
         radius: Radius.md

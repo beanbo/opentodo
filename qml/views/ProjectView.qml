@@ -1346,10 +1346,17 @@ Rectangle {
         // the window; the form scrolls inside editFlick. Width matches the natural
         // ~560 (driven by the colour-swatch row).
         width:  Math.min(560, Overlay.overlay.width - Spacing.xl)
+        // night iter-123: the height previously took Math.max(editCol.implicitHeight,
+        // editBottomSentinel.y + ...). editBottomSentinel.y is a LAYOUT OUTPUT of
+        // editCol — which lives inside THIS dialog's own contentItem — so feeding
+        // it back into the dialog height created "QML Dialog: Binding loop detected
+        // for property height" on every open. Base the dialog height on the natural
+        // editCol.implicitHeight only. The Flickable's contentHeight (editFlick,
+        // below) still uses the sentinel, so the form stays fully scrollable even
+        // if implicitHeight under-reports (the rare multi-row labels Flow case) —
+        // no clip, the iter-85 fix is preserved where it actually matters.
         height: Math.min(topPadding + bottomPadding + implicitHeaderHeight
-                         + implicitFooterHeight
-                         + Math.max(editCol.implicitHeight,
-                                    editBottomSentinel.y + editBottomSentinel.height + Spacing.md),
+                         + implicitFooterHeight + editCol.implicitHeight + Spacing.md,
                          Overlay.overlay.height - Spacing.xl)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
