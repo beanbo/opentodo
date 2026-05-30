@@ -2383,13 +2383,27 @@ void TaskViewModel::sortTasks()
                                  m_filterMode == FilterMode::Calendar);
 
     if (m_sortBy == QStringLiteral("date")) {
-        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection](const Task *a, const Task *b) {
+        // night iter-115: effective due-date for sorting. Datetime-only tasks
+        // carry an empty dueDate but a set dueDatetime, so keying the sort off
+        // dueDate alone dumped them at the end with truly-undated tasks instead
+        // of interleaving them chronologically (a task due "tomorrow 15:00"
+        // sorted AFTER one due next month). Resolve dueDate, else the
+        // dueDatetime's date part — same rule as FilterEval::effectiveDueDate
+        // and DataStore::tasksForToday/overdueTasks.
+        auto effDate = [](const Task *t) -> QString {
+            if (!t->dueDate().isEmpty()) return t->dueDate();
+            const QString dt = t->dueDatetime();
+            return dt.isEmpty() ? QString() : dt.left(10);
+        };
+        std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &effDate](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
                 return a->sectionId() < b->sectionId();
-            if (a->dueDate().isEmpty() && b->dueDate().isEmpty()) return a->order() < b->order();
-            if (a->dueDate().isEmpty()) return false;
-            if (b->dueDate().isEmpty()) return true;
-            if (a->dueDate() != b->dueDate()) return a->dueDate() < b->dueDate();
+            const QString da = effDate(a);
+            const QString db = effDate(b);
+            if (da.isEmpty() && db.isEmpty()) return a->order() < b->order();
+            if (da.isEmpty()) return false;
+            if (db.isEmpty()) return true;
+            if (da != db) return da < db;
             return a->order() < b->order();
         });
     } else if (m_sortBy == QStringLiteral("priority")) {

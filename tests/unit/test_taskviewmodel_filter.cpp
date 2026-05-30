@@ -282,6 +282,42 @@ private slots:
         QVERIFY(cal.contains(plain->id()));
     }
 
+    // night iter-115: when sorting by date, a datetime-only task (empty dueDate,
+    // set dueDatetime) must interleave chronologically by its datetime's date —
+    // not get dumped at the end with truly-undated tasks. Pre-fix the comparator
+    // keyed off dueDate alone, so "in 2 days 15:00" sorted AFTER "in 10 days".
+    void date_sort_orders_datetime_only_by_its_date()
+    {
+        DataStore store;
+        Project *proj = store.addProject(QStringLiteral("P"));
+
+        const QDate today = QDate::currentDate();
+        const QString fmt = QStringLiteral("yyyy-MM-dd");
+
+        // "later" — plain dueDate, +10 days.
+        Task *later = store.addTask(QStringLiteral("later +10"), proj->id());
+        later->setDueDate(today.addDays(10).toString(fmt));
+
+        // "earlier" — datetime-only, +2 days 15:00 (no plain dueDate).
+        Task *earlier = store.addTask(QStringLiteral("earlier +2 dt"), proj->id());
+        earlier->setDueDatetime(today.addDays(2).toString(fmt) + QStringLiteral("T15:00:00"));
+        QVERIFY(earlier->dueDate().isEmpty());
+
+        TaskViewModel vm(&store);
+        vm.setSortBy(QStringLiteral("date"));
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(proj->id());
+
+        const QStringList ids = visibleIds(vm);
+        const int idxEarlier = ids.indexOf(earlier->id());
+        const int idxLater   = ids.indexOf(later->id());
+        QVERIFY2(idxEarlier >= 0 && idxLater >= 0,
+                 "both tasks must be visible in the project");
+        QVERIFY2(idxEarlier < idxLater,
+                 "datetime-only task (earlier date) must sort before the later "
+                 "plain-dueDate task when sorting by date");
+    }
+
     void project_mode_with_currentProjectId_shows_only_that_project()
     {
         Fixture *f = makeFixture();
