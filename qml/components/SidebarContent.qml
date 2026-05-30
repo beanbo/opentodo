@@ -115,11 +115,16 @@ Rectangle {
                 for (var i = 0; i < arr.length; ++i) {
                     var t = arr[i]
                     if (!t || t.isCompleted || t.isDeleted) continue
-                    // Prefer the scheduled date (dueDate, then datetime's date part),
-                    // fall back to the deadline.
+                    // Q4 night iter-112: match DataStore::overdueTasks() (the
+                    // «Сегодня»/overdue list this badge counts) and the per-project
+                    // counts below — scheduled date only: dueDate, else dueDatetime's
+                    // date part. Do NOT fall back to deadline. overdueTasks() ignores
+                    // deadline (a distinct hard cutoff with its own picker), so the
+                    // old deadline fallback made this badge over-count deadline-only
+                    // tasks that never appear in the overdue list — the badge showed
+                    // a higher number than the view it represents.
                     var dateStr = t.dueDate || ""
                     if (!dateStr && t.dueDatetime) dateStr = String(t.dueDatetime).substring(0, 10)
-                    if (!dateStr && t.deadline) dateStr = t.deadline
                     if (!dateStr) continue
                     var d = new Date(dateStr)
                     if (isNaN(d.getTime())) continue
