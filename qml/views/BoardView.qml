@@ -30,10 +30,21 @@ Rectangle {
     property var _sections: []
 
     function _refreshSections() {
-        var raw    = dataStore.sectionsForProject(projectId)
+        var raw = dataStore.sectionsForProject(projectId)
+        // Iter-110: sort columns by `order` so the board follows the user's
+        // section arrangement. dataStore.sectionsForProject() returns
+        // m_sections INSERTION order (datastore.cpp), not `order`, while the
+        // list view groups sections by `order` (the reorder menu in
+        // ProjectView mutates section.order via setSectionOrder). Without this
+        // sort the board kept columns in creation order and silently ignored
+        // section reordering — list and board showed sections in different
+        // orders for the same project. Mirror ProjectView._siblingSections.
+        var arr = []
+        for (var i = 0; i < raw.length; i++) arr.push(raw[i])
+        arr.sort(function(a, b) { return a.order - b.order })
         var result = [{ id: "", name: qsTr("(Без раздела)") }]
-        for (var i = 0; i < raw.length; i++) {
-            result.push({ id: raw[i].id, name: raw[i].name })
+        for (var j = 0; j < arr.length; j++) {
+            result.push({ id: arr[j].id, name: arr[j].name })
         }
         _sections = result
     }
