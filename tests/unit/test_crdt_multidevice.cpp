@@ -497,10 +497,14 @@ private slots:
         const quint64 farMs   = nowMs + (60ULL * 60 * 1000) + (5ULL * 60 * 1000); // +65min
         const QString tsAhead = makeHlc(farMs, 0, kDevA);
         const QString tsB     = makeHlc(nowMs,         0, kDevB);
-        // Use counter>0 on C so it strictly out-ranks the clamped (counter=0)
-        // bad HLC on A even in the corner case where A's clamp anchor lands
-        // on the same physMs as C's edit (rare but possible).
-        const QString tsC     = makeHlc(nowMs + 1000,  1, kDevC); // +1s, counter=1
+        // C must out-rank A's bad HLC after A is clamped to wall-now AT MERGE
+        // TIME. A +1s margin (the original) flips under heavy parallel-test load
+        // when the merge runs >1s after nowMs is captured here — the clamp
+        // anchor then exceeds C's physMs and A wins (flaky failure). Use a +5min
+        // margin: far above any realistic merge delay, yet well inside the 60-min
+        // clamp window so C is NOT itself clamped. counter>0 also breaks any
+        // same-ms tie against the clamped (counter=0) A.
+        const QString tsC     = makeHlc(nowMs + 5ULL * 60 * 1000, 1, kDevC);
 
         QJsonObject a = withFieldMeta(
             withField(makeEntity(id, baseTs), QStringLiteral("content"), QStringLiteral("A-skewed")),
@@ -679,11 +683,15 @@ private slots:
         // Year 2099 in ms-since-epoch ≈ 4.07e12.
         const quint64 yr2099 = 4070000000000ULL;
         const QString tsFar  = makeHlc(yr2099, 0, kDevA);
-        // Use a counter > 0 on the legitimate side so it strictly out-ranks
-        // the clamped (counter=0) bad HLC even in the corner case where the
-        // legit edit lands exactly on the same physMs as the clamp anchor.
+        // +5min margin so B reliably out-ranks A's year-2099 HLC after it is
+        // clamped to wall-now AT MERGE TIME. A counter-only margin (the
+        // original) flips whenever the merge crosses a millisecond boundary
+        // under parallel-test load — the clamp anchor then exceeds B's physMs
+        // and the bad HLC wins (flaky failure). 5min is well inside the 60-min
+        // clamp window, so tsNow is not itself clamped.
         const QString tsNow  = makeHlc(static_cast<quint64>(
-            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()), 1, kDevB);
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch())
+            + 5ULL * 60 * 1000, 1, kDevB);
 
         QJsonObject a = withFieldMeta(
             withField(makeEntity(id, baseTs),
@@ -728,8 +736,11 @@ private slots:
         const QString baseTs = QStringLiteral("2026-05-01T00:00:00.000Z");
         const quint64 yr2099 = 4070000000000ULL;
         const QString tsFar  = makeHlc(yr2099, 0, kDevA);
+        // +5min margin (see slot 9): robust against the wall-now-at-merge clamp
+        // anchor drifting past a counter-only margin under parallel-test load.
         const QString tsNow  = makeHlc(static_cast<quint64>(
-            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()), 1, kDevB);
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch())
+            + 5ULL * 60 * 1000, 1, kDevB);
 
         // This time A (with bad HLC) is REMOTE and B (legit) is LOCAL.
         QJsonObject local = withFieldMeta(
