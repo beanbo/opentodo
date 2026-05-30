@@ -90,8 +90,9 @@ void SyncEngine::push()
     // the commit chain. The caller must trigger a manual resync first.
     if (m_danglingHead) {
         const QString reason = QStringLiteral(
-            "Refusing to push: local HEAD '%1' references a commit not present "
-            "in the remote log. Run a manual resync to recover.")
+            "Отправка отклонена: локальный HEAD «%1» ссылается на коммит, "
+            "отсутствующий в удалённом журнале. Выполните повторную "
+            "синхронизацию вручную для восстановления.")
             .arg(m_headCommitId);
         qCWarning(lcSync) << reason;
         setLastError(reason);
@@ -104,7 +105,9 @@ void SyncEngine::push()
 
     // Acquire lock
     if (!m_gdrive->acquireLock()) {
-        setLastError(QStringLiteral("Could not acquire sync lock. Another device may be syncing."));
+        setLastError(QStringLiteral("Не удалось получить блокировку синхронизации. Возможно, "
+                                      "синхронизация выполняется на другом устройстве, "
+                                      "либо отсутствует подключение к сети."));
         setStatus(Error);
         return;
     }
@@ -136,7 +139,7 @@ void SyncEngine::push()
         const QString fileName = QStringLiteral("log/%1.json").arg(commit->uuid());
 
         if (!m_gdrive->uploadFile(fileName, doc.toJson())) {
-            setLastError(QStringLiteral("Failed to upload commit %1").arg(commit->uuid()));
+            setLastError(QStringLiteral("Не удалось отправить коммит %1").arg(commit->uuid()));
             // Drop only the commits actually delivered; leave the failing one
             // and any that follow it on disk so the next push picks up where
             // we stopped.
@@ -166,7 +169,7 @@ void SyncEngine::push()
     // from the snapshot.
     const QJsonDocument stateDoc(m_store->toJson());
     if (!m_gdrive->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
-        setLastError(QStringLiteral("Failed to upload state.json"));
+        setLastError(QStringLiteral("Не удалось отправить state.json"));
         // Iter-15 regress-fix for iter-14: the upload loop already removed
         // every uploaded commit from m_pendingCommits and put them in
         // uploadedThisPass. If we return here without purging, the Commit*
@@ -198,7 +201,7 @@ void SyncEngine::push()
         // commit and refuse to push. Treat the HEAD upload as a hard
         // failure and abort BEFORE running compaction.
         if (!m_gdrive->uploadFile(QStringLiteral("HEAD"), headDoc.toJson())) {
-            setLastError(QStringLiteral("Failed to upload HEAD pointer"));
+            setLastError(QStringLiteral("Не удалось отправить указатель HEAD"));
             purgeUploaded();
             m_gdrive->releaseLock();
             setStatus(Error);
@@ -239,7 +242,9 @@ void SyncEngine::pull()
 
     // X-2.12: acquire lock for the pull so we don't race against a concurrent push.
     if (!m_gdrive->acquireLock()) {
-        setLastError(QStringLiteral("Could not acquire sync lock during pull."));
+        setLastError(QStringLiteral("Не удалось получить блокировку синхронизации при загрузке. "
+                                      "Возможно, синхронизация выполняется на другом "
+                                      "устройстве, либо отсутствует подключение к сети."));
         setStatus(Error);
         return;
     }
@@ -255,7 +260,7 @@ void SyncEngine::pull()
                                                 /*maxBytes=*/MAX_STATE_SIZE);
     if (!headOk) {
         // Real network error (or oversize) — do not proceed.
-        setLastError(QStringLiteral("Network error downloading HEAD. Check connectivity."));
+        setLastError(QStringLiteral("Ошибка сети при загрузке HEAD. Проверьте подключение к интернету."));
         m_gdrive->releaseLock();
         setStatus(Error);
         return;
@@ -324,8 +329,8 @@ void SyncEngine::pull()
                                 /*notFoundIsOk=*/false,
                                 /*maxBytes=*/MAX_STATE_SIZE)) {
         setLastError(QStringLiteral(
-            "Failed to download remote state (network error or body "
-            "exceeded MAX_STATE_SIZE = %1 bytes)").arg(MAX_STATE_SIZE));
+            "Не удалось загрузить удалённое состояние (ошибка сети или "
+            "размер тела ответа превысил MAX_STATE_SIZE = %1 байт)").arg(MAX_STATE_SIZE));
         m_gdrive->releaseLock();
         setStatus(Error);
         return;
@@ -341,7 +346,7 @@ void SyncEngine::pull()
     if (remoteState.isEmpty() || !remoteState.contains(QStringLiteral("tasks"))) {
         qCWarning(lcSync) << "pull(): remote state.json is invalid or empty — aborting pull";
         m_gdrive->releaseLock();
-        setLastError(QStringLiteral("Remote state.json is invalid (missing 'tasks'). Pull aborted."));
+        setLastError(QStringLiteral("Удалённый state.json повреждён (отсутствует «tasks»). Загрузка прервана."));
         setStatus(Error);
         return;
     }
@@ -376,9 +381,10 @@ void SyncEngine::pull()
 
     if (danglingHead) {
         const QString reason = QStringLiteral(
-            "Remote HEAD '%1' references a commit not present in log/. "
-            "The remote is internally inconsistent — refusing to apply "
-            "remote state. Manually resync to recover.")
+            "Удалённый HEAD «%1» ссылается на коммит, отсутствующий в log/. "
+            "Удалённое хранилище внутренне несогласованно — применение "
+            "удалённого состояния отменено. Выполните повторную "
+            "синхронизацию вручную для восстановления.")
             .arg(remoteHead);
         qCWarning(lcSync) << "SyncEngine: dangling HEAD detected -" << reason;
         if (m_telemetry) {
