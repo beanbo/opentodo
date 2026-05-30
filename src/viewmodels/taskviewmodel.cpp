@@ -391,7 +391,20 @@ bool TaskViewModel::updateTask(const QString &id, const QString &field, const QV
     // ITER2 #1: projectId/sectionId moves were silently dropped by the editor.
     // Delegate to moveTask which also stamps CRDT meta and refreshes the model.
     else if (field == QStringLiteral("projectId")) {
-        return moveTask(id, value.toString(), task->sectionId());
+        // night iter-120: a section belongs to exactly ONE project, so moving a
+        // task to a DIFFERENT project must DROP its old section_id — otherwise
+        // the task keeps a sectionId that doesn't exist in the destination and
+        // is orphaned there (board: matches no column and isn't sectionId==""
+        // either, so it vanishes; list: sinks below every real section with no
+        // header). moveTask already clears section_id on every cascaded SUBTASK
+        // of a cross-project move; the ROOT task needs the same. The editor
+        // project picker (EditorMetaRow.qml) is the live trigger — it even
+        // resets its section combo to "no section" on project change, but that
+        // UI reset was never persisted, so data/UI also desynced.
+        const QString newProject = value.toString();
+        const QString newSection = (newProject != task->projectId())
+                                   ? QString() : task->sectionId();
+        return moveTask(id, newProject, newSection);
     }
     else if (field == QStringLiteral("sectionId")) {
         return moveTask(id, task->projectId(), value.toString());

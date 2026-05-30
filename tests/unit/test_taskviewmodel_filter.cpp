@@ -407,6 +407,40 @@ private slots:
                  "not by sectionId UUID");
     }
 
+    // night iter-120 regression: a section belongs to exactly ONE project, so
+    // moving a task to a DIFFERENT project via updateTask("projectId", ...) —
+    // the editor's project picker (EditorMetaRow.qml) — must clear its old
+    // sectionId. Otherwise the task keeps a section that doesn't exist in the
+    // destination project and is orphaned there (board-invisible, list
+    // mis-grouped). A same-project "change" must NOT clear the section.
+    void updateTask_projectChange_clears_old_section()
+    {
+        DataStore store;
+        Project *src = store.addProject(QStringLiteral("Src"));
+        Project *dst = store.addProject(QStringLiteral("Dst"));
+        Section *srcSec = store.addSection(QStringLiteral("S"), src->id());
+        Section *dstSec = store.addSection(QStringLiteral("D"), dst->id());
+        QVERIFY(src && dst && srcSec && dstSec);
+
+        TaskViewModel vm(&store);
+
+        // Cross-project move MUST drop the old-project section.
+        Task *t = store.addTask(QStringLiteral("movable"), src->id());
+        t->setSectionId(srcSec->id());
+        QCOMPARE(t->sectionId(), srcSec->id());
+        QVERIFY(vm.updateTask(t->id(), QStringLiteral("projectId"), dst->id()));
+        QCOMPARE(t->projectId(), dst->id());
+        QVERIFY2(t->sectionId().isEmpty(),
+                 "cross-project move must drop the old project's sectionId "
+                 "(else the task is orphaned in the destination project)");
+
+        // Same-project updateTask("projectId", same) must NOT clear the section.
+        Task *u = store.addTask(QStringLiteral("stay"), dst->id());
+        u->setSectionId(dstSec->id());
+        QVERIFY(vm.updateTask(u->id(), QStringLiteral("projectId"), dst->id()));
+        QCOMPARE(u->sectionId(), dstSec->id());
+    }
+
     // night iter-122: reordering a section (setSectionOrder, from the reorder
     // menu) must re-sort the list. Since iter-121 the list orders section groups
     // by section.order, and setSectionOrder emits sectionsChanged (not
