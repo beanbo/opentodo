@@ -27,7 +27,12 @@ AbstractButton {
     contentItem: Text {
         text: control.text
         font.pixelSize: FontSize.small
-        color: control.active ? "#ffffff" : ThemeManager.secondaryTextColor
+        // Q4.01 night iter-58: active text sits on the accent background, so it
+        // must use accentForeground (dark on yellow themes — sunflower/
+        // highcontrast — white elsewhere). Hardcoded "#ffffff" was unreadable
+        // white-on-yellow on those palettes. Same accentForeground class as
+        // iters 16/17/22.
+        color: control.active ? ThemeManager.accentForeground : ThemeManager.secondaryTextColor
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

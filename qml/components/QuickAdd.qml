@@ -1051,7 +1051,11 @@ Rectangle {
 
                 contentItem: Text {
                     text:  addBtn.text
-                    color: addBtn.enabled ? "white" : "#c0c0c0"
+                    // Q4.01 night iter-58: enabled text sits on the accent button
+                    // background → accentForeground (dark on yellow themes, white
+                    // elsewhere); "white" was unreadable white-on-yellow on
+                    // sunflower/highcontrast.
+                    color: addBtn.enabled ? ThemeManager.accentForeground : "#c0c0c0"
                     font:  addBtn.font
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment:   Text.AlignVCenter
