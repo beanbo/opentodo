@@ -906,7 +906,17 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 4
-                    visible: dueDate !== "" || (labels && labels.length > 0)
+                    // night iter-129: also reveal the meta row when dueString is
+                    // set but dueDate is empty. Datetime-only tasks (empty dueDate,
+                    // set dueDatetime — B-1.28/B-1.30, the same shape iter-110/112/
+                    // CSV-109 already resolve in Today/Board/export) reach the
+                    // list-view TaskItem via the raw DueDateRole, so dueDate is ""
+                    // here even though dueString ("завтра 14:00") is populated.
+                    // Gating on dueDate alone hid the due chip for every such task.
+                    // No-op for UI-created tasks: the DateParser always co-sets
+                    // dueDate whenever dueString is set, so this only ever adds the
+                    // datetime-only case — it never changes a date-bearing row.
+                    visible: dueDate !== "" || dueString !== "" || (labels && labels.length > 0)
                              || root._hasDeadline || root._durationLabel !== ""
                              || root._estimateLabel !== ""
 
@@ -915,7 +925,12 @@ Item {
                     // text alone read as "raw timestamp", the icon reads as
                     // "this is a due date" at a glance.
                     Rectangle {
-                        visible:  dueDate !== "" && dueDate !== undefined
+                        // night iter-129: show whenever there's a displayable due —
+                        // dueDate OR dueString (the chip text below already prefers
+                        // dueString). Matches the meta-row gate above so datetime-
+                        // only tasks show their "завтра 14:00" chip instead of nothing.
+                        visible:  (dueDate !== "" && dueDate !== undefined)
+                                  || (dueString !== "" && dueString !== undefined)
                         height:   18
                         width:    _dueChipRow.implicitWidth + 12
                         radius:   4
