@@ -2566,11 +2566,30 @@ Rectangle {
                         // Q4.01 night iter-54: allProjects() (QList<Project*>) .length
                         // is undefined in QML → parent-project picker was empty.
                         const allProjs = dataStore.allProjectsData()
+                        // night iter-136: exclude the project's own DESCENDANTS, not
+                        // just itself. Offering a descendant as the new parent builds
+                        // a cycle that updateProject's guard silently rejects (returns
+                        // false, no feedback) — the dialog would close having changed
+                        // nothing. With nested projects this is an easy accidental
+                        // pick. Build a parentId map and skip any candidate whose
+                        // ancestor chain passes through the target.
+                        const parentOf = ({})
+                        for (let k = 0; k < allProjs.length; ++k)
+                            if (allProjs[k]) parentOf[allProjs[k].id] = allProjs[k].parentId || ""
+                        function _isUnderTarget(pid) {
+                            let cur = parentOf[pid], guard = 0
+                            while (cur && cur !== "" && guard < 1000) {
+                                if (cur === parentPickerDialog.projectId) return true
+                                cur = parentOf[cur]; guard++
+                            }
+                            return false
+                        }
                         for (let i = 0; i < allProjs.length; ++i) {
                             const p = allProjs[i]
                             if (!p) continue
                             if (p.isInbox || p.isArchived) continue
                             if (p.id === parentPickerDialog.projectId) continue
+                            if (_isUnderTarget(p.id)) continue
                             items.push({ id: p.id, name: p.name })
                         }
                     }
