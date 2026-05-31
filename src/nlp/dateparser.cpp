@@ -139,7 +139,7 @@ static QString translateHumanStringToRussian(const QString &en)
     return en;
 }
 
-DateParseResult DateParser::parse(const QString &input, const QString &lang)
+DateParseResult DateParser::parse(const QString &input, const QString &lang, int nextWeekDay)
 {
     const QString trimmed = input.trimmed();
     if (trimmed.isEmpty()) return {};
@@ -147,17 +147,17 @@ DateParseResult DateParser::parse(const QString &input, const QString &lang)
     const QDate today = QDate::currentDate();
 
     if (lang == QStringLiteral("ru")) {
-        DateParseResult ru = parseRussian(trimmed, today);
+        DateParseResult ru = parseRussian(trimmed, today, nextWeekDay);
         if (ru.valid)
             return ru;
         // Russian parser failed — fall back to English but rewrite humanString.
-        DateParseResult en = parseEnglish(trimmed, today);
+        DateParseResult en = parseEnglish(trimmed, today, nextWeekDay);
         if (en.valid)
             en.humanString = translateHumanStringToRussian(en.humanString);
         return en;
     }
 
-    return parseEnglish(trimmed, today);
+    return parseEnglish(trimmed, today, nextWeekDay);
 }
 
 DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult result)

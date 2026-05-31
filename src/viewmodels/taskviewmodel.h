@@ -267,6 +267,11 @@ private:
     // dstParent (used by duplicateTask). Copies fields, strips recurrence,
     // leaves copies active; inherits dstParent's project/section.
     void duplicateSubtreeInto(const QString &srcParentId, const QString &dstParentId);
+    // night iter-147: if the auto_reminder_offset setting is >0 and the task
+    // has a timed due (dueDatetime), auto-create a single relative reminder
+    // that fires that many minutes before. No-op if a relative reminder
+    // already exists. Called from addTask / setTaskDue.
+    void maybeCreateAutoReminder(const QString &taskId);
 
     // Russian plural form for "задача/задачи/задач" depending on count.
     // Used by bulk undo entry labels.

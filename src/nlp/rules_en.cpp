@@ -2,7 +2,7 @@
 
 #include <QRegularExpression>
 
-DateParseResult DateParser::parseEnglish(const QString &input, const QDate &reference)
+DateParseResult DateParser::parseEnglish(const QString &input, const QDate &reference, int nextWeekDay)
 {
     DateParseResult result;
     const QString lower = input.toLower().trimmed();
@@ -117,17 +117,19 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     }
 
     // --- "next week"
-    // B-4.11 FIX: accept optional weekStart parameter via the signature so a future
-    // caller can pass through the user setting.  For now defaults to Monday (1).
+    // night iter-147: nextWeekDay (the user's `next_week_day` setting, 1=Mon..7=Sun)
+    // now selects WHICH weekday "next week" resolves to. The result is ALWAYS in the
+    // NEXT calendar week — never the current one. Weeks are anchored to Monday for
+    // this computation, so the target = (next Monday) + (nextWeekDay - 1) days:
+    //   daysToTarget = (8 - currentDow) + (nextWeekDay - 1)
+    // The old (weekStart - currentDow + 7) % 7 formula was correct only for Monday;
+    // for a mid-week target on an earlier weekday it could land in the *current*
+    // week. nextWeekDay defaults to 1 (Monday) ⇒ identical to the historic behaviour.
     if (lower == QStringLiteral("next week")) {
-        // weekStart defaults to Monday (dayOfWeek == 1).
-        // To extend later: add `int weekStart = 1` to parseEnglish signature and
-        // pass it through from DateParser::parse().
-        const int weekStart = 1; // Monday
-        const int currentDow = reference.dayOfWeek();
-        int daysToFirst = (weekStart - currentDow + 7) % 7;
-        if (daysToFirst == 0) daysToFirst = 7; // always go to NEXT week's first day
-        result.date = formatDate(reference.addDays(daysToFirst));
+        const int currentDow = reference.dayOfWeek();                  // 1=Mon..7=Sun
+        const int clamped = (nextWeekDay >= 1 && nextWeekDay <= 7) ? nextWeekDay : 1;
+        const int daysToTarget = (8 - currentDow) + (clamped - 1);
+        result.date = formatDate(reference.addDays(daysToTarget));
         result.humanString = QStringLiteral("Next week");
         result.valid = true;
         return result;

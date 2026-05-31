@@ -11,7 +11,9 @@
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
+#include "model/reminder.h"
 #include "viewmodels/taskviewmodel.h"
+#include "utils/settingskeys.h"
 
 // ============================================================================
 // Comprehensive unit tests for the 9 newly-added Q_INVOKABLE actions on
@@ -1168,6 +1170,93 @@ private slots:
                      "loop time (with the default value=false), instead "
                      "of the post-flip moment.")
                      .arg(isInboxTs, createdAtTs)));
+    }
+
+    // ========================================================================
+    // night iter-147 Fix C — autoReminderOffset auto-creates a relative
+    // reminder when a task gains a datetime due. Wires the previously-dead
+    // `auto_reminder_offset` setting (iter-138 flag).
+    // ========================================================================
+
+    // Happy path: offset > 0 + a datetime due ⇒ exactly one relative reminder
+    // stamped with that minute offset.
+    void autoReminder_createdOnAddTask_withDatetimeDue()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::AutoReminderOffset), 30);
+        TaskViewModel vm(f->store);
+
+        const QString id = vm.addTask(QStringLiteral("Call mom"), f->inboxId,
+                                      1, QStringLiteral("tomorrow at 3pm"));
+        QVERIFY(!id.isEmpty());
+
+        Task *t = f->store->taskById(id);
+        QVERIFY(t);
+        QVERIFY2(!t->dueDatetime().isEmpty(),
+                 "precondition: 'tomorrow at 3pm' must yield a datetime due");
+
+        const auto rems = f->store->remindersForTask(id);
+        QCOMPARE(rems.size(), 1);
+        QCOMPARE(rems.first()->type(), QStringLiteral("relative"));
+        QCOMPARE(rems.first()->minuteOffset(), 30);
+
+        delete f;
+    }
+
+    // Offset == 0 (feature disabled) ⇒ no reminder.
+    void autoReminder_notCreated_whenOffsetZero()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::AutoReminderOffset), 0);
+        TaskViewModel vm(f->store);
+
+        const QString id = vm.addTask(QStringLiteral("Call dad"), f->inboxId,
+                                      1, QStringLiteral("tomorrow at 9am"));
+        QVERIFY(!id.isEmpty());
+        QCOMPARE(f->store->remindersForTask(id).size(), 0);
+
+        delete f;
+    }
+
+    // Date-only due (no time) ⇒ no datetime ⇒ no reminder: a relative reminder
+    // has no anchor time to fire against.
+    void autoReminder_notCreated_forDateOnlyDue()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::AutoReminderOffset), 30);
+        TaskViewModel vm(f->store);
+
+        const QString id = vm.addTask(QStringLiteral("Buy milk"), f->inboxId,
+                                      1, QStringLiteral("tomorrow"));
+        QVERIFY(!id.isEmpty());
+        Task *t = f->store->taskById(id);
+        QVERIFY(t);
+        QVERIFY2(t->dueDatetime().isEmpty(),
+                 "precondition: bare 'tomorrow' must be date-only");
+        QCOMPARE(f->store->remindersForTask(id).size(), 0);
+
+        delete f;
+    }
+
+    // Dedup: re-setting the due date via setTaskDue must NOT add a second
+    // relative reminder when one already exists.
+    void autoReminder_notDuplicated_onSetTaskDue()
+    {
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::AutoReminderOffset), 15);
+        TaskViewModel vm(f->store);
+
+        const QString id = vm.addTask(QStringLiteral("Standup"), f->inboxId,
+                                      1, QStringLiteral("tomorrow at 10am"));
+        QCOMPARE(f->store->remindersForTask(id).size(), 1);
+
+        // Move the due time; the existing relative reminder should be reused.
+        QVERIFY(vm.setTaskDue(id, QStringLiteral("tomorrow at 2pm")));
+        const auto rems = f->store->remindersForTask(id);
+        QCOMPARE(rems.size(), 1);
+        QCOMPARE(rems.first()->minuteOffset(), 15);
+
+        delete f;
     }
 };
 

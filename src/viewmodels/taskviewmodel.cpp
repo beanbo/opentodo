@@ -346,7 +346,8 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
 
     if (!dueString.isEmpty()) {
         const QString lang = m_store->setting(QLatin1String(SettingsKeys::Language)).toString();
-        DateParseResult result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang);
+        const int nextWeekDay = m_store->setting(QLatin1String(SettingsKeys::NextWeekDay)).toInt();
+        DateParseResult result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang, nextWeekDay);
         if (result.valid) {
             task->setDueDate(result.date);
             if (!result.datetime.isEmpty())
@@ -361,6 +362,7 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
     }
 
     m_store->markTaskFieldsModified(task->id(), mutatedFields);
+    maybeCreateAutoReminder(task->id());
 
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_add"),
@@ -708,7 +710,8 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
         task->setDue(empty);
     } else {
         const QString lang = m_store->setting(QLatin1String(SettingsKeys::Language)).toString();
-        DateParseResult result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang);
+        const int nextWeekDay = m_store->setting(QLatin1String(SettingsKeys::NextWeekDay)).toInt();
+        DateParseResult result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang, nextWeekDay);
         if (result.valid) {
             task->setDueDate(result.date);
             if (!result.datetime.isEmpty())
@@ -736,6 +739,7 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
     // entries that never line up with a real JSON key, so the Merger never
     // consults them and falls back to whole-entity LWW. Stamp the parent.
     m_store->markTaskFieldsModified(id, {QStringLiteral("due")});
+    maybeCreateAutoReminder(id);
     emit taskChanged(id);
 
     int idx = m_tasks.indexOf(task);
@@ -743,6 +747,40 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
         emit dataChanged(index(idx), index(idx));
 
     return true;
+}
+
+void TaskViewModel::maybeCreateAutoReminder(const QString &taskId)
+{
+    // night iter-147: wire the previously-dead `auto_reminder_offset` setting.
+    const int offset = m_store->setting(
+        QLatin1String(SettingsKeys::AutoReminderOffset)).toInt();
+    if (offset <= 0) return;
+
+    Task *task = m_store->taskById(taskId);
+    if (!task || task->isDeleted()) return;
+    // Only meaningful for a task with a specific TIME — "N minutes before"
+    // is undefined for a date-only due (that case is served by the
+    // default_reminder_time setting in ReminderScheduler).
+    if (task->dueDatetime().isEmpty()) return;
+
+    // Dedup: never stack a second relative reminder. A relative reminder
+    // auto-tracks the due (the scheduler fires it at due − minuteOffset), so
+    // once one exists, editing the due time needs no new reminder — and we
+    // must not clobber a relative reminder the user added by hand.
+    const auto existing = m_store->remindersForTask(taskId);
+    for (const Reminder *r : existing) {
+        if (r && !r->isDeleted() && r->type() == QStringLiteral("relative"))
+            return;
+    }
+
+    Reminder *rem = m_store->addReminder(taskId, QStringLiteral("relative"));
+    if (!rem) return;
+    rem->setMinuteOffset(offset);
+    rem->setUpdatedAt(QDateTime::currentDateTimeUtc());
+    // addReminder stamps minute_offset at its default (0); re-stamp the real
+    // value so a concurrent peer edit doesn't revert it via Merger LWW.
+    m_store->markReminderFieldsModified(rem->id(), {QStringLiteral("minute_offset")});
+    emit m_store->remindersChanged();   // scheduler reschedules (cf. completeTask)
 }
 
 bool TaskViewModel::moveTaskOrder(const QString &id, int newIndex)
@@ -2279,7 +2317,8 @@ void TaskViewModel::bulkSetDue(const QString &dueString)
     DateParseResult result;
     if (!dueString.isEmpty()) {
         const QString lang = m_store->setting(QLatin1String(SettingsKeys::Language)).toString();
-        result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang);
+        const int nextWeekDay = m_store->setting(QLatin1String(SettingsKeys::NextWeekDay)).toInt();
+        result = m_dateParser->parse(dueString, lang.isEmpty() ? QStringLiteral("en") : lang, nextWeekDay);
     }
 
     int count = 0;

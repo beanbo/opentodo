@@ -451,6 +451,28 @@ private slots:
         const auto r = DateParser::parseRussian(QString::fromUtf8("через неделю"), REF);
         QVERIFY(!r.valid);
     }
+
+    // ── night iter-147: "следующая неделя" honours the nextWeekDay setting ──
+    // Mirrors the English path (same formula). REF=2026-05-15 (Fri, dow=5);
+    // next Monday = REF+3 = 2026-05-18.
+    void sleduyushaya_nedelya_honours_nextWeekDay()
+    {
+        // Default (no arg) → next Monday, preserving the historic behaviour.
+        const auto def = DateParser::parseRussian(QString::fromUtf8("следующая неделя"), REF);
+        QVERIFY(def.valid);
+        QCOMPARE(def.date, QStringLiteral("2026-05-18"));
+        QCOMPARE(def.humanString, QString::fromUtf8("Следующая неделя"));
+
+        // nextWeekDay=3 (Wednesday) → next week's Wednesday = 2026-05-20.
+        const auto wed = DateParser::parseRussian(QString::fromUtf8("на следующей неделе"), REF, 3);
+        QVERIFY(wed.valid);
+        QCOMPARE(wed.date, QStringLiteral("2026-05-20"));
+
+        // nextWeekDay=7 (Sunday) → next week's Sunday = 2026-05-24.
+        const auto sun = DateParser::parseRussian(QString::fromUtf8("следующая неделя"), REF, 7);
+        QVERIFY(sun.valid);
+        QCOMPARE(sun.date, QStringLiteral("2026-05-24"));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestDateParserRu)

@@ -35,10 +35,14 @@ class DateParser : public QObject
 public:
     explicit DateParser(QObject *parent = nullptr);
 
-    Q_INVOKABLE DateParseResult parse(const QString &input, const QString &lang = QStringLiteral("en"));
+    // night iter-147: nextWeekDay (1=Mon..7=Sun, default Monday) wires the
+    // previously-dead `next_week_day` setting — it selects which weekday
+    // "next week" / "следующая неделя" resolves to. Default 1 preserves the
+    // original next-Monday behaviour for every existing caller.
+    Q_INVOKABLE DateParseResult parse(const QString &input, const QString &lang = QStringLiteral("en"), int nextWeekDay = 1);
 
-    static DateParseResult parseEnglish(const QString &input, const QDate &reference = QDate::currentDate());
-    static DateParseResult parseRussian(const QString &input, const QDate &reference = QDate::currentDate());
+    static DateParseResult parseEnglish(const QString &input, const QDate &reference = QDate::currentDate(), int nextWeekDay = 1);
+    static DateParseResult parseRussian(const QString &input, const QDate &reference = QDate::currentDate(), int nextWeekDay = 1);
 
 private:
     static DateParseResult tryParseTime(const QString &input, DateParseResult result);

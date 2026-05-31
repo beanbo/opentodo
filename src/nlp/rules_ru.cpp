@@ -3,7 +3,7 @@
 #include <QLocale>
 #include <QRegularExpression>
 
-DateParseResult DateParser::parseRussian(const QString &input, const QDate &reference)
+DateParseResult DateParser::parseRussian(const QString &input, const QDate &reference, int nextWeekDay)
 {
     DateParseResult result;
     // Q3.02-D Bug 2 fix: normalise comma/semicolon/exclam/question separators
@@ -134,10 +134,15 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     }
 
     // --- "на следующей неделе" ---
+    // night iter-147: nextWeekDay (the user's `next_week_day` setting, 1=Mon..7=Sun)
+    // selects which weekday "следующая неделя" resolves to. Always lands in the NEXT
+    // calendar week: target = (next Monday) + (nextWeekDay - 1). Default 1 (Monday)
+    // ⇒ identical to the historic next-Monday behaviour. Mirrors rules_en.cpp.
     if (lower == QString::fromUtf8("на следующей неделе") || lower == QString::fromUtf8("следующая неделя")) {
-        int currentDow = reference.dayOfWeek();
-        int daysToMonday = 8 - currentDow;
-        result.date = formatDate(reference.addDays(daysToMonday));
+        const int currentDow = reference.dayOfWeek();                  // 1=Mon..7=Sun
+        const int clamped = (nextWeekDay >= 1 && nextWeekDay <= 7) ? nextWeekDay : 1;
+        const int daysToTarget = (8 - currentDow) + (clamped - 1);
+        result.date = formatDate(reference.addDays(daysToTarget));
         result.humanString = QString::fromUtf8("Следующая неделя");
         result.valid = true;
         return result;

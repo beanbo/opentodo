@@ -167,6 +167,43 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2026-05-22"));
     }
 
+    // ── night iter-147: "next week" honours the nextWeekDay setting ──────────
+    // REF=2026-05-15 (Fri, dow=5); next Monday = REF+3 = 2026-05-18.
+    // daysToTarget = (8 - 5) + (nextWeekDay - 1) = 3 + (nextWeekDay - 1), so the
+    // result always lands in the NEXT calendar week regardless of weekday.
+    void next_week_honours_nextWeekDay_data()
+    {
+        QTest::addColumn<int>("nextWeekDay");
+        QTest::addColumn<QString>("expected");
+
+        QTest::newRow("monday(1)")    << 1 << QStringLiteral("2026-05-18");
+        QTest::newRow("tuesday(2)")   << 2 << QStringLiteral("2026-05-19");
+        QTest::newRow("wednesday(3)") << 3 << QStringLiteral("2026-05-20");
+        QTest::newRow("friday(5)")    << 5 << QStringLiteral("2026-05-22");
+        QTest::newRow("sunday(7)")    << 7 << QStringLiteral("2026-05-24");
+        // Out-of-range values clamp to Monday (1).
+        QTest::newRow("zero->mon")    << 0 << QStringLiteral("2026-05-18");
+        QTest::newRow("eight->mon")   << 8 << QStringLiteral("2026-05-18");
+    }
+
+    void next_week_honours_nextWeekDay()
+    {
+        QFETCH(int, nextWeekDay);
+        QFETCH(QString, expected);
+        const auto r = DateParser::parseEnglish(QStringLiteral("next week"), REF, nextWeekDay);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, expected);
+        QCOMPARE(r.humanString, QStringLiteral("Next week"));
+    }
+
+    // Default arg (no nextWeekDay) preserves the historic next-Monday behaviour.
+    void next_week_default_is_monday()
+    {
+        const auto r = DateParser::parseEnglish(QStringLiteral("next week"), REF);
+        QVERIFY(r.valid);
+        QCOMPARE(r.date, QStringLiteral("2026-05-18"));
+    }
+
     // ── ISO date ──────────────────────────────────────────────────────────
 
     void iso_date()
