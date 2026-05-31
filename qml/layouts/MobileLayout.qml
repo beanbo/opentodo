@@ -166,20 +166,20 @@ Item {
                 spacing: 0
 
                 // Hamburger button
-                // B-6.34: qrc:/icons/menu.svg doesn't exist — use Unicode glyph
+                // B-9.9: was a literal "☰" (U+2630) rendered as ToolButton text;
+                // Android's Roboto lacks that codepoint so it showed as a tofu
+                // box. The old B-6.34 note that menu.svg "doesn't exist" is stale
+                // — resources/icons/ui/menu.svg ships and IconSvg tints it.
                 ToolButton {
                     id: hamburgerButton
-                    text: "☰"
-                    font.pixelSize: FontSize.title
-                    contentItem: Text {
-                        text: parent.text
-                        font: parent.font
-                        color: textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                     implicitWidth: 48
                     implicitHeight: 48
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "menu"
+                        size: 22
+                        color: textSecondary
+                    }
                     onClicked: sidebarDrawer.open()
                     KeyNavigation.tab: searchButton  // F-6.96 a11y
 
@@ -230,20 +230,18 @@ Item {
                 }
 
                 // Search icon button — opens the search overlay
-                // B-6.34: qrc:/icons/search.svg doesn't exist — use Unicode glyph
+                // B-9.9: was a literal "⌕" (U+2315) text glyph — a tofu box on
+                // Android (Roboto lacks it). Use the bundled IconSvg "search".
                 ToolButton {
                     id: searchButton
-                    text: "⌕"
-                    font.pixelSize: FontSize.title
-                    contentItem: Text {
-                        text: parent.text
-                        font: parent.font
-                        color: textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
                     implicitWidth: 48
                     implicitHeight: 48
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: "search"
+                        size: 22
+                        color: textSecondary
+                    }
                     onClicked: searchOverlay.open()
                     KeyNavigation.tab: hamburgerButton  // F-6.96 a11y: cycle back
 
@@ -739,16 +737,14 @@ Item {
                         rightMargin: 12
                     }
 
-                    // B-6.34: qrc:/icons/arrow_back.svg doesn't exist — use Unicode glyph
+                    // B-9.9: was a literal "←" (U+2190) text glyph — tofu box on
+                    // Android (Roboto lacks it). Use IconSvg "chevron-left".
                     ToolButton {
-                        text: "←"
-                        font.pixelSize: FontSize.title
-                        contentItem: Text {
-                            text: parent.text
-                            font: parent.font
+                        contentItem: IconSvg {
+                            anchors.centerIn: parent
+                            name: "chevron-left"
+                            size: 22
                             color: textSecondary
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
                         }
                         onClicked: searchOverlay.close()
                     }
