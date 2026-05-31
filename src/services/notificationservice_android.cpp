@@ -83,7 +83,13 @@ void AndroidNotificationService::createNotificationChannel()
         context.object<jobject>(),
         channelId.object<jstring>(),
         channelName.object<jstring>(),
-        3 // NotificationManager.IMPORTANCE_DEFAULT
+        // B-9.5: IMPORTANCE_HIGH (4), not DEFAULT (3). This channel is created
+        // once at app startup; channel importance is immutable afterwards, so
+        // THIS is the value that sticks. DEFAULT silently suppressed the
+        // heads-up peek that NotificationReceiver.onReceive() (IMPORTANCE_HIGH)
+        // and the PRIORITY_HIGH builder in showNotification() both intend for
+        // reminders — leaving those two intents dead. Reminders heads-up now.
+        4 // NotificationManager.IMPORTANCE_HIGH
     );
 
     m_channelCreated = true;

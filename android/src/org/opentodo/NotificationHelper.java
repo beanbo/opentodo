@@ -40,9 +40,9 @@ public class NotificationHelper {
     // -----------------------------------------------------------------------
     // createChannel — called from C++ createNotificationChannel().
     // Creates a single named channel with the given importance level.
-    // NOTE: C++ always passes channelId="opentodo_channel" and importance=3
-    // (IMPORTANCE_DEFAULT). The three named constants above are kept for
-    // potential future use.
+    // NOTE: C++ always passes channelId="opentodo_channel" and importance=4
+    // (IMPORTANCE_HIGH) so reminders pop as heads-up. The three named constants
+    // above are kept for potential future use.
     // -----------------------------------------------------------------------
     public static void createChannel(Context context, String channelId,
                                      String channelName, int importance) {
