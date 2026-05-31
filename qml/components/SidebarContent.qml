@@ -2472,7 +2472,7 @@ Rectangle {
         modal: true
         anchors.centerIn: Overlay.overlay
         // Explicit width: avoids implicitWidth binding loop with the wrapping Label.
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380  // B-9.10: guard null overlay (drawer-loaded before overlay attaches)
         standardButtons: Dialog.Yes | Dialog.No
 
         ColumnLayout {
@@ -2498,7 +2498,7 @@ Rectangle {
         title: qsTr("Добавить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width: Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360  // B-9.10: guard null overlay (drawer-loaded before overlay attaches)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         onOpened:   newSectionName.text = ""
@@ -2533,7 +2533,7 @@ Rectangle {
         title: qsTr("Родительский проект")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380  // B-9.10: guard null overlay (drawer-loaded before overlay attaches)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         onAccepted: {

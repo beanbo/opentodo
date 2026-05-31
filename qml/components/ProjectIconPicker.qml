@@ -30,7 +30,11 @@ Dialog {
     title: qsTr("Выберите иконку")
     modal: true
     anchors.centerIn: Overlay.overlay
-    width: Math.min(520, Overlay.overlay.width - Spacing.xl)
+    // B-9.10: guard against Overlay.overlay being null at construction time
+    // (this Dialog lives inside SidebarContent, which is loaded into the mobile
+    // drawer before an overlay is attached) — the unguarded form logged
+    // "TypeError: Cannot read property 'width' of null" on every launch.
+    width: Overlay.overlay ? Math.min(520, Overlay.overlay.width - Spacing.xl) : 520
     standardButtons: Dialog.Ok | Dialog.Cancel
 
     property string selectedIcon: ""
