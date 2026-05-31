@@ -216,6 +216,50 @@ private slots:
         delete f;
     }
 
+    // night iter-147: duplicating a parent must deep-copy its subtask subtree
+    // (re-parented to the dup), reproducing the checklist; originals untouched.
+    void duplicateTask_copies_subtask_subtree()
+    {
+        Fixture *f = makeFixture();
+        TaskViewModel vm(f->store);
+
+        // Extend the fixture's taskC → subC chain with a grandchild so the
+        // recursive copy is exercised: taskC → subC → grand.
+        Task *grand = f->store->addTask(QStringLiteral("Grand of C"), f->workId);
+        grand->setParentId(f->subCId);
+        const QString grandId = grand->id();
+
+        const QString dupId = vm.duplicateTask(f->taskCId);
+        QVERIFY(!dupId.isEmpty());
+        QVERIFY(dupId != f->taskCId);
+
+        // Direct subtask: exactly one copy of subC under the dup.
+        const auto dupSubs = f->store->subtasks(dupId);
+        QCOMPARE(dupSubs.size(), 1);
+        Task *subCopy = dupSubs.first();
+        QVERIFY(subCopy);
+        QVERIFY(subCopy->id() != f->subCId);            // fresh id
+        QCOMPARE(subCopy->content(), QStringLiteral("Sub of C"));
+        QCOMPARE(subCopy->parentId(), dupId);           // re-parented to dup
+        QCOMPARE(subCopy->projectId(), f->workId);      // inherits dup's project
+        QVERIFY(!subCopy->isCompleted());               // copies start active
+        QVERIFY(!subCopy->isDeleted());
+
+        // Recursion: subCopy carries its own copy of the grandchild.
+        const auto grandCopies = f->store->subtasks(subCopy->id());
+        QCOMPARE(grandCopies.size(), 1);
+        Task *grandCopy = grandCopies.first();
+        QVERIFY(grandCopy->id() != grandId);
+        QCOMPARE(grandCopy->content(), QStringLiteral("Grand of C"));
+        QCOMPARE(grandCopy->parentId(), subCopy->id());
+
+        // Originals untouched.
+        QCOMPARE(f->store->taskById(f->subCId)->parentId(), f->taskCId);
+        QCOMPARE(f->store->taskById(grandId)->parentId(), f->subCId);
+
+        delete f;
+    }
+
     void duplicateTask_returns_empty_on_unknown_id()
     {
         Fixture *f = makeFixture();

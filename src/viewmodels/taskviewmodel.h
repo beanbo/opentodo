@@ -263,6 +263,10 @@ private:
     void sortTasks();
     QList<Task *> fetchTasks() const;
     QList<Task *> _siblingsOfAnchor(const Task *anchor) const;
+    // night iter-147: recursively copy srcParent's subtask subtree under
+    // dstParent (used by duplicateTask). Copies fields, strips recurrence,
+    // leaves copies active; inherits dstParent's project/section.
+    void duplicateSubtreeInto(const QString &srcParentId, const QString &dstParentId);
 
     // Russian plural form for "задача/задачи/задач" depending on count.
     // Used by bulk undo entry labels.

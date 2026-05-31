@@ -917,12 +917,71 @@ QString TaskViewModel::duplicateTask(const QString &id)
          QStringLiteral("due"), QStringLiteral("is_pinned"),
          QStringLiteral("order")});
 
+    // night iter-147: deep-copy the subtask subtree so duplicating a parent
+    // reproduces its checklist (Todoist parity). Copies start ACTIVE (fresh
+    // duplicate), recurrence stripped, under dup's project/section. Recurses
+    // for deeper levels. Done AFTER dup is fully set up so the children inherit
+    // dup's resolved project/section.
+    duplicateSubtreeInto(id, dup->id());
+
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_duplicated"),
                                 {{QStringLiteral("source_id"), id}});
 
     emit taskAdded(dup->id());
     return dup->id();
+}
+
+void TaskViewModel::duplicateSubtreeInto(const QString &srcParentId,
+                                         const QString &dstParentId)
+{
+    Task *dstParent = m_store->taskById(dstParentId);
+    if (!dstParent) return;
+
+    // Snapshot the source children up-front: addTask() below appends to the
+    // store, but this list is a separate copy of pointers, so iteration is safe.
+    const QList<Task *> children = m_store->subtasks(srcParentId);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+
+    for (Task *child : children) {
+        if (!child || child->isDeleted()) continue;
+
+        Task *copy = m_store->addTask(child->content(), dstParent->projectId());
+        if (!copy) continue;
+
+        // A subtask's project/section is implicit from its parent — mirror dup.
+        copy->setParentId(dstParentId);
+        copy->setSectionId(dstParent->sectionId());
+        copy->setDescription(child->description());
+        copy->setPriority(child->priority());
+        copy->setLabels(child->labels());
+        copy->setDeadline(child->deadline());
+        copy->setDuration(child->duration());
+        copy->setColor(child->color());
+        copy->setEstimateMinutes(child->estimateMinutes());
+        copy->setOrder(child->order());
+
+        // Copy due fields but strip recurrence (same rule as the root dup).
+        DueObject due = child->due();
+        due.isRecurring = false;
+        due.recurrenceRule.clear();
+        copy->setDue(due);
+
+        // copy stays active (addTask default is_completed=false) — a duplicate
+        // is a fresh checklist to redo, not a clone of completion state.
+        copy->setUpdatedAt(now);
+        m_store->markTaskFieldsModified(copy->id(),
+            {QStringLiteral("parent_id"), QStringLiteral("project_id"),
+             QStringLiteral("section_id"), QStringLiteral("description"),
+             QStringLiteral("priority"), QStringLiteral("labels"),
+             QStringLiteral("deadline"), QStringLiteral("duration"),
+             QStringLiteral("color"), QStringLiteral("estimate_minutes"),
+             QStringLiteral("due"), QStringLiteral("order")});
+
+        // Recurse for grandchildren (child is the ORIGINAL node; its subtasks
+        // are the next level to copy under `copy`).
+        duplicateSubtreeInto(child->id(), copy->id());
+    }
 }
 
 // ── addTaskAbove / addTaskBelow ───────────────────────────────────────────────
