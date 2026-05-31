@@ -57,6 +57,17 @@ android {
             // template always sets this; our trimmed-down sourceSets had
             // dropped it, which made the APK unrunnable on every device.
             jniLibs.srcDirs = ['libs']
+            // B-9.8 (CRITICAL): androiddeployqt generates
+            // <build>/assets/android_rcc_bundle.rcc, which contains EVERY QML
+            // module the app imports (QtQuick, QtQuick.Window,
+            // QtQuick.Controls.Material, ...). Without this srcDir gradle never
+            // packages it, so the APK ships with an empty assets/ and the QML
+            // engine fails to load Main.qml at runtime:
+            //   module "QtQuick.Window" is not installed
+            // QQmlApplicationEngine then produces no root object and the app
+            // exits immediately after Qt initialises. Same omission class as
+            // jniLibs above — the canonical Qt template sets it; ours dropped it.
+            assets.srcDirs = ['assets']
         }
     }
 }
