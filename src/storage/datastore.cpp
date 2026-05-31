@@ -419,6 +419,27 @@ bool DataStore::restoreTask(const QString &id)
     stampEntityField(id, m_taskMeta, QStringLiteral("is_deleted"));
     stampEntityField(id, m_taskMeta, QStringLiteral("updated_at"));
 
+    // night iter-137: orphan guard. A subtask renders ONLY nested under its
+    // parent, so a restored child whose parent is still deleted shows nowhere —
+    // the user clicks "restore" in Trash and seemingly nothing happens. This is
+    // reachable: deleting a parent cascade-tombstones parent+child (both appear
+    // in Trash via deletedTasks(), which doesn't filter cascade-children), and
+    // the user can restore the CHILD alone. restoreTask only ever restores the
+    // task + its DESCENDANTS, never the ancestor chain, so `id`'s own parent is
+    // the only link that can dangle. If it points to a missing/still-deleted
+    // task, promote `id` to top-level so the restore is actually visible.
+    // (Restoring the parent first cascade-restores the child correctly via the
+    // shared stamp — only child-first needs this.) Mirrors the orphan handling
+    // in removeSection (iter-116). The check is on `id` only: cascade-restored
+    // descendants keep parents inside the restored subtree.
+    if (!task->parentId().isEmpty()) {
+        Task *parent = m_taskIndex.value(task->parentId());
+        if (!parent || parent->isDeleted()) {
+            task->setParentId(QString());
+            stampEntityField(id, m_taskMeta, QStringLiteral("parent_id"));
+        }
+    }
+
     // Cascade-restore comments tombstoned by the same removeTask call.
     bool anyCommentRestored = false;
     for (auto *c : m_comments) {

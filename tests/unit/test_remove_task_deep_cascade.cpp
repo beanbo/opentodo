@@ -152,6 +152,50 @@ private slots:
         QCOMPARE(store->commentsForTask(ch.cId).size(), 1);
         QCOMPARE(store->commentsForTask(ch.dId).size(), 1);
     }
+
+    // night iter-137: restoring a cascade-deleted CHILD alone (parent still in
+    // Trash) must not leave it an invisible orphan. A subtask renders only
+    // nested under its parent, so a restored child of a still-deleted parent
+    // would show nowhere. restoreTask promotes it to top-level (clears parentId)
+    // so the restore is actually visible.
+    void restoreTask_childAlone_whenParentStillDeleted_promotesToTopLevel()
+    {
+        Task *a = store->addTask(QStringLiteral("Parent"), inboxId);
+        Task *b = store->addTask(QStringLiteral("Child"),  inboxId);
+        b->setParentId(a->id());
+        const QString aId = a->id(), bId = b->id();
+
+        QVERIFY(store->removeTask(aId));              // cascade: A + B tombstoned
+        QVERIFY(store->taskById(aId)->isDeleted());
+        QVERIFY(store->taskById(bId)->isDeleted());
+
+        QVERIFY(store->restoreTask(bId));             // restore the CHILD alone
+
+        QVERIFY(!store->taskById(bId)->isDeleted());
+        QVERIFY2(store->taskById(bId)->parentId().isEmpty(),
+                 "Restored child of a still-deleted parent must be promoted to "
+                 "top-level (parentId cleared), else it renders nowhere");
+        QVERIFY2(store->taskById(aId)->isDeleted(),
+                 "Restoring the child alone must NOT resurrect the parent");
+    }
+
+    // Control: restoring the PARENT cascade-restores the child WITH its parent
+    // link intact — the orphan guard must not over-reach and strip a link whose
+    // parent is being revived in the same call.
+    void restoreTask_parentFirst_keepsChildNested()
+    {
+        Task *a = store->addTask(QStringLiteral("Parent"), inboxId);
+        Task *b = store->addTask(QStringLiteral("Child"),  inboxId);
+        b->setParentId(a->id());
+        const QString aId = a->id(), bId = b->id();
+
+        QVERIFY(store->removeTask(aId));
+        QVERIFY(store->restoreTask(aId));             // restore the PARENT
+
+        QVERIFY(!store->taskById(aId)->isDeleted());
+        QVERIFY(!store->taskById(bId)->isDeleted());
+        QCOMPARE(store->taskById(bId)->parentId(), aId);   // link preserved
+    }
 };
 
 QTEST_GUILESS_MAIN(TestRemoveTaskDeepCascade)
