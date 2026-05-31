@@ -1740,9 +1740,20 @@ Rectangle {
                     onValueModified: editDialog.editWeeklyGoal = value
                 }
                 Label {
-                    text: weeklyGoalSpin.value === 0
-                        ? qsTr("Без цели")
-                        : qsTr("%1 задач в неделю").arg(weeklyGoalSpin.value)
+                    // night iter-130: Russian plural agreement — was hardcoded
+                    // "задач", so a goal of 1–4 read "1 задач / 2 задач в неделю".
+                    // The SpinBox has stepSize 1 (from 0), so 1–4 are ordinary
+                    // values. Nominative: 1→задача, 2–4→задачи, 11–14 & rest→задач.
+                    text: {
+                        var n = weeklyGoalSpin.value
+                        if (n === 0) return qsTr("Без цели")
+                        var m100 = n % 100, m10 = n % 10
+                        var w = (m100 >= 11 && m100 <= 14) ? qsTr("задач")
+                              : (m10 === 1)                ? qsTr("задача")
+                              : (m10 >= 2 && m10 <= 4)     ? qsTr("задачи")
+                              :                              qsTr("задач")
+                        return qsTr("%1 %2 в неделю").arg(n).arg(w)
+                    }
                     color: root.textSecondary
                     font.pixelSize: FontSize.small
                     Layout.fillWidth: true

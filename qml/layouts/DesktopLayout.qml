@@ -3226,8 +3226,20 @@ Item {
             anchors.fill: parent
             spacing: Spacing.sm
             Label {
-                text: qsTr("Удалить %1 задач? Действие нельзя отменить через корзину.")
-                      .arg(taskViewModel.selectionCount)
+                // night iter-130: Russian plural agreement (accusative case after
+                // «Удалить») — was hardcoded "задач", giving "Удалить 1 задач?".
+                // Reachable when 1–4 tasks are bulk-selected. 1→задачу, 2–4→задачи,
+                // 11–14 & rest→задач.
+                text: {
+                    var n = taskViewModel.selectionCount
+                    var m100 = n % 100, m10 = n % 10
+                    var w = (m100 >= 11 && m100 <= 14) ? qsTr("задач")
+                          : (m10 === 1)                ? qsTr("задачу")
+                          : (m10 >= 2 && m10 <= 4)     ? qsTr("задачи")
+                          :                              qsTr("задач")
+                    return qsTr("Удалить %1 %2? Действие нельзя отменить через корзину.")
+                           .arg(n).arg(w)
+                }
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 color: ThemeManager.textColor
