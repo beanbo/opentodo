@@ -110,6 +110,16 @@ QVariant TaskViewModel::data(const QModelIndex &index, int role) const
         const QString sid = task->sectionId();
         return sid.isEmpty() ? QStringLiteral("__none__") : sid;
     }
+    case EffectiveDueDateRole: {
+        // night iter-134: scheduled date for Upcoming day-grouping — dueDate,
+        // else the date part of dueDatetime (datetime-only tasks, B-1.28/B-1.30).
+        // Same rule as the sortTasks "date" branch (iter-115) so grouping and
+        // sorting agree and timed tasks don't fragment their day.
+        const QString d = task->dueDate();
+        if (!d.isEmpty()) return d;
+        const QString dt = task->dueDatetime();
+        return dt.isEmpty() ? QString() : dt.left(10);
+    }
     }
 
     return {};
@@ -142,6 +152,7 @@ QHash<int, QByteArray> TaskViewModel::roleNames() const
         {EstimateMinutesRole, "estimateMinutes"},
         {TaskObjectRole, "taskObject"},
         {SectionGroupKeyRole, "sectionGroupKey"},
+        {EffectiveDueDateRole, "effectiveDueDate"},
     };
 }
 

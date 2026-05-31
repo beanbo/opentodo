@@ -73,7 +73,16 @@ public:
         // substitutes "__none__" when the task has no section. Qt's ListView
         // skips section.delegate creation when every visible item shares an
         // EMPTY section value, so we never expose "" via this role.
-        SectionGroupKeyRole
+        SectionGroupKeyRole,
+        // night iter-134: the scheduled date used to GROUP the Upcoming view —
+        // dueDate, else the date part of dueDatetime. The Upcoming list is
+        // already SORTED by this effective date (sortTasks "date" branch,
+        // iter-115), but day-grouping keyed off raw dueDate, which is empty for
+        // datetime-only tasks (B-1.28/B-1.30). A timed task (e.g. "1 июня 15:00")
+        // thus sorted INTO the 1-июня block yet carried section "" — fragmenting
+        // that day with a stray "Без даты" header. Grouping by this role matches
+        // the sort, so timed tasks sit under their real day.
+        EffectiveDueDateRole
     };
     Q_ENUM(Roles)
 

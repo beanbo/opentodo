@@ -1077,12 +1077,19 @@ Item {
                                     boundsBehavior: Flickable.StopAtBounds
 
                                     // ── Day-group section headers (Upcoming mode) ─────────────
-                                    // In Upcoming mode, group by dueDate (ISO "yyyy-MM-dd").
+                                    // In Upcoming mode, group by effectiveDueDate (ISO
+                                    // "yyyy-MM-dd"). night iter-134: was "dueDate", which is
+                                    // empty for datetime-only tasks (B-1.28/B-1.30) — they
+                                    // sorted into their real day's block (sortTasks orders by
+                                    // the same effective date, iter-115) but carried section ""
+                                    // → fragmenting that day with a stray "Без даты" header.
+                                    // effectiveDueDate (dueDate else dueDatetime's date part)
+                                    // matches the sort so timed tasks group under their real day.
                                     // In all other modes, set section.property to "" which
                                     // disables grouping entirely (Qt ListView skips delegate
                                     // creation when section.property is empty).
                                     section.property: taskViewModel.filterMode === TaskViewModel.Upcoming
-                                                      ? "dueDate" : ""
+                                                      ? "effectiveDueDate" : ""
                                     section.criteria: ViewSection.FullString
                                     // CurrentLabelAtStart pins the current day header to the
                                     // top of the viewport while scrolling within that day's
