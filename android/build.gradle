@@ -45,6 +45,18 @@ android {
             java.srcDirs = ['src']
             res.srcDirs = ['res']
             manifest.srcFile 'AndroidManifest.xml'
+            // B-9.6 (CRITICAL): androiddeployqt stages the app .so, every Qt
+            // library, the Qt plugins AND libc++_shared.so into <build>/libs/
+            // <abi>/. Without this line gradle falls back to the default jniLibs
+            // dir (src/main/jniLibs, which is empty), so NONE of those native
+            // libraries are packaged — the APK ships with an empty lib/ and
+            // crashes immediately at startup with
+            //   java.lang.UnsatisfiedLinkError: dlopen failed:
+            //   library "libc++_shared.so" not found
+            // (QtLoader.loadLibraryHelper). The canonical Qt Android gradle
+            // template always sets this; our trimmed-down sourceSets had
+            // dropped it, which made the APK unrunnable on every device.
+            jniLibs.srcDirs = ['libs']
         }
     }
 }
