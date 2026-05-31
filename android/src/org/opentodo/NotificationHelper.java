@@ -115,10 +115,31 @@ public class NotificationHelper {
             context, id, intent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
-        } else {
-            am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+        // ── B-9.4: exact-alarm permission guard (Android 12+/API 31+) ─────────
+        // Apps targeting API 33+ (this app: targetSdk 34) are DENIED the
+        // SCHEDULE_EXACT_ALARM special-access permission by default, so
+        // setExactAndAllowWhileIdle() throws SecurityException unless the user
+        // manually enabled "Alarms & reminders" in system settings. Called
+        // unguarded from the JNI bridge that crashes the app (pending JNI
+        // exception) or silently drops every reminder. Probe
+        // canScheduleExactAlarms() and degrade to an inexact-but-Doze-friendly
+        // alarm so the reminder still fires (just not to the exact second) when
+        // exact alarms aren't allowed.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (am.canScheduleExactAlarms()) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                } else {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+                }
+            } else {
+                // API 26–30: SCHEDULE_EXACT_ALARM is auto-granted; exact is safe.
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
+            }
+        } catch (SecurityException se) {
+            // Belt-and-suspenders: some OEM ROMs still reject exact alarms even
+            // when canScheduleExactAlarms() reported true. Never crash a reminder.
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
         }
     }
 
