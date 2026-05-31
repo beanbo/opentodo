@@ -598,7 +598,7 @@ Rectangle {
         title: qsTr("Добавить задачу")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string targetSectionId: ""
@@ -638,7 +638,7 @@ Rectangle {
         title: qsTr("Добавить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         // ITER1 #39: clear text and focus the field when the dialog opens
@@ -674,7 +674,7 @@ Rectangle {
         title: qsTr("Переименовать раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string sectionId:   ""

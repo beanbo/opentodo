@@ -1365,7 +1365,7 @@ Rectangle {
         // Q4.07 night iter-85: cap size to the overlay so the dialog never exceeds
         // the window; the form scrolls inside editFlick. Width matches the natural
         // ~560 (driven by the colour-swatch row).
-        width:  Math.min(560, Overlay.overlay.width - Spacing.xl)
+        width:  (Overlay.overlay ? Math.min(560, Overlay.overlay.width - Spacing.xl) : 560)
         // night iter-123: the height previously took Math.max(editCol.implicitHeight,
         // editBottomSentinel.y + ...). editBottomSentinel.y is a LAYOUT OUTPUT of
         // editCol — which lives inside THIS dialog's own contentItem — so feeding
@@ -1377,7 +1377,9 @@ Rectangle {
         // no clip, the iter-85 fix is preserved where it actually matters.
         height: Math.min(topPadding + bottomPadding + implicitHeaderHeight
                          + implicitFooterHeight + editCol.implicitHeight + Spacing.md,
-                         Overlay.overlay.height - Spacing.xl)
+                         // B-9.11: guard null overlay at construction (cap to
+                         // overlay height when present, else natural height).
+                         (Overlay.overlay ? Overlay.overlay.height - Spacing.xl : 100000))
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string editName:        project ? project.name        : ""
@@ -1925,7 +1927,7 @@ Rectangle {
         anchors.centerIn: Overlay.overlay
         // Explicit width prevents the wrapping Label from creating an
         // implicitWidth binding loop with the Dialog's auto-sizing.
-        width:           Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width:           (Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380)
         standardButtons: Dialog.Yes | Dialog.No
 
         ColumnLayout {
@@ -1951,7 +1953,7 @@ Rectangle {
         title: qsTr("Удалить все завершённые задачи?")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         contentItem: Label {
@@ -1990,7 +1992,7 @@ Rectangle {
         // Explicit width so the inner ColumnLayout's content (TextField) doesn't
         // overflow the Dialog frame. Material Dialog otherwise computes width
         // from contentItem.implicitWidth which is too small for the placeholder.
-        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width:           (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         // ITER1 #40: clear text and focus the field when the dialog opens
@@ -2031,7 +2033,7 @@ Rectangle {
         title: qsTr("Переименовать раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width:           (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         onOpened: renameSectionField.text = currentName
@@ -2066,7 +2068,7 @@ Rectangle {
         title: qsTr("Удалить раздел")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width:           (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Yes | Dialog.No
 
         ColumnLayout {
@@ -2093,7 +2095,7 @@ Rectangle {
         title:   qsTr("Добавить задачу")
         modal:   true
         anchors.centerIn: Overlay.overlay
-        width:           Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width:           (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property string sectionId: ""

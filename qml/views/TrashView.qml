@@ -105,7 +105,7 @@ Item {
         title: qsTr("Очистить корзину")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380)
 
         background: Rectangle {
             color: root.contentColor
@@ -158,7 +158,7 @@ Item {
         title: qsTr("Удалить задачу навсегда")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380)
 
         background: Rectangle {
             color: root.contentColor

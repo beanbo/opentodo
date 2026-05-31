@@ -3226,7 +3226,7 @@ Item {
         title: qsTr("Удалить задачи")
         modal: true
         anchors.centerIn: Overlay.overlay
-        width: Math.min(380, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(380, Overlay.overlay.width - Spacing.xl) : 380)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         ColumnLayout {

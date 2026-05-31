@@ -23,7 +23,7 @@ Dialog {
     title: qsTr("Поделиться через Google Drive")
     modal: true
     anchors.centerIn: Overlay.overlay
-    width: Math.min(560, Overlay.overlay.width - Spacing.xl)
+    width: (Overlay.overlay ? Math.min(560, Overlay.overlay.width - Spacing.xl) : 560)
     standardButtons: Dialog.Close
 
     // ── Public API ───────────────────────────────────────────────────────────

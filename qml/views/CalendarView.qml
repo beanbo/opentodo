@@ -1231,7 +1231,7 @@ Rectangle {
         // Q3.26: explicit width — without it Material Dialog falls back to
         // contentItem.implicitWidth, which is too narrow for the TextField
         // and crops the dialog frame.
-        width: Math.min(360, Overlay.overlay.width - Spacing.xl)
+        width: (Overlay.overlay ? Math.min(360, Overlay.overlay.width - Spacing.xl) : 360)
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         property date   targetDate: new Date()
