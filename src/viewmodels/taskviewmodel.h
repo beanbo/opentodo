@@ -271,6 +271,11 @@ private:
     void refresh();
     void sortTasks();
     QList<Task *> fetchTasks() const;
+    // night iter-162 (#216): drop tasks whose section is HIDDEN (archived);
+    // returns the input unchanged when showHiddenSections is on. Applied to the
+    // whole-project task set in Project/Board/Calendar modes so all three
+    // view-modes hide hidden-section tasks consistently.
+    QList<Task *> dropHiddenSectionTasks(const QList<Task *> &in) const;
     QList<Task *> _siblingsOfAnchor(const Task *anchor) const;
     // night iter-147: recursively copy srcParent's subtask subtree under
     // dstParent (used by duplicateTask). Copies fields, strips recurrence,

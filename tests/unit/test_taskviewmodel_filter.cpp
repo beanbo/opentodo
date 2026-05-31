@@ -780,6 +780,16 @@ private slots:
         vm.setFilterMode(TaskViewModel::FilterMode::Board);
         QVERIFY2(!visibleIds(vm).contains(tHidden->id()),
                  "board must also hide hidden-section tasks by default");
+
+        // night iter-162: the project's CALENDAR view-mode must agree too
+        // (it shares the project task source — closes the #216 calendar gap).
+        vm.setFilterMode(TaskViewModel::FilterMode::Calendar);
+        QVERIFY2(!visibleIds(vm).contains(tHidden->id()),
+                 "project calendar view-mode must also hide hidden-section tasks");
+        QVERIFY(visibleIds(vm).contains(tVisible->id()));
+        vm.setShowHiddenSections(true);
+        QVERIFY2(visibleIds(vm).contains(tHidden->id()),
+                 "calendar must reveal hidden-section tasks when the flag is on");
     }
 };
 

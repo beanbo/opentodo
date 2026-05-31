@@ -1904,6 +1904,27 @@ void TaskViewModel::refresh()
     emit countChanged();
 }
 
+QList<Task *> TaskViewModel::dropHiddenSectionTasks(const QList<Task *> &in) const
+{
+    // night iter-162 (#216 follow-up): omit tasks that live in a HIDDEN
+    // (archived) section. Returns the input untouched when the reveal toggle is
+    // on. Shared by Project/Board/Calendar modes so all three agree.
+    if (m_showHiddenSections)
+        return in;
+    QList<Task *> out;
+    out.reserve(in.size());
+    for (Task *t : in) {
+        const QString sid = t ? t->sectionId() : QString();
+        if (!sid.isEmpty()) {
+            const Section *s = m_store->sectionById(sid);
+            if (s && s->isArchived())
+                continue;  // hidden section → omit its tasks
+        }
+        out.append(t);
+    }
+    return out;
+}
+
 QList<Task *> TaskViewModel::fetchTasks() const
 {
     QList<Task *> result;
@@ -1940,31 +1961,14 @@ QList<Task *> TaskViewModel::fetchTasks() const
                || m_filterMode == FilterMode::Board) {
         // Board and Project share the same task source; rendering differences
         // are handled by the QML views that bind to filterMode.
+        // night iter-160/162 (#216): the whole-project task set is routed through
+        // dropHiddenSectionTasks so HIDDEN (archived) sections' tasks are omitted
+        // unless the reveal toggle is on — list, board AND calendar stay
+        // consistent. A pinned section (tasksForSection) is shown as-is.
         if (!m_currentSectionId.isEmpty())
             result = m_store->tasksForSection(m_currentSectionId);
         else if (!m_currentProjectId.isEmpty())
-            result = m_store->tasksForProject(m_currentProjectId);
-        // night iter-160 (#216): drop tasks that live in a HIDDEN (archived)
-        // section unless the user opted to reveal them. tasksForProject returns
-        // every section's tasks (it filters by project, not section archive), so
-        // without this the list leaked hidden-section tasks while the board —
-        // whose columns come from the archive-filtered sectionsForProject — hid
-        // them, so the two surfaces disagreed. Skipped when a specific section is
-        // pinned (the user navigated to it explicitly).
-        if (!m_showHiddenSections && m_currentSectionId.isEmpty()) {
-            QList<Task *> visible;
-            visible.reserve(result.size());
-            for (Task *t : result) {
-                const QString sid = t ? t->sectionId() : QString();
-                if (!sid.isEmpty()) {
-                    const Section *s = m_store->sectionById(sid);
-                    if (s && s->isArchived())
-                        continue;  // hidden section → omit its tasks
-                }
-                visible.append(t);
-            }
-            result = visible;
-        }
+            result = dropHiddenSectionTasks(m_store->tasksForProject(m_currentProjectId));
     } else if (m_filterMode == FilterMode::Calendar) {
         // Q3.27: when a project is active, calendar shows that project's tasks
         // (legacy per-project calendar view from ProjectView). When NO project
@@ -1976,7 +1980,9 @@ QList<Task *> TaskViewModel::fetchTasks() const
             if (!m_currentSectionId.isEmpty())
                 result = m_store->tasksForSection(m_currentSectionId);
             else
-                result = m_store->tasksForProject(m_currentProjectId);
+                // night iter-162 (#216): same hidden-section filter as Project/
+                // Board so the project's calendar view-mode agrees with them.
+                result = dropHiddenSectionTasks(m_store->tasksForProject(m_currentProjectId));
         } else {
             // Mirror the Upcoming branch (B-1.30, night iter-114): include
             // datetime-only tasks (empty dueDate, set dueDatetime) keyed off the
