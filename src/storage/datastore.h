@@ -128,6 +128,10 @@ public:
     Q_INVOKABLE Section *sectionById(const QString &id) const;
     Q_INVOKABLE bool removeSection(const QString &id);
     Q_INVOKABLE QList<Section *> sectionsForProject(const QString &projectId) const;
+    // night iter-160 (#216): HIDDEN (archived, non-deleted) sections of a project,
+    // sorted by order. Counterpart to sectionsForProject (which excludes archived).
+    // Used by the "показать скрытые разделы" reveal in Project/Board views.
+    Q_INVOKABLE QList<Section *> archivedSectionsForProject(const QString &projectId) const;
     Q_INVOKABLE bool renameSection(const QString &id, const QString &newName);
     // Toggle is_collapsed / is_archived with a per-field CRDT stamp. Calling
     // s->setIsCollapsed() directly from QML and then markSectionModified() only

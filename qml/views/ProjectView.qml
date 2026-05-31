@@ -159,14 +159,19 @@ Rectangle {
         }
         MenuSeparator {}
 
-        // ── Hide section ──────────────────────────────────────────────────────
-        // Sets isArchived = true so the section disappears from the list view.
-        // TODO: add a "Показать скрытые разделы" toggle to un-hide sections.
+        // ── Hide / show section ───────────────────────────────────────────────
+        // night iter-160 (#216): toggles is_archived. A hidden section (revealed
+        // via the project menu's "Показать скрытые разделы") un-hides here;
+        // otherwise the section + ALL its tasks are hidden from the list AND the
+        // board (TaskViewModel::fetchTasks drops archived-section tasks unless
+        // showHiddenSections is on).
         MenuItem {
-            text: qsTr("Скрыть раздел")
-            onTriggered: {
-                dataStore.setSectionArchived(root._activeSectionId, true)
+            readonly property bool _archived: {
+                var s = dataStore.sectionById(root._activeSectionId)
+                return s ? s.isArchived : false
             }
+            text: _archived ? qsTr("Показать раздел") : qsTr("Скрыть раздел")
+            onTriggered: dataStore.setSectionArchived(root._activeSectionId, !_archived)
         }
         MenuSeparator {}
 
@@ -505,6 +510,18 @@ Rectangle {
                 MenuItem {
                     text: qsTr("Добавить раздел")
                     onTriggered: addSectionDialog.open()
+                }
+                // night iter-160 (#216): reveal HIDDEN (archived) sections so their
+                // tasks become reachable again. Only offered when this project
+                // actually has hidden sections — otherwise it is pure clutter.
+                MenuItem {
+                    text: qsTr("Показать скрытые разделы")
+                    checkable: true
+                    checked: taskViewModel.showHiddenSections
+                    visible: projectId !== ""
+                             && dataStore.archivedSectionsForProject(projectId).length > 0
+                    height: visible ? implicitHeight : 0
+                    onTriggered: taskViewModel.showHiddenSections = checked
                 }
                 MenuItem {
                     text: (project && project.isFavorite)
@@ -967,7 +984,10 @@ Rectangle {
                             property string sectionName: {
                                 if (sectionId === "") return qsTr("(Без раздела)")
                                 var s = dataStore.sectionById(sectionId)
-                                return s ? s.name : sectionId
+                                if (!s) return sectionId
+                                // night iter-160 (#216): mark revealed HIDDEN sections
+                                // (only reachable here when showHiddenSections is on).
+                                return s.isArchived ? (s.name + qsTr(" (скрыт)")) : s.name
                             }
 
                             RowLayout {

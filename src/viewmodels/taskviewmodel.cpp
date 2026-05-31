@@ -266,6 +266,15 @@ void TaskViewModel::setShowCompleted(bool show) {
     }
 }
 
+bool TaskViewModel::showHiddenSections() const { return m_showHiddenSections; }
+void TaskViewModel::setShowHiddenSections(bool show) {
+    if (m_showHiddenSections != show) {
+        m_showHiddenSections = show;
+        emit showHiddenSectionsChanged();
+        refresh();
+    }
+}
+
 // --- UndoStack wiring ---
 
 void TaskViewModel::setUndoStack(UndoStack *stack)
@@ -1935,6 +1944,27 @@ QList<Task *> TaskViewModel::fetchTasks() const
             result = m_store->tasksForSection(m_currentSectionId);
         else if (!m_currentProjectId.isEmpty())
             result = m_store->tasksForProject(m_currentProjectId);
+        // night iter-160 (#216): drop tasks that live in a HIDDEN (archived)
+        // section unless the user opted to reveal them. tasksForProject returns
+        // every section's tasks (it filters by project, not section archive), so
+        // without this the list leaked hidden-section tasks while the board —
+        // whose columns come from the archive-filtered sectionsForProject — hid
+        // them, so the two surfaces disagreed. Skipped when a specific section is
+        // pinned (the user navigated to it explicitly).
+        if (!m_showHiddenSections && m_currentSectionId.isEmpty()) {
+            QList<Task *> visible;
+            visible.reserve(result.size());
+            for (Task *t : result) {
+                const QString sid = t ? t->sectionId() : QString();
+                if (!sid.isEmpty()) {
+                    const Section *s = m_store->sectionById(sid);
+                    if (s && s->isArchived())
+                        continue;  // hidden section → omit its tasks
+                }
+                visible.append(t);
+            }
+            result = visible;
+        }
     } else if (m_filterMode == FilterMode::Calendar) {
         // Q3.27: when a project is active, calendar shows that project's tasks
         // (legacy per-project calendar view from ProjectView). When NO project

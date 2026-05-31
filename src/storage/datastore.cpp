@@ -1309,6 +1309,19 @@ QList<Section *> DataStore::sectionsForProject(const QString &projectId) const
     return result;
 }
 
+// night iter-160 (#216): HIDDEN (archived) sections — counterpart to
+// sectionsForProject. Insertion order (parallel to sectionsForProject; callers
+// sort by `order` if needed). Used by the "показать скрытые разделы" reveal.
+QList<Section *> DataStore::archivedSectionsForProject(const QString &projectId) const
+{
+    QList<Section *> result;
+    for (auto *s : m_sections) {
+        if (!s->isDeleted() && s->isArchived() && s->projectId() == projectId)
+            result.append(s);
+    }
+    return result;
+}
+
 void DataStore::addExistingSection(Section *section)
 {
     section->setParent(this);

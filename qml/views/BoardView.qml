@@ -46,6 +46,17 @@ Rectangle {
         for (var j = 0; j < arr.length; j++) {
             result.push({ id: arr[j].id, name: arr[j].name })
         }
+        // night iter-160 (#216): when the reveal toggle is on, append HIDDEN
+        // (archived) sections as columns after the visible ones, flagged so the
+        // header + menu can mark them and offer "Показать раздел" (un-hide).
+        if (typeof taskViewModel !== "undefined" && taskViewModel.showHiddenSections) {
+            var hraw = dataStore.archivedSectionsForProject(projectId)
+            var harr = []
+            for (var h = 0; h < hraw.length; h++) harr.push(hraw[h])
+            harr.sort(function(a, b) { return a.order - b.order })
+            for (var k = 0; k < harr.length; k++)
+                result.push({ id: harr[k].id, name: harr[k].name, archived: true })
+        }
         _sections = result
     }
 
@@ -98,6 +109,13 @@ Rectangle {
 
     Component.onCompleted: _refreshSections()
     onProjectIdChanged:    _refreshSections()
+
+    // night iter-160 (#216): rebuild columns when the "показать скрытые разделы"
+    // toggle flips, so hidden-section columns appear/disappear immediately.
+    Connections {
+        target: taskViewModel
+        function onShowHiddenSectionsChanged() { root._refreshSections() }
+    }
 
     // ── Board scroll area ─────────────────────────────────────────────────────
     ScrollView {
@@ -174,10 +192,14 @@ Rectangle {
                                 spacing: 6
 
                                 Label {
-                                    text:             modelData.name
+                                    // night iter-160 (#216): mark revealed HIDDEN sections.
+                                    text:             modelData.archived
+                                                      ? (modelData.name + qsTr(" (скрыт)"))
+                                                      : modelData.name
                                     font.pixelSize:   FontSize.small      // 12 per design
                                     font.weight:      Font.Medium         // weight 500 per design
-                                    color:            root.textPrimary
+                                    color:            modelData.archived ? root.textSecondary
+                                                                         : root.textPrimary
                                     elide:            Text.ElideRight
                                     Layout.fillWidth: true
                                 }
@@ -222,6 +244,17 @@ Rectangle {
                                             renameSectionDialog.sectionId   = modelData.id
                                             renameSectionDialog.sectionName = modelData.name
                                             renameSectionDialog.open()
+                                        }
+                                    }
+                                    // night iter-160 (#216): hide / un-hide this section.
+                                    MenuItem {
+                                        visible: modelData.id !== ""
+                                        height: visible ? implicitHeight : 0
+                                        text: modelData.archived ? qsTr("Показать раздел")
+                                                                  : qsTr("Скрыть раздел")
+                                        onTriggered: {
+                                            dataStore.setSectionArchived(modelData.id, !modelData.archived)
+                                            root._refreshSections()
                                         }
                                     }
                                     MenuSeparator {}

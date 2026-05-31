@@ -33,6 +33,11 @@ class TaskViewModel : public QAbstractListModel
     Q_PROPERTY(QString groupBy READ groupBy WRITE setGroupBy NOTIFY groupByChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(bool showCompleted READ showCompleted WRITE setShowCompleted NOTIFY showCompletedChanged)
+    // night iter-160 (#216): reveal HIDDEN (archived) sections + their tasks in
+    // Project/Board views. Off by default — hidden sections disappear from the
+    // list AND board (consistent); on → both surfaces show them so the user can
+    // un-hide. Global (one instance of TaskViewModel), runtime-only.
+    Q_PROPERTY(bool showHiddenSections READ showHiddenSections WRITE setShowHiddenSections NOTIFY showHiddenSectionsChanged)
     Q_PROPERTY(QStringList selectedIds READ selectedIds NOTIFY selectionChanged)
     Q_PROPERTY(int selectionCount READ selectionCount NOTIFY selectionChanged)
     Q_PROPERTY(QString hoveredTaskId READ hoveredTaskId WRITE setHoveredTaskId NOTIFY hoveredTaskIdChanged)
@@ -127,6 +132,9 @@ public:
 
     bool showCompleted() const;
     void setShowCompleted(bool show);
+
+    bool showHiddenSections() const;
+    void setShowHiddenSections(bool show);
 
     // Hovered / selected task (used by keyboard shortcuts)
     QString hoveredTaskId() const;
@@ -245,6 +253,7 @@ signals:
     void groupByChanged();
     void countChanged();
     void showCompletedChanged();
+    void showHiddenSectionsChanged();
     void taskAdded(const QString &id);
     void taskRemoved(const QString &id);
     void taskChanged(const QString &id);
@@ -300,6 +309,7 @@ private:
     bool m_sortReversed = false;
     QString m_groupBy;
     bool m_showCompleted = false;
+    bool m_showHiddenSections = false;
     // Insertion-ordered list so selectedIds()[0] is deterministic (B-3.61/62).
     QList<QString> m_selectedIds;
     QString m_selectionAnchorId; // for shift-click range selection

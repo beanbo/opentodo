@@ -735,6 +735,52 @@ private slots:
 
         delete f;
     }
+
+    // night iter-160 (#216): tasks in a HIDDEN (archived) section must NOT appear
+    // in Project/Board mode by default (matching the board, whose columns come
+    // from the archive-filtered sectionsForProject), and MUST appear once the
+    // showHiddenSections reveal flag is on.
+    void project_mode_hides_archived_section_tasks_unless_revealed()
+    {
+        DataStore store;
+        Project *proj = store.addProject(QStringLiteral("Proj"));
+
+        Section *visibleSec = store.addSection(QStringLiteral("Visible"), proj->id());
+        Section *hiddenSec  = store.addSection(QStringLiteral("Hidden"),  proj->id());
+        hiddenSec->setIsArchived(true);
+
+        Task *tVisible = store.addTask(QStringLiteral("in-visible-section"), proj->id());
+        tVisible->setSectionId(visibleSec->id());
+        Task *tHidden  = store.addTask(QStringLiteral("in-hidden-section"), proj->id());
+        tHidden->setSectionId(hiddenSec->id());
+        Task *tNoSec   = store.addTask(QStringLiteral("no-section"), proj->id());
+
+        TaskViewModel vm(&store);
+        vm.setCurrentProjectId(proj->id());
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+
+        // Default (toggle off): hidden-section task omitted; the rest visible.
+        QVERIFY(!vm.showHiddenSections());
+        QStringList ids = visibleIds(vm);
+        QVERIFY2(ids.contains(tVisible->id()), "task in a visible section must show");
+        QVERIFY2(ids.contains(tNoSec->id()),   "no-section task must show");
+        QVERIFY2(!ids.contains(tHidden->id()),
+                 "task in a HIDDEN (archived) section must be omitted by default");
+
+        // Reveal (toggle on): the hidden-section task appears too.
+        vm.setShowHiddenSections(true);
+        QStringList revealed = visibleIds(vm);
+        QVERIFY2(revealed.contains(tHidden->id()),
+                 "hidden-section task must appear when showHiddenSections is on");
+        QVERIFY(revealed.contains(tVisible->id()));
+        QVERIFY(revealed.contains(tNoSec->id()));
+
+        // Board mode honours the same flag (shared task source).
+        vm.setShowHiddenSections(false);
+        vm.setFilterMode(TaskViewModel::FilterMode::Board);
+        QVERIFY2(!visibleIds(vm).contains(tHidden->id()),
+                 "board must also hide hidden-section tasks by default");
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTaskViewModelFilter)
