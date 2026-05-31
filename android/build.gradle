@@ -80,7 +80,16 @@ dependencies {
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.gms:play-services-location:21.0.1'
-    // Qt 6 Android runtime — provides org.qtproject.qt.android.QtActivityBase
-    // and all other Qt Java bindings used by MainActivity et al.
-    implementation files('C:/Qt/6.11.0/android_arm64_v8a/jar/Qt6Android.jar')
+    // Qt 6 Android runtime jars. B-9.7 (CRITICAL): must include the WHOLE jar/
+    // directory, not just Qt6Android.jar. Each Qt module ships its Java side in
+    // a separate jar (Qt6AndroidQuick.jar -> org.qtproject.qt.android.QtQuickView,
+    // Qt6AndroidNetwork.jar, ...). libQt6Quick's JNI_OnLoad calls
+    // FindClass("org/qtproject/qt/android/QtQuickView") at load time and returns
+    // JNI_ERR if that class isn't in the dex, crashing the app at startup with:
+    //   java.lang.UnsatisfiedLinkError: JNI_ERR returned from JNI_OnLoad in
+    //   libQt6Quick_<abi>.so   (preceded by ClassNotFoundException: QtQuickView)
+    // Hardcoding only Qt6Android.jar dropped QtQuickView (and the other module
+    // jars). The jars are architecture-independent, so the arm64 kit's jar/ dir
+    // serves every ABI. (Provides QtActivityBase, QtQuickView, QtNetwork, etc.)
+    implementation fileTree(dir: 'C:/Qt/6.11.0/android_arm64_v8a/jar', include: ['*.jar'])
 }
