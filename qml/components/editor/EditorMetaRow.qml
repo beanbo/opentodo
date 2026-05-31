@@ -215,21 +215,30 @@ ColumnLayout {
                 elide:             Text.ElideRight
             }
 
-            Component.onCompleted: {
+            // ITER2 #16: clamp to 0 so a stale/mismatched sectionId never leaves
+            // the ComboBox displaying blank text (currentIndex = -1).
+            // night iter-128: the section model derives from projectCombo's
+            // currentValue, which settles AFTER this combo's Component.onCompleted.
+            // A direct indexOfValue at onCompleted therefore ran against an
+            // unsettled model (and an unbuilt internal value-index) and clamped to
+            // 0 — the editor showed "(без раздела)" for a task that IS in a section
+            // (state.json confirmed task.section_id matched its section, yet the
+            // combo displayed no-section; the project combo above is fine because
+            // its model is ready synchronously). Run the match immediately AND defer
+            // a second pass via Qt.callLater so it re-resolves after the current
+            // event-loop cycle, once projectCombo.currentValue + the section model +
+            // the ComboBox's value index have all settled.
+            function _matchTaskSection() {
                 if (root.task)
-                    // ITER2 #16: clamp to 0 so a stale/mismatched sectionId never
-                    // leaves the ComboBox displaying blank text (currentIndex = -1).
                     sectionCombo.currentIndex = Math.max(0,
                         sectionCombo.indexOfValue(root.task.sectionId || ""))
             }
+            Component.onCompleted: { sectionCombo._matchTaskSection();
+                                     Qt.callLater(sectionCombo._matchTaskSection) }
             Connections {
                 target: root
-                function onTaskChanged() {
-                    if (root.task)
-                        // ITER2 #16: same clamp on task change.
-                        sectionCombo.currentIndex = Math.max(0,
-                            sectionCombo.indexOfValue(root.task.sectionId || ""))
-                }
+                function onTaskChanged() { sectionCombo._matchTaskSection();
+                                           Qt.callLater(sectionCombo._matchTaskSection) }
             }
 
             onActivated: {
