@@ -729,6 +729,16 @@ Item {
                         for (var i = 0; i < tasks.length; i++) {
                             var t = tasks[i]
                             if (!t || t.isDeleted) continue
+                            // night iter-132: count top-level tasks only, mirroring
+                            // DataStore::tasksForProject and the sidebar project-row
+                            // badge (SidebarContent._rebuildProjectCounts, which has
+                            // the same `if (t.parentId) continue`). Subtasks are
+                            // nested under their parent in the project list — not
+                            // first-class rows. Counting them here inflated the
+                            // denominator, so a project with 2 subtasks read "8 из 15"
+                            // (53%) on this chart while the sidebar showed "8/13"
+                            // (62%) for the very same project. Now both agree.
+                            if (t.parentId) continue
                             var pid = t.projectId
                             if (!pid || pid === "") continue
                             if (!agg[pid]) agg[pid] = { total: 0, completed: 0 }
