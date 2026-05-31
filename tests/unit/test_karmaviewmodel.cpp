@@ -268,6 +268,67 @@ private slots:
     }
 
     // =====================================================================
+    // night iter-147: vacation mode pauses the streak. A >1-day gap is
+    // intentional time off, so the next goal-crossing must NOT reset the
+    // streak — it extends it. The gap is injected via the persisted dedup
+    // date (3 days ago) so the next crossing lands in the gap-branch.
+    // (This is the consumer `vacation_mode` was missing — it was a dead
+    // setting before.)
+    // =====================================================================
+    void streak_vacationMode_gap_does_not_reset()
+    {
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("karma/lastStreakIncrementDate"),
+                       QDate::currentDate().addDays(-3).toString(Qt::ISODate));
+            s.sync();
+        }
+
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal), 1);
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyStreak), 10);
+        f->store->setSetting(QLatin1String(SettingsKeys::VacationMode), true);
+
+        KarmaViewModel karma(f->store);   // loads the 3-days-ago dedup date
+        QCOMPARE(karma.dailyStreak(), 10);
+
+        addCompletedTask(f->store, f->inboxId, QStringLiteral("Back from vacation"));
+        karma.onTaskCompleted();          // crosses goal after a 3-day gap
+
+        // Vacation on → gap treated as consecutive → streak extends, not reset.
+        QCOMPARE(karma.dailyStreak(), 11);
+
+        delete f;
+    }
+
+    // Control: without vacation mode the SAME >1-day gap resets to 1.
+    void streak_noVacation_gap_resets_to_one()
+    {
+        {
+            QSettings s;
+            s.setValue(QStringLiteral("karma/lastStreakIncrementDate"),
+                       QDate::currentDate().addDays(-3).toString(Qt::ISODate));
+            s.sync();
+        }
+
+        Fixture *f = makeFixture();
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyGoal), 1);
+        f->store->setSetting(QLatin1String(SettingsKeys::DailyStreak), 10);
+        f->store->setSetting(QLatin1String(SettingsKeys::VacationMode), false);
+
+        KarmaViewModel karma(f->store);
+        QCOMPARE(karma.dailyStreak(), 10);
+
+        addCompletedTask(f->store, f->inboxId, QStringLiteral("Missed days"));
+        karma.onTaskCompleted();
+
+        // No vacation → >1-day gap resets the streak to 1 (unchanged behaviour).
+        QCOMPARE(karma.dailyStreak(), 1);
+
+        delete f;
+    }
+
+    // =====================================================================
     // 7) karmaTrendByDay returns a continuous array with correct shape.
     //    Default is 30 entries with date+score keys, oldest first.
     // =====================================================================

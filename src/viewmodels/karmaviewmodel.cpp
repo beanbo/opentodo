@@ -242,8 +242,16 @@ void KarmaViewModel::onTaskCompleted()
                 // First ever completion: start streak at 1.
                 streak = 1;
             } else {
-                // Gap > 1 day: reset streak to 1.
-                streak = 1;
+                // Gap > 1 day. night iter-147: honour vacation mode. When the
+                // user is on vacation, the missed days are intentional time off
+                // — do NOT reset the streak; treat the gap as consecutive so a
+                // returning user keeps (and extends) their streak. This is the
+                // consumer the `vacation_mode` setting was missing (it was a
+                // dead toggle before). Without vacation mode, a >1-day gap
+                // resets to 1 as before.
+                const bool onVacation = m_store->setting(
+                    QLatin1String(SettingsKeys::VacationMode)).toBool();
+                streak = onVacation ? (dailyStreak() + 1) : 1;
             }
             m_store->setSetting(QLatin1String(SettingsKeys::DailyStreak), streak);
             m_lastStreakIncrementDate = today;
