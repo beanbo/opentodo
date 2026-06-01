@@ -276,6 +276,13 @@ private:
     // whole-project task set in Project/Board/Calendar modes so all three
     // view-modes hide hidden-section tasks consistently.
     QList<Task *> dropHiddenSectionTasks(const QList<Task *> &in) const;
+    // Subtask-visibility fix: returns true when `task` has at least one ACTIVE
+    // (incomplete, non-deleted) descendant anywhere in its subtask subtree.
+    // fetchTasks() uses it to keep a COMPLETED parent visible so its active
+    // subtasks — which render nested under the parent row — stay reachable
+    // without toggling "show completed". Depth-N and cycle-safe (visited set +
+    // MAX_DEPTH bound), so a completed→completed→active chain is handled too.
+    bool _hasActiveDescendant(const Task *task) const;
     QList<Task *> _siblingsOfAnchor(const Task *anchor) const;
     // night iter-147: recursively copy srcParent's subtask subtree under
     // dstParent (used by duplicateTask). Copies fields, strips recurrence,

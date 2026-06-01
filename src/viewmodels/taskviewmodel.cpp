@@ -1925,6 +1925,42 @@ QList<Task *> TaskViewModel::dropHiddenSectionTasks(const QList<Task *> &in) con
     return out;
 }
 
+bool TaskViewModel::_hasActiveDescendant(const Task *task) const
+{
+    if (!task || !m_store)
+        return false;
+
+    // Iterative breadth-first walk of the subtask subtree. Returns true as soon
+    // as ANY descendant is active (incomplete). DataStore::subtasks() already
+    // excludes tombstones, so a non-completed child here is a live, reachable
+    // task. Bounded by MAX_DEPTH and a visited set so a pre-existing parent_id
+    // cycle (reachable via sync convergence — see the cycle-safety pin
+    // test_subtask_deep_hierarchy::move_with_cycle_in_subtree_does_not_infinite_loop)
+    // can never spin forever.
+    constexpr int MAX_DEPTH = 100;
+    QSet<QString> visited;
+    visited.insert(task->id());
+    QList<Task *> frontier = m_store->subtasks(task->id());
+    int depth = 0;
+    while (!frontier.isEmpty() && depth < MAX_DEPTH) {
+        QList<Task *> next;
+        for (Task *child : frontier) {
+            if (!child)
+                continue;
+            const QString cid = child->id();
+            if (visited.contains(cid))
+                continue;
+            visited.insert(cid);
+            if (!child->isCompleted())
+                return true;                      // active descendant found
+            next.append(m_store->subtasks(cid));  // completed: descend further
+        }
+        frontier = next;
+        ++depth;
+    }
+    return false;
+}
+
 QList<Task *> TaskViewModel::fetchTasks() const
 {
     QList<Task *> result;
@@ -2021,10 +2057,37 @@ QList<Task *> TaskViewModel::fetchTasks() const
         result = m_store->completedTasks();
     }
 
-    // Filter out completed unless requested
+    // Filter out completed unless requested.
+    //
+    // Subtask-visibility fix (night pixel-perfect loop): a COMPLETED parent that
+    // still has an ACTIVE (incomplete, non-deleted) descendant must STAY in the
+    // list. The main list shows top-level tasks only — a parent's subtasks render
+    // NESTED under its row (see the parentId filter below), so dropping the
+    // completed parent here would leave its active subtasks rendered NOWHERE and
+    // unreachable until the user toggled "show completed". The data model
+    // intentionally keeps subtasks of a completed parent active (test
+    // complete_parent_does_not_cascade_to_children), so the UI must keep them
+    // reachable: the retained parent renders struck-through with its active
+    // children beneath — identical to the showCompleted=true layout.
+    // _hasActiveDescendant walks the whole subtree (depth-N, cycle-safe) so a
+    // completed→completed→active chain keeps the top ancestor visible too.
+    //
+    // Filter mode is deliberately excluded: it renders matching tasks as a FLAT
+    // list (the top-level filter below is skipped for it), so an active subtask
+    // that matches the query already appears as its own row — the completed
+    // parent neither helps reachability there nor should leak into a
+    // showCompleted=off filter result. Today/Upcoming/Label build their result
+    // from incomplete tasks only, so a completed parent never reaches this
+    // filter in those modes; the exception is therefore naturally confined to
+    // the project-hierarchy views (Inbox/Project, plus Board whose QML re-drops
+    // completed tasks anyway).
     if (!m_showCompleted && m_filterMode != FilterMode::Completed) {
+        const bool nestsSubtasks = (m_filterMode != FilterMode::Filter);
         result.erase(std::remove_if(result.begin(), result.end(),
-                     [](Task *t) { return t->isCompleted(); }), result.end());
+                     [this, nestsSubtasks](Task *t) {
+                         return t->isCompleted()
+                                && !(nestsSubtasks && _hasActiveDescendant(t));
+                     }), result.end());
     }
 
     // Filter to top-level tasks only (no subtasks in main list)

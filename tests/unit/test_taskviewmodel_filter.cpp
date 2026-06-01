@@ -791,6 +791,171 @@ private slots:
         QVERIFY2(visibleIds(vm).contains(tHidden->id()),
                  "calendar must reveal hidden-section tasks when the flag is on");
     }
+
+    // =====================================================================
+    // Completed-parent-with-active-subtask visibility (night pixel-perfect
+    // loop fix).
+    //
+    // The main list shows TOP-LEVEL rows only; a parent's subtasks render
+    // NESTED under its row. The data model intentionally keeps subtasks of a
+    // completed parent active (test_subtask_deep_hierarchy::
+    // complete_parent_does_not_cascade_to_children). Before the fix, the
+    // completed-filter dropped the completed parent, so its active subtasks —
+    // which only render nested under that now-absent row — rendered NOWHERE and
+    // were unreachable until "show completed" was toggled on. fetchTasks() now
+    // retains a completed parent that still has an ACTIVE descendant so the
+    // nested active subtask stays reachable.
+    // =====================================================================
+
+    void completed_parent_with_active_subtask_stays_visible_in_project()
+    {
+        DataStore store;
+        Project *p = store.addProject(QStringLiteral("P"));
+
+        Task *parent = store.addTask(QStringLiteral("parent"), p->id());
+        Task *child  = store.addTask(QStringLiteral("child"),  p->id());
+        child->setParentId(parent->id());
+
+        // Complete ONLY the parent; the subtask stays active.
+        parent->setIsCompleted(true);
+        QVERIFY(parent->isCompleted());
+        QVERIFY(!child->isCompleted());
+
+        TaskViewModel vm(&store);
+        QVERIFY(!vm.showCompleted());           // default: completed hidden
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(p->id());
+
+        const QStringList ids = visibleIds(vm);
+
+        // The completed parent is RETAINED (it has an active descendant) so the
+        // nested active subtask is reachable beneath it.
+        QVERIFY2(ids.contains(parent->id()),
+                 "completed parent with an active subtask must stay visible so "
+                 "the nested active subtask is reachable");
+        // The subtask itself is never a top-level row — it renders nested.
+        QVERIFY(!ids.contains(child->id()));
+    }
+
+    void completed_parent_with_active_subtask_stays_visible_in_inbox()
+    {
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        Task *parent = store.addTask(QStringLiteral("parent"), inbox->id());
+        Task *child  = store.addTask(QStringLiteral("child"),  inbox->id());
+        child->setParentId(parent->id());
+        parent->setIsCompleted(true);
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Inbox);
+
+        const QStringList ids = visibleIds(vm);
+        QVERIFY2(ids.contains(parent->id()),
+                 "Inbox must also retain a completed parent that still has an "
+                 "active subtask (same project-hierarchy rule as Project mode)");
+        QVERIFY(!ids.contains(child->id()));
+    }
+
+    void completed_parent_depth2_chain_with_active_grandchild_stays_visible()
+    {
+        // A (completed, top-level) -> B (completed) -> C (active). The active
+        // grandchild lives two levels down, so the retain check must recurse:
+        // a depth-1 "any direct child active" test would wrongly drop A
+        // (its only direct child B is completed).
+        DataStore store;
+        Project *p = store.addProject(QStringLiteral("P"));
+
+        Task *a = store.addTask(QStringLiteral("A"), p->id());
+        Task *b = store.addTask(QStringLiteral("B"), p->id());
+        Task *c = store.addTask(QStringLiteral("C"), p->id());
+        b->setParentId(a->id());
+        c->setParentId(b->id());
+
+        a->setIsCompleted(true);
+        b->setIsCompleted(true);
+        QVERIFY(!c->isCompleted());             // C stays active
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(p->id());
+
+        const QStringList ids = visibleIds(vm);
+        QVERIFY2(ids.contains(a->id()),
+                 "top ancestor of a completed->completed->active chain must stay "
+                 "visible — the retain check walks the whole subtree, not just "
+                 "direct children");
+        QVERIFY(!ids.contains(b->id()));        // subtasks render nested
+        QVERIFY(!ids.contains(c->id()));
+    }
+
+    void completed_parent_with_all_descendants_completed_is_hidden()
+    {
+        // Control for the retain rule: when NO descendant is active, the
+        // completed parent is dropped exactly as before — the fix is scoped to
+        // "has an active descendant", it does not blanket-keep completed trees.
+        DataStore store;
+        Project *p = store.addProject(QStringLiteral("P"));
+
+        Task *parent = store.addTask(QStringLiteral("parent"), p->id());
+        Task *child  = store.addTask(QStringLiteral("child"),  p->id());
+        child->setParentId(parent->id());
+        parent->setIsCompleted(true);
+        child->setIsCompleted(true);            // whole subtree completed
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(p->id());
+
+        const QStringList ids = visibleIds(vm);
+        QVERIFY2(!ids.contains(parent->id()),
+                 "a fully-completed subtree must still be hidden when "
+                 "showCompleted is off — retain applies only when an active "
+                 "descendant exists");
+        QVERIFY(!ids.contains(child->id()));
+        QVERIFY2(ids.isEmpty(),
+                 "no top-level rows remain once the only parent is hidden");
+    }
+
+    void completed_parent_does_not_leak_into_today_view()
+    {
+        // Scope pin: the retain exception must NOT surface a completed parent in
+        // Today/Upcoming. Those views build their result from incomplete tasks
+        // only (tasksForToday/overdueTasks skip completed), so a completed
+        // parent never reaches the completed-filter there. A completed parent
+        // due today with an active subtask therefore stays OUT of Today — the
+        // fix is confined to the project-hierarchy views (Inbox/Project).
+        DataStore store;
+        Project *inbox = store.addProject(QStringLiteral("Inbox"));
+        inbox->setIsInbox(true);
+
+        const QString todayStr =
+            QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+
+        Task *parent = store.addTask(QStringLiteral("parent due today"), inbox->id());
+        parent->setDueDate(todayStr);
+        parent->setIsCompleted(true);
+
+        Task *child = store.addTask(QStringLiteral("active child"), inbox->id());
+        child->setParentId(parent->id());       // active, no own due date
+
+        TaskViewModel vm(&store);
+        vm.setFilterMode(TaskViewModel::FilterMode::Today);
+
+        const QStringList ids = visibleIds(vm);
+        QVERIFY2(!ids.contains(parent->id()),
+                 "a completed parent must NOT appear in Today even though it has "
+                 "an active subtask — Today is built from incomplete tasks only");
+        QVERIFY(!ids.contains(child->id()));
+
+        // The SAME parent IS retained in the project view — confirming the
+        // behaviour difference is by mode, not by data.
+        vm.setFilterMode(TaskViewModel::FilterMode::Project);
+        vm.setCurrentProjectId(inbox->id());
+        QVERIFY2(visibleIds(vm).contains(parent->id()),
+                 "the same completed parent IS retained in the project view");
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTaskViewModelFilter)
