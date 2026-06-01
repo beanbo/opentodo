@@ -1342,9 +1342,11 @@ Item {
             onAboutToShow: {
                 const p = mainRow.mapToItem(Overlay.overlay, 0, mainRow.height)
                 const cx = p.x + mainRow.width / 2
-                x = Math.max(8,
-                             Math.min(cx - width / 2,
-                                      Overlay.overlay.width - width - 8))
+                // B-9.12: guard null Overlay.overlay (same latent class as B-9.10/11);
+                // drop the right-edge clamp when there is no overlay to measure against.
+                x = Overlay.overlay
+                        ? Math.max(8, Math.min(cx - width / 2, Overlay.overlay.width - width - 8))
+                        : Math.max(8, cx - width / 2)
                 y = p.y + 6
             }
 
@@ -1929,12 +1931,13 @@ Item {
         onAboutToShow: {
             var p = mainRow.mapToItem(Overlay.overlay, 0, mainRow.height)
             var cx = p.x + mainRow.width / 2
-            x = Math.max(8,
-                         Math.min(cx - width / 2,
-                                  Overlay.overlay.width - width - 8))
-            y = Math.max(8,
-                         Math.min(p.y + 6,
-                                  Overlay.overlay.height - height - 8))
+            // B-9.12: guard null Overlay.overlay; drop the far-edge clamp when absent.
+            x = Overlay.overlay
+                    ? Math.max(8, Math.min(cx - width / 2, Overlay.overlay.width - width - 8))
+                    : Math.max(8, cx - width / 2)
+            y = Overlay.overlay
+                    ? Math.max(8, Math.min(p.y + 6, Overlay.overlay.height - height - 8))
+                    : Math.max(8, p.y + 6)
         }
 
         background: Rectangle {
@@ -2220,12 +2223,13 @@ Item {
             // прижать к границам оверлея.
             const p = mainRow.mapToItem(Overlay.overlay, 0, mainRow.height)
             const cx = p.x + mainRow.width / 2
-            x = Math.max(8,
-                         Math.min(cx - width / 2,
-                                  Overlay.overlay.width - width - 8))
-            y = Math.max(8,
-                         Math.min(p.y + 6,
-                                  Overlay.overlay.height - height - 8))
+            // B-9.12: guard null Overlay.overlay; drop the far-edge clamp when absent.
+            x = Overlay.overlay
+                    ? Math.max(8, Math.min(cx - width / 2, Overlay.overlay.width - width - 8))
+                    : Math.max(8, cx - width / 2)
+            y = Overlay.overlay
+                    ? Math.max(8, Math.min(p.y + 6, Overlay.overlay.height - height - 8))
+                    : Math.max(8, p.y + 6)
         }
 
         background: Rectangle {
