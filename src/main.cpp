@@ -764,6 +764,19 @@ int main(int argc, char *argv[])
         // Initial visibility honours the user's saved preference (default on).
         trayIcon->setVisible(settingsVM->showTrayIcon());
 
+#ifdef Q_OS_WIN
+        // Hand THIS single tray icon to the Windows notification service so its
+        // toast balloons anchor here instead of registering a second icon in
+        // the notification area (the "two tray icons" bug). qobject_cast safely
+        // returns nullptr if the platform service isn't the Windows one. Done
+        // before app.exec() — no notification can fire until the event loop
+        // runs, so the shared icon is always in place by the first toast.
+        if (auto *winNotif =
+                qobject_cast<WindowsNotificationService *>(notificationService)) {
+            winNotif->setSharedTrayIcon(trayIcon->systemTrayIcon());
+        }
+#endif
+
         // Reflect the live tray-icon toggle (Settings UI) without restart.
         QObject::connect(settingsVM, &SettingsViewModel::showTrayIconChanged,
                          trayIcon, [trayIcon, settingsVM]() {

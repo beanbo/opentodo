@@ -296,10 +296,12 @@ private slots:
 
     // -----------------------------------------------------------------------
     // Slot 7: construction does not block, does not throw, does not fire
-    // signals (e.g. notificationClicked, permissionRequestCompleted). The
-    // tray icon should be created lazily-but-eagerly (in the constructor)
-    // and become visible without raising any OS dialog. We can't test the
-    // visibility easily, but we CAN test:
+    // signals (e.g. notificationClicked, permissionRequestCompleted).
+    // Construction is deliberately icon-free: the tray icon is either the
+    // shared TrayIconService icon injected later via setSharedTrayIcon(), or a
+    // private fallback created lazily on the first showNotification(). Eagerly
+    // registering an icon in the ctor previously produced a duplicate tray
+    // icon, so the ctor must stay cheap. We CAN test:
     //   (a) construction completes synchronously (no blocking),
     //   (b) no signal is fired during/right after construction.
     //
@@ -313,9 +315,9 @@ private slots:
     {
 #if defined(Q_OS_WIN)
         if (!QSystemTrayIcon::isSystemTrayAvailable())
-            QSKIP("System tray not available — ensureTrayIcon would still "
-                  "construct the QSystemTrayIcon object but show() would fail "
-                  "silently. Skipping rather than asserting on a degraded state.");
+            QSKIP("System tray not available. Construction itself no longer "
+                  "creates an icon, but we keep the guard for parity with the "
+                  "other slots in this file.");
 
         QElapsedTimer t;
         t.start();

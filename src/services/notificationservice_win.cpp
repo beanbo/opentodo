@@ -14,7 +14,12 @@
 WindowsNotificationService::WindowsNotificationService(QObject *parent)
     : NotificationService(parent)
 {
-    ensureTrayIcon();
+    // No tray icon is created here. In production main.cpp injects the single
+    // shared TrayIconService icon via setSharedTrayIcon() before any
+    // notification can fire; standalone callers (unit tests, or platforms with
+    // no TrayIconService) get a private fallback icon created lazily on the
+    // first showNotification(). Eagerly creating our own icon here is what
+    // produced a SECOND icon in the notification area next to TrayIconService.
 }
 
 WindowsNotificationService::~WindowsNotificationService()
@@ -22,26 +27,73 @@ WindowsNotificationService::~WindowsNotificationService()
     cancelAll();
 }
 
-void WindowsNotificationService::ensureTrayIcon()
+void WindowsNotificationService::setSharedTrayIcon(QSystemTrayIcon *icon)
 {
-    if (!m_trayIcon) {
-        m_trayIcon = new QSystemTrayIcon(this);
-        // B-9.9: use the actual resource path registered in CMakeLists.txt
-        m_trayIcon->setIcon(QIcon(QStringLiteral(":/icons/resources/icons/icon_32.png")));
-        m_trayIcon->setToolTip(QStringLiteral("OpenTodo"));
-        m_trayIcon->show();
+    if (m_sharedTrayIcon == icon)
+        return;
+    m_sharedTrayIcon = icon;
 
-        connect(m_trayIcon, &QSystemTrayIcon::activated,
-                this, &WindowsNotificationService::onTrayActivated);
-        connect(m_trayIcon, &QSystemTrayIcon::messageClicked,
-                this, [this]() { emit notificationClicked(m_lastTaskId); });
+    if (icon) {
+        // Listen for messageClicked ONLY — not activated. The icon's
+        // click/double-click activation is owned by TrayIconService (it raises
+        // the main window); handling it here too would also fire
+        // notificationClicked on every plain tray click. messageClicked fires
+        // only when the user clicks the balloon/toast itself, which
+        // TrayIconService does not handle.
+        connect(icon, &QSystemTrayIcon::messageClicked,
+                this, [this]() { emit notificationClicked(m_lastTaskId); },
+                Qt::UniqueConnection);
     }
+
+    // If a notification fired before the shared icon was injected we may have
+    // spun up our own fallback icon — retire it so exactly one icon remains.
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+        m_trayIcon->deleteLater();
+        m_trayIcon = nullptr;
+    }
+}
+
+QSystemTrayIcon *WindowsNotificationService::activeTrayIcon()
+{
+    if (m_sharedTrayIcon)
+        return m_sharedTrayIcon;
+    ensureOwnTrayIcon();
+    return m_trayIcon;
+}
+
+void WindowsNotificationService::ensureOwnTrayIcon()
+{
+    if (m_trayIcon)
+        return;
+    m_trayIcon = new QSystemTrayIcon(this);
+    // B-9.9: use the actual resource path registered in CMakeLists.txt
+    m_trayIcon->setIcon(QIcon(QStringLiteral(":/icons/resources/icons/icon_32.png")));
+    m_trayIcon->setToolTip(QStringLiteral("OpenTodo"));
+    m_trayIcon->show();
+
+    connect(m_trayIcon, &QSystemTrayIcon::activated,
+            this, &WindowsNotificationService::onTrayActivated);
+    connect(m_trayIcon, &QSystemTrayIcon::messageClicked,
+            this, [this]() { emit notificationClicked(m_lastTaskId); });
 }
 
 void WindowsNotificationService::showNotification(const QString &title, const QString &body, const QString &taskId)
 {
-    ensureTrayIcon();
     m_lastTaskId = taskId;
+
+    QSystemTrayIcon *tray = activeTrayIcon();
+
+    // The shared TrayIconService icon follows the user's "show tray icon"
+    // setting; when they've hidden it there is no registered icon for Windows
+    // to anchor a balloon on (QSystemTrayIcon::showMessage silently no-ops on a
+    // hidden icon). Rather than drop the notification, surface it as an in-app
+    // banner. Our own fallback icon is always shown, so this branch only trips
+    // for the shared-and-hidden case.
+    if (!tray || !tray->isVisible()) {
+        showInAppBanner(title, body, taskId);
+        return;
+    }
 
     // Read user preference for notification sound. Default ON for backwards compat.
     // The spec asks for "<audio silent=\"true\"/>" semantics — on Windows we
@@ -60,7 +112,7 @@ void WindowsNotificationService::showNotification(const QString &title, const QS
     const bool soundEnabled = s.value(QStringLiteral("notifications/enabled"), true).toBool();
 
     if (soundEnabled) {
-        m_trayIcon->showMessage(title, body, QSystemTrayIcon::Information, 5000);
+        tray->showMessage(title, body, QSystemTrayIcon::Information, 5000);
         return;
     }
 
@@ -71,7 +123,7 @@ void WindowsNotificationService::showNotification(const QString &title, const QS
     // sound is the lesser of two evils vs. no notification at all.
     HWND hwnd = ::FindWindowW(L"QTrayIconMessageWindow", nullptr);
     if (!hwnd) {
-        m_trayIcon->showMessage(title, body, QSystemTrayIcon::Information, 5000);
+        tray->showMessage(title, body, QSystemTrayIcon::Information, 5000);
         return;
     }
 
@@ -91,7 +143,7 @@ void WindowsNotificationService::showNotification(const QString &title, const QS
         // If the direct shell call fails (different uID, wrong window class on
         // future Qt versions), fall back to the audible Qt path so the user
         // still gets the notification.
-        m_trayIcon->showMessage(title, body, QSystemTrayIcon::Information, 5000);
+        tray->showMessage(title, body, QSystemTrayIcon::Information, 5000);
     }
 }
 

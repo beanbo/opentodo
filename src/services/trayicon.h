@@ -43,6 +43,13 @@ public:
     // false at construction time.
     bool isAvailable() const { return m_trayIcon != nullptr; }
 
+    // Expose the single underlying QSystemTrayIcon so the platform
+    // NotificationService can anchor its toast/balloon messages on THIS icon
+    // instead of registering a second QSystemTrayIcon of its own — two live
+    // icons showed up as a duplicate entry in the Windows notification area.
+    // Returns nullptr when no system tray is available (isAvailable() == false).
+    QSystemTrayIcon *systemTrayIcon() const { return m_trayIcon; }
+
     // Whether the tray icon is currently shown in the notification area.
     // Setting to false hides the icon (used by the showTrayIcon setting
     // toggle); setting to true re-shows it. A no-op if isAvailable() is
