@@ -1314,6 +1314,20 @@ Rectangle {
                                     ctxIconPicker.openWith(p ? (p.icon || "") : "")
                                 }
                             }
+                            // Generate a Claude Code skill so an agent in this
+                            // project's linked repo can manage its tasks via
+                            // opentodo-cli. Hidden when the launcher isn't wired
+                            // (e.g. platforms where it isn't exposed).
+                            MenuItem {
+                                text: qsTr("Добавить навык в Claude…")
+                                visible: typeof claudeCodeLauncher !== "undefined" && !!claudeCodeLauncher
+                                height: visible ? implicitHeight : 0
+                                onTriggered: {
+                                    addSkillDialog.projectId   = projCtxMenu.projectId
+                                    addSkillDialog.projectName = projCtxMenu.projectName
+                                    addSkillDialog.open()
+                                }
+                            }
                             MenuSeparator {}
                             MenuItem {
                                 text: (projectViewModel.projectById(projCtxMenu.projectId)
@@ -2605,6 +2619,194 @@ Rectangle {
                 Connections {
                     target: parentPickerDialog
                     function onOpened() { parentCombo._rebuild() }
+                }
+            }
+        }
+    }
+
+    // "Добавить навык в Claude" — copies a ready-to-paste prompt that makes a
+    // Claude Code session in the project's linked repo create an `opentodo`
+    // skill (.claude/skills/opentodo/SKILL.md), teaching it to drive this
+    // project's tasks through opentodo-cli. The TextArea below doubles as the
+    // clipboard source (selectAll + copy), matching ShareLinkDialog's pattern.
+    Dialog {
+        id: addSkillDialog
+        property string projectId:   ""
+        property string projectName: ""
+        property bool   _linked:     false   // project has a linkedRepoPath
+        property string skillPrompt: ""
+
+        title: qsTr("Добавить навык в Claude")
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Overlay.overlay ? Math.min(560, Overlay.overlay.width - Spacing.xl) : 560  // B-9.10: guard null overlay
+        standardButtons: Dialog.Close
+
+        // Assemble the prompt from single-quoted lines (so backticks and double
+        // quotes need no escaping), then fill in the project name and the local
+        // opentodo-cli path. Rebuilt on every open so both stay current.
+        function _buildPrompt() {
+            const cli = (typeof claudeCodeLauncher !== "undefined" && claudeCodeLauncher)
+                        ? claudeCodeLauncher.opentodoCliPath() : "opentodo-cli"
+            const proj = (addSkillDialog.projectName && addSkillDialog.projectName.trim() !== "")
+                         ? addSkillDialog.projectName.trim() : qsTr("этого репозитория")
+            const lines = [
+                'Создай навык Claude Code (skill) для работы с задачами проекта «{PROJECT}» из приложения OpenTodo.',
+                '',
+                'Этот репозиторий привязан к проекту «{PROJECT}» в OpenTodo. Создай файл `.claude/skills/opentodo/SKILL.md` с приведённым ниже содержимым (если файл уже существует — обнови его). Затем проверь, что утилита доступна командой `opentodo-cli --help`, и покажи активные задачи через `opentodo-cli list`.',
+                '',
+                '```markdown',
+                '---',
+                'name: opentodo',
+                'description: >-',
+                '  Работа с задачами OpenTodo для этого репозитория через CLI `opentodo-cli`:',
+                '  посмотреть задачи проекта, взять в работу, отметить выполненными, добавить',
+                '  новые, оставить комментарий. Используй, когда пользователь просит «покажи',
+                '  задачи», «что по задачам OpenTodo», «возьми следующую задачу», «сделай задачи',
+                '  из todo», «отметь выполненной/закрой задачу», или хочет синхронизировать',
+                '  прогресс с OpenTodo.',
+                '---',
+                '',
+                '# OpenTodo (opentodo-cli)',
+                '',
+                'Этот репозиторий привязан к проекту «{PROJECT}» в приложении OpenTodo. Утилита `opentodo-cli`',
+                'читает и обновляет задачи этого проекта. По умолчанию команда САМА определяет проект',
+                'по текущей папке (она сопоставляется с `linked_repo_path` проекта), поэтому внутри',
+                'репозитория флаг `--project` указывать не нужно.',
+                '',
+                '## Предусловия',
+                '- `opentodo-cli` должна быть в PATH. Проверка: `opentodo-cli --help`. Фолбэк —',
+                '  полный путь `{CLI}`.',
+                '- Если приложение OpenTodo открыто — запись идёт через живое приложение (karma,',
+                '  автосейв, синхронизация срабатывают). Если закрыто — напрямую в файл состояния;',
+                '  это безопасно, в выводе появится «(applied offline — app was not running)».',
+                '',
+                '## Команды',
+                '- `opentodo-cli list [--json] [--all] [--project NAME] [--limit N] [--include-completed]`',
+                '  — активные задачи, сортировка по приоритету p1→p4.',
+                '- `opentodo-cli next [--json]` — одна самая приоритетная задача.',
+                '- `opentodo-cli show <id> [--json]` — задача целиком: подзадачи и комментарии.',
+                '- `opentodo-cli done <id> [--note "что сделано"]` — отметить выполненной.',
+                '- `opentodo-cli add "<текст>" [--project NAME] [--due "завтра 15:00"] [--priority 1..4] [--lang ru]`',
+                '  — создать задачу; `--due` понимает естественный язык.',
+                '- `opentodo-cli comment <id> "<текст>"` — добавить комментарий.',
+                '- `opentodo-cli delete <id>` — мягкое удаление (в Корзину, обратимо).',
+                '',
+                'Приоритет: `1` = срочно (p1) … `4` = обычный (p4).',
+                '',
+                '## Типовой рабочий процесс',
+                '1. Посмотри задачи: `opentodo-cli list --json`.',
+                '2. Детали выбранной: `opentodo-cli show <id> --json` (описание, подзадачи, комментарии).',
+                '3. Выполни работу в репозитории.',
+                '4. Отметь: `opentodo-cli done <id> --note "<кратко, что сделал>"` — заметка уйдёт',
+                '   в комментарии задачи, чтобы пользователь видел результат в OpenTodo.',
+                '5. Возникли новые подзадачи — заведи: `opentodo-cli add "<текст>"`.',
+                '',
+                '## Правила',
+                '- Бери `id` ТОЛЬКО из вывода `list`/`next`/`show --json`. В человекочитаемом выводе',
+                '  id обрезан до 8 символов в скобках `[…]`; командам нужен полный UUID — используй `--json`.',
+                '- НЕ отмечай и не удаляй задачи без подтверждения, если пользователь явно не сказал',
+                '  «сделай и закрой». Сначала покажи список/план.',
+                '- `done` для повторяющейся задачи при запущенном приложении сдвигает расписание',
+                '  (mode = `advanced`), а не закрывает её; в офлайне такая задача не закрывается —',
+                '  предложи сделать это при открытом приложении.',
+                '- Если `list` отвечает «no OpenTodo project is linked to this scope» — репозиторий не',
+                '  привязан: задай у проекта «{PROJECT}» поле `linked repo path` в OpenTodo, либо',
+                '  используй `--project "{PROJECT}"` / `--all`.',
+                '- `delete` — мягкое (Корзина); применяй осторожно.',
+                '',
+                '## Формы JSON (для парсинга)',
+                '- `list` → `{ "scope", "count", "tasks": [ { "id", "content", "project", "priority",',
+                '  "due?", "recurring?", "description?", "labels?" } ] }`',
+                '- `show` → объект задачи + `"subtasks": [...]` + `"comments": [ { "text" } ]`',
+                '- `done` → `{ "id", "mode": "completed" | "advanced" }`',
+                '- `add` / `comment` / `delete` → `{ "id", ... }`',
+                '- Ошибка → текст в stderr и код возврата ≠ 0; при `--json`: `{ "error": "..." }`.',
+                '```'
+            ]
+            return lines.join('\n')
+                        .replace(/\{PROJECT\}/g, function() { return proj })
+                        .replace(/\{CLI\}/g,     function() { return cli  })
+        }
+
+        onOpened: {
+            const p = projectViewModel.projectById(addSkillDialog.projectId)
+            addSkillDialog._linked     = !!p && (p.linkedRepoPath || "") !== ""
+            addSkillDialog.skillPrompt = addSkillDialog._buildPrompt()
+            copyBtn._copied = false
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: Spacing.md
+
+            Label {
+                text: qsTr("Этот навык научит Claude Code работать с задачами проекта через консольную утилиту opentodo-cli — смотреть список, брать в работу, отмечать выполненными, добавлять новые.")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                color: ThemeManager.textColor
+            }
+            Label {
+                text: qsTr("1. Нажмите «Копировать промт».\n2. Откройте Claude Code в папке репозитория этого проекта.\n3. Вставьте текст и отправьте — Claude создаст навык .claude/skills/opentodo/SKILL.md.")
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+                color: ThemeManager.secondaryTextColor
+                font.pixelSize: 13
+            }
+            // Nudge to set a linked repo path when missing — the skill auto-scopes by it.
+            Label {
+                visible: !addSkillDialog._linked
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: ThemeManager.accentColor
+                text: qsTr("⚠ У проекта не задан «Связанный репозиторий». Без него команды нужно запускать с флагом --project. Задать путь можно в свойствах проекта.")
+            }
+
+            // Read-only preview that doubles as the clipboard source.
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 220
+                clip: true
+                TextArea {
+                    id: promptArea
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: Text.NoWrap
+                    text: addSkillDialog.skillPrompt
+                    color: ThemeManager.textColor
+                    font.family: "Consolas, monospace"
+                    font.pixelSize: 12
+                    background: Rectangle {
+                        color: ThemeManager.surfaceColor
+                        border.color: ThemeManager.borderColor
+                        border.width: 1
+                        radius: Radius.sm
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    id: copyBtn
+                    property bool _copied: false
+                    text: copyBtn._copied ? qsTr("Скопировано") : qsTr("Копировать промт")
+                    Material.background: ThemeManager.accentColor
+                    Material.foreground: ThemeManager.accentForeground
+                    onClicked: {
+                        promptArea.selectAll()
+                        promptArea.copy()
+                        promptArea.deselect()
+                        copyBtn._copied = true
+                        copyResetTimer.restart()
+                    }
+                    Timer {
+                        id: copyResetTimer
+                        interval: 1500
+                        onTriggered: copyBtn._copied = false
+                    }
                 }
             }
         }

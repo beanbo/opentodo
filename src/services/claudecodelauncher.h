@@ -31,4 +31,11 @@ public:
     Q_INVOKABLE bool launch(const QString &taskContent,
                             const QString &taskDescription,
                             const QString &repoPath);
+
+    // Best-known path to the `opentodo-cli` companion binary. PATH lookup first
+    // (the user may have it installed/aliased), else the file next to this
+    // running app — CMake emits opentodo-cli(.exe) into the same directory as
+    // the desktop binary. Used by the "Добавить навык в Claude" dialog as the
+    // fallback path baked into the generated skill. Returns native separators.
+    Q_INVOKABLE QString opentodoCliPath() const;
 };

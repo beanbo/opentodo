@@ -205,6 +205,7 @@ set(INFRA_SOURCES
     src/filter/filtereval.cpp
     src/storage/datastore.cpp
     src/storage/filemanager.cpp
+    src/cli/clicore.cpp
     src/sync/commit.cpp
     src/sync/syncengine.cpp
     src/sync/merger.cpp
@@ -399,6 +400,7 @@ set(APP_SOURCES
     src/viewmodels/karmaviewmodel.cpp
     src/viewmodels/syncviewmodel.cpp
     src/viewmodels/notificationsviewmodel.cpp
+    src/app/clibridge.cpp
 )
 
 set(APP_HEADERS
@@ -411,6 +413,7 @@ set(APP_HEADERS
     src/viewmodels/karmaviewmodel.h
     src/viewmodels/syncviewmodel.h
     src/viewmodels/notificationsviewmodel.h
+    src/app/clibridge.h
 )
 
 qt_add_library(OpenTodoApp STATIC ${APP_SOURCES} ${APP_HEADERS})
@@ -548,6 +551,20 @@ qt_add_executable(OpenTodo WIN32 src/main.cpp)
 # before QQmlApplicationEngine::loadFromModule runs.
 target_link_libraries(OpenTodo PRIVATE OpenTodoApp OpenTodoAppplugin)
 
+# ── opentodo-cli (console front-end) ──────────────────────────────────────────
+# Headless CLI over the same task store. Reuses the Infra layer (DataStore /
+# FileManager / clicore) so there is zero logic duplication. No WIN32, so it is
+# a console app with working stdout.
+#
+# NB: the binary stays named "opentodo-cli", NOT "opentodo". Windows paths are
+# case-insensitive, so an "opentodo.exe" output would resolve to the SAME file
+# as the GUI app's "OpenTodo.exe" in this build directory — and the linker
+# cannot overwrite it while the app is running. Keeping the "-cli" suffix also
+# lets it sit beside the app's windeployqt'd Qt DLLs, so it runs with no extra
+# deployment. Alias it to `opentodo` on PATH for the shorter command.
+qt_add_executable(opentodo-cli src/cli/main_cli.cpp)
+target_link_libraries(opentodo-cli PRIVATE OpenTodoInfra)
+
 # Explicitly copy the Qt.labs.settings plugin into the exe's qml/ tree.
 # Even with target_link_libraries(Qt6::LabsSettings) above, Qt's CMake glue
 # does not deploy the plugin .dll into the binary directory for desktop
@@ -637,9 +654,25 @@ endif()
 
 # ── Platform-specific configuration ──────────────────────────────────────────
 if(ANDROID)
-    set_property(TARGET OpenTodo APPEND PROPERTY
-        QT_ANDROID_EXTRA_LIBS ""
-    )
+    # Bundle OpenSSL 3 so Qt's TLS backend can load. Without libcrypto_3.so /
+    # libssl_3.so the qopensslbackend plugin fails at runtime
+    # ("No TLS backend is available") and ALL HTTPS — including Google Drive
+    # sync — is dead on Android. Prebuilt per-ABI libs (KDAB android_openssl,
+    # the Qt-recommended source) live under third_party/android_openssl/<abi>/.
+    set(_OPENTODO_ANDROID_SSL_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/android_openssl/${ANDROID_ABI}")
+    if(EXISTS "${_OPENTODO_ANDROID_SSL_DIR}/libssl_3.so")
+        set_property(TARGET OpenTodo APPEND PROPERTY
+            QT_ANDROID_EXTRA_LIBS
+                "${_OPENTODO_ANDROID_SSL_DIR}/libcrypto_3.so"
+                "${_OPENTODO_ANDROID_SSL_DIR}/libssl_3.so"
+        )
+    else()
+        message(WARNING
+            "OpenSSL libs for ABI '${ANDROID_ABI}' not found under "
+            "third_party/android_openssl/ — TLS/HTTPS (Google Drive sync) will "
+            "NOT work in this Android build.")
+    endif()
     set_target_properties(OpenTodo PROPERTIES
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
     )

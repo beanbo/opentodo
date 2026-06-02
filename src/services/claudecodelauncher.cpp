@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QStringList>
+#include <QCoreApplication>
 
 #ifdef Q_OS_WIN
 #  include <QProcessEnvironment>
@@ -59,6 +60,15 @@ bool ClaudeCodeLauncher::launch(const QString &taskContent,
     QString prompt = taskContent;
     if (!taskDescription.trimmed().isEmpty())
         prompt += QStringLiteral("\n\n") + taskDescription;
+
+    // Point the launched session at the `opentodo` CLI so it can see the rest of
+    // this project's tasks and report progress back — not just act on this one
+    // task. (No double-quotes here: the prompt is passed as a single cmd.exe
+    // argument and quotes would need escaping.) Requires `opentodo` on PATH.
+    prompt += QStringLiteral(" (This repo is linked to an OpenTodo project: run "
+                             "`opentodo-cli list --json` to see all its tasks, "
+                             "`opentodo-cli done <id>` to report completion, and "
+                             "`opentodo-cli add <text>` to capture follow-ups.)");
 
     // Strip control characters that survive Qt's per-argument escaping but
     // get re-interpreted by `cmd /k`. A task content of "foo\r\necho pwned"
@@ -119,4 +129,22 @@ bool ClaudeCodeLauncher::launch(const QString &taskContent,
     Q_UNUSED(repoPath)
     return false;
 #endif
+}
+
+QString ClaudeCodeLauncher::opentodoCliPath() const
+{
+    // PATH first — respects a global install or an `opentodo-cli` alias the user
+    // set up. Otherwise fall back to the binary shipped next to this app: the
+    // CLI target is emitted into the same build/deploy directory as the GUI exe
+    // (see CMakeLists "opentodo-cli" target), so applicationDirPath() resolves it.
+    QString cli = QStandardPaths::findExecutable(QStringLiteral("opentodo-cli"));
+    if (cli.isEmpty()) {
+        const QString dir = QCoreApplication::applicationDirPath();
+#ifdef Q_OS_WIN
+        cli = QDir(dir).filePath(QStringLiteral("opentodo-cli.exe"));
+#else
+        cli = QDir(dir).filePath(QStringLiteral("opentodo-cli"));
+#endif
+    }
+    return QDir::toNativeSeparators(cli);
 }

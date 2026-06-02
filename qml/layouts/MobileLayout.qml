@@ -43,7 +43,11 @@ Item {
     function handleBack() {
         // 1) Full-screen task editor open
         if (taskEditorStack.depth > 0) {
-            taskEditorStack.pop()
+            // clear(), not pop(): the editor is pushed as the StackView's only
+            // (root) item, and StackView.pop() is a no-op on the last/root item —
+            // so pop() could NEVER close it (✕ and swipe-back both appeared
+            // broken). clear() removes all items → depth 0 → editor closes.
+            taskEditorStack.clear()
             return true
         }
         // 2) Search overlay open
@@ -652,13 +656,24 @@ Item {
 
                             // Close / back button — task 17cea65b iter-3: было unicode "✕".
                             ToolButton {
+                                id: editorCloseButton
                                 contentItem: IconSvg {
                                     anchors.centerIn: parent
                                     name: "close"
                                     size: 18
                                     color: textSecondary
                                 }
-                                onClicked: taskEditorStack.pop()
+                                onClicked: {
+                                    // Commit an in-progress new-task title before
+                                    // leaving: taking focus blurs the editor's
+                                    // content field, whose onEditingFinished creates
+                                    // the task (mobile FAB add flow). Без этого
+                                    // "напечатал заголовок → ✕" терял задачу.
+                                    // editingFinished fires synchronously on focus
+                                    // change, so the task is created before pop().
+                                    editorCloseButton.forceActiveFocus()
+                                    taskEditorStack.clear()
+                                }
                             }
 
                             Label {
@@ -683,8 +698,21 @@ Item {
                         source: "../components/TaskEditor.qml"
 
                         onLoaded: {
-                            if (item && taskViewModel.selectedTask) {
-                                item.task = taskViewModel.selectedTask
+                            if (item) {
+                                // Mobile uses the page's own top bar as the header,
+                                // so hide TaskEditor's inner EditorHeader (removes the
+                                // redundant second ✕ / double-header overlap).
+                                item.showHeader = false
+                                if (taskViewModel.selectedTask)
+                                    item.task = taskViewModel.selectedTask
+                                // Wire the editor's own header ✕ (EditorHeader →
+                                // TaskEditor.closeRequested) to actually leave the
+                                // page. It was never connected here, so that ✕ was a
+                                // dead button — the editor felt impossible to exit
+                                // ("невозможно выйти из окна редактирования").
+                                item.closeRequested.connect(function() {
+                                    taskEditorStack.clear()
+                                })
                             }
                         }
                     }

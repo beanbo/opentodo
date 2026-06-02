@@ -15,6 +15,11 @@ Rectangle {
     property var    task:   null
     signal closeRequested()
 
+    // Mobile hides this header in favour of the full-screen page's own top bar
+    // (which already shows the title + ✕), avoiding the double-header / two-✕
+    // overlap. Desktop keeps it — there it's the editor's only header.
+    property bool showHeader: true
+
     // ── Geometry ──────────────────────────────────────────────────────────
     width:  400
     height: parent ? parent.height : 600
@@ -119,6 +124,7 @@ Rectangle {
             EditorHeader {
                 id: editorHeader
                 Layout.fillWidth: true
+                visible: root.showHeader
                 onCloseClicked:   root.closeRequested()
                 onReadingModeClicked: readingModeOverlay.open(
                     root.task ? (root.task.content     || "") : "",
@@ -130,6 +136,16 @@ Rectangle {
                 Layout.fillWidth: true
                 taskId: root.taskId
                 task:   root.task
+                // New-task creation: adopt the freshly created task so taskId
+                // propagates to every sub-editor (meta, description, subtasks,
+                // comments) and further edits route through updateTask instead
+                // of being silently dropped.
+                onTaskCreated: (newId) => {
+                    if (typeof dataStore !== "undefined" && dataStore) {
+                        var t = dataStore.taskById(newId)
+                        if (t) root.task = t
+                    }
+                }
             }
 
             EditorDescriptionField {

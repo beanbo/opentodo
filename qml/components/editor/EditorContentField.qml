@@ -20,6 +20,12 @@ ColumnLayout {
     property string taskId: ""
     property var    task:   null
 
+    // Emitted after a brand-new task (taskId == "") is created from the typed
+    // title, so TaskEditor can adopt it and the rest of the editor leaves
+    // "new" mode (every sub-editor keys off taskId). This is what makes the
+    // mobile FAB "add task" flow actually create a task.
+    signal taskCreated(string newId)
+
     Layout.fillWidth:    true
     Layout.leftMargin:   16
     Layout.rightMargin:  16
@@ -49,8 +55,21 @@ ColumnLayout {
         rightPadding:  0
 
         onEditingFinished: {
-            if (root.taskId !== "" && root.task && text !== root.task.content)
-                taskViewModel.updateTask(root.taskId, "content", text)
+            if (root.taskId !== "") {
+                // Existing task: flush title edits.
+                if (root.task && text !== root.task.content)
+                    taskViewModel.updateTask(root.taskId, "content", text)
+            } else if (text.trim().length > 0 && typeof taskViewModel !== "undefined") {
+                // New-task mode (mobile FAB editor): no task exists yet, so
+                // updateTask has nothing to target. Create it now in the current
+                // project context and hand the id up so the editor switches to
+                // edit mode and later field changes (priority, date, …) persist.
+                var newId = taskViewModel.addTask(text.trim(),
+                                                  taskViewModel.currentProjectId,
+                                                  4, "", [])
+                if (newId && newId.length > 0)
+                    root.taskCreated(newId)
+            }
         }
     }
 

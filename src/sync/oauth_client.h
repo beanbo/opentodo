@@ -42,6 +42,13 @@ public:
     void authenticate();
     void signOut();
 
+    // Android custom-scheme OAuth: the redirect (com.googleusercontent.apps.
+    // <id>:/oauth2redirect?code=…) is delivered to the app via an Intent, not a
+    // loopback socket. MainActivity.onNewIntent forwards the full redirect URI
+    // here through JNI (Java_org_opentodo_MainActivity_nativeOnOAuthRedirect).
+    // No-op on desktop, which keeps the QTcpServer loopback handler.
+    void handleAndroidRedirect(const QString &redirectUri);
+
     // Returns true if a new access token was obtained.
     bool refreshAccessToken();
 
@@ -87,4 +94,15 @@ private:
     // compared against `state` in handleAuthCallback, cleared on either
     // success, abort, or timeout.
     QString m_authState;
+
+    // Android custom-scheme flow uses PKCE (RFC 7636) instead of a client
+    // secret: iOS-type Google OAuth clients are public clients with no secret.
+    // m_codeVerifier is the high-entropy random string generated in
+    // startAuthFlow(); its S256 challenge goes in the auth URL and the verifier
+    // itself is sent in the token exchange. Empty on the desktop loopback path.
+    QString m_codeVerifier;
+
+    // The redirect_uri used for the current Android flow (custom scheme). Needed
+    // again verbatim in the token exchange. Empty on desktop.
+    QString m_androidRedirectUri;
 };

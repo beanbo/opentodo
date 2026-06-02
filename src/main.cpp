@@ -65,6 +65,7 @@
 #include "services/pomodoroservice.h"
 #include "services/claudecodelauncher.h"
 #include "services/tintedsvgimageprovider.h"
+#include "app/clibridge.h"
 
 #include "import/todoistimporter.h"
 
@@ -572,6 +573,13 @@ int main(int argc, char *argv[])
     // rooted at the project's linkedRepoPath. Exposed to QML so task context
     // menus can trigger it directly.
     auto *claudeCodeLauncher = new ClaudeCodeLauncher(&app);
+
+    // CLI bridge — lets the `opentodo` command-line tool drive THIS running
+    // instance over a local socket, so changes from the CLI (and from Claude
+    // Code running in a linked repo) flow through the real ViewModel path:
+    // karma, the 1-second autosave, and Drive-sync fire exactly as if the user
+    // had acted in the UI. Parented to `app`; no QML exposure needed.
+    new CliBridge(dataStore, taskVM, &app);
 
     // Flush the in-flight session to disk on clean shutdown so a paused-then-
     // closed session restores at its exact countdown. The state-mutation paths

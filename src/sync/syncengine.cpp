@@ -167,6 +167,32 @@ void SyncEngine::push()
     // pulled, the snapshot referenced by HEAD would be permanently gone.
     // state.json first means a peer never sees a HEAD it can't justify
     // from the snapshot.
+    // Iter-sync-merge-fix: before overwriting the remote snapshot with our local
+    // state, fold the CURRENT remote state.json back into local. push() uploads
+    // the whole state.json (last-writer-wins on the snapshot), so without this a
+    // device whose local snapshot lacks a peer's recently-pushed entity would
+    // clobber that entity out of remote state.json — precisely how a task ends up
+    // stranded on a single device. We hold the sync lock here, so this
+    // download → merge → upload is atomic against other devices. notFoundIsOk=true
+    // keeps the very first push (no remote state yet) working; a malformed or
+    // empty remote body is ignored rather than allowed to delete local data.
+    {
+        QByteArray remoteStateData;
+        const bool gotRemote = m_gdrive->downloadFile(
+            QStringLiteral("state.json"), remoteStateData,
+            /*notFoundIsOk=*/true, /*maxBytes=*/MAX_STATE_SIZE);
+        if (gotRemote && !remoteStateData.isEmpty()) {
+            const QJsonObject remoteState =
+                QJsonDocument::fromJson(remoteStateData).object();
+            if (!remoteState.isEmpty()
+                && remoteState.contains(QStringLiteral("tasks"))) {
+                const QJsonObject merged =
+                    m_merger->mergeStates(m_store->toJson(), remoteState);
+                m_store->loadFromJson(merged);
+            }
+        }
+    }
+
     const QJsonDocument stateDoc(m_store->toJson());
     if (!m_gdrive->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
         setLastError(QStringLiteral("Не удалось отправить state.json"));
@@ -529,13 +555,24 @@ void SyncEngine::pull()
         }
     }
 
-    // Merge remote snapshot with local state (pending commits keep local changes).
-    if (m_pendingCommits.isEmpty()) {
-        m_store->loadFromJson(remoteState);
-    } else {
-        const QJsonObject merged = m_merger->mergeStates(m_store->toJson(), remoteState);
-        m_store->loadFromJson(merged);
-    }
+    // Merge remote snapshot with local state. ALWAYS merge — never blindly
+    // overwrite local with the remote snapshot. The old fast-path assumed
+    // "no pending commits ⇒ local holds nothing the remote lacks", but that
+    // invariant breaks whenever local has an entity that never made it into the
+    // remote snapshot:
+    //   * a commit whose effect a peer's whole-state push() later clobbered out
+    //     of remote state.json (its log/ entry since compacted away), or
+    //   * data loaded from a backup / import / direct edit that produced no
+    //     pending commit.
+    // In those cases loadFromJson(remoteState) silently DELETED the local-only
+    // entity (this is exactly how the "просмотр видео" task got stranded on one
+    // device). mergeStates() unions both sides and resolves per field via the
+    // HLC, with tombstones winning, so local-only non-deleted entities survive
+    // while genuine remote deletes and newer remote fields still apply. Merging
+    // is safe even when there are no pending commits (it is a no-op when local
+    // already equals the last-synced remote).
+    const QJsonObject merged = m_merger->mergeStates(m_store->toJson(), remoteState);
+    m_store->loadFromJson(merged);
 
     qDeleteAll(remoteCommits);
     m_headCommitId = remoteHead;

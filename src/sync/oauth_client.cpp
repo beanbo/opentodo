@@ -1,5 +1,6 @@
 #include "oauth_client.h"
 
+#include <QCryptographicHash>
 #include <QDebug>
 #include <QDesktopServices>
 #include <QEventLoop>
@@ -17,6 +18,10 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#ifdef Q_OS_ANDROID
+#include <jni.h>
+#endif
+
 Q_LOGGING_CATEGORY(lcOAuth, "opentodo.oauth")
 
 namespace GoogleEndpoints {
@@ -25,7 +30,12 @@ static const QString AUTH_URL     = QStringLiteral("https://accounts.google.com/
 static const QString USERINFO_URL = QStringLiteral("https://openidconnect.googleapis.com/v1/userinfo");
 
 static const QString DRIVE_SCOPE =
-    QStringLiteral("https://www.googleapis.com/auth/drive.file email profile");
+    // Full Drive scope (not drive.file): drive.file only grants access to files
+    // THIS OAuth client created, so a device authorized under a different/newer
+    // client_id cannot see the opentodo_data folder an older client created —
+    // even in the same Google account. Full drive lets every device reach the
+    // shared sync folder regardless of which client_id created it.
+    QStringLiteral("https://www.googleapis.com/auth/drive email profile");
 
 // Iter-task #36: previously the Desktop-OAuth client_id and client_secret were
 // hard-coded into the source. Even though Google's own docs note that the
@@ -48,6 +58,16 @@ static const QString DRIVE_SCOPE =
 // fine without Google Drive.
 static QString resolveClientId(const QSettings &settings)
 {
+#ifdef Q_OS_ANDROID
+    // Android uses a separate *iOS-type* Google OAuth client (public client,
+    // PKCE, no secret) whose reverse-client-id doubles as the custom redirect
+    // scheme. Prefer it; fall back to the generic key for parity with desktop.
+    const QString iosEnv = QProcessEnvironment::systemEnvironment()
+        .value(QStringLiteral("OPENTODO_GOOGLE_IOS_CLIENT_ID"));
+    if (!iosEnv.isEmpty()) return iosEnv;
+    const QString iosId = settings.value(QStringLiteral("sync/ios_client_id")).toString();
+    if (!iosId.isEmpty()) return iosId;
+#endif
     const QString env = QProcessEnvironment::systemEnvironment()
         .value(QStringLiteral("OPENTODO_GOOGLE_CLIENT_ID"));
     if (!env.isEmpty()) return env;
@@ -56,12 +76,56 @@ static QString resolveClientId(const QSettings &settings)
 
 static QString resolveClientSecret(const QSettings &settings)
 {
+#ifdef Q_OS_ANDROID
+    // iOS/public client has no secret — the PKCE code_verifier authenticates the
+    // token exchange instead. Returning empty makes the exchange/refresh code
+    // omit client_secret entirely.
+    Q_UNUSED(settings);
+    return QString();
+#else
     const QString env = QProcessEnvironment::systemEnvironment()
         .value(QStringLiteral("OPENTODO_GOOGLE_CLIENT_SECRET"));
     if (!env.isEmpty()) return env;
     return settings.value(QStringLiteral("sync/client_secret")).toString();
+#endif
+}
+
+// ── PKCE (RFC 7636) helpers — used by the Android custom-scheme flow ──────────
+static QString makeCodeVerifier()
+{
+    // 32 bytes of CSPRNG entropy → base64url (~43 chars), inside the 43–128
+    // range RFC 7636 allows for the verifier.
+    QByteArray raw(32, Qt::Uninitialized);
+    QRandomGenerator::system()->fillRange(
+        reinterpret_cast<quint32 *>(raw.data()), raw.size() / 4);
+    return QString::fromLatin1(
+        raw.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+static QString codeChallengeS256(const QString &verifier)
+{
+    const QByteArray digest =
+        QCryptographicHash::hash(verifier.toLatin1(), QCryptographicHash::Sha256);
+    return QString::fromLatin1(
+        digest.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+// Derive the custom redirect URI from the iOS client_id:
+//   <X>.apps.googleusercontent.com  →  com.googleusercontent.apps.<X>:/oauth2redirect
+static QString androidRedirectUri(const QString &clientId)
+{
+    QString prefix = clientId;
+    const QString suffix = QStringLiteral(".apps.googleusercontent.com");
+    if (prefix.endsWith(suffix)) prefix.chop(suffix.size());
+    return QStringLiteral("com.googleusercontent.apps.%1:/oauth2redirect").arg(prefix);
 }
 } // namespace GoogleEndpoints
+
+#ifdef Q_OS_ANDROID
+// Set in the constructor so the JNI redirect callback (a free C function) can
+// reach the live OAuthClient. The app constructs a single OAuthClient instance.
+static OAuthClient *s_androidOAuthInstance = nullptr;
+#endif
 
 OAuthClient::OAuthClient(QObject *parent)
     : QObject(parent)
@@ -70,6 +134,14 @@ OAuthClient::OAuthClient(QObject *parent)
     m_clientId     = GoogleEndpoints::resolveClientId(settings);
     m_clientSecret = GoogleEndpoints::resolveClientSecret(settings);
     loadTokens();
+#ifdef Q_OS_ANDROID
+    s_androidOAuthInstance = this;
+    // Surface the opentodo.oauth info/debug trace in logcat (info-level for a
+    // custom category is suppressed by default on Android) so the custom-scheme
+    // flow can be diagnosed on-device. Android-only — no desktop log noise.
+    QLoggingCategory::setFilterRules(
+        QStringLiteral("opentodo.oauth.debug=true\nopentodo.oauth.info=true"));
+#endif
 }
 
 bool OAuthClient::isAuthenticated() const { return m_authenticated; }
@@ -91,6 +163,20 @@ void OAuthClient::authenticate()
         return;
     }
 
+#ifdef Q_OS_ANDROID
+    // Android uses a public *iOS-type* OAuth client: PKCE (RFC 7636) replaces the
+    // client secret, so an empty m_clientSecret is CORRECT here. Only client_id is
+    // mandatory. Requiring a secret (as the desktop branch below does) would
+    // wrongly report "not configured" and abort before startAuthFlow() — that was
+    // the regression that made «Подключить» throw an OAuth error on every tap.
+    if (m_clientId.isEmpty()) {
+        emit authenticationFailed(
+            QStringLiteral(
+                "Google OAuth не настроен: отсутствует client_id. Укажите iOS-клиент "
+                "в ключе QSettings sync/ios_client_id."));
+        return;
+    }
+#else
     if (m_clientId.isEmpty() || m_clientSecret.isEmpty()) {
         emit authenticationFailed(
             QStringLiteral(
@@ -102,6 +188,7 @@ void OAuthClient::authenticate()
                 "  2) Ключи QSettings sync/client_id и sync/client_secret."));
         return;
     }
+#endif
 
     startAuthFlow();
 }
@@ -109,6 +196,45 @@ void OAuthClient::authenticate()
 void OAuthClient::startAuthFlow()
 {
     abortAuthFlow(QString()); // Clean up any previous attempt.
+
+    // Per-flow CSRF nonce (shared by both platforms; RFC 6749 §10.12). Without
+    // it an attacker with a pre-issued code could bind the victim's app to the
+    // attacker's Drive account.
+    QByteArray stateRaw(24, Qt::Uninitialized);
+    QRandomGenerator::system()->fillRange(
+        reinterpret_cast<quint32 *>(stateRaw.data()), stateRaw.size() / 4);
+    m_authState = QString::fromLatin1(stateRaw.toBase64(
+        QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+
+#ifdef Q_OS_ANDROID
+    // ── Android: custom-scheme + PKCE, no loopback server ────────────────────
+    // Android suspends a backgrounded app's event loop, so a 127.0.0.1
+    // QTcpServer never receives the redirect (the browser hangs forever).
+    // Instead Google redirects to our reverse-client-id scheme; Android delivers
+    // it as an Intent that foregrounds the app, and MainActivity.onNewIntent →
+    // JNI → handleAndroidRedirect() finishes the token exchange.
+    m_codeVerifier          = GoogleEndpoints::makeCodeVerifier();
+    m_androidRedirectUri    = GoogleEndpoints::androidRedirectUri(m_clientId);
+    const QString challenge = GoogleEndpoints::codeChallengeS256(m_codeVerifier);
+
+    QUrl aurl(GoogleEndpoints::AUTH_URL);
+    QUrlQuery aq;
+    aq.addQueryItem(QStringLiteral("client_id"),             m_clientId);
+    aq.addQueryItem(QStringLiteral("redirect_uri"),          m_androidRedirectUri);
+    aq.addQueryItem(QStringLiteral("response_type"),         QStringLiteral("code"));
+    aq.addQueryItem(QStringLiteral("scope"),                 GoogleEndpoints::DRIVE_SCOPE);
+    aq.addQueryItem(QStringLiteral("code_challenge"),        challenge);
+    aq.addQueryItem(QStringLiteral("code_challenge_method"), QStringLiteral("S256"));
+    aq.addQueryItem(QStringLiteral("state"),                 m_authState);
+    aurl.setQuery(aq);
+
+    qCInfo(lcOAuth) << "OAuth(Android): custom-scheme redirect" << m_androidRedirectUri;
+    const bool androidOpened = QDesktopServices::openUrl(aurl);
+    qCInfo(lcOAuth) << "QDesktopServices::openUrl returned" << androidOpened;
+    if (!androidOpened)
+        emit authenticationFailed(QStringLiteral("Не удалось открыть браузер для авторизации."));
+    return;
+#endif
 
     m_authServer = new QTcpServer(this);
     if (!m_authServer->listen(QHostAddress::LocalHost, 0)) {
@@ -132,16 +258,7 @@ void OAuthClient::startAuthFlow()
             abortAuthFlow(QStringLiteral("Истекло время ожидания авторизации (5 мин)."));
     });
 
-    // Iter-15: per-flow CSRF nonce. Without it an attacker with a
-    // pre-issued code could ferry victim's loopback callback into the
-    // attacker's Drive account (RFC 6749 §10.12). 192 bits of randomness
-    // from the OS CSPRNG is well beyond brute-force.
-    QByteArray stateRaw(24, Qt::Uninitialized);
-    QRandomGenerator::system()->fillRange(
-        reinterpret_cast<quint32 *>(stateRaw.data()), stateRaw.size() / 4);
-    m_authState = QString::fromLatin1(stateRaw.toBase64(
-        QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
-
+    // (CSRF state nonce was generated above, shared with the Android path.)
     const QString redirectUri = QStringLiteral("http://127.0.0.1:%1").arg(m_authPort);
     QUrl url(GoogleEndpoints::AUTH_URL);
     QUrlQuery q;
@@ -265,14 +382,59 @@ void OAuthClient::handleAuthCallback(QTcpSocket *socket)
     emit authenticationSucceeded();
 }
 
+void OAuthClient::handleAndroidRedirect(const QString &redirectUri)
+{
+    // Invoked (queued onto this thread via JNI) when Android delivers the OAuth
+    // redirect Intent to MainActivity. URI shape:
+    //   com.googleusercontent.apps.<id>:/oauth2redirect?code=…&state=…
+    qCInfo(lcOAuth) << "handleAndroidRedirect: received redirect";
+
+    const QUrl url(redirectUri);
+    const QUrlQuery q(url);
+    const QString code  = q.queryItemValue(QStringLiteral("code"));
+    const QString error = q.queryItemValue(QStringLiteral("error"));
+    const QString state = q.queryItemValue(QStringLiteral("state"));
+
+    if (!m_authState.isEmpty() && state != m_authState) {
+        qCWarning(lcOAuth) << "handleAndroidRedirect: state mismatch — rejecting";
+        emit authenticationFailed(QStringLiteral("Несовпадение state — авторизация отклонена."));
+        return;
+    }
+    if (code.isEmpty()) {
+        abortAuthFlow(error.isEmpty()
+            ? QStringLiteral("Код авторизации не получен.") : error);
+        return;
+    }
+
+    if (!exchangeCodeForTokens(code, m_androidRedirectUri)) {
+        emit authenticationFailed(QStringLiteral("Не удалось обменять код на токен."));
+        return;
+    }
+
+    fetchUserInfo();
+    saveTokens();
+    m_authState.clear();
+    m_codeVerifier.clear();
+
+    m_authenticated = true;
+    emit authenticatedChanged();
+    emit accountEmailChanged();
+    emit authenticationSucceeded();
+}
+
 bool OAuthClient::exchangeCodeForTokens(const QString &code, const QString &redirectUri)
 {
     QUrlQuery form;
     form.addQueryItem(QStringLiteral("code"),          code);
     form.addQueryItem(QStringLiteral("client_id"),     m_clientId);
-    form.addQueryItem(QStringLiteral("client_secret"), m_clientSecret);
     form.addQueryItem(QStringLiteral("redirect_uri"),  redirectUri);
     form.addQueryItem(QStringLiteral("grant_type"),    QStringLiteral("authorization_code"));
+    // PKCE (Android iOS-client): the code_verifier proves possession instead of
+    // a client_secret. Desktop (Desktop-type client) sends the secret instead.
+    if (!m_codeVerifier.isEmpty())
+        form.addQueryItem(QStringLiteral("code_verifier"), m_codeVerifier);
+    if (!m_clientSecret.isEmpty())
+        form.addQueryItem(QStringLiteral("client_secret"), m_clientSecret);
 
     QNetworkRequest req(QUrl{GoogleEndpoints::TOKEN_URL});
     req.setHeader(QNetworkRequest::ContentTypeHeader,
@@ -364,7 +526,8 @@ bool OAuthClient::refreshAccessToken()
 
     QUrlQuery params;
     params.addQueryItem(QStringLiteral("client_id"),     m_clientId);
-    params.addQueryItem(QStringLiteral("client_secret"), m_clientSecret);
+    if (!m_clientSecret.isEmpty())
+        params.addQueryItem(QStringLiteral("client_secret"), m_clientSecret);
     params.addQueryItem(QStringLiteral("refresh_token"), m_refreshToken);
     params.addQueryItem(QStringLiteral("grant_type"),    QStringLiteral("refresh_token"));
 
@@ -482,3 +645,24 @@ void OAuthClient::loadTokens()
     m_accountEmail = settings.value(QStringLiteral("gdrive/email")).toString();
     m_authenticated = !m_accessToken.isEmpty();
 }
+
+#ifdef Q_OS_ANDROID
+// JNI entry point — MainActivity.onNewIntent (Java) calls the matching `native`
+// method when Android routes the OAuth redirect Intent to us. We marshal the
+// redirect URI back onto the Qt main thread (handleAndroidRedirect drives
+// QNetworkAccessManager / QSettings, which must run on the GUI thread) via a
+// queued invocation on the live OAuthClient instance.
+extern "C" JNIEXPORT void JNICALL
+Java_org_opentodo_MainActivity_nativeOnOAuthRedirect(JNIEnv *env, jclass, jstring juri)
+{
+    if (juri == nullptr || s_androidOAuthInstance == nullptr) return;
+    const char *utf = env->GetStringUTFChars(juri, nullptr);
+    const QString uri = QString::fromUtf8(utf);
+    env->ReleaseStringUTFChars(juri, utf);
+
+    OAuthClient *inst = s_androidOAuthInstance;
+    QMetaObject::invokeMethod(inst, [inst, uri]() {
+        inst->handleAndroidRedirect(uri);
+    }, Qt::QueuedConnection);
+}
+#endif

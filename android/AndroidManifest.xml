@@ -60,6 +60,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+                OAuth custom-scheme redirect. Scheme = REVERSED_CLIENT_ID of the
+                iOS-type Google OAuth client (org.opentodo.app). After the user
+                grants consent in the browser, Google redirects to
+                com.googleusercontent.apps.<id>:/oauth2redirect?code=… ; Android
+                routes that Intent to MainActivity.onNewIntent (the app is
+                foregrounded), which forwards it to the native OAuthClient. This
+                replaces the loopback (127.0.0.1) flow that hung on Android.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.googleusercontent.apps.892094922553-9jbletksdlmo58ggo6e6q275dt19abec" />
+            </intent-filter>
             <meta-data android:name="android.app.lib_name" android:value="OpenTodo" />
         </activity>
 

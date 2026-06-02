@@ -200,21 +200,24 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape:  Qt.PointingHandCursor
                 onClicked: {
-                    if (root.taskId === "") return
-                    // B-7.5: blur previous input first (fires onEditingFinished),
-                    // then show the toast in the next event loop tick so autosave
-                    // triggered by editingFinished completes before the toast.
+                    // B-7.5 + new-task fix: blurring the focused input fires
+                    // EditorContentField.onEditingFinished. For an EXISTING task
+                    // that flushes the latest title; for a NEW task (taskId == "")
+                    // that CREATES it (the mobile FAB add flow). Previously this
+                    // early-returned on taskId == "", so a task opened from the FAB
+                    // was never saved — "задачи не добавляются".
                     //
                     // `parent.forceActiveFocus()` used to be called on the
                     // Save-button Rectangle — Rectangle doesn't accept focus,
                     // so the blur didn't fire. Force focus on the action-bar
-                    // root (root.forceActiveFocus()) or use Qt.inputMethod.commit
-                    // to commit any pending IME composition. The action bar's
-                    // root Item DOES take focus, which is enough to trigger
-                    // QQuickItem::focusOutEvent on any TextField/TextArea
-                    // currently focused inside the editor.
+                    // root; the action bar's root Item DOES take focus, which is
+                    // enough to trigger QQuickItem::focusOutEvent on any
+                    // TextField/TextArea currently focused inside the editor.
                     root.forceActiveFocus()
                     Qt.callLater(function() {
+                        // Only confirm once a real task exists (an empty new-task
+                        // editor creates nothing, so don't claim "Сохранено").
+                        if (root.taskId === "") return
                         let w = root.Window.window
                         if (w && typeof w.showToast === "function")
                             w.showToast(qsTr("Сохранено"), "success")
