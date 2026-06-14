@@ -8,10 +8,13 @@
 
 #include "oauth_client.h"
 #include "drive_api.h"
+#include "remotestore.h"
 
 // GDriveClient is a backward-compatible facade over OAuthClient + DriveApi.
-// SyncEngine and QML continue to use this class unchanged.
-class GDriveClient : public QObject
+// SyncEngine and QML continue to use this class unchanged. It is also the Drive
+// implementation of the RemoteStore contract (the 7 blob/lock ops below), so the
+// sync engine can target it polymorphically alongside other backends.
+class GDriveClient : public QObject, public RemoteStore
 {
     Q_OBJECT
     QML_ELEMENT
@@ -23,7 +26,7 @@ class GDriveClient : public QObject
 public:
     explicit GDriveClient(QObject *parent = nullptr);
 
-    bool isAuthenticated() const { return m_auth->isAuthenticated(); }
+    bool isAuthenticated() const override { return m_auth->isAuthenticated(); }
     QString accountEmail() const { return m_auth->accountEmail(); }
 
     Q_INVOKABLE void authenticate() { m_auth->authenticate(); }
@@ -34,15 +37,15 @@ public:
     void setAccessToken(const QString &t);
     void setRefreshToken(const QString &t);
 
-    // File operations
-    bool uploadFile(const QString &remotePath, const QByteArray &data)
+    // File operations (RemoteStore contract)
+    bool uploadFile(const QString &remotePath, const QByteArray &data) override
         { return m_drive->uploadFile(remotePath, data); }
     bool downloadFile(const QString &remotePath, QByteArray &data,
-                      bool notFoundIsOk = false, qint64 maxBytes = 0)
+                      bool notFoundIsOk = false, qint64 maxBytes = 0) override
         { return m_drive->downloadFile(remotePath, data, notFoundIsOk, maxBytes); }
-    bool deleteFile(const QString &remotePath)
+    bool deleteFile(const QString &remotePath) override
         { return m_drive->deleteFile(remotePath); }
-    QStringList listFiles(const QString &folderPath)
+    QStringList listFiles(const QString &folderPath) override
         { return m_drive->listFiles(folderPath); }
 
     // Public-share operations (used by ShareManager). Uploads to Drive root
@@ -62,9 +65,9 @@ public:
     bool folderExists(const QString &path)  { return m_drive->folderExists(path); }
     bool ensureRootFolder()                 { return m_drive->ensureRootFolder(); }
 
-    // Lock mechanism
-    bool acquireLock()  { return m_drive->acquireLock(); }
-    bool releaseLock()  { return m_drive->releaseLock(); }
+    // Lock mechanism (RemoteStore contract; isLocked() is Drive-only extra)
+    bool acquireLock() override  { return m_drive->acquireLock(); }
+    bool releaseLock() override  { return m_drive->releaseLock(); }
     bool isLocked() const { return m_drive->isLocked(); }
 
     // Q2.19-E: test hook — exposes the underlying DriveApi so the test suite

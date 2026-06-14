@@ -1,5 +1,6 @@
 #include "syncengine.h"
 #include "gdrive.h"
+#include "remotestore.h"
 #include "merger.h"
 #include "snapshot.h"
 #include "hlc.h"
@@ -29,8 +30,11 @@ SyncEngine::SyncEngine(DataStore *store, QObject *parent)
     , m_merger(new Merger(this))
     , m_snapshot(new SnapshotManager(store, this))
 {
-    // Wire snapshot manager to the same GDrive client.
-    m_snapshot->setGDriveClient(m_gdrive);
+    // Default the active remote backend to the Drive client; main.cpp may swap
+    // it to a self-hosted backend after construction via setRemote().
+    m_remote = m_gdrive;
+    // Wire the snapshot manager to the same active remote.
+    m_snapshot->setRemoteStore(m_remote);
 
     // Generate or load device ID
     QSettings settings;
@@ -58,6 +62,15 @@ void SyncEngine::setTelemetry(Telemetry *telemetry)
         m_merger->setTelemetry(telemetry);
 }
 
+void SyncEngine::setRemote(RemoteStore *remote)
+{
+    // Fall back to the Drive client if a null backend is passed so the engine
+    // is never left without a remote to talk to.
+    m_remote = remote ? remote : static_cast<RemoteStore *>(m_gdrive);
+    if (m_snapshot)
+        m_snapshot->setRemoteStore(m_remote);
+}
+
 Commit *SyncEngine::createCommit(const QList<SyncOperation> &operations)
 {
     if (operations.isEmpty()) return nullptr;
@@ -80,7 +93,7 @@ Commit *SyncEngine::createCommit(const QList<SyncOperation> &operations)
 
 void SyncEngine::push()
 {
-    if (!m_gdrive->isAuthenticated()) {
+    if (!m_remote->isAuthenticated()) {
         setStatus(Offline);
         return;
     }
@@ -104,7 +117,7 @@ void SyncEngine::push()
     setStatus(Syncing);
 
     // Acquire lock
-    if (!m_gdrive->acquireLock()) {
+    if (!m_remote->acquireLock()) {
         setLastError(QStringLiteral("Не удалось получить блокировку синхронизации. Возможно, "
                                       "синхронизация выполняется на другом устройстве, "
                                       "либо отсутствует подключение к сети."));
@@ -138,13 +151,13 @@ void SyncEngine::push()
         const QJsonDocument doc(commit->toJson());
         const QString fileName = QStringLiteral("log/%1.json").arg(commit->uuid());
 
-        if (!m_gdrive->uploadFile(fileName, doc.toJson())) {
+        if (!m_remote->uploadFile(fileName, doc.toJson())) {
             setLastError(QStringLiteral("Не удалось отправить коммит %1").arg(commit->uuid()));
             // Drop only the commits actually delivered; leave the failing one
             // and any that follow it on disk so the next push picks up where
             // we stopped.
             purgeUploaded();
-            m_gdrive->releaseLock();
+            m_remote->releaseLock();
             setStatus(Error);
             return;
         }
@@ -178,7 +191,7 @@ void SyncEngine::push()
     // empty remote body is ignored rather than allowed to delete local data.
     {
         QByteArray remoteStateData;
-        const bool gotRemote = m_gdrive->downloadFile(
+        const bool gotRemote = m_remote->downloadFile(
             QStringLiteral("state.json"), remoteStateData,
             /*notFoundIsOk=*/true, /*maxBytes=*/MAX_STATE_SIZE);
         if (gotRemote && !remoteStateData.isEmpty()) {
@@ -194,7 +207,7 @@ void SyncEngine::push()
     }
 
     const QJsonDocument stateDoc(m_store->toJson());
-    if (!m_gdrive->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
+    if (!m_remote->uploadFile(QStringLiteral("state.json"), stateDoc.toJson())) {
         setLastError(QStringLiteral("Не удалось отправить state.json"));
         // Iter-15 regress-fix for iter-14: the upload loop already removed
         // every uploaded commit from m_pendingCommits and put them in
@@ -205,7 +218,7 @@ void SyncEngine::push()
         // trip shouldCompact prematurely. The commits were successfully
         // delivered to Drive, so dropping them is the right move.
         purgeUploaded();
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         setStatus(Error);
         return;
     }
@@ -226,10 +239,10 @@ void SyncEngine::push()
         // future pulls then see a dangling HEAD pointing at a now-purged
         // commit and refuse to push. Treat the HEAD upload as a hard
         // failure and abort BEFORE running compaction.
-        if (!m_gdrive->uploadFile(QStringLiteral("HEAD"), headDoc.toJson())) {
+        if (!m_remote->uploadFile(QStringLiteral("HEAD"), headDoc.toJson())) {
             setLastError(QStringLiteral("Не удалось отправить указатель HEAD"));
             purgeUploaded();
-            m_gdrive->releaseLock();
+            m_remote->releaseLock();
             setStatus(Error);
             return;
         }
@@ -249,7 +262,7 @@ void SyncEngine::push()
     // (the lock prevents peers but our own code may queue mid-push).
     purgeUploaded();
 
-    m_gdrive->releaseLock();
+    m_remote->releaseLock();
 
     m_lastSyncTime = QDateTime::currentDateTimeUtc();
     emit lastSyncTimeChanged();
@@ -259,7 +272,7 @@ void SyncEngine::push()
 
 void SyncEngine::pull()
 {
-    if (!m_gdrive->isAuthenticated()) {
+    if (!m_remote->isAuthenticated()) {
         setStatus(Offline);
         return;
     }
@@ -267,7 +280,7 @@ void SyncEngine::pull()
     setStatus(Syncing);
 
     // X-2.12: acquire lock for the pull so we don't race against a concurrent push.
-    if (!m_gdrive->acquireLock()) {
+    if (!m_remote->acquireLock()) {
         setLastError(QStringLiteral("Не удалось получить блокировку синхронизации при загрузке. "
                                       "Возможно, синхронизация выполняется на другом "
                                       "устройстве, либо отсутствует подключение к сети."));
@@ -281,20 +294,20 @@ void SyncEngine::pull()
     // so cap it with the same MAX_STATE_SIZE bound used elsewhere — a
     // multi-MB HEAD response would already be a sign of remote corruption.
     QByteArray headData;
-    const bool headOk = m_gdrive->downloadFile(QStringLiteral("HEAD"), headData,
+    const bool headOk = m_remote->downloadFile(QStringLiteral("HEAD"), headData,
                                                 /*notFoundIsOk=*/true,
                                                 /*maxBytes=*/MAX_STATE_SIZE);
     if (!headOk) {
         // Real network error (or oversize) — do not proceed.
         setLastError(QStringLiteral("Ошибка сети при загрузке HEAD. Проверьте подключение к интернету."));
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         setStatus(Error);
         return;
     }
 
     if (headData.isEmpty()) {
         // No remote data yet — first sync, nothing to pull.
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         setStatus(Synced);
         return;
     }
@@ -304,7 +317,7 @@ void SyncEngine::pull()
 
     if (remoteHead == m_headCommitId) {
         // Already up to date
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         m_lastSyncTime = QDateTime::currentDateTimeUtc();
         emit lastSyncTimeChanged();
         setStatus(Synced);
@@ -333,7 +346,7 @@ void SyncEngine::pull()
     //      via commitCorrupted) any that fail. Apply them when safe.
     //   5. Apply state.json.
 
-    const QStringList logFiles = m_gdrive->listFiles(QStringLiteral("log"));
+    const QStringList logFiles = m_remote->listFiles(QStringLiteral("log"));
 
     // Build the set of commit hashes that EXIST in the log directory (drop
     // the ".json" suffix). Used by the dangling-HEAD check below — based on
@@ -351,13 +364,13 @@ void SyncEngine::pull()
     // true simultaneously. The size cap also acts as a DoS guard before any
     // further memory is allocated.
     QByteArray stateData;
-    if (!m_gdrive->downloadFile(QStringLiteral("state.json"), stateData,
+    if (!m_remote->downloadFile(QStringLiteral("state.json"), stateData,
                                 /*notFoundIsOk=*/false,
                                 /*maxBytes=*/MAX_STATE_SIZE)) {
         setLastError(QStringLiteral(
             "Не удалось загрузить удалённое состояние (ошибка сети или "
             "размер тела ответа превысил MAX_STATE_SIZE = %1 байт)").arg(MAX_STATE_SIZE));
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         setStatus(Error);
         return;
     }
@@ -371,7 +384,7 @@ void SyncEngine::pull()
     // QJsonObject, so isEmpty() covers both.)
     if (remoteState.isEmpty() || !remoteState.contains(QStringLiteral("tasks"))) {
         qCWarning(lcSync) << "pull(): remote state.json is invalid or empty — aborting pull";
-        m_gdrive->releaseLock();
+        m_remote->releaseLock();
         setLastError(QStringLiteral("Удалённый state.json повреждён (отсутствует «tasks»). Загрузка прервана."));
         setStatus(Error);
         return;
@@ -423,7 +436,7 @@ void SyncEngine::pull()
         if (isStateEmpty()) {
             // No snapshot rescue path — abort to preserve local data.
             m_danglingHead = true;
-            m_gdrive->releaseLock();
+            m_remote->releaseLock();
             setLastError(reason);
             setStatus(Error);
             return;
@@ -444,7 +457,7 @@ void SyncEngine::pull()
         const QString fileHash = fileName.left(fileName.size() - 5);
 
         QByteArray commitData;
-        if (!m_gdrive->downloadFile(QStringLiteral("log/") + fileName, commitData,
+        if (!m_remote->downloadFile(QStringLiteral("log/") + fileName, commitData,
                                     /*notFoundIsOk=*/false,
                                     /*maxBytes=*/MAX_COMMIT_SIZE)) {
             const QString reason = QStringLiteral(
@@ -580,7 +593,7 @@ void SyncEngine::pull()
     // successful pull resets the engine so push() can resume even if the
     // current pull had to bypass the chain.
     m_danglingHead = false;
-    m_gdrive->releaseLock();
+    m_remote->releaseLock();
     m_lastSyncTime = QDateTime::currentDateTimeUtc();
     emit lastSyncTimeChanged();
     setStatus(Synced);

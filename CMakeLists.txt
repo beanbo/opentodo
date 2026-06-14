@@ -245,6 +245,7 @@ set(INFRA_HEADERS
     src/sync/merger.h
     src/sync/hlc.h
     src/sync/crdt_meta.h
+    src/sync/remotestore.h
     src/sync/gdrive.h
     src/sync/oauth_client.h
     src/sync/drive_api.h

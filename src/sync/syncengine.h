@@ -10,6 +10,7 @@
 
 class DataStore;
 class GDriveClient;
+class RemoteStore;
 class Merger;
 class SnapshotManager;
 class Telemetry;
@@ -57,6 +58,13 @@ public:
     // can read `authenticated`/`accountEmail` and call `authenticate()`/`signOut()`
     // directly without going through SyncViewModel for every property.
     GDriveClient *gdriveClient() const { return m_gdrive; }
+
+    // The active remote backend used for ALL push/pull/snapshot blob I/O.
+    // Defaults to the Drive client (m_gdrive); call setRemote() to point the
+    // engine at a self-hosted backend (LocalDirRemote / HttpRemote). Merge and
+    // CRDT logic are unchanged — only the transport differs.
+    RemoteStore *remote() const { return m_remote; }
+    void setRemote(RemoteStore *remote);
 
     QList<Commit *> pendingCommits() const;
     void addPendingCommit(Commit *commit);
@@ -115,6 +123,7 @@ private:
 
     DataStore *m_store;
     GDriveClient *m_gdrive;
+    RemoteStore *m_remote = nullptr;   // active backend; defaults to m_gdrive
     Merger *m_merger;
     SnapshotManager *m_snapshot;
     Telemetry *m_telemetry = nullptr;

@@ -1,6 +1,6 @@
 #include "snapshot.h"
 #include "commit.h"
-#include "gdrive.h"
+#include "remotestore.h"
 #include "storage/datastore.h"
 
 #include <QJsonDocument>
@@ -23,14 +23,14 @@ bool SnapshotManager::shouldCompact() const
 
 void SnapshotManager::createSnapshot()
 {
-    if (!m_gdrive || !m_gdrive->isAuthenticated()) {
-        emit snapshotFailed(QStringLiteral("Google Drive not connected"));
+    if (!m_remote || !m_remote->isAuthenticated()) {
+        emit snapshotFailed(QStringLiteral("Sync backend not connected"));
         return;
     }
 
     // Upload current state as the new snapshot (called before releaseLock — X-2.10).
     const QJsonDocument doc(m_store->toJson());
-    if (!m_gdrive->uploadFile(QStringLiteral("state.json"), doc.toJson())) {
+    if (!m_remote->uploadFile(QStringLiteral("state.json"), doc.toJson())) {
         emit snapshotFailed(QStringLiteral("Failed to upload snapshot"));
         return;
     }
@@ -41,14 +41,14 @@ void SnapshotManager::createSnapshot()
     //
     // Strategy: download all log files, build parent→uuid map, walk the
     // ancestor chain from m_headCommitId, and only delete those.
-    const QStringList logFiles = m_gdrive->listFiles(QStringLiteral("log"));
+    const QStringList logFiles = m_remote->listFiles(QStringLiteral("log"));
 
     // Parse commits into a uuid→parentCommit map.
     QMap<QString, QString> parentOf; // uuid → parent_commit
     for (const QString &fileName : logFiles) {
         if (!fileName.endsWith(QStringLiteral(".json"))) continue;
         QByteArray data;
-        if (!m_gdrive->downloadFile(QStringLiteral("log/") + fileName, data)) continue;
+        if (!m_remote->downloadFile(QStringLiteral("log/") + fileName, data)) continue;
         const QJsonDocument d = QJsonDocument::fromJson(data);
         if (!d.isObject()) continue;
         const QJsonObject obj = d.object();
@@ -95,7 +95,7 @@ void SnapshotManager::createSnapshot()
 
         const QString remotePath = QStringLiteral("log/") + fileName;
         qCInfo(lcSnapshot) << "compacting log file:" << fileName;
-        if (!m_gdrive->deleteFile(remotePath)) {
+        if (!m_remote->deleteFile(remotePath)) {
             firstFailedFile = fileName;
             qCWarning(lcSnapshot)
                 << "compaction: deleteFile failed for" << remotePath
@@ -126,9 +126,9 @@ int SnapshotManager::commitCount() const
     return m_commitCount;
 }
 
-void SnapshotManager::setGDriveClient(GDriveClient *client)
+void SnapshotManager::setRemoteStore(RemoteStore *remote)
 {
-    m_gdrive = client;
+    m_remote = remote;
 }
 
 void SnapshotManager::setHeadCommitId(const QString &headId)
