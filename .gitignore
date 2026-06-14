@@ -140,3 +140,15 @@ visual_diff_intermediate/
 # Win32 click/scroll/snap PowerShell helpers used to automate the app for
 # screenshots (kept on disk for reuse; not part of the shipping project).
 tools/_*.ps1
+
+# ────────────────────────────────────────────────────────────────────────
+# Sync/state debugging scratch + safety backups (dev-only, NEVER commit)
+# ────────────────────────────────────────────────────────────────────────
+# These contain real task data (state.json snapshots) or are one-shot helper
+# scripts. Root-anchored so tracked tooling (tools/*.bat, resources/**) and
+# any future docs/*.pdf are untouched.
+/.backups/
+/.shots/
+/_*.py
+/OpenTodo_Sync.bat
+/*.pdf
