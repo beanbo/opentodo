@@ -191,12 +191,12 @@ QString clicore::addTaskOffline(DataStore *store, const QString &content,
 }
 
 QString clicore::addCommentOffline(DataStore *store, const QString &taskId,
-                                   const QString &text)
+                                   const QString &text, const QString &author)
 {
     Task *t = store->taskById(taskId);
     if (!t || text.trimmed().isEmpty())
         return {};
-    Comment *c = store->addComment(text, taskId, t->projectId());
+    Comment *c = store->addComment(text, taskId, t->projectId(), author);
     return c ? c->id() : QString();
 }
 
@@ -258,6 +258,8 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
         for (Comment *c : store->commentsForTask(t->id())) {
             QJsonObject co;
             co[QStringLiteral("text")] = c->content();
+            if (!c->author().isEmpty())
+                co[QStringLiteral("author")] = c->author();
             comments.append(co);
         }
         if (!comments.isEmpty())
@@ -280,7 +282,7 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
             return fail(error);
         const QString note = req.value(QStringLiteral("note")).toString();
         if (!note.trimmed().isEmpty())
-            addCommentOffline(store, id, note);
+            addCommentOffline(store, id, note, QStringLiteral("claude"));
         QJsonObject d;
         d[QStringLiteral("id")] = id;
         d[QStringLiteral("mode")] = QStringLiteral("completed");
@@ -305,7 +307,8 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
     if (cmd == QLatin1String("comment")) {
         const QString id = addCommentOffline(store,
                                              req.value(QStringLiteral("id")).toString(),
-                                             req.value(QStringLiteral("text")).toString());
+                                             req.value(QStringLiteral("text")).toString(),
+                                             QStringLiteral("claude"));
         if (id.isEmpty())
             return fail(QStringLiteral("failed to add comment (task not found?)"));
         QJsonObject d;

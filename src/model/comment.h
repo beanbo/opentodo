@@ -36,6 +36,10 @@ class Comment : public QObject
     Q_PROPERTY(QDateTime updatedAt READ updatedAt WRITE setUpdatedAt NOTIFY updatedAtChanged)
     Q_PROPERTY(AttachmentObject attachment READ attachment WRITE setAttachment NOTIFY attachmentChanged)
     Q_PROPERTY(bool isDeleted READ isDeleted WRITE setIsDeleted NOTIFY isDeletedChanged)
+    // Who wrote this comment: "" (default) = the user; "claude" = the OpenTodo→Claude
+    // bridge (CLI / CliBridge). Set once at creation; the UI shows a distinct
+    // author label. Syncs as a per-field CRDT register like every other field.
+    Q_PROPERTY(QString author READ author WRITE setAuthor NOTIFY authorChanged)
 
 public:
     explicit Comment(QObject *parent = nullptr);
@@ -64,6 +68,9 @@ public:
     bool isDeleted() const;
     void setIsDeleted(bool deleted);
 
+    QString author() const;
+    void setAuthor(const QString &author);
+
     Q_INVOKABLE QJsonObject toJson() const;
     static Comment *fromJson(const QJsonObject &json, QObject *parent = nullptr);
 
@@ -76,6 +83,7 @@ signals:
     void updatedAtChanged();
     void attachmentChanged();
     void isDeletedChanged();
+    void authorChanged();
 
 private:
     QString m_id;
@@ -86,4 +94,5 @@ private:
     QDateTime m_updatedAt;
     AttachmentObject m_attachment;
     bool m_isDeleted = false;
+    QString m_author;
 };

@@ -188,18 +188,19 @@ Rectangle {
         var tasks   = []
         for (var i = 0; i < taskViewModel.count; i++) {
             var t = taskViewModel.taskAt(i)
-            if (!t || t.isCompleted) continue
+            if (!t || (!taskViewModel.showCompleted && t.isCompleted)) continue
             var matchesDueDate     = (t.dueDate === dateStr)
             var matchesDatetime    = (t.dueDate === "" &&
                                       typeof t.dueDatetime === "string" &&
                                       t.dueDatetime.startsWith(dateStr))
             if (matchesDueDate || matchesDatetime) {
                 tasks.push({
-                    id:       t.id,
-                    content:  t.content,
-                    priority: t.priority,
-                    dueDate:  t.dueDate,
-                    labels:   t.labels || []
+                    id:          t.id,
+                    content:     t.content,
+                    priority:    t.priority,
+                    dueDate:     t.dueDate,
+                    labels:      t.labels || [],
+                    isCompleted: t.isCompleted
                 })
             }
         }
@@ -548,7 +549,9 @@ Rectangle {
                                     }
                                     text:            cell.dayTasks[index].content
                                     font.pixelSize:  10
-                                    color:           root.textPrimary
+                                    font.strikeout:  cell.dayTasks[index].isCompleted === true
+                                    color:           cell.dayTasks[index].isCompleted
+                                                     ? root.textSecondary : root.textPrimary
                                     elide:           Text.ElideRight
                                 }
                             }
@@ -713,7 +716,9 @@ Rectangle {
                             Text {
                                 text:           weekCell.dayTasks[index].content
                                 font.pixelSize: FontSize.caption
-                                color:          root.textPrimary
+                                font.strikeout: weekCell.dayTasks[index].isCompleted === true
+                                color:          weekCell.dayTasks[index].isCompleted
+                                                ? root.textSecondary : root.textPrimary
                                 elide:          Text.ElideRight
                                 Layout.fillWidth: true
                             }
@@ -904,7 +909,9 @@ Rectangle {
 
                                         Text {
                                             text:             agendaTaskRow.modelData.content || ""
-                                            color:            root.textPrimary
+                                            font.strikeout:   agendaTaskRow.modelData.isCompleted === true
+                                            color:            agendaTaskRow.modelData.isCompleted
+                                                              ? root.textSecondary : root.textPrimary
                                             elide:            Text.ElideRight
                                             font.pixelSize:   FontSize.bodySmall
                                             Layout.fillWidth: true
@@ -1115,7 +1122,9 @@ Rectangle {
                             Text {
                                 text:            modelData.content
                                 font.pixelSize:  FontSize.body
-                                color:           root.textPrimary
+                                font.strikeout:  modelData.isCompleted === true
+                                color:           modelData.isCompleted
+                                                 ? root.textSecondary : root.textPrimary
                                 elide:           Text.ElideRight
                                 Layout.fillWidth: true
                             }

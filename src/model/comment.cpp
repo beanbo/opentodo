@@ -57,6 +57,9 @@ void Comment::setAttachment(const AttachmentObject &att) { m_attachment = att; e
 bool Comment::isDeleted() const { return m_isDeleted; }
 void Comment::setIsDeleted(bool deleted) { if (m_isDeleted != deleted) { m_isDeleted = deleted; emit isDeletedChanged(); } }
 
+QString Comment::author() const { return m_author; }
+void Comment::setAuthor(const QString &author) { if (m_author != author) { m_author = author; emit authorChanged(); } }
+
 QJsonObject Comment::toJson() const
 {
     QJsonObject obj;
@@ -69,6 +72,8 @@ QJsonObject Comment::toJson() const
     if (!m_attachment.isNull())
         obj[QStringLiteral("attachment")] = m_attachment.toJson();
     obj[QStringLiteral("is_deleted")] = m_isDeleted;
+    if (!m_author.isEmpty())
+        obj[QStringLiteral("author")] = m_author;
     return obj;
 }
 
@@ -86,5 +91,6 @@ Comment *Comment::fromJson(const QJsonObject &json, QObject *parent)
     if (json.contains(QStringLiteral("attachment")))
         c->m_attachment = AttachmentObject::fromJson(json[QStringLiteral("attachment")].toObject());
     c->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
+    c->m_author = json[QStringLiteral("author")].toString();  // "" for legacy comments
     return c;
 }

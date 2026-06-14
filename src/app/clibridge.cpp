@@ -88,7 +88,7 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
             return fail(QStringLiteral("could not complete task"));
         const QString note = req.value(QStringLiteral("note")).toString();
         if (!note.trimmed().isEmpty())
-            m_store->addComment(note, id, t->projectId());
+            m_store->addComment(note, id, t->projectId(), QStringLiteral("claude"));
         QJsonObject d;
         d[QStringLiteral("id")] = id;
         // completeTask advances recurring tasks instead of completing them.
@@ -126,7 +126,7 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
         if (!t)
             return fail(QStringLiteral("task not found"));
         Comment *c = m_store->addComment(req.value(QStringLiteral("text")).toString(),
-                                         id, t->projectId());
+                                         id, t->projectId(), QStringLiteral("claude"));
         if (!c)
             return fail(QStringLiteral("failed to add comment"));
         QJsonObject d;

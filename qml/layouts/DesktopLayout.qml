@@ -670,7 +670,16 @@ Item {
                         // helper, чтобы все топбар-иконки были однородны.
                         ToolButton {
                             id: hideCompletedBtn
-                            visible: !root.isFullPageView && !root.isNarrow
+                            // B-show-completed: also surface this in the project / board /
+                            // calendar full-page views — they hold task lists where toggling
+                            // completed visibility is meaningful (unlike Settings / Productivity
+                            // / Notifications / AI / Trash). Still hidden in narrow mode, where
+                            // the top bar has no room for it.
+                            visible: !root.isNarrow
+                                     && (!root.isFullPageView
+                                         || taskViewModel.filterMode === TaskViewModel.Project
+                                         || taskViewModel.filterMode === TaskViewModel.Board
+                                         || taskViewModel.filterMode === TaskViewModel.Calendar)
                             flat: true
                             implicitWidth: 28
                             implicitHeight: 28

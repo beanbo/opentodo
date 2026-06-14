@@ -64,7 +64,8 @@ Rectangle {
         var tasks = []
         for (var i = 0; i < taskViewModel.count; i++) {
             var t = taskViewModel.taskAt(i)
-            if (t && t.sectionId === sectionId && !t.isCompleted) {
+            if (t && t.sectionId === sectionId
+                  && (taskViewModel.showCompleted || !t.isCompleted)) {
                 // night iter-112: datetime-only tasks carry an empty dueDate but
                 // a set dueDatetime (B-1.28/B-1.30). Keying the card's date chip
                 // off dueDate alone hid the date for every timed task and never
@@ -77,13 +78,14 @@ Rectangle {
                 if (effDue === "" && t.dueDatetime)
                     effDue = String(t.dueDatetime).substring(0, 10)
                 tasks.push({
-                    id:        t.id,
-                    content:   t.content,
-                    priority:  t.priority,
-                    dueDate:   effDue,
-                    dueString: t.dueString || "",
-                    labels:    t.labels    || [],
-                    sectionId: t.sectionId
+                    id:          t.id,
+                    content:     t.content,
+                    priority:    t.priority,
+                    dueDate:     effDue,
+                    dueString:   t.dueString || "",
+                    labels:      t.labels    || [],
+                    sectionId:   t.sectionId,
+                    isCompleted: t.isCompleted
                 })
             }
         }
@@ -376,10 +378,14 @@ Rectangle {
                                         }
 
                                         // Task title — Q4.01 design parity: fontSize 12, lineHeight 1.45
+                                        // Completed cards (shown when "show completed" is on) read
+                                        // struck-through + muted so they don't look active.
                                         Text {
                                             text:            modelData.content
                                             font.pixelSize:  FontSize.small        // 12 per design
-                                            color:           root.textPrimary
+                                            font.strikeout:  modelData.isCompleted === true
+                                            color:           modelData.isCompleted
+                                                             ? root.textSecondary : root.textPrimary
                                             wrapMode:        Text.Wrap
                                             lineHeight:      1.45
                                             lineHeightMode:  Text.ProportionalHeight

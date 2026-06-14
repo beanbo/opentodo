@@ -1696,7 +1696,7 @@ void DataStore::addExistingReminder(Reminder *reminder)
 
 // ===================== COMMENTS =====================
 
-Comment *DataStore::addComment(const QString &content, const QString &taskId, const QString &projectId)
+Comment *DataStore::addComment(const QString &content, const QString &taskId, const QString &projectId, const QString &author)
 {
     // B-1.47: a comment must belong to exactly one parent.
     Q_ASSERT_X(taskId.isEmpty() || projectId.isEmpty(),
@@ -1712,6 +1712,7 @@ Comment *DataStore::addComment(const QString &content, const QString &taskId, co
     // Only set projectId if taskId is not provided.
     if (taskId.isEmpty())
         comment->setProjectId(projectId);
+    comment->setAuthor(author);
 
     m_comments.append(comment);
     m_commentIndex.insert(comment->id(), comment);
@@ -1722,6 +1723,7 @@ Comment *DataStore::addComment(const QString &content, const QString &taskId, co
         QStringLiteral("content"), QStringLiteral("task_id"),
         QStringLiteral("project_id"), QStringLiteral("posted_at"),
         QStringLiteral("updated_at"), QStringLiteral("is_deleted"),
+        QStringLiteral("author"),
     };
     for (const auto &f : initialFields)
         stampEntityField(id, m_commentMeta, f);

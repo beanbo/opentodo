@@ -115,16 +115,21 @@ ColumnLayout {
                 spacing: Spacing.sm
 
                 // ── Avatar ─────────────────────────────────────────────────
+                // Claude-authored comments (added by the OpenTodo→Claude bridge)
+                // get a distinct darker-accent avatar + "C" initial so they read
+                // apart from the user's own "Я" comments at a glance.
                 Rectangle {
+                    readonly property bool isClaude: commentRow.modelData.author === "claude"
                     width:  28
                     height: 28
                     radius: 14
-                    color:  ThemeManager.accentColor
+                    color:  isClaude ? Qt.darker(ThemeManager.accentColor, 1.35)
+                                     : ThemeManager.accentColor
                     Layout.alignment: Qt.AlignTop
 
                     Text {
                         anchors.centerIn: parent
-                        text:          qsTr("Я")
+                        text:          parent.isClaude ? "C" : qsTr("Я")
                         font.pixelSize: FontSize.caption
                         font.bold:      true
                         color:          ThemeManager.accentForeground
@@ -142,7 +147,8 @@ ColumnLayout {
                         spacing: 6
 
                         Text {
-                            text:          qsTr("Я")
+                            text:          commentRow.modelData.author === "claude"
+                                           ? "Claude" : qsTr("Я")
                             font.pixelSize: FontSize.small
                             font.weight:   Font.Medium
                             color:         ThemeManager.textColor

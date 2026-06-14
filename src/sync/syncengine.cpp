@@ -1151,6 +1151,8 @@ void SyncEngine::applyCommit(Commit *commit)
                     comment->setContent(patched[QStringLiteral("content")].toString());
                 if (patched.contains(QStringLiteral("is_deleted")))
                     comment->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
+                if (patched.contains(QStringLiteral("author")))
+                    comment->setAuthor(patched[QStringLiteral("author")].toString());
                 // Iter-night-41: attachment was missing from this dispatch
                 // (sibling of iter-15 is_favorite for labels, iter-60/61 for
                 // filters/reminders, iter-12 for section is_collapsed/is_archived).

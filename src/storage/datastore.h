@@ -193,7 +193,7 @@ public:
     void addExistingReminder(Reminder *reminder);
 
     // --- Comments ---
-    Q_INVOKABLE Comment *addComment(const QString &content, const QString &taskId, const QString &projectId);
+    Q_INVOKABLE Comment *addComment(const QString &content, const QString &taskId, const QString &projectId, const QString &author = QString());
     Comment *commentById(const QString &id) const;
     Q_INVOKABLE bool removeComment(const QString &id);
     Q_INVOKABLE bool updateComment(const QString &id, const QString &content);

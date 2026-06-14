@@ -233,6 +233,37 @@ Item {
                     leftPadding: Spacing.sm
                 }
 
+                // Show-completed toggle (B-show-completed) — drives the same
+                // single taskViewModel.showCompleted flag as the desktop top bar.
+                // Hidden in the non-list views where it is meaningless.
+                ToolButton {
+                    id: showCompletedButton
+                    visible: taskViewModel.filterMode !== TaskViewModel.Settings
+                             && taskViewModel.filterMode !== TaskViewModel.Productivity
+                             && taskViewModel.filterMode !== TaskViewModel.Notifications
+                             && taskViewModel.filterMode !== TaskViewModel.AI
+                             && taskViewModel.filterMode !== TaskViewModel.Trash
+                             && taskViewModel.filterMode !== TaskViewModel.Completed
+                    implicitWidth: 48
+                    implicitHeight: 48
+                    contentItem: IconSvg {
+                        anchors.centerIn: parent
+                        name: taskViewModel.showCompleted ? "eye" : "eye-off"
+                        size: 22
+                        color: textSecondary
+                    }
+                    onClicked: {
+                        taskViewModel.showCompleted = !taskViewModel.showCompleted
+                        if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
+                            telemetry.trackEvent("toggle_show_completed",
+                                                 { "showing": taskViewModel.showCompleted })
+                    }
+                    ToolTip.visible: pressed
+                    ToolTip.text: taskViewModel.showCompleted
+                                  ? qsTr("Скрыть выполненные")
+                                  : qsTr("Показать выполненные")
+                }
+
                 // Search icon button — opens the search overlay
                 // B-9.9: was a literal "⌕" (U+2315) text glyph — a tofu box on
                 // Android (Roboto lacks it). Use the bundled IconSvg "search".

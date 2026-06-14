@@ -57,8 +57,10 @@ QString addTaskOffline(DataStore *store, const QString &content,
                        const QString &dueString, const QString &lang);
 
 // Append a comment to a task. Returns the new comment id (empty on failure).
+// `author` is stamped onto the comment ("claude" for bridge-authored notes so
+// the app renders them as Claude rather than the user).
 QString addCommentOffline(DataStore *store, const QString &taskId,
-                          const QString &text);
+                          const QString &text, const QString &author = QString());
 
 // Execute a full CLI request object {cmd, ...} against `store` with OFFLINE
 // semantics and return a reply object {ok, data|error}. The CLI client uses
