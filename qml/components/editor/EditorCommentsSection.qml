@@ -127,9 +127,18 @@ ColumnLayout {
                                      : ThemeManager.accentColor
                     Layout.alignment: Qt.AlignTop
 
+                    // Claude → official spark mark; the user → "Я" initial.
+                    IconSvg {
+                        anchors.centerIn: parent
+                        visible:       parent.isClaude
+                        name:          "claude"
+                        size:          16
+                        color:         ThemeManager.accentForeground
+                    }
                     Text {
                         anchors.centerIn: parent
-                        text:          parent.isClaude ? "C" : qsTr("Я")
+                        visible:       !parent.isClaude
+                        text:          qsTr("Я")
                         font.pixelSize: FontSize.caption
                         font.bold:      true
                         color:          ThemeManager.accentForeground
