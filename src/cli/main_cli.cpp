@@ -26,6 +26,11 @@
 #include "storage/filemanager.h"
 #include "model/task.h"
 #include "cli/clicore.h"
+#include "sync/localdirremote.h"
+#include "sync/synchttpserver.h"
+
+#include <QRandomGenerator>
+#include <QStandardPaths>
 
 namespace {
 
@@ -222,8 +227,19 @@ int main(int argc, char **argv)
                                 QStringLiteral("n"), QStringLiteral("0"));
     QCommandLineOption optIncludeCompleted(QStringLiteral("include-completed"),
                                            QStringLiteral("Include completed tasks in list."));
+    // serve options (self-hosted sync server)
+    QCommandLineOption optPort(QStringLiteral("port"),
+                               QStringLiteral("Port for `serve` (default 8765)."),
+                               QStringLiteral("n"), QStringLiteral("8765"));
+    QCommandLineOption optToken(QStringLiteral("token"),
+                                QStringLiteral("Bearer token for `serve` (auto-generated if omitted)."),
+                                QStringLiteral("t"));
+    QCommandLineOption optDir(QStringLiteral("dir"),
+                              QStringLiteral("Sync-store directory for `serve` (default: app data/sync_store)."),
+                              QStringLiteral("path"));
     parser.addOptions({optJson, optProject, optRepo, optAll, optPriority, optDue,
-                       optNote, optLang, optLimit, optIncludeCompleted});
+                       optNote, optLang, optLimit, optIncludeCompleted,
+                       optPort, optToken, optDir});
     parser.process(app);
 
     QTextStream out(stdout);
@@ -238,10 +254,47 @@ int main(int argc, char **argv)
     static const QStringList known = {QStringLiteral("list"), QStringLiteral("next"),
                                       QStringLiteral("show"), QStringLiteral("done"),
                                       QStringLiteral("add"), QStringLiteral("comment"),
-                                      QStringLiteral("delete")};
+                                      QStringLiteral("delete"), QStringLiteral("serve")};
     if (!known.contains(cmd)) {
         err << "error: unknown command '" << cmd << "'. Run with --help.\n";
         return 2;
+    }
+
+    // ── serve: headless self-hosted sync server ──────────────────────────────
+    // Serves a LocalDirRemote blob store over HTTP so phones / other PCs can
+    // sync to this machine. Front it with `tailscale funnel <port>` to expose a
+    // public HTTPS endpoint. Runs until killed (Ctrl-C).
+    if (cmd == QLatin1String("serve")) {
+        const quint16 port = static_cast<quint16>(parser.value(optPort).toUInt());
+        QString dir = parser.value(optDir);
+        if (dir.isEmpty())
+            dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                  + QStringLiteral("/sync_store");
+        QString token = parser.value(optToken);
+        if (token.isEmpty()) {
+            QByteArray raw(32, 0);
+            for (int i = 0; i < raw.size(); ++i)
+                raw[i] = static_cast<char>(QRandomGenerator::system()->bounded(256));
+            token = QString::fromLatin1(raw.toHex());
+            out << "Generated token (paste into the phone): " << token << "\n";
+        }
+        QDir().mkpath(dir);
+        auto *store  = new LocalDirRemote(dir);          // process-lifetime
+        auto *server = new SyncHttpServer(store, &app);
+        if (!server->start(port, token)) {
+            err << "error: failed to start sync server on 127.0.0.1:" << port << "\n";
+            return 1;
+        }
+        out << "OpenTodo sync server: http://127.0.0.1:" << server->port()
+            << "   store=" << dir << "\n";
+        out << "Expose it publicly with:  tailscale funnel " << server->port() << "\n";
+        out.flush();
+        QObject::connect(server, &SyncHttpServer::requestServed, &app,
+            [&out](const QString &m, const QString &t, int s) {
+                out << "  " << m << ' ' << t << " -> " << s << "\n";
+                out.flush();
+            });
+        return app.exec();
     }
 
     // ── Build the request object ─────────────────────────────────────────────
