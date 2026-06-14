@@ -215,6 +215,8 @@ set(INFRA_SOURCES
     src/sync/oauth_client.cpp
     src/sync/drive_api.cpp
     src/sync/snapshot.cpp
+    src/sync/localdirremote.cpp
+    src/sync/httpremote.cpp
     src/services/crashlogger.cpp
     src/services/dailyreviewservice.cpp
     src/services/pomodoroservice.cpp
@@ -250,6 +252,8 @@ set(INFRA_HEADERS
     src/sync/oauth_client.h
     src/sync/drive_api.h
     src/sync/snapshot.h
+    src/sync/localdirremote.h
+    src/sync/httpremote.h
     src/services/notificationservice.h
     src/services/hotkeyservice.h
     src/services/pomodoroservice.h
