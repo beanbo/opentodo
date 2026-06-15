@@ -59,6 +59,17 @@ class SettingsViewModel : public QObject
     // "after_action" | "interval" | "manual"
     Q_PROPERTY(QString syncMode READ syncMode WRITE setSyncMode NOTIFY syncModeChanged)
 
+    // Self-hosted PC sync. DEVICE-LOCAL config stored in QSettings (NOT in
+    // state.json) — the token must never travel through the sync it guards, and
+    // each device configures its own connection. backend: "drive" (default) |
+    // "selfhost". serverUrl + token are used by client devices (phone) to reach
+    // the PC's SyncHttpServer via a Tailscale Funnel. Changing the backend takes
+    // effect on next app start (the remote is wired once at startup).
+    Q_PROPERTY(QString syncBackend READ syncBackend WRITE setSyncBackend NOTIFY syncBackendChanged)
+    Q_PROPERTY(QString syncServerUrl READ syncServerUrl WRITE setSyncServerUrl NOTIFY syncServerUrlChanged)
+    Q_PROPERTY(QString syncToken READ syncToken WRITE setSyncToken NOTIFY syncTokenChanged)
+    Q_PROPERTY(bool selfHostActive READ selfHostActive NOTIFY syncBackendChanged)
+
     // Permissions / first-run gates
     Q_PROPERTY(bool notificationPermissionAsked READ notificationPermissionAsked
                WRITE setNotificationPermissionAsked NOTIFY notificationPermissionAskedChanged)
@@ -160,6 +171,18 @@ public:
     QString syncMode() const;
     void setSyncMode(const QString &mode);
 
+    // Self-hosted sync (device-local QSettings)
+    QString syncBackend() const;
+    void setSyncBackend(const QString &backend);
+    QString syncServerUrl() const;
+    void setSyncServerUrl(const QString &url);
+    QString syncToken() const;
+    void setSyncToken(const QString &token);
+    bool selfHostActive() const { return syncBackend() == QStringLiteral("selfhost"); }
+    // Generate a fresh 256-bit bearer token, persist it, and return it (the PC
+    // shows this for the user to paste into the phone).
+    Q_INVOKABLE QString generateSyncToken();
+
     // Permissions
     bool notificationPermissionAsked() const;
     void setNotificationPermissionAsked(bool asked);
@@ -210,6 +233,9 @@ signals:
     void accentColorChanged();
     void syncIntervalChanged();
     void syncModeChanged();
+    void syncBackendChanged();
+    void syncServerUrlChanged();
+    void syncTokenChanged();
     void notificationPermissionAskedChanged();
     void backupRetentionCountChanged();
     void backupRetentionDaysChanged();

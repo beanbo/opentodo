@@ -22,6 +22,8 @@
 #include <QLibraryInfo>
 #include <QMetaEnum>
 #include <QWindow>
+#include <QStandardPaths>
+#include <QDir>
 #include <memory>
 
 #include "utils/settingskeys.h"
@@ -31,6 +33,9 @@
 #include "sync/syncengine.h"
 #include "sync/gdrive.h"
 #include "sync/sharemanager.h"
+#include "sync/localdirremote.h"
+#include "sync/httpremote.h"
+#include "sync/synchttpserver.h"
 #include "nlp/dateparser.h"
 #include "filter/filterparser.h"
 #include "filter/filtereval.h"
@@ -318,6 +323,43 @@ int main(int argc, char *argv[])
     auto *karmaVM = new KarmaViewModel(dataStore, &app);
     auto *syncVM = new SyncViewModel(syncEngine, &app);
     auto *notificationsVM = new NotificationsViewModel(dataStore, syncEngine, &app);
+
+    // ── Sync backend selection (self-hosted PC vs Google Drive) ─────────────
+    // Device-local choice in QSettings (selfhost/backend). Drive is the default
+    // and stays untouched. When "selfhost" is active the DESKTOP is the hub: it
+    // syncs against a local store directory AND runs an embedded SyncHttpServer
+    // so phones / other PCs can reach it over a Tailscale Funnel. Mobile / web
+    // act as HTTP clients pointed at that server's URL. Wired once here; changing
+    // the backend requires an app restart. The sync-store dir + QSettings keys
+    // match `opentodo-cli serve` so the headless server and the GUI agree.
+    SyncHttpServer *syncServer = nullptr;
+    if (settingsVM->syncBackend() == QStringLiteral("selfhost")) {
+        const QString storeDir =
+            QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/sync_store");
+        QDir().mkpath(storeDir);
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM)
+        // Hub: sync against the local store directly, then serve it to peers.
+        auto *localRemote = new LocalDirRemote(storeDir);   // app-lifetime
+        syncEngine->setRemote(localRemote);
+
+        QString token = settingsVM->syncToken();
+        if (token.isEmpty())
+            token = settingsVM->generateSyncToken();        // first run on this PC
+        QSettings shSettings;
+        const quint16 port = static_cast<quint16>(
+            shSettings.value(QStringLiteral("selfhost/port"), 8765).toUInt());
+        syncServer = new SyncHttpServer(localRemote, &app);
+        if (!syncServer->start(port, token))
+            qWarning("Self-hosted sync server failed to start on 127.0.0.1:%u", port);
+#else
+        // Client: talk to the PC's server over HTTP (Tailscale Funnel URL).
+        auto *httpRemote = new HttpRemote();                // app-lifetime
+        httpRemote->configure(settingsVM->syncServerUrl(), settingsVM->syncToken());
+        syncEngine->setRemote(httpRemote);
+#endif
+    }
+    Q_UNUSED(syncServer)
 
     // Wire cross-VM signals
     QObject::connect(sidebarVM, &SidebarViewModel::navigationRequested,

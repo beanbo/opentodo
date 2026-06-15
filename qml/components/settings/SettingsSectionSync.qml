@@ -129,11 +129,191 @@ Rectangle {
         width: parent.width
         spacing: 0
 
+        // ── Backend selector: Google Drive vs self-hosted PC ──────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 52
+            color: "transparent"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                spacing: 16
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Text {
+                        text: qsTr("Способ синхронизации")
+                        font.pixelSize: FontSize.bodySmall
+                        color: ThemeManager.textColor
+                    }
+                    Text {
+                        text: qsTr("Google Drive или свой ПК (через Tailscale Funnel)")
+                        font.pixelSize: FontSize.caption
+                        color: ThemeManager.secondaryTextColor
+                    }
+                }
+
+                DesignSelect {
+                    id: backendCombo
+                    implicitWidth: 200
+                    Layout.preferredWidth: 200
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+
+                    model: [ qsTr("Google Drive"), qsTr("Свой ПК") ]
+                    readonly property var _vals: ["drive", "selfhost"]
+                    function _idx(b) { return b === "selfhost" ? 1 : 0 }
+
+                    Component.onCompleted: currentIndex = _idx(settingsViewModel.syncBackend)
+                    Connections {
+                        target: settingsViewModel
+                        function onSyncBackendChanged() {
+                            backendCombo.currentIndex = backendCombo._idx(settingsViewModel.syncBackend)
+                        }
+                    }
+                    onActivated: settingsViewModel.syncBackend = _vals[currentIndex]
+                }
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                height: 1
+                color: ThemeManager.borderColor
+            }
+        }
+
+        // Restart reminder (the remote is wired once at app start).
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 20
+            Layout.rightMargin: 20
+            Layout.topMargin: 8
+            text: qsTr("После смены способа синхронизации перезапустите приложение.")
+            wrapMode: Text.WordWrap
+            font.pixelSize: FontSize.caption
+            color: ThemeManager.secondaryTextColor
+        }
+
+        // ── Self-hosted PC card (visible only for the self-hosted backend) ────
+        Rectangle {
+            id: selfHostCard
+            Layout.fillWidth: true
+            Layout.margins: 16
+            visible: settingsViewModel.syncBackend === "selfhost"
+            radius: 8
+            color: ThemeManager.hoverColor
+            border.color: ThemeManager.accentColor
+            border.width: 1
+            implicitHeight: selfHostCol.implicitHeight + 28
+
+            readonly property bool isPhone: Qt.platform.os === "android"
+
+            ColumnLayout {
+                id: selfHostCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 14
+                spacing: 8
+
+                Text {
+                    text: selfHostCard.isPhone
+                          ? qsTr("Подключение к ПК")
+                          : qsTr("Этот ПК — сервер синхронизации")
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: ThemeManager.textColor
+                }
+
+                // ── PHONE / client: enter the PC's URL + token ────────────────
+                ColumnLayout {
+                    visible: selfHostCard.isPhone
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Text {
+                        text: qsTr("Адрес сервера (с ПК):")
+                        font.pixelSize: 12
+                        color: ThemeManager.secondaryTextColor
+                    }
+                    TextField {
+                        Layout.fillWidth: true
+                        text: settingsViewModel.syncServerUrl
+                        placeholderText: "https://my-pc.tail0000.ts.net"
+                        color: ThemeManager.textColor
+                        onEditingFinished: settingsViewModel.syncServerUrl = text
+                    }
+                    Text {
+                        text: qsTr("Токен (с ПК):")
+                        font.pixelSize: 12
+                        color: ThemeManager.secondaryTextColor
+                    }
+                    TextField {
+                        Layout.fillWidth: true
+                        text: settingsViewModel.syncToken
+                        placeholderText: qsTr("вставьте токен с ПК")
+                        color: ThemeManager.textColor
+                        onEditingFinished: settingsViewModel.syncToken = text
+                    }
+                }
+
+                // ── PC / server: show token + Funnel instructions ─────────────
+                ColumnLayout {
+                    visible: !selfHostCard.isPhone
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Адрес для телефона: https://my-pc.tail0000.ts.net")
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 12
+                        color: ThemeManager.textColor
+                    }
+                    Text {
+                        text: qsTr("Токен (введите его на телефоне):")
+                        font.pixelSize: 12
+                        color: ThemeManager.secondaryTextColor
+                    }
+                    TextField {
+                        Layout.fillWidth: true
+                        readOnly: true
+                        selectByMouse: true
+                        text: settingsViewModel.syncToken
+                        color: ThemeManager.textColor
+                        font.family: "monospace"
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Button {
+                            text: qsTr("Новый токен")
+                            onClicked: settingsViewModel.generateSyncToken()
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Один раз выполните в терминале: tailscale funnel 8765")
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 11
+                            color: ThemeManager.secondaryTextColor
+                        }
+                    }
+                }
+            }
+        }
+
         // OAuth setup notice
         Rectangle {
             Layout.fillWidth: true
             Layout.margins: 16
             Layout.bottomMargin: 0
+            visible: settingsViewModel.syncBackend === "drive"
             radius: 8
             color: ThemeManager.surfaceColor
             border.color: ThemeManager.accentColor
@@ -168,6 +348,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.margins: 16
             height: 72
+            visible: settingsViewModel.syncBackend === "drive"
             radius: 8
             color: ThemeManager.hoverColor
             border.color: root.driveConnected ? "#4285f4" : ThemeManager.borderColor

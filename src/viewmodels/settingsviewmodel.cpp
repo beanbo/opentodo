@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QHash>
 #include <QProcess>
+#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
@@ -229,6 +230,57 @@ void SettingsViewModel::setSyncMode(const QString &mode) {
     if (mode == syncMode()) return;
     set(QLatin1String(SettingsKeys::SyncMode), mode);
     emit syncModeChanged();
+}
+
+// --- Self-hosted sync (device-local QSettings, never synced) ---
+
+QString SettingsViewModel::syncBackend() const {
+    QSettings s;
+    const QString v = s.value(QStringLiteral("selfhost/backend")).toString();
+    return v.isEmpty() ? QStringLiteral("drive") : v;
+}
+void SettingsViewModel::setSyncBackend(const QString &backend) {
+    if (backend != QStringLiteral("drive") && backend != QStringLiteral("selfhost"))
+        return;
+    if (backend == syncBackend()) return;
+    QSettings s;
+    s.setValue(QStringLiteral("selfhost/backend"), backend);
+    emit syncBackendChanged();
+}
+
+QString SettingsViewModel::syncServerUrl() const {
+    QSettings s;
+    return s.value(QStringLiteral("selfhost/server_url")).toString();
+}
+void SettingsViewModel::setSyncServerUrl(const QString &url) {
+    const QString u = url.trimmed();
+    if (u == syncServerUrl()) return;
+    QSettings s;
+    s.setValue(QStringLiteral("selfhost/server_url"), u);
+    emit syncServerUrlChanged();
+}
+
+QString SettingsViewModel::syncToken() const {
+    QSettings s;
+    return s.value(QStringLiteral("selfhost/token")).toString();
+}
+void SettingsViewModel::setSyncToken(const QString &token) {
+    const QString t = token.trimmed();
+    if (t == syncToken()) return;
+    QSettings s;
+    s.setValue(QStringLiteral("selfhost/token"), t);
+    emit syncTokenChanged();
+}
+
+QString SettingsViewModel::generateSyncToken() {
+    QByteArray raw(32, 0);
+    for (int i = 0; i < raw.size(); ++i)
+        raw[i] = static_cast<char>(QRandomGenerator::system()->bounded(256));
+    const QString tok = QString::fromLatin1(raw.toHex());
+    QSettings s;
+    s.setValue(QStringLiteral("selfhost/token"), tok);
+    emit syncTokenChanged();
+    return tok;
 }
 
 // --- Permissions ---
