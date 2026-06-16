@@ -14,6 +14,12 @@ Item {
     // ── Required screen signals ────────────────────────────────────────────
     signal menuRequested()
     signal taskClicked(string id)
+    signal viewModeChanged(string mode)   // "list" | "board" | "cal"
+    signal searchRequested()
+
+    // When opened from a project (via the segment), scope to that project.
+    readonly property var _proj: (typeof taskViewModel !== "undefined" && taskViewModel.currentProjectId !== "")
+                                 ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
 
     // ── Displayed month / selected day state (init to current) ─────────────
     property int _y: (new Date()).getFullYear()
@@ -71,9 +77,11 @@ Item {
             _marks = marks; _dayTasks = dayList; return
         }
         var all = dataStore.allTasksData()
+        var pid = (typeof taskViewModel !== "undefined") ? taskViewModel.currentProjectId : ""
         for (var i = 0; i < all.length; i++) {
             var tk = all[i]
             if (!tk || tk.isDeleted || tk.isCompleted) continue
+            if (pid !== "" && tk.projectId !== pid) continue
             var day = root._taskDay(tk)
             if (day <= 0) continue
             ;(marks[day] = marks[day] || []).push(root._prioColor(tk.priority))
@@ -91,6 +99,11 @@ Item {
         target: dataStore
         ignoreUnknownSignals: true
         function onTasksChanged() { root._recompute() }
+    }
+    Connections {
+        target: typeof taskViewModel !== "undefined" ? taskViewModel : null
+        ignoreUnknownSignals: true
+        function onCurrentProjectIdChanged() { root._recompute() }
     }
 
     function _shiftMonth(dir) {
@@ -113,22 +126,42 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         big: false
-        title: qsTr("Календарь")
-        titleIconName: "calendar"
-        titleColor: ThemeManager.accentColor
+        title: root._proj ? root._proj.name : qsTr("Календарь")
+        titleIconName: root._proj ? ((root._proj.icon && root._proj.icon.length > 0) ? root._proj.icon : "hash") : "calendar"
+        titleColor: root._proj ? ((root._proj.color && root._proj.color.length > 0) ? root._proj.color : ThemeManager.accentColor) : ThemeManager.accentColor
         onMenuClicked: root.menuRequested()
 
         MIconButton {
             iconName: "search"
             iconColor: ThemeManager.textColor
-            onClicked: {}   // no-op (search wired at shell level)
+            onClicked: root.searchRequested()
         }
+    }
+
+    // View-mode segment (only when scoped to a project).
+    MSeg {
+        id: seg
+        anchors.top: topBar.bottom
+        anchors.topMargin: 4
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        visible: root._proj !== null
+        height: visible ? 40 : 0
+        value: "cal"
+        options: [
+            { "value": "list",  "label": qsTr("Список"),    "icon": "list" },
+            { "value": "board", "label": qsTr("Доска"),     "icon": "board" },
+            { "value": "cal",   "label": qsTr("Календарь"),  "icon": "calendar" }
+        ]
+        onChanged: function(m) { root.viewModeChanged(m) }
     }
 
     // ── Scrollable content ─────────────────────────────────────────────────
     Flickable {
         id: flick
-        anchors.top: topBar.bottom
+        anchors.top: seg.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

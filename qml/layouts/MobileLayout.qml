@@ -210,7 +210,17 @@ Item {
             if (bb) sidebarViewModel.navigateToProject(bb.id)
             Qt.callLater(function() { taskViewModel.filterMode = TaskViewModel.Board })
         }
-        else if (v === "calendar")     taskViewModel.filterMode = TaskViewModel.Calendar
+        else if (v === "calendar") {
+            var bc = null, bcn = -1
+            for (var c = 0; c < projectViewModel.count; c++) {
+                var pc = projectViewModel.projectAt(c)
+                if (!pc || pc.isInbox || pc.isArchived) continue
+                var ncc = projectViewModel.taskCountForProject(pc.id)
+                if (ncc > bcn) { bcn = ncc; bc = pc }
+            }
+            if (bc) sidebarViewModel.navigateToProject(bc.id)
+            Qt.callLater(function() { taskViewModel.filterMode = TaskViewModel.Calendar })
+        }
         else if (v === "labels")       root.browseScreen = "labels"
         else if (v === "filters")      root.browseScreen = "filters"
         else if (v === "drawer")       Qt.callLater(function() { sidebarDrawer.open() })
@@ -292,6 +302,7 @@ Item {
         || taskViewModel.filterMode === TaskViewModel.Calendar
         || taskViewModel.filterMode === TaskViewModel.Trash
         || taskViewModel.filterMode === TaskViewModel.Board
+        || taskViewModel.filterMode === TaskViewModel.AI
 
     // ── List-view header (big collapsing app bar) data ─────────────────────────
     readonly property var _hdrProj: (taskViewModel.filterMode === TaskViewModel.Project
@@ -593,8 +604,7 @@ Item {
                 case TaskViewModel.Calendar:      return "../components/mobile/MCalendarScreen.qml"
                 case TaskViewModel.Trash:         return "../components/mobile/MTrashScreen.qml"
                 case TaskViewModel.Board:         return "../components/mobile/MBoardScreen.qml"
-                // Not yet redesigned for mobile — fall back to the desktop view:
-                case TaskViewModel.AI:            return "../views/AIView.qml"
+                case TaskViewModel.AI:            return "../components/mobile/MAIScreen.qml"
                 }
                 return ""
             }
@@ -628,6 +638,7 @@ Item {
                 // Mobile screens expose menuRequested (hamburger) + aiRequested.
                 function onMenuRequested() { sidebarDrawer.open() }
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
+                function onOpenSettingsRequested() { sidebarViewModel.navigateTo("settings") }
                 // MBoardScreen: + button → quick-add; search → overlay; segment → view mode.
                 function onAddRequested()    { quickAdd.openAdd() }
                 function onSearchRequested() { searchOverlay.open() }

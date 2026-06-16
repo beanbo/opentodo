@@ -527,6 +527,7 @@ set(QML_FILES
     qml/components/mobile/MEmptyState.qml
     qml/components/mobile/MBoardScreen.qml
     qml/components/mobile/MSearchScreen.qml
+    qml/components/mobile/MAIScreen.qml
     qml/views/ProjectView.qml
     qml/views/BoardView.qml
     qml/views/CalendarView.qml
