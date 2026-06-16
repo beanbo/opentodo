@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import QtCore
 import OpenTodoUI
 
 Item {
@@ -20,6 +21,227 @@ Item {
     readonly property int taskItemPadding:   Spacing.md
     readonly property int animationDuration: Duration.slow
     readonly property int fabSize:           56
+
+    // ── Mobile redesign: bottom-nav pin state + shell-level computed flags ──
+    // Pinned slots persist in QSettings (category "bottomNavPins"); up to 3
+    // ids, each one of "sv:today" / "sv:upcoming" / a project id.
+    Settings {
+        id: navPinSettings
+        category: "bottomNavPins"
+        property string pinned: ""
+    }
+    property var navPins: []
+    function _defaultPins() {
+        // Default: «Сегодня» + the first two real projects (per the handoff),
+        // falling back to «Предстоящие» when there aren't enough projects.
+        var arr = ["sv:today"]
+        if (typeof projectViewModel !== "undefined" && projectViewModel) {
+            for (var i = 0; i < projectViewModel.count && arr.length < 3; i++) {
+                var p = projectViewModel.projectAt(i)
+                if (p && !p.isInbox && !p.isArchived) arr.push(p.id)
+            }
+        }
+        if (arr.length < 3 && arr.indexOf("sv:upcoming") < 0) arr.push("sv:upcoming")
+        return arr.slice(0, 3)
+    }
+    function _loadPins() {
+        var s = navPinSettings.pinned
+        var arr = (s ? s.split(",") : []).filter(function(x) { return x !== "" })
+        navPins = (arr.length === 0) ? _defaultPins() : arr.slice(0, 3)
+    }
+    function togglePin(id) {
+        var arr = navPins.slice()
+        var idx = arr.indexOf(id)
+        if (idx >= 0)                 arr.splice(idx, 1)          // unpin
+        else if (arr.length >= 3)   { arr.shift(); arr.push(id) } // evict oldest
+        else                          arr.push(id)
+        navPins = arr
+        navPinSettings.pinned = arr.join(",")
+    }
+    // Snooze (defer to tomorrow). setTaskDue does NOT push to the undo stack,
+    // so we snapshot the prior due here and restore it from the snackbar.
+    property var _pendingSnooze: null
+    function _snoozeTask(id) {
+        var t = dataStore.taskById(id)
+        var prev = t ? ((t.dueString && t.dueString.length) ? t.dueString : (t.dueDate || "")) : ""
+        taskViewModel.setTaskDue(id, "завтра")
+        root._pendingSnooze = { "id": id, "prev": prev }
+        mSnackbar.show(qsTr("Отложено на завтра"), qsTr("Отменить"))
+    }
+
+    // Long-press context menu (block 4).
+    function _openTaskContext(id) {
+        if (taskContextSheet)
+            taskContextSheet.openFor(id)
+    }
+    property var taskContextSheet: null
+
+    // Move-to-project picker (single task from context menu, or bulk selection).
+    property var _moveIds: []
+    function _buildProjectOptions() {
+        var arr = []
+        for (var i = 0; i < projectViewModel.count; i++) {
+            var p = projectViewModel.projectAt(i)
+            if (!p || p.isArchived) continue
+            arr.push({ "id": p.id, "label": p.name,
+                       "icon": (p.icon && p.icon.length > 0) ? p.icon : "hash",
+                       "color": (p.color && p.color.length > 0) ? p.color : "" })
+        }
+        return arr
+    }
+    function _openMove(ids) {
+        root._moveIds = ids
+        movePicker.options = _buildProjectOptions()
+        movePicker.subtitle = qsTr("Задач: %1").arg(ids.length)
+        movePicker.open = true
+    }
+
+    // Dev/preview: jump to a starting view (OPENTODO_MOBILE_START env → context
+    // property mobileStartView). No effect when unset.
+    function _applyStartView() {
+        if (typeof mobileStartView === "undefined" || !mobileStartView || mobileStartView.length === 0)
+            return
+        var v = mobileStartView
+        if (v === "today")             sidebarViewModel.navigateToToday()
+        else if (v === "upcoming")     sidebarViewModel.navigateToUpcoming()
+        else if (v === "inbox")        sidebarViewModel.navigateToInbox()
+        else if (v === "settings")     taskViewModel.filterMode = TaskViewModel.Settings
+        else if (v === "productivity") taskViewModel.filterMode = TaskViewModel.Productivity
+        else if (v === "notifications")taskViewModel.filterMode = TaskViewModel.Notifications
+        else if (v === "trash")        taskViewModel.filterMode = TaskViewModel.Trash
+        else if (v === "ai")           taskViewModel.filterMode = TaskViewModel.AI
+        else if (v === "board")        taskViewModel.filterMode = TaskViewModel.Board
+        else if (v === "calendar")     taskViewModel.filterMode = TaskViewModel.Calendar
+        else if (v === "labels")       root.browseScreen = "labels"
+        else if (v === "filters")      root.browseScreen = "filters"
+        else if (v === "drawer")       Qt.callLater(function() { sidebarDrawer.open() })
+        else if (v === "project") {
+            // Pick the busiest non-inbox project (most tasks) for verification.
+            var best = null, bestN = -1
+            for (var i = 0; i < projectViewModel.count; i++) {
+                var p = projectViewModel.projectAt(i)
+                if (!p || p.isInbox || p.isArchived) continue
+                var n = projectViewModel.taskCountForProject(p.id)
+                if (n > bestN) { bestN = n; best = p }
+            }
+            if (best) sidebarViewModel.navigateToProject(best.id)
+        }
+        else if (v === "editor") {
+            // Open the first task of the busiest project in the editor (verify).
+            var b2 = null, b2n = -1
+            for (var k = 0; k < projectViewModel.count; k++) {
+                var pk = projectViewModel.projectAt(k)
+                if (!pk || pk.isInbox || pk.isArchived) continue
+                var nk = projectViewModel.taskCountForProject(pk.id)
+                if (nk > b2n) { b2n = nk; b2 = pk }
+            }
+            if (b2) {
+                sidebarViewModel.navigateToProject(b2.id)
+                Qt.callLater(function() { var t = taskViewModel.taskAt(0); if (t) taskViewModel.selectedTask = t })
+            }
+        }
+    }
+
+    Component.onCompleted: { _loadPins(); _applyStartView() }
+
+    // Recompute pins once the project model has loaded (default-pin resolution
+    // needs real project ids) and whenever projects are added/removed. When the
+    // user has saved pins, this just reloads the same persisted set.
+    Connections {
+        target: projectViewModel
+        function onCountChanged() { root._loadPins() }
+    }
+
+    // Density tokens shared with all mobile child components.
+    MDensity { id: mdens }
+
+    // Which bottom-nav tab is active, derived from the current filter mode.
+    readonly property string navKind: {
+        switch (taskViewModel.filterMode) {
+        case TaskViewModel.Inbox:    return "inbox"
+        case TaskViewModel.Today:    return "today"
+        case TaskViewModel.Upcoming: return "upcoming"
+        case TaskViewModel.Project:  return "project"
+        default:                     return "other"
+        }
+    }
+    // Multi-select mode (block 4) hides the nav + FAB; for now it is simply
+    // "any task selected".
+    readonly property bool selectionMode: taskViewModel.selectionCount > 0
+    readonly property bool navVisible: !selectionMode
+    readonly property bool showFab:
+        !selectionMode
+        && taskEditorStack.depth === 0
+        && !searchOverlay.opened
+        && taskViewModel.filterMode !== TaskViewModel.Settings
+        && taskViewModel.filterMode !== TaskViewModel.Productivity
+        && taskViewModel.filterMode !== TaskViewModel.Notifications
+        && taskViewModel.filterMode !== TaskViewModel.AI
+        && taskViewModel.filterMode !== TaskViewModel.Trash
+
+    // Browse overlay for the Метки / Фильтры list screens ("labels"|"filters"|"").
+    property string browseScreen: ""
+
+    // Full-page mobile screens that render their own MTopBar — the shell's own
+    // top bar is hidden for these (and the browse overlay) to avoid a double header.
+    readonly property bool _ownHeaderView:
+        browseScreen !== ""
+        || taskViewModel.filterMode === TaskViewModel.Settings
+        || taskViewModel.filterMode === TaskViewModel.Productivity
+        || taskViewModel.filterMode === TaskViewModel.Notifications
+        || taskViewModel.filterMode === TaskViewModel.Calendar
+        || taskViewModel.filterMode === TaskViewModel.Trash
+
+    // ── List-view header (big collapsing app bar) data ─────────────────────────
+    readonly property var _hdrProj: (taskViewModel.filterMode === TaskViewModel.Project
+                                     && taskViewModel.currentProjectId !== "")
+                                    ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
+    readonly property string _listTitle: {
+        switch (taskViewModel.filterMode) {
+        case TaskViewModel.Inbox:     return qsTr("Входящие")
+        case TaskViewModel.Today:     return qsTr("Сегодня")
+        case TaskViewModel.Upcoming:  return qsTr("Предстоящие")
+        case TaskViewModel.Project:   return _hdrProj ? _hdrProj.name : qsTr("Проект")
+        case TaskViewModel.Board:     return qsTr("Доска")
+        case TaskViewModel.Label:     return qsTr("Метка: %1").arg(taskViewModel.currentFilter || "")
+        case TaskViewModel.Filter:    return qsTr("Фильтр")
+        case TaskViewModel.Completed: return qsTr("Завершённые")
+        case TaskViewModel.AI:        return qsTr("Помощник")
+        default:                      return qsTr("Задачи")
+        }
+    }
+    readonly property string _listIcon: {
+        switch (taskViewModel.filterMode) {
+        case TaskViewModel.Inbox:     return "inbox"
+        case TaskViewModel.Today:     return "today"
+        case TaskViewModel.Upcoming:  return "upcoming"
+        case TaskViewModel.Project:   return (_hdrProj && _hdrProj.icon && _hdrProj.icon.length > 0) ? _hdrProj.icon : "hash"
+        case TaskViewModel.Board:     return "board"
+        case TaskViewModel.Label:     return "tag"
+        case TaskViewModel.Filter:    return "filter"
+        case TaskViewModel.Completed: return "check-circle"
+        case TaskViewModel.AI:        return "sparkles"
+        default:                      return "inbox"
+        }
+    }
+    readonly property color _listIconColor:
+        (taskViewModel.filterMode === TaskViewModel.Project && _hdrProj && _hdrProj.color && _hdrProj.color.length > 0)
+        ? _hdrProj.color : ThemeManager.accentColor
+    readonly property string _listSubtitle: {
+        switch (taskViewModel.filterMode) {
+        case TaskViewModel.Today:    return new Date().toLocaleDateString(Qt.locale("ru_RU"), "d MMMM, dddd")
+        case TaskViewModel.Upcoming: return new Date().toLocaleDateString(Qt.locale("ru_RU"), "MMMM yyyy")
+        case TaskViewModel.Project:  return _hdrProj ? (projectViewModel.taskCountForProject(taskViewModel.currentProjectId) + " " + _taskWord(projectViewModel.taskCountForProject(taskViewModel.currentProjectId))) : ""
+        default:                     return ""
+        }
+    }
+    function _taskWord(n) {
+        var m100 = n % 100, m10 = n % 10
+        if (m100 >= 11 && m100 <= 14) return qsTr("задач")
+        if (m10 === 1) return qsTr("задача")
+        if (m10 >= 2 && m10 <= 4) return qsTr("задачи")
+        return qsTr("задач")
+    }
 
     // Q-Android-Audit #1.1: mirror DesktopLayout's full-page predicate so the
     // body Loader can swap to Settings / Productivity / Notifications / AI /
@@ -41,6 +263,35 @@ Item {
     // close drawer → navigate home); returns false only when the app is in its
     // ground state and the close should be accepted (app exit).
     function handleBack() {
+        // 0) Bottom-nav pin-management sheet open
+        if (pinSheet.open) {
+            pinSheet.open = false
+            return true
+        }
+        // 0a) Quick-add sheet open
+        if (quickAdd.open) {
+            quickAdd.open = false
+            return true
+        }
+        // 0a2) Labels/Filters browse overlay open
+        if (root.browseScreen !== "") {
+            root.browseScreen = ""
+            return true
+        }
+        // 0b) Task context menu / move picker open
+        if (taskContextSheet && taskContextSheet.open) {
+            taskContextSheet.open = false
+            return true
+        }
+        if (movePicker.open) {
+            movePicker.open = false
+            return true
+        }
+        // 0c) Multi-select mode active → exit selection
+        if (root.selectionMode) {
+            taskViewModel.clearSelection()
+            return true
+        }
         // 1) Full-screen task editor open
         if (taskEditorStack.depth > 0) {
             // clear(), not pop(): the editor is pushed as the StackView's only
@@ -82,7 +333,7 @@ Item {
     // ── Sidebar Drawer ────────────────────────────────────────────────────────
     Drawer {
         id: sidebarDrawer
-        width: sidebarWidth
+        width: Math.min(308, root.width * 0.86)
         height: root.height
         edge: Qt.LeftEdge
         modal: true
@@ -91,13 +342,27 @@ Item {
         // Animated open/close is handled natively by Drawer
 
         background: Rectangle {
-            color: contentColor
+            color: ThemeManager.surfaceColor
         }
 
+        // Mobile redesign: native mobile drawer (profile + smart lists + projects
+        // with pin toggles + Метки/Фильтры/Корзина + Settings).
         Loader {
             id: sidebarContentLoader
             anchors.fill: parent
-            source: "../components/SidebarContent.qml"
+            source: "../components/mobile/MDrawerContent.qml"
+        }
+        Binding {
+            target: sidebarContentLoader.item
+            property: "pins"
+            value: root.navPins
+            when: sidebarContentLoader.status === Loader.Ready
+        }
+        Connections {
+            target: sidebarContentLoader.item
+            ignoreUnknownSignals: true
+            function onPinToggleRequested(id) { root.togglePin(id) }
+            function onBrowseRequested(which) { root.browseScreen = which; sidebarDrawer.close() }
         }
 
         // Keep the view model in sync
@@ -121,6 +386,8 @@ Item {
         function onNavigationRequested(view, itemId) {
             if (sidebarDrawer.opened)
                 sidebarDrawer.close()
+            // Navigating to a label/filter from the browse screen dismisses it.
+            root.browseScreen = ""
         }
     }
 
@@ -142,155 +409,44 @@ Item {
     // ── Main ColumnLayout ─────────────────────────────────────────────────────
     ColumnLayout {
         anchors.fill: parent
+        // Leave room for the bottom navigation (hidden in multi-select mode).
+        anchors.bottomMargin: root.navVisible ? bottomNav.height : 0
         spacing: 0
 
-        // ── Top bar ───────────────────────────────────────────────────────────
-        Rectangle {
+        // ── Top bar (big collapsing app bar for list views) ──────────────────
+        // Redesign: MTopBar renders a large title + icon + subtitle that
+        // collapses to a compact 56px row once the list scrolls past 24px.
+        // Hidden for mobile screens that carry their own MTopBar (and the
+        // Метки/Фильтры browse overlay) to avoid a double header.
+        MTopBar {
             id: topBar
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            color: contentColor
+            Layout.preferredHeight: implicitHeight
+            visible: !root._ownHeaderView
             z: 2
 
-            // Bottom border
-            Rectangle {
-                anchors.left:   parent.left
-                anchors.right:  parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: borderColor
+            big: !root.isFullPageView && (taskListView.contentY < 24)
+            title: root._listTitle
+            titleIconName: root._listIcon
+            titleColor: root._listIconColor
+            subtitle: root._listSubtitle
+            onMenuClicked: sidebarDrawer.open()
+
+            // Show-completed toggle (hidden for board/AI desktop views).
+            MIconButton {
+                visible: !root.isFullPageView
+                iconName: taskViewModel.showCompleted ? "eye" : "eye-off"
+                iconColor: ThemeManager.textColor
+                onClicked: {
+                    taskViewModel.showCompleted = !taskViewModel.showCompleted
+                    if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
+                        telemetry.trackEvent("toggle_show_completed", { "showing": taskViewModel.showCompleted })
+                }
             }
-
-            RowLayout {
-                anchors {
-                    fill: parent
-                    leftMargin: Spacing.xs
-                    rightMargin: Spacing.xs
-                }
-                spacing: 0
-
-                // Hamburger button
-                // B-9.9: was a literal "☰" (U+2630) rendered as ToolButton text;
-                // Android's Roboto lacks that codepoint so it showed as a tofu
-                // box. The old B-6.34 note that menu.svg "doesn't exist" is stale
-                // — resources/icons/ui/menu.svg ships and IconSvg tints it.
-                ToolButton {
-                    id: hamburgerButton
-                    implicitWidth: 48
-                    implicitHeight: 48
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: "menu"
-                        size: 22
-                        color: textSecondary
-                    }
-                    onClicked: sidebarDrawer.open()
-                    KeyNavigation.tab: searchButton  // F-6.96 a11y
-
-                    ToolTip.visible: pressed
-                    ToolTip.text: qsTr("Open menu")
-                }
-
-                // Current view title
-                // ITER2 #2: filterViewModel.currentViewTitle doesn't exist —
-                // FilterViewModel is a list model, not a navigation helper. Use
-                // the same filter-mode switch as DesktopLayout.
-                Label {
-                    id: viewTitleLabel
-                    text: {
-                        switch (taskViewModel.filterMode) {
-                        case TaskViewModel.Inbox:     return qsTr("Входящие")
-                        case TaskViewModel.Today:     return qsTr("Сегодня")
-                        case TaskViewModel.Upcoming:  return qsTr("Предстоящие")
-                        case TaskViewModel.Project: {
-                            const p = projectViewModel
-                                ? projectViewModel.projectById(taskViewModel.currentProjectId) : null
-                            return p ? p.name : qsTr("Проект")
-                        }
-                        case TaskViewModel.Board:     return qsTr("Доска")
-                        case TaskViewModel.Calendar:  return qsTr("Календарь")
-                        case TaskViewModel.Label:     return qsTr("Метка: %1").arg(taskViewModel.currentFilter || "")
-                        case TaskViewModel.Filter:    return qsTr("Фильтр")
-                        case TaskViewModel.Completed: return qsTr("Завершённые")
-                        case TaskViewModel.Settings:  return qsTr("Настройки")
-                        case TaskViewModel.Productivity:  return qsTr("Продуктивность")
-                        case TaskViewModel.Notifications: return qsTr("Уведомления")
-                        // Q4.01 (redesign): убран префикс "✨" — иконка несётся
-                        // нижней нав-панелью.
-                        case TaskViewModel.AI:        return qsTr("Помощник")
-                        // Q-Android-Audit speculative-finding: Trash was missing
-                        // from the title switch; tapping "Корзина" showed
-                        // "Задачи" as the fallback title.
-                        case TaskViewModel.Trash:     return qsTr("Корзина")
-                        default:                      return qsTr("Задачи")
-                        }
-                    }
-                    font.pixelSize: FontSize.title
-                    font.weight: Font.DemiBold
-                    color: textPrimary
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                    leftPadding: Spacing.sm
-                }
-
-                // Show-completed toggle (B-show-completed) — drives the same
-                // single taskViewModel.showCompleted flag as the desktop top bar.
-                // Hidden in the non-list views where it is meaningless.
-                ToolButton {
-                    id: showCompletedButton
-                    visible: taskViewModel.filterMode !== TaskViewModel.Settings
-                             && taskViewModel.filterMode !== TaskViewModel.Productivity
-                             && taskViewModel.filterMode !== TaskViewModel.Notifications
-                             && taskViewModel.filterMode !== TaskViewModel.AI
-                             && taskViewModel.filterMode !== TaskViewModel.Trash
-                             && taskViewModel.filterMode !== TaskViewModel.Completed
-                    implicitWidth: 48
-                    implicitHeight: 48
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: taskViewModel.showCompleted ? "eye" : "eye-off"
-                        size: 22
-                        color: textSecondary
-                    }
-                    onClicked: {
-                        taskViewModel.showCompleted = !taskViewModel.showCompleted
-                        if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
-                            telemetry.trackEvent("toggle_show_completed",
-                                                 { "showing": taskViewModel.showCompleted })
-                    }
-                    ToolTip.visible: pressed
-                    ToolTip.text: taskViewModel.showCompleted
-                                  ? qsTr("Скрыть выполненные")
-                                  : qsTr("Показать выполненные")
-                }
-
-                // Search icon button — opens the search overlay
-                // B-9.9: was a literal "⌕" (U+2315) text glyph — a tofu box on
-                // Android (Roboto lacks it). Use the bundled IconSvg "search".
-                ToolButton {
-                    id: searchButton
-                    implicitWidth: 48
-                    implicitHeight: 48
-                    contentItem: IconSvg {
-                        anchors.centerIn: parent
-                        name: "search"
-                        size: 22
-                        color: textSecondary
-                    }
-                    onClicked: searchOverlay.open()
-                    KeyNavigation.tab: hamburgerButton  // F-6.96 a11y: cycle back
-
-                    ToolTip.visible: pressed
-                    ToolTip.text: qsTr("Search")
-                }
-
-                // Sync indicator (compact, icon-only on mobile)
-                Loader {
-                    id: syncIndicatorLoader
-                    source: "../components/SyncIndicator.qml"
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                }
+            MIconButton {
+                iconName: "search"
+                iconColor: ThemeManager.textColor
+                onClicked: searchOverlay.open()
             }
         }
 
@@ -307,13 +463,15 @@ Item {
             visible: active
             source: {
                 switch (taskViewModel.filterMode) {
-                case TaskViewModel.Settings:      return "../views/SettingsView.qml"
-                case TaskViewModel.Productivity:  return "../views/ProductivityView.qml"
-                case TaskViewModel.Notifications: return "../views/NotificationsView.qml"
+                // Mobile redesign screens:
+                case TaskViewModel.Settings:      return "../components/mobile/MSettingsScreen.qml"
+                case TaskViewModel.Productivity:  return "../components/mobile/MProductivityScreen.qml"
+                case TaskViewModel.Notifications: return "../components/mobile/MNotificationsScreen.qml"
+                case TaskViewModel.Calendar:      return "../components/mobile/MCalendarScreen.qml"
+                case TaskViewModel.Trash:         return "../components/mobile/MTrashScreen.qml"
+                // Not yet redesigned for mobile — fall back to the desktop views:
                 case TaskViewModel.AI:            return "../views/AIView.qml"
                 case TaskViewModel.Board:         return "../views/BoardView.qml"
-                case TaskViewModel.Calendar:      return "../views/CalendarView.qml"
-                case TaskViewModel.Trash:         return "../views/TrashView.qml"
                 }
                 return ""
             }
@@ -342,10 +500,11 @@ Item {
                 function onTaskClicked(taskId) {
                     if (!taskId || taskId.length === 0) return
                     const t = dataStore.taskById(taskId)
-                    if (!t) return
-                    taskViewModel.selectedTask = t
-                    taskEditorStack.push(taskEditorPage)
+                    if (t) taskViewModel.selectedTask = t   // Connections pushes the editor
                 }
+                // Mobile screens expose menuRequested (hamburger) + aiRequested.
+                function onMenuRequested() { sidebarDrawer.open() }
+                function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
             }
         }
 
@@ -390,9 +549,12 @@ Item {
         Rectangle {
             id: quickAddBar
             Layout.fillWidth: true
-            Layout.preferredHeight: quickAddLoader.item ? quickAddLoader.item.height : 48
+            // Mobile redesign: quick-add is now the FAB→MQuickAdd sheet, so the
+            // persistent inline bar is hidden (matches the design — no always-on
+            // quick-add strip on mobile).
+            Layout.preferredHeight: 0
             color: contentColor
-            visible: !root.isFullPageView
+            visible: false
             z: 1
 
             Rectangle {
@@ -445,172 +607,311 @@ Item {
                 delegate: Item {
                     id: delegateRoot
                     width: taskListView.width
-                    height: taskItem.implicitHeight
+                    height: mRow.implicitHeight
 
-                    // ListView injects model roles into required properties on the
-                    // delegate root; TaskItem is then bound from here (same pattern
-                    // as DesktopLayout — avoids Loader construction-time required-
-                    // property failures).
                     required property int    index
                     required property string id
                     required property string content
-                    required property string description
-                    required property string projectId
-                    required property string sectionId
-                    required property string parentId
-                    required property int    order
                     required property int    priority
                     required property var    labels
                     required property bool   isCompleted
-                    required property string completedAt
                     required property string dueDate
                     required property string dueString
                     required property bool   isRecurring
                     required property string deadline
-                    required property int    durationAmount
-                    required property string durationUnit
-                    required property int    dayOrder
+                    required property string projectId
 
-                    TaskItem {
-                        id: taskItem
+                    // Mobile redesign: swipeable MTaskRow (replaces the desktop
+                    // TaskItem on mobile). Swipe right → complete, left → snooze/
+                    // delete, long-press → context menu, tap → editor.
+                    MTaskRow {
+                        id: mRow
                         width: parent.width
+                        dens: mdens
 
-                        index:          delegateRoot.index
-                        content:        delegateRoot.content
-                        description:    delegateRoot.description
-                        projectId:      delegateRoot.projectId
-                        sectionId:      delegateRoot.sectionId
-                        parentId:       delegateRoot.parentId
-                        order:          delegateRoot.order
-                        priority:       delegateRoot.priority
-                        labels:         delegateRoot.labels
-                        isCompleted:    delegateRoot.isCompleted
-                        completedAt:    delegateRoot.completedAt
-                        dueDate:        delegateRoot.dueDate
-                        dueString:      delegateRoot.dueString
-                        isRecurring:    delegateRoot.isRecurring
-                        deadline:       delegateRoot.deadline
-                        durationAmount: delegateRoot.durationAmount
-                        durationUnit:   delegateRoot.durationUnit
-                        dayOrder:       delegateRoot.dayOrder
+                        taskId:      delegateRoot.id
+                        content:     delegateRoot.content
+                        priority:    delegateRoot.priority
+                        labels:      delegateRoot.labels
+                        isCompleted: delegateRoot.isCompleted
+                        dueDate:     delegateRoot.dueDate
+                        dueString:   delegateRoot.dueString
+                        isRecurring: delegateRoot.isRecurring
+                        deadline:    delegateRoot.deadline
+                        projectId:   delegateRoot.projectId
+                        showProject: taskViewModel.filterMode !== TaskViewModel.Project
+                        selectionMode: root.selectionMode
+                        // selectionCount touch → re-evaluate isSelected reactively.
+                        selected: (taskViewModel.selectionCount, taskViewModel.isSelected(delegateRoot.id))
 
-                        // On mobile, tapping a task opens the full-screen editor
-                        // ITER3 #15: guard against null — task may have been deleted
-                        // by background sync between render and tap.
-                        onTaskClicked: function(taskId) {
-                            const t = dataStore.taskById(taskId)
-                            if (!t) return
-                            taskViewModel.selectedTask = t
-                            taskEditorStack.push(taskEditorPage)
+                        onToggleComplete: {
+                            if (delegateRoot.isCompleted) taskViewModel.uncompleteTask(delegateRoot.id)
+                            else                          taskViewModel.completeTask(delegateRoot.id)
                         }
-                    }
-                    // Bind `id` via Binding{} — assigning to `id:` in an object
-                    // initialiser is parsed as the QML id attribute, not a property.
-                    Binding {
-                        target: taskItem
-                        property: "id"
-                        value: delegateRoot.id
+                        onOpenTask: {
+                            const t = dataStore.taskById(delegateRoot.id)
+                            if (t) taskViewModel.selectedTask = t   // Connections pushes the editor
+                        }
+                        onSnooze: root._snoozeTask(delegateRoot.id)
+                        onDeleteTask: taskViewModel.deleteTask(delegateRoot.id)
+                        onSelectToggle: taskViewModel.toggleSelection(delegateRoot.id)
+                        onLongPressed: root._openTaskContext(delegateRoot.id)
                     }
                 }
 
-                // Empty-state label
-                // ITER1 #49: replace English qsTr with literal Russian
-                Label {
+                // Per-view empty state (icon badge + title + text).
+                MEmptyState {
                     anchors.centerIn: parent
                     visible: taskListView.count === 0
-                    text: qsTr("Нет задач — наслаждайтесь днём!")
-                    color: textSecondary
-                    font.pixelSize: FontSize.body
+                    iconName: {
+                        switch (taskViewModel.filterMode) {
+                        case TaskViewModel.Today:    return "check-circle"
+                        case TaskViewModel.Inbox:    return "inbox"
+                        case TaskViewModel.Upcoming: return "upcoming"
+                        case TaskViewModel.Project:  return root._listIcon
+                        default:                     return "list"
+                        }
+                    }
+                    iconColor: taskViewModel.filterMode === TaskViewModel.Today
+                               ? ThemeManager.successColor : root._listIconColor
+                    title: {
+                        switch (taskViewModel.filterMode) {
+                        case TaskViewModel.Today:    return qsTr("На сегодня всё")
+                        case TaskViewModel.Inbox:    return qsTr("Входящие пусты")
+                        case TaskViewModel.Upcoming: return qsTr("Ничего не запланировано")
+                        case TaskViewModel.Project:  return qsTr("Пока пусто")
+                        default:                     return qsTr("Список пуст")
+                        }
+                    }
+                    text: {
+                        switch (taskViewModel.filterMode) {
+                        case TaskViewModel.Today:    return qsTr("Задач на сегодня нет.\nОтличная работа!")
+                        case TaskViewModel.Inbox:    return qsTr("Новые задачи будут падать сюда.\nНажмите + чтобы добавить.")
+                        case TaskViewModel.Upcoming: return qsTr("Поставьте задачам сроки —\nи они появятся здесь.")
+                        case TaskViewModel.Project:  return qsTr("Добавьте первую задачу\nв этот проект.")
+                        default:                     return qsTr("Здесь пока нет задач.")
+                        }
+                    }
                 }
             }
 
-            // ── Floating Action Button ─────────────────────────────────────────
-            Rectangle {
-                id: fabButton
-                anchors {
-                    right:  parent.right
-                    bottom: parent.bottom
-                    rightMargin:  16
-                    bottomMargin: 16
+            // FAB moved to root level (mobile redesign → MFab, floats above the
+            // bottom navigation). See `mobileFab` below, near the editor stack.
+        }
+    }
+
+    // ── Bottom navigation + FAB + pin sheet (mobile redesign) ──────────────────
+    MBottomNav {
+        id: bottomNav
+        anchors.left:   parent.left
+        anchors.right:  parent.right
+        anchors.bottom: parent.bottom
+        z: 15
+        visible: root.navVisible
+        pins: root.navPins
+        activeKind: root.navKind
+        activeProjectId: taskViewModel.currentProjectId
+        searchOpen: searchOverlay.opened
+        onTabSelected: function(kind, projectId) {
+            taskViewModel.clearSelection()
+            if (kind === "inbox")         sidebarViewModel.navigateToInbox()
+            else if (kind === "today")    sidebarViewModel.navigateToToday()
+            else if (kind === "upcoming") sidebarViewModel.navigateToUpcoming()
+            else if (kind === "project")  sidebarViewModel.navigateToProject(projectId)
+        }
+        onManagePins: pinSheet.open = true
+    }
+
+    MFab {
+        id: mobileFab
+        anchors.right:  parent.right
+        anchors.rightMargin: 18
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: (root.navVisible ? bottomNav.height : 0) + 18
+        z: 16
+        visible: root.showFab
+        onClicked: quickAdd.openAdd()
+    }
+
+    // ── Quick-add sheet (mobile redesign) ──────────────────────────────────────
+    MQuickAdd {
+        id: quickAdd
+        anchors.fill: parent
+        z: 105
+        onCloseRequested: open = false
+        onCreated: function(message) { root._pendingSnooze = null; mSnackbar.show(message, "") }
+    }
+
+    // Single editor-open mechanism: setting taskViewModel.selectedTask (from a
+    // row tap, context menu, search, or notification) pushes the editor page.
+    // The StackView clears selectedTask on close, so this never re-fires.
+    Connections {
+        target: taskViewModel
+        function onSelectedTaskChanged() {
+            if (taskViewModel.selectedTask && taskEditorStack.depth === 0)
+                taskEditorStack.push(taskEditorPage)
+        }
+    }
+
+    // ── Метки / Фильтры browse overlay (opened from the drawer) ───────────────
+    Loader {
+        id: browseLoader
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.navVisible ? bottomNav.height : 0
+        z: 17
+        active: root.browseScreen !== ""
+        visible: active
+        source: root.browseScreen === "labels"  ? "../components/mobile/MLabelsScreen.qml"
+              : root.browseScreen === "filters" ? "../components/mobile/MFiltersScreen.qml" : ""
+        Connections {
+            target: browseLoader.item
+            ignoreUnknownSignals: true
+            function onMenuRequested() { root.browseScreen = ""; sidebarDrawer.open() }
+        }
+    }
+
+    MPinSheet {
+        id: pinSheet
+        anchors.fill: parent
+        z: 100
+        pins: root.navPins
+        onTogglePin: function(id) { root.togglePin(id) }
+        onCloseRequested: open = false
+    }
+
+    // ── Undo snackbar (mobile) ─────────────────────────────────────────────────
+    MSnackbar {
+        id: mSnackbar
+        anchors.fill: parent
+        z: 95
+        bottomMargin: root.navVisible ? (bottomNav.height + 12) : 18
+        onActionTriggered: {
+            if (root._pendingSnooze) {
+                taskViewModel.setTaskDue(root._pendingSnooze.id, root._pendingSnooze.prev)
+                root._pendingSnooze = null
+            } else {
+                undoStack.undo()
+            }
+        }
+    }
+
+    // ── Multi-select toolbar (replaces the top bar while selecting) ────────────
+    Rectangle {
+        id: selectionBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 58
+        z: 18
+        visible: root.selectionMode
+        color: ThemeManager.accentContainer
+
+        MIconButton {
+            id: selClose
+            anchors.left: parent.left
+            anchors.leftMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "close"; iconColor: ThemeManager.accentColor; iconSize: 22
+            onClicked: taskViewModel.clearSelection()
+        }
+        Text {
+            anchors.left: selClose.right
+            anchors.right: selActions.left
+            anchors.verticalCenter: parent.verticalCenter
+            leftPadding: 6
+            text: qsTr("%1 выбрано").arg(taskViewModel.selectionCount)
+            font.pixelSize: 18; font.weight: Font.Bold
+            color: ThemeManager.accentColor
+            elide: Text.ElideRight
+        }
+        Row {
+            id: selActions
+            anchors.right: parent.right
+            anchors.rightMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            MIconButton {
+                iconName: "check-circle"; iconColor: ThemeManager.accentColor; iconSize: 22
+                onClicked: {
+                    var n = taskViewModel.selectionCount
+                    taskViewModel.bulkComplete()
+                    mSnackbar.show(qsTr("Выполнено: %1").arg(n), qsTr("Отменить"))
+                    taskViewModel.clearSelection()
                 }
-                width:  fabSize
-                height: fabSize
-                radius: fabSize / 2
-                color: accentRed
-                z: 10
-                clip: true  // B-6.27: clip ripple to FAB radius
-
-                // Elevation shadow
-                layer.enabled: true
-                layer.effect: null  // F-6.28: DropShadow skipped — Qt5Compat not confirmed available
-
-                // Task 17cea65b iter-3: было unicode "+".
-                // Iter-night-23: was hardcoded "#ffffff". The FAB renders
-                // on top of the active accentColor; use the theme's
-                // accentForeground so the glyph stays readable on every
-                // palette (white on red accent works; white on yellow
-                // high-contrast accent fails — accentForeground is black
-                // there).
-                IconSvg {
-                    anchors.centerIn: parent
-                    name: "plus"
-                    size: 28
-                    color: ThemeManager.accentForeground
-                    // Nudge slightly to optical center
-                    anchors.verticalCenterOffset: -2
+            }
+            MIconButton {
+                iconName: "folder"; iconColor: ThemeManager.accentColor; iconSize: 21
+                onClicked: root._openMove(taskViewModel.selectedIds.slice())
+            }
+            MIconButton {
+                iconName: "trash"; iconColor: ThemeManager.errorColor; iconSize: 21
+                onClicked: {
+                    taskViewModel.bulkDelete()
+                    taskViewModel.clearSelection()
                 }
+            }
+        }
+    }
 
-                // Press scale animation
-                scale: fabMouseArea.pressed ? 0.92 : 1.0
-                Behavior on scale {
-                    NumberAnimation { duration: Duration.fast; easing.type: Easing.InOutQuad }  // B-6.33: instant=0ms, use fast instead
-                }
+    // ── Task context menu (long-press) ─────────────────────────────────────────
+    MContextSheet {
+        id: contextSheet
+        anchors.fill: parent
+        z: 100
+        Component.onCompleted: root.taskContextSheet = contextSheet
+        onCloseRequested: open = false
+        onOpenRequested: function(id) {
+            var t = dataStore.taskById(id)
+            if (t) taskViewModel.selectedTask = t
+        }
+        onToggleCompleteRequested: function(id) {
+            var t = dataStore.taskById(id)
+            if (t) { if (t.isCompleted) taskViewModel.uncompleteTask(id); else taskViewModel.completeTask(id) }
+        }
+        onSelectMultipleRequested: function(id) { taskViewModel.selectTask(id) }
+        onMoveRequested: function(id) { root._openMove([id]) }
+        onDuplicateRequested: function(id) { taskViewModel.duplicateTask(id) }
+        onDeleteRequested: function(id) { taskViewModel.deleteTask(id) }
+    }
 
-                MouseArea {
-                    id: fabMouseArea
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        // Open the quick-add full-screen overlay via StackView
-                        taskViewModel.selectedTask = null
-                        taskEditorStack.push(taskEditorPage)
-                    }
-                }
+    // ── Move-to-project picker ─────────────────────────────────────────────────
+    MOptionSheet {
+        id: movePicker
+        anchors.fill: parent
+        z: 100
+        title: qsTr("Переместить в проект")
+        onCloseRequested: open = false
+        onSelected: function(id) {
+            if (root._moveIds.length === 1) taskViewModel.moveTask(root._moveIds[0], id, "")
+            else                            taskViewModel.bulkMoveToProject(id)
+            movePicker.open = false
+            var p = projectViewModel.projectById(id)
+            root._pendingSnooze = null
+            mSnackbar.show(qsTr("Перемещено → %1").arg(p ? p.name : ""), qsTr("Отменить"))
+            taskViewModel.clearSelection()
+        }
+    }
 
-                // Ripple hint on tap. Q4.01 night iter-24: was hardcoded
-                // white (1,1,1,0.25) — invisible on sunflower yellow FAB.
-                // Use accentForeground so the ripple darkens (or lightens
-                // depending on palette) instead of always white.
-                Rectangle {
-                    id: fabRipple
-                    anchors.centerIn: parent
-                    width: 0
-                    height: 0
-                    radius: fabSize / 2
-                    color: ThemeManager.accentForeground
-                    opacity: 0
-
-                    ParallelAnimation {
-                        id: rippleAnimation
-                        NumberAnimation {
-                            target: fabRipple; property: "width";
-                            from: 0; to: fabSize * 1.5; duration: Duration.slow
-                        }
-                        NumberAnimation {
-                            target: fabRipple; property: "height";
-                            from: 0; to: fabSize * 1.5; duration: Duration.slow
-                        }
-                        NumberAnimation {
-                            target: fabRipple; property: "opacity";
-                            from: 0.4; to: 0; duration: Duration.slow
-                        }
-                    }
-
-                    Connections {
-                        target: fabMouseArea
-                        function onPressed() { rippleAnimation.restart() }
-                    }
-                }
+    // Drive the mobile snackbar from task mutations (single source of undo).
+    Connections {
+        target: taskViewModel
+        function onTaskRemoved(id) {
+            root._pendingSnooze = null
+            mSnackbar.show(undoStack.lastDescription || qsTr("Задача удалена"), qsTr("Отменить"))
+        }
+        function onTasksRemoved(ids) {
+            var n = ids ? ids.length : 0
+            if (n <= 0) return
+            root._pendingSnooze = null
+            mSnackbar.show(undoStack.lastDescription || qsTr("Удалено задач: %1").arg(n), qsTr("Отменить"))
+        }
+        function onTaskChanged(id) {
+            var t = dataStore.taskById(id)
+            if (t && t.isCompleted) {
+                root._pendingSnooze = null
+                mSnackbar.show(undoStack.lastDescription || qsTr("Задача завершена"), qsTr("Отменить"))
             }
         }
     }
@@ -660,93 +961,11 @@ Item {
             Rectangle {
                 color: contentColor
 
-                ColumnLayout {
+                // Mobile redesign: full-screen MEditorScreen (its own toolbar,
+                // property pickers, subtasks, comments, history).
+                MEditorScreen {
                     anchors.fill: parent
-                    spacing: 0
-
-                    // Compact editor toolbar
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 56
-                        color: contentColor
-
-                        Rectangle {
-                            anchors.left:   parent.left
-                            anchors.right:  parent.right
-                            anchors.bottom: parent.bottom
-                            height: 1
-                            color: borderColor
-                        }
-
-                        RowLayout {
-                            anchors {
-                                fill: parent
-                                leftMargin: 4
-                                rightMargin: 12
-                            }
-
-                            // Close / back button — task 17cea65b iter-3: было unicode "✕".
-                            ToolButton {
-                                id: editorCloseButton
-                                contentItem: IconSvg {
-                                    anchors.centerIn: parent
-                                    name: "close"
-                                    size: 18
-                                    color: textSecondary
-                                }
-                                onClicked: {
-                                    // Commit an in-progress new-task title before
-                                    // leaving: taking focus blurs the editor's
-                                    // content field, whose onEditingFinished creates
-                                    // the task (mobile FAB add flow). Без этого
-                                    // "напечатал заголовок → ✕" терял задачу.
-                                    // editingFinished fires synchronously on focus
-                                    // change, so the task is created before pop().
-                                    editorCloseButton.forceActiveFocus()
-                                    taskEditorStack.clear()
-                                }
-                            }
-
-                            Label {
-                                // ITER1 #50: replace English qsTr with literal Russian
-                                text: taskViewModel.selectedTask
-                                      ? qsTr("Редактировать задачу")
-                                      : qsTr("Добавить задачу")
-                                font.pixelSize: 17
-                                font.weight: Font.Medium
-                                color: textPrimary
-                                Layout.fillWidth: true
-                                leftPadding: Spacing.sm
-                            }
-                        }
-                    }
-
-                    // The actual editor component
-                    Loader {
-                        id: editorLoader
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        source: "../components/TaskEditor.qml"
-
-                        onLoaded: {
-                            if (item) {
-                                // Mobile uses the page's own top bar as the header,
-                                // so hide TaskEditor's inner EditorHeader (removes the
-                                // redundant second ✕ / double-header overlap).
-                                item.showHeader = false
-                                if (taskViewModel.selectedTask)
-                                    item.task = taskViewModel.selectedTask
-                                // Wire the editor's own header ✕ (EditorHeader →
-                                // TaskEditor.closeRequested) to actually leave the
-                                // page. It was never connected here, so that ✕ was a
-                                // dead button — the editor felt impossible to exit
-                                // ("невозможно выйти из окна редактирования").
-                                item.closeRequested.connect(function() {
-                                    taskEditorStack.clear()
-                                })
-                            }
-                        }
-                    }
+                    onCloseRequested: taskEditorStack.clear()
                 }
             }
         }

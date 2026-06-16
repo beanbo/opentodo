@@ -781,6 +781,18 @@ int main(int argc, char *argv[])
     ctx->setContextProperty(QStringLiteral("locationService"), locationService);
 #endif
 
+    // Dev/preview affordance: force the mobile (Android) layout on desktop so the
+    // mobile redesign can be inspected without an Android device. Set the env var
+    // OPENTODO_FORCE_MOBILE=1 before launching. No effect on normal runs.
+    ctx->setContextProperty(QStringLiteral("forceMobileLayout"),
+                            qEnvironmentVariableIsSet("OPENTODO_FORCE_MOBILE")
+                                && qEnvironmentVariable("OPENTODO_FORCE_MOBILE") != QStringLiteral("0"));
+    // Dev/preview: open the mobile layout directly on a given view for design
+    // verification. Values: today|upcoming|inbox|settings|productivity|
+    // notifications|trash|labels|filters|board|calendar|ai|project. Empty = default.
+    ctx->setContextProperty(QStringLiteral("mobileStartView"),
+                            qEnvironmentVariable("OPENTODO_MOBILE_START"));
+
     // F-9.15: TaskViewModel has QML_ELEMENT + Q_ENUM(FilterMode) in its header,
     // so qt_add_qml_module already registers it and exposes FilterMode to QML.
     // The explicit qmlRegisterUncreatableType call below was a double-registration

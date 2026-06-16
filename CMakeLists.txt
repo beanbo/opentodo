@@ -487,6 +487,44 @@ set(QML_FILES
     qml/components/FilterQueryInput.qml
     qml/components/EmptyState.qml
     qml/components/ProjectIconPicker.qml
+    # ── Mobile Android redesign components ──────────────────────────────
+    qml/components/mobile/MDensity.qml
+    qml/components/mobile/MIconButton.qml
+    qml/components/mobile/MCheck.qml
+    qml/components/mobile/MChip.qml
+    qml/components/mobile/MSeg.qml
+    qml/components/mobile/MFab.qml
+    qml/components/mobile/MSection.qml
+    qml/components/mobile/MSheet.qml
+    qml/components/mobile/MTopBar.qml
+    qml/components/mobile/MSnackbar.qml
+    qml/components/mobile/MCalendar.qml
+    qml/components/mobile/MNavItem.qml
+    qml/components/mobile/MBottomNav.qml
+    qml/components/mobile/MPinRow.qml
+    qml/components/mobile/MPinSheet.qml
+    qml/components/mobile/MTaskRow.qml
+    qml/components/mobile/MOptionSheet.qml
+    qml/components/mobile/MContextSheet.qml
+    qml/components/mobile/MQuickAdd.qml
+    qml/components/mobile/MQuickAddChip.qml
+    qml/components/mobile/MEditorMetaRow.qml
+    qml/components/mobile/MEditorHistoryRow.qml
+    qml/components/mobile/MEditorDateSheet.qml
+    qml/components/mobile/MEditorScreen.qml
+    qml/components/mobile/MCalendarScreen.qml
+    qml/components/mobile/MTrashScreen.qml
+    qml/components/mobile/MFiltersScreen.qml
+    qml/components/mobile/MNotificationsScreen.qml
+    qml/components/mobile/MProductivityScreen.qml
+    qml/components/mobile/MLabelsScreen.qml
+    qml/components/mobile/MSwitch.qml
+    qml/components/mobile/MSettingsSectionLabel.qml
+    qml/components/mobile/MSettingsRow.qml
+    qml/components/mobile/MSettingsScreen.qml
+    qml/components/mobile/MDrawerItem.qml
+    qml/components/mobile/MDrawerContent.qml
+    qml/components/mobile/MEmptyState.qml
     qml/views/ProjectView.qml
     qml/views/BoardView.qml
     qml/views/CalendarView.qml

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenTodo — Android-редизайн</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap');
+    html, body { margin: 0; padding: 0; height: 100%; background: #0e0e0f; font-family: 'Inter', system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+    ::-webkit-scrollbar { width: 0; height: 0; }
+    @keyframes mSlideUp { from { transform: translateY(28px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes mBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes mPop { from { transform: scale(.62); opacity: 0; } 60% { transform: scale(1.06); } to { transform: scale(1); opacity: 1; } }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="android-frame.jsx"></script>
+  <script type="text/babel" src="m-tokens.jsx"></script>
+  <script type="text/babel" src="m-data.jsx"></script>
+  <script type="text/babel" src="m-components.jsx"></script>
+  <script type="text/babel" src="m-pickers.jsx"></script>
+  <script type="text/babel" src="m-screens.jsx"></script>
+  <script type="text/babel" src="m-screens2.jsx"></script>
+  <script type="text/babel" src="m-screens3.jsx"></script>
+  <script type="text/babel" src="m-app.jsx"></script>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "dark",
+      "density": "spacious"
+    }/*EDITMODE-END*/;
+
+    // Телефон в рамке
+    function Phone({ theme, children, dark }) {
+      return (
+        <AndroidDevice dark={dark} width={412} height={892}>
+          {children}
+        </AndroidDevice>
+      );
+    }
+
+    const editorTask = (window.M_TASKS || [])[0];
+
+    function App() {
+      const [tweaks, setTweak] = useTweaks(DEFAULTS);
+      const t = (window.M_THEMES || {})[tweaks.theme] || {};
+
+      return (
+        <React.Fragment>
+          <DesignCanvas
+            title="OpenTodo — Android"
+            subtitle="Мобильный редизайн: крупные тач-зоны, нижняя навигация + drawer, свайпы, quick-add над клавиатурой"
+          >
+            <DCSection id="proto" title="Интерактивный прототип">
+              <DCArtboard id="main" label="Полностью кликабельно · «Входящие» + 3 закреплённых проекта + FAB" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} />
+                </Phone>
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="screens" title="Ключевые экраны">
+              <DCArtboard id="s-drawer" label="Боковое меню — булавка закрепляет проект в нижнюю панель (до 3)" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialDrawer />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-editor" label="Редактор задачи — полноэкранно, крупные свойства, подзадачи" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialEditorTask={editorTask} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-quickadd" label="Быстрое добавление — компактное поле над клавиатурой" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialQuickAdd />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-board" label="Доска (Kanban) — горизонтальные колонки со снапом" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'project', projectId: 'opentodo' }} initialListView="board" />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-upcoming" label="Предстоящие — задачи, сгруппированные по датам" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'upcoming' }} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-search" label="Поиск — недавнее, фильтры, результаты" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialSearch />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-settings" label="Настройки — 9 палитр, акцент, плотность, доступность" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'settings' }} />
+                </Phone>
+              </DCArtboard>
+            </DCSection>
+
+            <DCSection id="deep" title="Глубже: жесты, пикеры, новые экраны">
+              <DCArtboard id="s-multiselect" label="Мультивыбор — долгое нажатие, массовые действия" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialSelIds={['t1', 't3']} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-editor2" label="Редактор — рабочие пикеры даты/приоритета/метки + комментарии" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialEditorTask={editorTask} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-quickadd2" label="Быстрое добавление — рабочий ввод и чипы" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialQuickAdd />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-calendar" label="Календарь-месяц — точки задач по дням" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'project', projectId: 'opentodo' }} initialListView="cal" />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-notifications" label="Уведомления — просрочки, напоминания, AI" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'notifications' }} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-productivity" label="Продуктивность — серия, кольцо дня, график недели, карма" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'productivity' }} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-trash" label="Корзина — восстановление, авто-очистка" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'trash' }} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-labels" label="Метки" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'labels' }} />
+                </Phone>
+              </DCArtboard>
+              <DCArtboard id="s-filters" label="Фильтры" width={412} height={892}>
+                <Phone dark={t.isDark}>
+                  <MobileApp themeName={tweaks.theme} density={tweaks.density} initialView={{ kind: 'filters' }} />
+                </Phone>
+              </DCArtboard>
+            </DCSection>
+          </DesignCanvas>
+
+          <TweaksPanel title="Tweaks">
+            <TweakSection label="Тема">
+              <TweakSelect label="Палитра" value={tweaks.theme} onChange={v => setTweak('theme', v)}
+                options={(window.M_THEME_LIST || []).map(o => ({ value: o.key, label: o.label }))} />
+            </TweakSection>
+            <TweakSection label="Список">
+              <TweakRadio label="Плотность" value={tweaks.density} onChange={v => setTweak('density', v)}
+                options={[{ value: 'spacious', label: 'Просторно' }, { value: 'balanced', label: 'Компактнее' }]} />
+            </TweakSection>
+          </TweaksPanel>
+        </React.Fragment>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

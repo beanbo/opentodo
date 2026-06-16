@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import QtCore
 import OpenTodoUI
 
 ApplicationWindow {
@@ -117,14 +118,24 @@ ApplicationWindow {
         }
     }
 
-    width: Qt.platform.os === "android" ? Screen.width : 1280
-    height: Qt.platform.os === "android" ? Screen.height : 800
+    // Dev/preview: render the mobile (Android) layout on desktop when launched
+    // with OPENTODO_FORCE_MOBILE=1, sizing the window to a phone aspect.
+    readonly property bool _mobilePreview:
+        Qt.platform.os !== "android"
+        && (typeof forceMobileLayout !== "undefined" && forceMobileLayout)
+    // True whenever the mobile layout is active (Android or desktop preview).
+    // The mobile layout renders its own MSnackbar, so the desktop undo snackbar
+    // below stays hidden to avoid a duplicate at the bottom of the screen.
+    readonly property bool _mobileActive: Qt.platform.os === "android" || _mobilePreview
+
+    width: Qt.platform.os === "android" ? Screen.width : (_mobilePreview ? 412 : 1280)
+    height: Qt.platform.os === "android" ? Screen.height : (_mobilePreview ? 880 : 800)
 
     // Window min size: 200 px wide so the responsive DesktopLayout can collapse
     // its sidebar entirely and degrade gracefully. The ≥ 800 / 500-799 / < 500
     // breakpoints in DesktopLayout.qml handle the visual reflow.
-    minimumWidth: Qt.platform.os === "android" ? 0 : 200
-    minimumHeight: Qt.platform.os === "android" ? 0 : 320
+    minimumWidth: (Qt.platform.os === "android" || _mobilePreview) ? 0 : 200
+    minimumHeight: (Qt.platform.os === "android" || _mobilePreview) ? 0 : 320
 
     Material.theme: ThemeManager.isDark ? Material.Dark : Material.Light
     Material.accent: ThemeManager.accentColor
@@ -138,6 +149,11 @@ ApplicationWindow {
     // Singletons can't access context properties directly, so we wire it here.
     Component.onCompleted: {
         ThemeManager.currentTheme = settingsViewModel.theme
+        // Mirror the persisted custom accent + large-font prefs into ThemeManager
+        // so they apply app-wide on startup (mobile + desktop).
+        if (settingsViewModel.customAccentHex && settingsViewModel.customAccentHex.length === 7)
+            ThemeManager.customAccentHex = settingsViewModel.customAccentHex
+        ThemeManager.mobileLargeFont = mobileA11ySettings.largeFont
         applyTitleBarChrome()
         // Telemetry stays opt-in via the Settings page; mark the first-run
         // flag so any code that checks `telemetry.prompted` sees it as
@@ -166,10 +182,24 @@ ApplicationWindow {
         WindowChrome.setDarkTitleBar(root, ThemeManager.isDark)
     }
 
+    // Persisted mobile accessibility prefs (category shared with the mobile
+    // settings screen). largeFont scales the whole mobile layout by 1.1.
+    Settings {
+        id: mobileA11ySettings
+        category: "mobileA11y"
+        property bool largeFont: false
+    }
+
     Loader {
         id: layoutLoader
-        anchors.fill: parent
-        source: Qt.platform.os === "android" ? "layouts/MobileLayout.qml" : "layouts/DesktopLayout.qml"
+        readonly property real _scale: (root._mobileActive && ThemeManager.mobileLargeFont) ? 1.1 : 1.0
+        x: 0; y: 0
+        transformOrigin: Item.TopLeft
+        scale: _scale
+        width: parent.width / _scale
+        height: parent.height / _scale
+        source: (Qt.platform.os === "android" || root._mobilePreview)
+                ? "layouts/MobileLayout.qml" : "layouts/DesktopLayout.qml"
     }
 
     // Q-Android-Audit #1.2: Android back-button handler. On desktop the window
@@ -210,7 +240,7 @@ ApplicationWindow {
         color: ThemeManager.cardColor
         z: 1000
 
-        visible: opacity > 0
+        visible: opacity > 0 && !root._mobileActive
         opacity: 0
         Behavior on opacity { NumberAnimation { duration: Duration.normal } }
 

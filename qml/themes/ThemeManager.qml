@@ -22,6 +22,11 @@ QtObject {
     // ThemeManager.customAccentHex at startup + on change.
     property string customAccentHex: ""
 
+    // Mobile accessibility: "Крупный шрифт" — Main.qml scales the whole mobile
+    // layout by 1.1 when set. Wired from QSettings (category "mobileA11y") in
+    // Main.qml and toggled by the mobile settings screen.
+    property bool mobileLargeFont: false
+
     // Apply a custom accent color override. Accepts only "#RRGGBB" hex strings;
     // returns true on success, false on validation failure.
     function setCustomAccent(hex) {
@@ -116,6 +121,31 @@ QtObject {
     readonly property color accentColor:
         (customAccentHex.length === 7 ? customAccentHex : activeTheme.accentColor)
     readonly property color accentForeground:      activeTheme.accentForeground
+    // ── Mobile-redesign M3 tonal tokens ────────────────────────────────────
+    // accentContainer: tonal fill behind active nav pills / selected chips.
+    // accentOn: accent variant readable ON accentContainer (text/icon).
+    // When a custom accent is active we synthesise the container as a low-alpha
+    // wash of the accent (matches the design's applyAccent(): accent+~18%/14%),
+    // and accentOn falls back to the accent itself. Otherwise we read the
+    // palette value, with selectionColor / accentColor as graceful fallbacks
+    // for any palette that hasn't defined them.
+    readonly property color accentContainer:
+        (customAccentHex.length === 7
+            ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, isDark ? 0.18 : 0.14)
+            : (activeTheme.accentContainer !== undefined ? activeTheme.accentContainer : selectionColor))
+    readonly property color accentOn:
+        (customAccentHex.length === 7
+            ? accentColor
+            : (activeTheme.accentOn !== undefined ? activeTheme.accentOn : accentColor))
+    // navBarColor: bottom-navigation surface (slightly distinct from surface).
+    readonly property color navBarColor:     activeTheme.navBarColor !== undefined
+                                             ? activeTheme.navBarColor : surfaceColor
+    // faintTextColor: third-tier text (dimmer than secondary) for hints/empties.
+    readonly property color faintTextColor:  activeTheme.faintTextColor !== undefined
+                                             ? activeTheme.faintTextColor : secondaryTextColor
+    // hairlineColor: lighter divider than borderColor for dense list rows.
+    readonly property color hairlineColor:   activeTheme.hairlineColor !== undefined
+                                             ? activeTheme.hairlineColor : borderColor
     readonly property color borderColor:        activeTheme.borderColor
     readonly property color cardColor:          activeTheme.cardColor
     readonly property color hoverColor:         activeTheme.hoverColor
@@ -174,6 +204,11 @@ QtObject {
         // F-8.45: white readable on this deep-red accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#eaeaea"
+        readonly property color accentContainer:    "#ffe7e2"
+        readonly property color accentOn:           "#b53527"
+        readonly property color navBarColor:        "#ffffff"
+        readonly property color faintTextColor:     "#a6a6a2"
+        readonly property color hairlineColor:       "#efefea"
         readonly property color hoverColor:         "#f5f5f5"
         // F-8.4: ~20% alpha tint of accentColor (#db4c3f) on white background
         readonly property color selectionColor:     Qt.rgba(0.859, 0.298, 0.247, 0.18)
@@ -212,6 +247,11 @@ QtObject {
         // F-8.45: white readable on dark-red accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#363636"
+        readonly property color accentContainer:    "#3a2320"
+        readonly property color accentOn:           "#f0a59c"
+        readonly property color navBarColor:        "#242424"
+        readonly property color faintTextColor:     "#6f6f6f"
+        readonly property color hairlineColor:       "#2e2e2e"
         readonly property color hoverColor:         "#353535"
         // F-8.4: ~20% alpha tint of accentColor (#db4c3f) on dark background
         readonly property color selectionColor:     Qt.rgba(0.859, 0.298, 0.247, 0.22)
@@ -246,6 +286,11 @@ QtObject {
         // F-8.45: white readable on green accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#4a5e4d"
+        readonly property color accentContainer:    "#2f4433"
+        readonly property color accentOn:           "#a9d6a4"
+        readonly property color navBarColor:        "#2f3c33"
+        readonly property color faintTextColor:     "#6f8a6d"
+        readonly property color hairlineColor:       "#3f5142"
         readonly property color hoverColor:         "#435643"
         // F-8.4: ~20% alpha tint of accentColor (#7fba7a) on dark-green bg
         readonly property color selectionColor:     Qt.rgba(0.498, 0.729, 0.478, 0.22)
@@ -281,6 +326,11 @@ QtObject {
         // F-8.45: white readable on blue accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#2a2e5e"
+        readonly property color accentContainer:    "#232a55"
+        readonly property color accentOn:           "#9aa8f8"
+        readonly property color navBarColor:        "#171a3a"
+        readonly property color faintTextColor:     "#6b71a8"
+        readonly property color hairlineColor:       "#24284f"
         readonly property color hoverColor:         "#282b58"
         // F-8.4: ~20% alpha tint of accentColor (#6c88f4) on dark-blue bg
         readonly property color selectionColor:     Qt.rgba(0.424, 0.533, 0.957, 0.22)
@@ -314,6 +364,11 @@ QtObject {
         // F-8.45: white readable on purple accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#3e2e58"
+        readonly property color accentContainer:    "#3a2c55"
+        readonly property color accentOn:           "#c59ae0"
+        readonly property color navBarColor:        "#271b3a"
+        readonly property color faintTextColor:     "#806a98"
+        readonly property color hairlineColor:       "#382a52"
         readonly property color hoverColor:         "#3a3055"
         // F-8.4: ~20% alpha tint of accentColor (#b07fd0) on dark-purple bg
         readonly property color selectionColor:     Qt.rgba(0.690, 0.498, 0.816, 0.22)
@@ -345,6 +400,11 @@ QtObject {
         // F-8.45: white readable on rose/pink accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#502840"
+        readonly property color accentContainer:    "#4a2440"
+        readonly property color accentOn:           "#ec85a4"
+        readonly property color navBarColor:        "#30152a"
+        readonly property color faintTextColor:     "#8a6678"
+        readonly property color hairlineColor:       "#45203a"
         readonly property color hoverColor:         "#4e2540"
         // F-8.4: ~20% alpha tint of accentColor (#e06088) on dark-raspberry bg
         readonly property color selectionColor:     Qt.rgba(0.878, 0.376, 0.533, 0.22)
@@ -380,6 +440,11 @@ QtObject {
         // F-8.45: white readable on desaturated blue accent
         readonly property color accentForeground:      "#ffffff"
         readonly property color borderColor:        "#3a3a3a"
+        readonly property color accentContainer:    "#2c3540"
+        readonly property color accentOn:           "#9ab6d8"
+        readonly property color navBarColor:        "#232323"
+        readonly property color faintTextColor:     "#6a6a6a"
+        readonly property color hairlineColor:       "#333333"
         readonly property color hoverColor:         "#383838"
         // F-8.4: chromatic blue tint so selection stands out from grayscale;
         // using #3a5fa8 at ~20% alpha
@@ -418,6 +483,11 @@ QtObject {
         // F-8.45: golden accent fails WCAG with white — use near-black instead
         readonly property color accentForeground:      "#202020"
         readonly property color borderColor:        "#e8e0c8"
+        readonly property color accentContainer:    "#fff0d0"
+        readonly property color accentOn:           "#b5851a"
+        readonly property color navBarColor:        "#fffdf5"
+        readonly property color faintTextColor:     "#a89060"
+        readonly property color hairlineColor:       "#f0e8d2"
         readonly property color hoverColor:         "#f8f2e2"
         // F-8.4: ~18% alpha tint of accentColor (#e8a820) on warm-white background
         readonly property color selectionColor:     Qt.rgba(0.910, 0.659, 0.125, 0.18)
@@ -457,6 +527,11 @@ QtObject {
         readonly property color accentForeground:   "#000000"
         // Full-white borders so every container edge is visible.
         readonly property color borderColor:        "#FFFFFF"
+        readonly property color accentContainer:    "#1a1a00"
+        readonly property color accentOn:           "#ffff66"
+        readonly property color navBarColor:        "#000000"
+        readonly property color faintTextColor:     "#cccc00"
+        readonly property color hairlineColor:       "#444444"
         readonly property color hoverColor:         "#1A1A1A"
         // Yellow selection tint at moderate alpha so text underneath stays
         // legible (#FFFF00 ≈ rgb(1,1,0)).
