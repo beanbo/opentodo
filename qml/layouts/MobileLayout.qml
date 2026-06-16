@@ -96,6 +96,94 @@ Item {
         movePicker.open = true
     }
 
+    // ── Sectioned list model (collapsible groups) ──────────────────────────────
+    // The flat list is grouped per the design: Today → Просрочено/Сегодня,
+    // Upcoming → by date, Project → by section, Inbox → "Задачи". Built client-
+    // side as a flattened [header, task, task, …] array so collapse simply omits
+    // a group's tasks. taskViewModel is already filtered per filterMode.
+    property var _collapsedSections: ({})
+    property var _flatModel: []
+    function _humanDate(iso) {
+        if (!iso || iso === "zzz") return qsTr("Без даты")
+        var tomorrow = Qt.formatDate(new Date(Date.now() + 86400000), "yyyy-MM-dd")
+        if (iso === ThemeManager.todayStr) return qsTr("Сегодня")
+        if (iso === tomorrow)              return qsTr("Завтра")
+        return DateFormatter.format(iso)
+    }
+    function _toggleSection(sid) {
+        var c = Object.assign({}, root._collapsedSections)
+        if (c[sid]) delete c[sid]; else c[sid] = true
+        root._collapsedSections = c
+        _rebuildSections()
+    }
+    function _rebuildSections() {
+        if (typeof taskViewModel === "undefined") { root._flatModel = []; return }
+        var fm = taskViewModel.filterMode
+        function td(tk) {
+            return { "kind": "task", "id": tk.id, "content": tk.content, "priority": tk.priority,
+                     "isCompleted": tk.isCompleted, "dueDate": tk.dueDate, "dueString": tk.dueString,
+                     "isRecurring": tk.dueIsRecurring, "deadline": tk.deadline, "labels": tk.labels,
+                     "projectId": tk.projectId }
+        }
+        var groups = []
+        var i, tk
+        if (fm === TaskViewModel.Today) {
+            var over = [], tod = []
+            for (i = 0; i < taskViewModel.count; i++) {
+                tk = taskViewModel.taskAt(i); if (!tk) continue
+                if (tk.dueDate && tk.dueDate < ThemeManager.todayStr) over.push(td(tk)); else tod.push(td(tk))
+            }
+            if (over.length) groups.push({ "sid": "over", "title": qsTr("Просрочено"), "tasks": over })
+            if (tod.length)  groups.push({ "sid": "tod",  "title": qsTr("Сегодня"),   "tasks": tod })
+        } else if (fm === TaskViewModel.Upcoming) {
+            var map = ({}), order = []
+            for (i = 0; i < taskViewModel.count; i++) {
+                tk = taskViewModel.taskAt(i); if (!tk) continue
+                var d = tk.dueDate || "zzz"
+                if (!map[d]) { map[d] = []; order.push(d) }
+                map[d].push(td(tk))
+            }
+            order.sort()
+            for (var k = 0; k < order.length; k++)
+                groups.push({ "sid": order[k], "title": _humanDate(order[k]), "tasks": map[order[k]] })
+        } else if (fm === TaskViewModel.Project) {
+            var bySec = ({}), noSec = []
+            for (i = 0; i < taskViewModel.count; i++) {
+                tk = taskViewModel.taskAt(i); if (!tk) continue
+                var sec = tk.sectionId || ""
+                if (sec === "") noSec.push(td(tk))
+                else { if (!bySec[sec]) bySec[sec] = []; bySec[sec].push(td(tk)) }
+            }
+            if (noSec.length) groups.push({ "sid": "__none__", "title": qsTr("Задачи"), "tasks": noSec })
+            var secs = dataStore.sectionsForProject(taskViewModel.currentProjectId) || []
+            var ordered = secs.slice().sort(function(a, b) { return (a.order || 0) - (b.order || 0) })
+            for (var s = 0; s < ordered.length; s++)
+                if (bySec[ordered[s].id]) groups.push({ "sid": ordered[s].id, "title": ordered[s].name, "tasks": bySec[ordered[s].id] })
+        } else {
+            var all = []
+            for (i = 0; i < taskViewModel.count; i++) { tk = taskViewModel.taskAt(i); if (tk) all.push(td(tk)) }
+            if (all.length) groups.push({ "sid": "all", "title": qsTr("Задачи"), "tasks": all })
+        }
+        var showHeaders = (fm === TaskViewModel.Today || fm === TaskViewModel.Upcoming
+                           || fm === TaskViewModel.Project || fm === TaskViewModel.Inbox)
+        var flat = []
+        for (var g = 0; g < groups.length; g++) {
+            var grp = groups[g]
+            if (showHeaders) flat.push({ "kind": "header", "sid": grp.sid, "title": grp.title, "count": grp.tasks.length })
+            if (!showHeaders || !root._collapsedSections[grp.sid])
+                for (var ti = 0; ti < grp.tasks.length; ti++) flat.push(grp.tasks[ti])
+        }
+        root._flatModel = flat
+    }
+    Connections {
+        target: taskViewModel
+        function onCountChanged()            { Qt.callLater(root._rebuildSections) }
+        function onTaskChanged()             { Qt.callLater(root._rebuildSections) }
+        function onFilterModeChanged()       { root._collapsedSections = ({}); Qt.callLater(root._rebuildSections) }
+        function onCurrentProjectIdChanged() { Qt.callLater(root._rebuildSections) }
+        function onShowCompletedChanged()    { Qt.callLater(root._rebuildSections) }
+    }
+
     // Dev/preview: jump to a starting view (OPENTODO_MOBILE_START env → context
     // property mobileStartView). No effect when unset.
     function _applyStartView() {
@@ -154,7 +242,7 @@ Item {
         }
     }
 
-    Component.onCompleted: { _loadPins(); _applyStartView() }
+    Component.onCompleted: { _loadPins(); _applyStartView(); _rebuildSections() }
 
     // Recompute pins once the project model has loaded (default-pin resolution
     // needs real project ids) and whenever projects are added/removed. When the
@@ -635,70 +723,75 @@ Item {
             ListView {
                 id: taskListView
                 anchors.fill: parent
-                model: taskViewModel
+                model: root._flatModel
                 clip: true
                 spacing: 0
                 boundsBehavior: Flickable.StopAtBounds
+                topMargin: mdens.listTopGap
 
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AsNeeded
                 }
 
-                // ITER1 #3: old Loader set item.taskData and connected item.taskSelected —
-                // neither exists on TaskItem. Replaced with the same Item+TaskItem pattern
-                // used by DesktopLayout so all properties and signals are correctly bound.
+                // Mobile redesign: the model is a flattened [header, task, …]
+                // array (see root._rebuildSections). Each entry renders either an
+                // MSection collapsible header or a swipeable MTaskRow.
                 delegate: Item {
                     id: delegateRoot
+                    required property var modelData
                     width: taskListView.width
-                    height: mRow.implicitHeight
+                    readonly property bool isHeader: modelData.kind === "header"
+                    height: isHeader ? mdens.sectionH
+                                     : (rowLoader.item ? rowLoader.item.implicitHeight : mdens.rowMinH)
 
-                    required property int    index
-                    required property string id
-                    required property string content
-                    required property int    priority
-                    required property var    labels
-                    required property bool   isCompleted
-                    required property string dueDate
-                    required property string dueString
-                    required property bool   isRecurring
-                    required property string deadline
-                    required property string projectId
+                    Loader {
+                        id: rowLoader
+                        anchors.fill: parent
+                        sourceComponent: delegateRoot.isHeader ? headerComp : taskRowComp
+                    }
 
-                    // Mobile redesign: swipeable MTaskRow (replaces the desktop
-                    // TaskItem on mobile). Swipe right → complete, left → snooze/
-                    // delete, long-press → context menu, tap → editor.
-                    MTaskRow {
-                        id: mRow
-                        width: parent.width
-                        dens: mdens
-
-                        taskId:      delegateRoot.id
-                        content:     delegateRoot.content
-                        priority:    delegateRoot.priority
-                        labels:      delegateRoot.labels
-                        isCompleted: delegateRoot.isCompleted
-                        dueDate:     delegateRoot.dueDate
-                        dueString:   delegateRoot.dueString
-                        isRecurring: delegateRoot.isRecurring
-                        deadline:    delegateRoot.deadline
-                        projectId:   delegateRoot.projectId
-                        showProject: taskViewModel.filterMode !== TaskViewModel.Project
-                        selectionMode: root.selectionMode
-                        // selectionCount touch → re-evaluate isSelected reactively.
-                        selected: (taskViewModel.selectionCount, taskViewModel.isSelected(delegateRoot.id))
-
-                        onToggleComplete: {
-                            if (delegateRoot.isCompleted) taskViewModel.uncompleteTask(delegateRoot.id)
-                            else                          taskViewModel.completeTask(delegateRoot.id)
+                    Component {
+                        id: headerComp
+                        MSection {
+                            dens: mdens
+                            title: delegateRoot.modelData.title
+                            count: delegateRoot.modelData.count
+                            collapsed: !!root._collapsedSections[delegateRoot.modelData.sid]
+                            onToggled: root._toggleSection(delegateRoot.modelData.sid)
                         }
-                        onOpenTask: {
-                            const t = dataStore.taskById(delegateRoot.id)
-                            if (t) taskViewModel.selectedTask = t   // Connections pushes the editor
+                    }
+
+                    Component {
+                        id: taskRowComp
+                        MTaskRow {
+                            dens: mdens
+                            taskId:      delegateRoot.modelData.id
+                            content:     delegateRoot.modelData.content
+                            priority:    delegateRoot.modelData.priority
+                            labels:      delegateRoot.modelData.labels
+                            isCompleted: delegateRoot.modelData.isCompleted
+                            dueDate:     delegateRoot.modelData.dueDate
+                            dueString:   delegateRoot.modelData.dueString
+                            isRecurring: delegateRoot.modelData.isRecurring
+                            deadline:    delegateRoot.modelData.deadline
+                            projectId:   delegateRoot.modelData.projectId
+                            showProject: taskViewModel.filterMode !== TaskViewModel.Project
+                            selectionMode: root.selectionMode
+                            selected: (taskViewModel.selectionCount, taskViewModel.isSelected(delegateRoot.modelData.id))
+
+                            onToggleComplete: {
+                                if (delegateRoot.modelData.isCompleted) taskViewModel.uncompleteTask(delegateRoot.modelData.id)
+                                else                                    taskViewModel.completeTask(delegateRoot.modelData.id)
+                            }
+                            onOpenTask: {
+                                var t = dataStore.taskById(delegateRoot.modelData.id)
+                                if (t) taskViewModel.selectedTask = t   // Connections pushes the editor
+                            }
+                            onSnooze: root._snoozeTask(delegateRoot.modelData.id)
+                            onDeleteTask: taskViewModel.deleteTask(delegateRoot.modelData.id)
+                            onSelectToggle: taskViewModel.toggleSelection(delegateRoot.modelData.id)
+                            onLongPressed: root._openTaskContext(delegateRoot.modelData.id)
                         }
-                        onSnooze: root._snoozeTask(delegateRoot.id)
-                        onDeleteTask: taskViewModel.deleteTask(delegateRoot.id)
-                        onSelectToggle: taskViewModel.toggleSelection(delegateRoot.id)
-                        onLongPressed: root._openTaskContext(delegateRoot.id)
                     }
                 }
 
