@@ -525,6 +525,8 @@ set(QML_FILES
     qml/components/mobile/MDrawerItem.qml
     qml/components/mobile/MDrawerContent.qml
     qml/components/mobile/MEmptyState.qml
+    qml/components/mobile/MBoardScreen.qml
+    qml/components/mobile/MSearchScreen.qml
     qml/views/ProjectView.qml
     qml/views/BoardView.qml
     qml/views/CalendarView.qml

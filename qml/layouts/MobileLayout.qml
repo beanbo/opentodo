@@ -110,11 +110,23 @@ Item {
         else if (v === "notifications")taskViewModel.filterMode = TaskViewModel.Notifications
         else if (v === "trash")        taskViewModel.filterMode = TaskViewModel.Trash
         else if (v === "ai")           taskViewModel.filterMode = TaskViewModel.AI
-        else if (v === "board")        taskViewModel.filterMode = TaskViewModel.Board
+        else if (v === "board") {
+            // Open the busiest project in board mode (verification).
+            var bb = null, bbn = -1
+            for (var j = 0; j < projectViewModel.count; j++) {
+                var pj = projectViewModel.projectAt(j)
+                if (!pj || pj.isInbox || pj.isArchived) continue
+                var nj = projectViewModel.taskCountForProject(pj.id)
+                if (nj > bbn) { bbn = nj; bb = pj }
+            }
+            if (bb) sidebarViewModel.navigateToProject(bb.id)
+            Qt.callLater(function() { taskViewModel.filterMode = TaskViewModel.Board })
+        }
         else if (v === "calendar")     taskViewModel.filterMode = TaskViewModel.Calendar
         else if (v === "labels")       root.browseScreen = "labels"
         else if (v === "filters")      root.browseScreen = "filters"
         else if (v === "drawer")       Qt.callLater(function() { sidebarDrawer.open() })
+        else if (v === "search")       Qt.callLater(function() { searchOverlay.open(); searchViewModel.search("на") })
         else if (v === "project") {
             // Pick the busiest non-inbox project (most tasks) for verification.
             var best = null, bestN = -1
@@ -191,6 +203,7 @@ Item {
         || taskViewModel.filterMode === TaskViewModel.Notifications
         || taskViewModel.filterMode === TaskViewModel.Calendar
         || taskViewModel.filterMode === TaskViewModel.Trash
+        || taskViewModel.filterMode === TaskViewModel.Board
 
     // ── List-view header (big collapsing app bar) data ─────────────────────────
     readonly property var _hdrProj: (taskViewModel.filterMode === TaskViewModel.Project
@@ -450,6 +463,28 @@ Item {
             }
         }
 
+        // ── Project view-mode segment (Список / Доска / Календарь) ────────────
+        MSeg {
+            id: projectSegment
+            Layout.fillWidth: true
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+            Layout.topMargin: 2
+            Layout.bottomMargin: 8
+            Layout.preferredHeight: 40
+            visible: taskViewModel.filterMode === TaskViewModel.Project
+            value: "list"
+            options: [
+                { "value": "list",  "label": qsTr("Список"),    "icon": "list" },
+                { "value": "board", "label": qsTr("Доска"),     "icon": "board" },
+                { "value": "cal",   "label": qsTr("Календарь"),  "icon": "calendar" }
+            ]
+            onChanged: function(m) {
+                if (m === "board")    taskViewModel.filterMode = TaskViewModel.Board
+                else if (m === "cal") taskViewModel.filterMode = TaskViewModel.Calendar
+            }
+        }
+
         // ── Full-page view Loader ─────────────────────────────────────────────
         // Q-Android-Audit #1.1: mirrors DesktopLayout.qml's fullPageLoader so
         // that Settings / Productivity / Notifications / AI / Board / Calendar
@@ -469,9 +504,9 @@ Item {
                 case TaskViewModel.Notifications: return "../components/mobile/MNotificationsScreen.qml"
                 case TaskViewModel.Calendar:      return "../components/mobile/MCalendarScreen.qml"
                 case TaskViewModel.Trash:         return "../components/mobile/MTrashScreen.qml"
-                // Not yet redesigned for mobile — fall back to the desktop views:
+                case TaskViewModel.Board:         return "../components/mobile/MBoardScreen.qml"
+                // Not yet redesigned for mobile — fall back to the desktop view:
                 case TaskViewModel.AI:            return "../views/AIView.qml"
-                case TaskViewModel.Board:         return "../views/BoardView.qml"
                 }
                 return ""
             }
@@ -505,6 +540,13 @@ Item {
                 // Mobile screens expose menuRequested (hamburger) + aiRequested.
                 function onMenuRequested() { sidebarDrawer.open() }
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
+                // MBoardScreen: + button → quick-add; segment → switch view mode.
+                function onAddRequested()  { quickAdd.openAdd() }
+                function onViewModeChanged(mode) {
+                    if (mode === "list")      taskViewModel.filterMode = TaskViewModel.Project
+                    else if (mode === "board") taskViewModel.filterMode = TaskViewModel.Board
+                    else if (mode === "cal")   taskViewModel.filterMode = TaskViewModel.Calendar
+                }
             }
         }
 
@@ -982,6 +1024,9 @@ Item {
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
+        onOpened: searchScreen.focusInput()
+        onClosed: searchViewModel.clearSearch()
+
         background: Rectangle { color: contentColor }
 
         enter: Transition {
@@ -991,214 +1036,15 @@ Item {
             NumberAnimation { property: "opacity"; from: 1; to: 0; duration: Duration.fast }
         }
 
-        ColumnLayout {
+        // Mobile redesign: full search screen (recent searches + task results).
+        MSearchScreen {
+            id: searchScreen
             anchors.fill: parent
-            spacing: 0
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 56
-                color: contentColor
-
-                Rectangle {
-                    anchors.left:   parent.left
-                    anchors.right:  parent.right
-                    anchors.bottom: parent.bottom
-                    height: 1
-                    color: borderColor
-                }
-
-                RowLayout {
-                    anchors {
-                        fill: parent
-                        leftMargin: 4
-                        rightMargin: 12
-                    }
-
-                    // B-9.9: was a literal "←" (U+2190) text glyph — tofu box on
-                    // Android (Roboto lacks it). Use IconSvg "chevron-left".
-                    ToolButton {
-                        contentItem: IconSvg {
-                            anchors.centerIn: parent
-                            name: "chevron-left"
-                            size: 22
-                            color: textSecondary
-                        }
-                        onClicked: searchOverlay.close()
-                    }
-
-                    Loader {
-                        source: "../components/SearchBar.qml"
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 36
-                    }
-                }
-            }
-
-            // Search results
-            //
-            // C++ side (SearchViewModel::performSearch) emits each entry as a
-            // QVariantMap with keys: {type, id, title, subtitle, projectId,
-            // isCompleted, color, taskId, object}. Earlier versions of this
-            // delegate tried to bind task-style fields (content, description,
-            // priority, dueDate…) that the C++ side never produces — every
-            // task row rendered as an empty TaskItem with priority 4 and no
-            // text. Mirror the desktop SearchBar.qml shape: a compact row
-            // with a type icon, highlighted title, and subtitle.
-            ListView {
-                id: searchResultsView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                model: searchViewModel.results
-                clip: true
-
-                delegate: Rectangle {
-                    id: searchDelegateRoot
-                    width: searchResultsView.width
-                    height: 56
-
-                    // modelData is the plain JS object produced by
-                    // SearchViewModel::performSearch — see keys above.
-                    required property var modelData
-                    required property int index
-
-                    color: rowHover.containsMouse
-                           ? Qt.rgba(accentRed.r, accentRed.g, accentRed.b,
-                                     isDarkTheme ? 0.10 : 0.06)
-                           : "transparent"
-
-                    Behavior on color { ColorAnimation { duration: Duration.instant } }
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin:  Spacing.md
-                        anchors.rightMargin: Spacing.md
-                        spacing: Spacing.sm
-
-                        // Type glyph mirrors the desktop search bar.
-                        // Q4.01 (redesign): "🏷"/"💬" эмодзи заменены на
-                        // IconSvg ("label"/"note") из stroke-пака; остальные
-                        // типы держат однознаковые маркеры — единый визуал.
-                        Item {
-                            Layout.alignment: Qt.AlignVCenter
-                            Layout.preferredWidth: 18
-                            Layout.preferredHeight: 18
-
-                            IconSvg {
-                                visible: searchDelegateRoot.modelData
-                                         && (searchDelegateRoot.modelData.type === "label"
-                                             || searchDelegateRoot.modelData.type === "comment")
-                                anchors.centerIn: parent
-                                name: searchDelegateRoot.modelData && searchDelegateRoot.modelData.type === "comment"
-                                      ? "note" : "label"
-                                size: 14
-                                color: textSecondary
-                            }
-
-                            Label {
-                                visible: !searchDelegateRoot.modelData
-                                         || (searchDelegateRoot.modelData.type !== "label"
-                                             && searchDelegateRoot.modelData.type !== "comment")
-                                anchors.centerIn: parent
-                                font.pixelSize: FontSize.body
-                                color: textSecondary
-                                text: {
-                                    if (!searchDelegateRoot.modelData) return ""
-                                    switch (searchDelegateRoot.modelData.type) {
-                                        case "task":    return "✓"
-                                        case "project": return "#"
-                                        case "filter":  return "⊙"
-                                        default:        return "•"
-                                    }
-                                }
-                            }
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignVCenter
-                            spacing: 2
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: searchDelegateRoot.modelData
-                                      ? (searchDelegateRoot.modelData.title || "")
-                                      : ""
-                                color: textPrimary
-                                font.pixelSize: FontSize.body
-                                font.weight: Font.Medium
-                                elide: Text.ElideRight
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                visible: searchDelegateRoot.modelData
-                                         && searchDelegateRoot.modelData.subtitle
-                                         && searchDelegateRoot.modelData.subtitle !== ""
-                                text: searchDelegateRoot.modelData
-                                      ? (searchDelegateRoot.modelData.subtitle || "")
-                                      : ""
-                                color: textSecondary
-                                font.pixelSize: FontSize.caption
-                                elide: Text.ElideRight
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        id: rowHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            const md = searchDelegateRoot.modelData
-                            if (!md) return
-                            // For task results open the editor; for projects,
-                            // labels and filters fall back to closing the
-                            // overlay (mobile navigation lands on the relevant
-                            // view through other paths).
-                            if (md.type === "task" && md.id) {
-                                taskViewModel.openTaskById(md.id)
-                            } else if (md.type === "comment" && md.taskId) {
-                                taskViewModel.openTaskById(md.taskId)
-                            } else if (md.type === "comment" && md.projectId) {
-                                // iter-night-6: project-level comments now
-                                // route to the project view rather than
-                                // silently doing nothing.
-                                sidebarViewModel.navigateToProject(md.projectId)
-                            } else if (md.type === "project" && md.id) {
-                                sidebarViewModel.navigateToProject(md.id)
-                            } else if (md.type === "label" && md.title) {
-                                sidebarViewModel.navigateToLabel(md.title)
-                            } else if (md.type === "filter" && md.id) {
-                                sidebarViewModel.navigateToFilter(md.id)
-                            }
-                            searchOverlay.close()
-                        }
-                    }
-
-                    // Hairline divider between rows
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        anchors.left:   parent.left
-                        anchors.right:  parent.right
-                        height: 1
-                        color: borderColor
-                        opacity: 0.4
-                    }
-                }
-
-                // Empty state — Russian copy, matches the rest of the UI.
-                // Fix: previous build referenced `searchViewModel.query`, which
-                // does not exist — the Q_PROPERTY is `searchQuery`.
-                Label {
-                    anchors.centerIn: parent
-                    visible: searchResultsView.count === 0
-                             && searchViewModel.searchQuery.length > 0
-                    text: qsTr("Ничего не найдено")
-                    color: textSecondary
-                    font.pixelSize: FontSize.body
-                }
+            onCloseRequested: searchOverlay.close()
+            onTaskClicked: function(id) {
+                var t = dataStore.taskById(id)
+                if (t) taskViewModel.selectedTask = t   // Connections pushes the editor
+                searchOverlay.close()
             }
         }
     }
