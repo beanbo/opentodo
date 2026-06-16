@@ -10,6 +10,7 @@ Item {
     signal menuRequested()
     signal taskClicked(string id)
     signal addRequested()
+    signal searchRequested()
     signal viewModeChanged(string mode)   // "list" | "board" | "cal"
 
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
@@ -73,7 +74,7 @@ Item {
         titleIconName: (root._proj && root._proj.icon && root._proj.icon.length > 0) ? root._proj.icon : "board"
         titleColor: (root._proj && root._proj.color && root._proj.color.length > 0) ? root._proj.color : ThemeManager.accentColor
         onMenuClicked: root.menuRequested()
-        MIconButton { iconName: "search"; iconColor: ThemeManager.textColor; onClicked: searchOverlay.open() }
+        MIconButton { iconName: "search"; iconColor: ThemeManager.textColor; onClicked: root.searchRequested() }
     }
 
     // View-mode segment (Список / Доска / Календарь)

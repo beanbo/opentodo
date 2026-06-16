@@ -92,8 +92,10 @@ Item {
         if (_dueKind === "soon")  return qsTr("Завтра")
         return DateFormatter.format(dueDate)
     }
-    readonly property var _proj: (showProject && projectId !== "")
-                                 ? projectViewModel.projectById(projectId) : null
+    readonly property var _proj: {
+        var _dep = projectViewModel.count   // re-resolve once the project model loads
+        return (showProject && projectId !== "") ? projectViewModel.projectById(projectId) : null
+    }
 
     width: parent ? parent.width : 0
     implicitHeight: Math.max(dens ? dens.rowMinH : 66, col.implicitHeight + (dens ? dens.rowPadV : 15) * 2)

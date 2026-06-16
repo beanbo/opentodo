@@ -540,8 +540,9 @@ Item {
                 // Mobile screens expose menuRequested (hamburger) + aiRequested.
                 function onMenuRequested() { sidebarDrawer.open() }
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
-                // MBoardScreen: + button → quick-add; segment → switch view mode.
-                function onAddRequested()  { quickAdd.openAdd() }
+                // MBoardScreen: + button → quick-add; search → overlay; segment → view mode.
+                function onAddRequested()    { quickAdd.openAdd() }
+                function onSearchRequested() { searchOverlay.open() }
                 function onViewModeChanged(mode) {
                     if (mode === "list")      taskViewModel.filterMode = TaskViewModel.Project
                     else if (mode === "board") taskViewModel.filterMode = TaskViewModel.Board
