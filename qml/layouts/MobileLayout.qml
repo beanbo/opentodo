@@ -225,6 +225,7 @@ Item {
         else if (v === "filters")      root.browseScreen = "filters"
         else if (v === "drawer")       Qt.callLater(function() { sidebarDrawer.open() })
         else if (v === "search")       Qt.callLater(function() { searchOverlay.open(); searchViewModel.search("на") })
+        else if (v === "sync")       { taskViewModel.filterMode = TaskViewModel.Settings; Qt.callLater(function() { root.subScreen = "sync" }) }
         else if (v === "project") {
             // Pick the busiest non-inbox project (most tasks) for verification.
             var best = null, bestN = -1
@@ -291,6 +292,8 @@ Item {
 
     // Browse overlay for the Метки / Фильтры list screens ("labels"|"filters"|"").
     property string browseScreen: ""
+    // Settings sub-screen overlay ("sync"|""), reached from MSettingsScreen.
+    property string subScreen: ""
 
     // Full-page mobile screens that render their own MTopBar — the shell's own
     // top bar is hidden for these (and the browse overlay) to avoid a double header.
@@ -388,6 +391,11 @@ Item {
         // 0a2) Labels/Filters browse overlay open
         if (root.browseScreen !== "") {
             root.browseScreen = ""
+            return true
+        }
+        // 0a3) Settings sub-screen (sync) overlay open
+        if (root.subScreen !== "") {
+            root.subScreen = ""
             return true
         }
         // 0b) Task context menu / move picker open
@@ -639,6 +647,7 @@ Item {
                 function onMenuRequested() { sidebarDrawer.open() }
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
                 function onOpenSettingsRequested() { sidebarViewModel.navigateTo("settings") }
+                function onSyncRequested() { root.subScreen = "sync" }
                 // MBoardScreen: + button → quick-add; search → overlay; segment → view mode.
                 function onAddRequested()    { quickAdd.openAdd() }
                 function onSearchRequested() { searchOverlay.open() }
@@ -917,6 +926,25 @@ Item {
             target: browseLoader.item
             ignoreUnknownSignals: true
             function onMenuRequested() { root.browseScreen = ""; sidebarDrawer.open() }
+        }
+    }
+
+    // ── Settings sub-screen overlay (sync setup) ──────────────────────────────
+    Loader {
+        id: subScreenLoader
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.navVisible ? bottomNav.height : 0
+        z: 18
+        active: root.subScreen !== ""
+        visible: active
+        source: root.subScreen === "sync" ? "../components/mobile/MSyncScreen.qml" : ""
+        Connections {
+            target: subScreenLoader.item
+            ignoreUnknownSignals: true
+            function onCloseRequested() { root.subScreen = "" }
         }
     }
 

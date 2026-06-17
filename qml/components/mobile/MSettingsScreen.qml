@@ -11,6 +11,7 @@ Item {
     id: root
     signal menuRequested()
     signal aiRequested()
+    signal syncRequested()
 
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
 
@@ -230,9 +231,13 @@ Item {
                     MSettingsRow {
                         width: parent.width
                         rowIcon: "sync"; rowIconColor: ThemeManager.priorityP3Color
-                        rowLabel: qsTr("Облачная синхронизация"); rowValue: root._sync ? qsTr("Включена") : qsTr("Сейчас офлайн")
-                        controlChecked: root._sync
-                        onToggled: { root._sync = !root._sync; settingsViewModel.updateSetting("mobile/sync", root._sync) }
+                        rowLabel: qsTr("Синхронизация")
+                        rowValue: settingsViewModel.syncBackend === "selfhost"
+                                  ? qsTr("Свой ПК")
+                                  : ((typeof gdriveClient !== "undefined" && gdriveClient.authenticated)
+                                     ? qsTr("Google Drive") : qsTr("Настроить"))
+                        showChevron: true
+                        onRowClicked: root.syncRequested()
                     }
                     MSettingsRow {
                         width: parent.width; last: true
