@@ -144,7 +144,7 @@ Item {
                         }
                         Text {
                             width: parent.width; wrapMode: Text.WordWrap
-                            text: qsTr("В одной сети с ПК можно указать http://<IP-ПК>:8765. Для доступа извне — адрес Tailscale Funnel.")
+                            text: qsTr("Сервер на ПК слушает только локально, поэтому нужен Tailscale: на ПК один раз выполните «tailscale funnel 8765» и вставьте сюда выданный адрес (https://…ts.net).")
                             font.pixelSize: 11; color: ThemeManager.faintTextColor
                         }
                     }
