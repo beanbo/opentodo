@@ -725,6 +725,18 @@ if(ANDROID)
     set_target_properties(OpenTodo PROPERTIES
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
     )
+
+    # The app's own libOpenTodo_<abi>.so ships UNSTRIPPED on this toolchain:
+    # Gradle's stripDebugSymbols task fails ("Unable to strip … packaging them
+    # as they are"), so ~120 MB of symbols + DWARF debug info ride into the APK
+    # (the single biggest entry, dwarfing all Qt libs combined). Strip the app
+    # lib at link time for non-Debug configs so the packaged lib is ~10 MB and
+    # the APK drops from ~195 MB to ~75 MB. .dynsym (the exported `main` Qt
+    # dlsym()s at startup) is preserved; only .symtab + debug sections go.
+    # Debug builds keep symbols so native debugging still works.
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(OpenTodo PRIVATE "LINKER:--strip-all")
+    endif()
 endif()
 
 if(EMSCRIPTEN)
