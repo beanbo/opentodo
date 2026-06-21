@@ -251,6 +251,7 @@ Item {
                 Qt.callLater(function() { var t = taskViewModel.taskAt(0); if (t) taskViewModel.selectedTask = t })
             }
         }
+        else console.warn("mobileStartView: unknown value '" + v + "' (ignored, starting on default view)")
     }
 
     Component.onCompleted: { _loadPins(); _applyStartView(); _rebuildSections() }

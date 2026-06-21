@@ -21,7 +21,9 @@ class LocalDirRemote;
 //   GET    /ping             health     200
 //
 // Hardening (it sits behind a PUBLIC Tailscale Funnel HTTPS endpoint):
-//   • Binds to 127.0.0.1 ONLY — never the LAN; Funnel proxies to loopback.
+//   • Binds to 127.0.0.1 by default — never the LAN; Funnel proxies to loopback.
+//     (Opt-in LAN binding via allowLan=true widens to 0.0.0.0 for Wi-Fi sync;
+//      the bearer token stays the auth gate either way.)
 //   • Every request must carry `Authorization: Bearer <token>` or it's 401.
 //   • Paths are sanitized by LocalDirRemote::resolve() (no "..", no absolute).
 //   • Header section and request body are size-capped (flood / OOM guards).
@@ -37,9 +39,12 @@ class SyncHttpServer : public QObject
 public:
     explicit SyncHttpServer(LocalDirRemote *store, QObject *parent = nullptr);
 
-    // Bind to 127.0.0.1:<port> with the given bearer token. Returns false if the
-    // port is taken or the platform has no listening sockets (WASM).
-    bool start(quint16 port, const QString &token);
+    // Bind <port> with the given bearer token. Default binds 127.0.0.1 ONLY
+    // (Funnel proxies to loopback). Pass allowLan=true to bind all interfaces
+    // (0.0.0.0) so LAN peers reach it over Wi-Fi without Tailscale — still
+    // gated by the bearer token. Returns false if the port is taken or the
+    // platform has no listening sockets (WASM).
+    bool start(quint16 port, const QString &token, bool allowLan = false);
     void stop();
     bool isRunning() const;
     quint16 port() const { return m_port; }

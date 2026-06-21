@@ -9,6 +9,19 @@
 #include <QTimer>
 #include <QUrl>
 
+namespace {
+// Percent-encode a remote path segment so it round-trips through the server's
+// QUrl::fromPercentEncoding, while keeping '/' as the path separator. Without
+// this a space / '?' / '#' / '%' in a path would corrupt the request URL: the
+// server splits the request target on '?' and decodes with fromPercentEncoding.
+// Current callers pass UUID/log filenames (safe), but encoding keeps the wire
+// protocol robust against any future path content.
+QString encPath(const QString &p)
+{
+    return QString::fromLatin1(QUrl::toPercentEncoding(p, "/"));
+}
+} // namespace
+
 HttpRemote::HttpRemote()
     : m_nam(new QNetworkAccessManager)
 {
@@ -122,7 +135,7 @@ bool HttpRemote::uploadFile(const QString &remotePath, const QByteArray &data)
 {
     if (!isAuthenticated())
         return false;
-    const Reply r = send(Verb::Put, QStringLiteral("/blob/") + remotePath, data);
+    const Reply r = send(Verb::Put, QStringLiteral("/blob/") + encPath(remotePath), data);
     return !r.transportError
            && (r.statusCode == 200 || r.statusCode == 201 || r.statusCode == 204);
 }
@@ -133,7 +146,7 @@ bool HttpRemote::downloadFile(const QString &remotePath, QByteArray &data,
     data.clear();
     if (!isAuthenticated())
         return false;
-    const Reply r = send(Verb::Get, QStringLiteral("/blob/") + remotePath, {}, maxBytes);
+    const Reply r = send(Verb::Get, QStringLiteral("/blob/") + encPath(remotePath), {}, maxBytes);
     if (r.transportError)
         return false;
     if (r.statusCode == 404)
@@ -148,7 +161,7 @@ bool HttpRemote::deleteFile(const QString &remotePath)
 {
     if (!isAuthenticated())
         return false;
-    const Reply r = send(Verb::Delete, QStringLiteral("/blob/") + remotePath);
+    const Reply r = send(Verb::Delete, QStringLiteral("/blob/") + encPath(remotePath));
     if (r.transportError)
         return false;
     return r.statusCode == 200 || r.statusCode == 204 || r.statusCode == 404;
@@ -158,7 +171,7 @@ QStringList HttpRemote::listFiles(const QString &folderPath)
 {
     if (!isAuthenticated())
         return {};
-    const Reply r = send(Verb::Get, QStringLiteral("/list/") + folderPath);
+    const Reply r = send(Verb::Get, QStringLiteral("/list/") + encPath(folderPath));
     if (r.transportError || r.statusCode != 200)
         return {};
     const QJsonDocument doc = QJsonDocument::fromJson(r.body);

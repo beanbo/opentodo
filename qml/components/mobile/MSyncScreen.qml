@@ -18,6 +18,9 @@ Item {
                                      || (typeof forceMobileLayout !== "undefined" && forceMobileLayout)
     readonly property bool _selfHost: settingsViewModel.syncBackend === "selfhost"
     readonly property bool _driveConnected: (typeof gdriveClient !== "undefined") ? gdriveClient.authenticated : false
+    // The bearer token is a secret — masked by default, with a reveal toggle so
+    // the setup flow (read on PC, type on phone) still works.
+    property bool _revealToken: false
 
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
 
@@ -125,7 +128,17 @@ Item {
                                 onEditingFinished: settingsViewModel.syncServerUrl = text.trim()
                             }
                         }
-                        Text { text: qsTr("Токен (с ПК)"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor }
+                        Row {
+                            width: parent.width
+                            Text { text: qsTr("Токен (с ПК)"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor; width: parent.width - revealPhone.implicitWidth; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                id: revealPhone
+                                text: root._revealToken ? qsTr("Скрыть") : qsTr("Показать")
+                                font.pixelSize: 12; font.weight: Font.DemiBold; color: ThemeManager.accentColor
+                                anchors.verticalCenter: parent.verticalCenter
+                                MouseArea { anchors.fill: parent; onClicked: root._revealToken = !root._revealToken }
+                            }
+                        }
                         Rectangle {
                             width: parent.width; height: 46; radius: 12
                             color: ThemeManager.backgroundColor; border.width: 1; border.color: ThemeManager.borderColor
@@ -133,11 +146,12 @@ Item {
                                 id: tokenField
                                 anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
                                 verticalAlignment: Text.AlignVCenter
+                                echoMode: root._revealToken ? TextInput.Normal : TextInput.Password
                                 text: settingsViewModel.syncToken
                                 placeholderText: qsTr("вставьте токен с ПК")
                                 placeholderTextColor: ThemeManager.faintTextColor
                                 font.pixelSize: 14; color: ThemeManager.textColor
-                                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhSensitiveData
                                 background: Item {}
                                 onEditingFinished: settingsViewModel.syncToken = text.trim()
                             }
@@ -154,7 +168,17 @@ Item {
                         visible: !root._isPhone
                         width: parent.width
                         spacing: 8
-                        Text { text: qsTr("Токен (введите его на телефоне)"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor }
+                        Row {
+                            width: parent.width
+                            Text { text: qsTr("Токен (введите его на телефоне)"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor; width: parent.width - revealPc.implicitWidth; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                id: revealPc
+                                text: root._revealToken ? qsTr("Скрыть") : qsTr("Показать")
+                                font.pixelSize: 12; font.weight: Font.DemiBold; color: ThemeManager.accentColor
+                                anchors.verticalCenter: parent.verticalCenter
+                                MouseArea { anchors.fill: parent; onClicked: root._revealToken = !root._revealToken }
+                            }
+                        }
                         Rectangle {
                             width: parent.width; height: 46; radius: 12
                             color: ThemeManager.backgroundColor; border.width: 1; border.color: ThemeManager.borderColor
@@ -162,6 +186,7 @@ Item {
                                 anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
                                 verticalAlignment: Text.AlignVCenter
                                 readOnly: true; selectByMouse: true
+                                echoMode: root._revealToken ? TextInput.Normal : TextInput.Password
                                 text: settingsViewModel.syncToken
                                 font.pixelSize: 13; color: ThemeManager.textColor; font.family: "monospace"
                                 background: Item {}
@@ -180,6 +205,53 @@ Item {
                             width: parent.width; wrapMode: Text.WordWrap
                             text: qsTr("Один раз выполните в терминале: tailscale funnel 8765")
                             font.pixelSize: 11; color: ThemeManager.faintTextColor
+                        }
+
+                        // LAN / Wi-Fi opt-in: bind the server to the local network
+                        // so the phone can sync over Wi-Fi without Tailscale.
+                        Rectangle { width: parent.width; height: 1; color: ThemeManager.hairlineColor }
+                        Row {
+                            width: parent.width
+                            spacing: 10
+                            Column {
+                                width: parent.width - lanSwitch.width - 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text { text: qsTr("Доступ по Wi-Fi (локальная сеть)"); font.pixelSize: 13; font.weight: Font.DemiBold; color: ThemeManager.textColor }
+                                Text { width: parent.width; wrapMode: Text.WordWrap; text: qsTr("Без Tailscale — телефон должен быть в той же сети Wi-Fi"); font.pixelSize: 11; color: ThemeManager.faintTextColor }
+                            }
+                            MSwitch {
+                                id: lanSwitch
+                                anchors.verticalCenter: parent.verticalCenter
+                                checked: settingsViewModel.syncLanEnabled
+                                onToggled: settingsViewModel.syncLanEnabled = !settingsViewModel.syncLanEnabled
+                            }
+                        }
+                        // LAN address to enter on the phone (only when enabled).
+                        Column {
+                            visible: settingsViewModel.syncLanEnabled
+                            width: parent.width
+                            spacing: 6
+                            Text { text: qsTr("Адрес в локальной сети (введите на телефоне)"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor }
+                            Rectangle {
+                                width: parent.width; height: 46; radius: 12
+                                color: ThemeManager.backgroundColor; border.width: 1; border.color: ThemeManager.borderColor
+                                TextField {
+                                    anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
+                                    verticalAlignment: Text.AlignVCenter
+                                    readOnly: true; selectByMouse: true
+                                    text: settingsViewModel.localSyncUrl()
+                                    placeholderText: qsTr("адрес не найден")
+                                    placeholderTextColor: ThemeManager.faintTextColor
+                                    font.pixelSize: 13; color: ThemeManager.textColor; font.family: "monospace"
+                                    background: Item {}
+                                }
+                            }
+                            Text {
+                                width: parent.width; wrapMode: Text.WordWrap
+                                text: qsTr("Включите, затем перезапустите приложение на ПК. На телефоне выберите «Свой ПК» и впишите этот адрес и токен.")
+                                font.pixelSize: 11; color: ThemeManager.faintTextColor
+                            }
                         }
                     }
                 }

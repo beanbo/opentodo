@@ -105,6 +105,41 @@ Item {
                     text: qsTr("Начните вводить запрос")
                     font.pixelSize: 14; color: ThemeManager.secondaryTextColor
                 }
+
+                // Quick filters — design parity with m-screens2 MSearchScreen
+                // "Фильтры" section. Unlike the static design chips, each chip
+                // here runs a real search when tapped.
+                Text {
+                    leftPadding: 16; topPadding: 16; bottomPadding: 6
+                    text: qsTr("Фильтры")
+                    font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 0.3
+                    font.capitalization: Font.AllUppercase
+                    color: ThemeManager.secondaryTextColor
+                }
+                Flow {
+                    width: parent.width - 32; x: 16; spacing: 9; bottomPadding: 10
+                    Repeater {
+                        model: [
+                            { "icon": "flame",    "label": qsTr("Просроченные"), "color": ThemeManager.errorColor,      "q": qsTr("просрочено") },
+                            { "icon": "calendar", "label": qsTr("Сегодня"),      "color": ThemeManager.accentColor,     "q": qsTr("сегодня") },
+                            { "icon": "star",     "label": qsTr("Приоритет P1"), "color": ThemeManager.priorityP1Color, "q": "p1" },
+                            { "icon": "tag",      "label": qsTr("баг"),          "color": ThemeManager.errorColor,      "q": qsTr("баг") }
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            height: 36; radius: 18; width: chRow.implicitWidth + 28
+                            color: chMa.pressed ? ThemeManager.hoverColor : ThemeManager.surfaceColor
+                            border.width: 1; border.color: ThemeManager.borderColor
+                            Row {
+                                id: chRow
+                                anchors.centerIn: parent; spacing: 7
+                                IconSvg { anchors.verticalCenter: parent.verticalCenter; name: modelData.icon; size: 15; color: modelData.color }
+                                Text { anchors.verticalCenter: parent.verticalCenter; text: modelData.label; font.pixelSize: 13; font.weight: Font.DemiBold; color: ThemeManager.textColor }
+                            }
+                            MouseArea { id: chMa; anchors.fill: parent; onClicked: { field.text = modelData.q; searchViewModel.search(modelData.q) } }
+                        }
+                    }
+                }
             }
 
             // Results (non-empty query)

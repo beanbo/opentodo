@@ -324,6 +324,15 @@ int main(int argc, char *argv[])
     auto *syncVM = new SyncViewModel(syncEngine, &app);
     auto *notificationsVM = new NotificationsViewModel(dataStore, syncEngine, &app);
 
+    // Sec-1: SecretStore — OS keyring (Windows Credential Manager / macOS
+    // Keychain / libsecret|kwallet via QtKeychain) on desktop; QSettings
+    // "secrets/" fallback on Android/WASM. Constructed HERE — before the sync
+    // backend block below — so the self-host bearer token is migrated out of
+    // plaintext QSettings into the keyring and the token read at server start
+    // resolves correctly (setSecretStore warms settingsVM's cache synchronously).
+    auto *secretStore = new SecretStore(&app);
+    settingsVM->setSecretStore(secretStore);
+
     // ── Sync backend selection (self-hosted PC vs Google Drive) ─────────────
     // Device-local choice in QSettings (selfhost/backend). Drive is the default
     // and stays untouched. When "selfhost" is active the DESKTOP is the hub: it
@@ -350,8 +359,14 @@ int main(int argc, char *argv[])
         const quint16 port = static_cast<quint16>(
             shSettings.value(QStringLiteral("selfhost/port"), 8765).toUInt());
         syncServer = new SyncHttpServer(localRemote, &app);
-        if (!syncServer->start(port, token))
-            qWarning("Self-hosted sync server failed to start on 127.0.0.1:%u", port);
+        const bool allowLan = settingsVM->syncLanEnabled();
+        if (!syncServer->start(port, token, allowLan)) {
+            qWarning("Self-hosted sync server failed to start on %s:%u",
+                     allowLan ? "0.0.0.0" : "127.0.0.1", port);
+        } else if (allowLan) {
+            qInfo("Self-hosted sync server bound to LAN — phones can reach it at %s",
+                  qPrintable(settingsVM->localSyncUrl()));
+        }
 #else
         // Client: talk to the PC's server over HTTP (Tailscale Funnel URL).
         auto *httpRemote = new HttpRemote();                // app-lifetime
@@ -569,13 +584,9 @@ int main(int argc, char *argv[])
                               taskVM->currentFilter());
     });
 
-    // Sec-1: SecretStore — backs the Claude API key with the OS keyring
-    // (Windows Credential Manager / macOS Keychain / libsecret / kwallet via
-    // QtKeychain). On Android/WASM falls back to QSettings under "secrets/"
-    // since no real OS keyring is available there. SecretStore is created
-    // before AIAssistant so the migration of any pre-existing plaintext key
-    // happens on the first setSecretStore() wiring below.
-    auto *secretStore = new SecretStore(&app);
+    // Sec-1: secretStore was constructed above (before the sync backend block).
+    // It also backs the Claude API key — wire it into AIAssistant, which runs
+    // the one-time migration of any XOR-obfuscated key under "ai/k" in QSettings.
 
     // AI Assistant
     auto *aiAssistant = new AIAssistant(dataStore, &app);
@@ -783,13 +794,19 @@ int main(int argc, char *argv[])
 
     // Dev/preview affordance: force the mobile (Android) layout on desktop so the
     // mobile redesign can be inspected without an Android device. Set the env var
-    // OPENTODO_FORCE_MOBILE=1 before launching. No effect on normal runs.
+    // OPENTODO_FORCE_MOBILE=1 (or "true") before launching. No effect on normal
+    // runs. Whitelist the explicit on-values so an empty/garbage value does NOT
+    // accidentally force mobile (qEnvironmentVariableIsSet is true even when the
+    // var is set to an empty string).
+    const QString forceMobileEnv = qEnvironmentVariable("OPENTODO_FORCE_MOBILE");
     ctx->setContextProperty(QStringLiteral("forceMobileLayout"),
-                            qEnvironmentVariableIsSet("OPENTODO_FORCE_MOBILE")
-                                && qEnvironmentVariable("OPENTODO_FORCE_MOBILE") != QStringLiteral("0"));
+                            forceMobileEnv == QStringLiteral("1")
+                                || forceMobileEnv.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0);
     // Dev/preview: open the mobile layout directly on a given view for design
-    // verification. Values: today|upcoming|inbox|settings|productivity|
-    // notifications|trash|labels|filters|board|calendar|ai|project. Empty = default.
+    // verification. Values handled in MobileLayout._applyStartView():
+    // today|upcoming|inbox|settings|productivity|notifications|trash|labels|
+    // filters|board|calendar|ai|project|drawer|search|sync|editor. Empty =
+    // default; an unrecognised value logs a console.warn and starts on default.
     ctx->setContextProperty(QStringLiteral("mobileStartView"),
                             qEnvironmentVariable("OPENTODO_MOBILE_START"));
 

@@ -1,9 +1,13 @@
 #include "settingsviewmodel.h"
+#include "services/secretstore.h"
 #include "storage/datastore.h"
 #include "utils/settingskeys.h"
 
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QHash>
+#include <QHostAddress>
+#include <QNetworkInterface>
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -261,14 +265,22 @@ void SettingsViewModel::setSyncServerUrl(const QString &url) {
 }
 
 QString SettingsViewModel::syncToken() const {
+    // Sec-1: prefer the SecretStore (OS keyring) when wired and warm; fall back
+    // to plaintext QSettings only for the legacy / no-SecretStore (test) path.
+    if (m_secretStore && m_secretStore->hasCachedSecret(QStringLiteral("selfhost/token")))
+        return m_secretStore->cachedSecret(QStringLiteral("selfhost/token"));
     QSettings s;
     return s.value(QStringLiteral("selfhost/token")).toString();
 }
 void SettingsViewModel::setSyncToken(const QString &token) {
     const QString t = token.trimmed();
     if (t == syncToken()) return;
-    QSettings s;
-    s.setValue(QStringLiteral("selfhost/token"), t);
+    if (m_secretStore) {
+        m_secretStore->setSecret(QStringLiteral("selfhost/token"), t); // write-through cache
+    } else {
+        QSettings s;
+        s.setValue(QStringLiteral("selfhost/token"), t);
+    }
     emit syncTokenChanged();
 }
 
@@ -277,10 +289,95 @@ QString SettingsViewModel::generateSyncToken() {
     for (int i = 0; i < raw.size(); ++i)
         raw[i] = static_cast<char>(QRandomGenerator::system()->bounded(256));
     const QString tok = QString::fromLatin1(raw.toHex());
-    QSettings s;
-    s.setValue(QStringLiteral("selfhost/token"), tok);
+    if (m_secretStore) {
+        m_secretStore->setSecret(QStringLiteral("selfhost/token"), tok); // write-through cache
+    } else {
+        QSettings s;
+        s.setValue(QStringLiteral("selfhost/token"), tok);
+    }
     emit syncTokenChanged();
     return tok;
+}
+
+void SettingsViewModel::setSecretStore(SecretStore *store) {
+    m_secretStore = store;
+    if (!store)
+        return;
+
+    const QString key = QStringLiteral("selfhost/token");
+
+    // One-time migration: move any plaintext token out of QSettings into the
+    // SecretStore (OS keyring on desktop), then purge the plaintext copy. The
+    // token value is preserved, so an already-configured device keeps syncing.
+    {
+        QSettings s;
+        const QString legacy = s.value(key).toString();
+        if (!legacy.isEmpty() && !store->hasCachedSecret(key)) {
+            store->setSecret(key, legacy);   // write-through: cachedSecret() now warm
+            s.remove(key);
+            s.sync();
+            return;
+        }
+    }
+
+    // Already migrated (or fresh install): warm the in-memory cache with a
+    // synchronous read so syncToken() returns the right value at startup — the
+    // server start / client configure read it immediately after this call. The
+    // SecretStore backends complete asynchronously (a QtKeychain job on desktop,
+    // a queued emit on Android), so pump a local event loop until the read
+    // resolves, with a guard timeout so a stuck keyring never hangs startup.
+    if (!store->hasCachedSecret(key)) {
+        QEventLoop loop;
+        bool done = false;
+        const QMetaObject::Connection c1 = connect(store, &SecretStore::secretRetrieved,
+            this, [&](const QString &k, const QString &) { if (k == key) { done = true; loop.quit(); } });
+        const QMetaObject::Connection c2 = connect(store, &SecretStore::secretError,
+            this, [&](const QString &k, const QString &) { if (k == key) { done = true; loop.quit(); } });
+        QTimer guard;
+        guard.setSingleShot(true);
+        connect(&guard, &QTimer::timeout, &loop, &QEventLoop::quit);
+        guard.start(3000);
+        store->getSecret(key);
+        if (!done)
+            loop.exec();
+        disconnect(c1);
+        disconnect(c2);
+    }
+}
+
+bool SettingsViewModel::syncLanEnabled() const {
+    QSettings s;
+    return s.value(QStringLiteral("selfhost/allow_lan"), false).toBool();
+}
+void SettingsViewModel::setSyncLanEnabled(bool enabled) {
+    if (enabled == syncLanEnabled()) return;
+    QSettings s;
+    s.setValue(QStringLiteral("selfhost/allow_lan"), enabled);
+    emit syncLanEnabledChanged();
+}
+
+QString SettingsViewModel::localSyncUrl() const {
+    QSettings s;
+    const quint16 port = static_cast<quint16>(
+        s.value(QStringLiteral("selfhost/port"), 8765).toUInt());
+    // Prefer a private-range IPv4 (the address a phone on the same Wi-Fi can
+    // reach); fall back to the first non-loopback IPv4 otherwise.
+    QHostAddress fallback;
+    const QList<QHostAddress> addrs = QNetworkInterface::allAddresses();
+    for (const QHostAddress &a : addrs) {
+        if (a.isLoopback() || a.protocol() != QAbstractSocket::IPv4Protocol)
+            continue;
+        if (a.isInSubnet(QHostAddress(QStringLiteral("10.0.0.0")), 8)
+            || a.isInSubnet(QHostAddress(QStringLiteral("172.16.0.0")), 12)
+            || a.isInSubnet(QHostAddress(QStringLiteral("192.168.0.0")), 16)) {
+            return QStringLiteral("http://%1:%2").arg(a.toString()).arg(port);
+        }
+        if (fallback.isNull())
+            fallback = a;
+    }
+    if (!fallback.isNull())
+        return QStringLiteral("http://%1:%2").arg(fallback.toString()).arg(port);
+    return QString();
 }
 
 // --- Permissions ---

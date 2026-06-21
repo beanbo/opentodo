@@ -2,10 +2,12 @@
 
 #include <QColor>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QQmlEngine>
 
 class DataStore;
+class SecretStore;
 
 class SettingsViewModel : public QObject
 {
@@ -69,6 +71,10 @@ class SettingsViewModel : public QObject
     Q_PROPERTY(QString syncServerUrl READ syncServerUrl WRITE setSyncServerUrl NOTIFY syncServerUrlChanged)
     Q_PROPERTY(QString syncToken READ syncToken WRITE setSyncToken NOTIFY syncTokenChanged)
     Q_PROPERTY(bool selfHostActive READ selfHostActive NOTIFY syncBackendChanged)
+    // Opt-in: when the PC is the hub, also bind the sync server to the LAN
+    // (0.0.0.0) so phones can sync over Wi-Fi without Tailscale. Default false
+    // (loopback only). Device-local; takes effect on next app start.
+    Q_PROPERTY(bool syncLanEnabled READ syncLanEnabled WRITE setSyncLanEnabled NOTIFY syncLanEnabledChanged)
 
     // Permissions / first-run gates
     Q_PROPERTY(bool notificationPermissionAsked READ notificationPermissionAsked
@@ -179,9 +185,22 @@ public:
     QString syncToken() const;
     void setSyncToken(const QString &token);
     bool selfHostActive() const { return syncBackend() == QStringLiteral("selfhost"); }
+    bool syncLanEnabled() const;
+    void setSyncLanEnabled(bool enabled);
     // Generate a fresh 256-bit bearer token, persist it, and return it (the PC
     // shows this for the user to paste into the phone).
     Q_INVOKABLE QString generateSyncToken();
+    // The PC's LAN sync URL — "http://<first non-loopback IPv4>:<port>" — for the
+    // user to paste into the phone when syncLanEnabled is on. Empty if no usable
+    // LAN address was found. Recomputed on each call (IP can change with Wi-Fi).
+    Q_INVOKABLE QString localSyncUrl() const;
+
+    // Sec-1: wire the OS-keyring SecretStore so the self-host bearer token lives
+    // in the keyring (desktop) instead of plaintext QSettings. Runs a one-time
+    // migration of any existing plaintext token and synchronously warms the
+    // token cache so syncToken() works at startup. Must be called before the
+    // token is first read (server start / client configure). No-op if null.
+    void setSecretStore(SecretStore *store);
 
     // Permissions
     bool notificationPermissionAsked() const;
@@ -236,6 +255,7 @@ signals:
     void syncBackendChanged();
     void syncServerUrlChanged();
     void syncTokenChanged();
+    void syncLanEnabledChanged();
     void notificationPermissionAskedChanged();
     void backupRetentionCountChanged();
     void backupRetentionDaysChanged();
@@ -255,6 +275,7 @@ private:
     void set(const QString &key, const QVariant &value);
 
     DataStore *m_store;
+    QPointer<SecretStore> m_secretStore;   // Sec-1: nullable; QSettings path when unset
     // Tracks the canonical key being written by the current setter call so that
     // onSettingsChanged (fired by DataStore::settingsChanged) can distinguish a
     // single-key update (setter handles the NOTIFY) from a bulk replace (sync).

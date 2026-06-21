@@ -48,16 +48,21 @@ QByteArray reasonPhrase(int status)
     }
 }
 
-// Constant-time-ish compare so the token isn't trivially timing-probed.
+// Length-independent constant-time compare. `b` is the server's own token (the
+// reference); `a` is the attacker-controlled candidate. The size check is folded
+// into the accumulator rather than early-returning, so a length mismatch never
+// short-circuits and the loop bound is tied to the (fixed-length) server token —
+// the candidate's length is not leaked via response timing.
 bool tokensEqual(const QString &a, const QString &b)
 {
     const QByteArray x = a.toUtf8();
-    const QByteArray y = b.toUtf8();
-    if (x.size() != y.size())
-        return false;
-    quint8 diff = 0;
-    for (int i = 0; i < x.size(); ++i)
-        diff |= quint8(x[i]) ^ quint8(y[i]);
+    const QByteArray y = b.toUtf8();   // server token → reference length
+    quint8 diff = quint8((x.size() ^ y.size()) != 0);
+    const int n = y.size();
+    for (int i = 0; i < n; ++i) {
+        const quint8 xi = (i < x.size()) ? quint8(x[i]) : quint8(0);
+        diff |= xi ^ quint8(y[i]);
+    }
     return diff == 0;
 }
 
@@ -68,7 +73,7 @@ SyncHttpServer::SyncHttpServer(LocalDirRemote *store, QObject *parent)
 {
 }
 
-bool SyncHttpServer::start(quint16 port, const QString &token)
+bool SyncHttpServer::start(quint16 port, const QString &token, bool allowLan)
 {
     stop();
     if (token.isEmpty()) {
@@ -77,9 +82,13 @@ bool SyncHttpServer::start(quint16 port, const QString &token)
     }
     m_token = token;
     m_server = new QTcpServer(this);
-    // Loopback ONLY. Tailscale Funnel proxies the public HTTPS endpoint to this
-    // local port; binding 127.0.0.1 keeps the server off the LAN entirely.
-    if (!m_server->listen(QHostAddress::LocalHost, port)) {
+    // By default loopback ONLY: Tailscale Funnel proxies the public HTTPS
+    // endpoint to this local port, keeping the server off the LAN entirely.
+    // allowLan binds all interfaces (0.0.0.0) so LAN peers can sync over Wi-Fi
+    // without Tailscale — the bearer token is still the only auth gate.
+    const QHostAddress bindAddr = allowLan ? QHostAddress(QHostAddress::Any)
+                                           : QHostAddress(QHostAddress::LocalHost);
+    if (!m_server->listen(bindAddr, port)) {
         qCWarning(lcSyncServer) << "listen failed on" << port << ":"
                                 << m_server->errorString();
         delete m_server;
@@ -88,7 +97,8 @@ bool SyncHttpServer::start(quint16 port, const QString &token)
     }
     m_port = m_server->serverPort();
     connect(m_server, &QTcpServer::newConnection, this, &SyncHttpServer::onNewConnection);
-    qCInfo(lcSyncServer) << "listening on 127.0.0.1:" << m_port;
+    qCInfo(lcSyncServer) << "listening on"
+                         << (allowLan ? "0.0.0.0:" : "127.0.0.1:") << m_port;
     emit started(m_port);
     return true;
 }
@@ -178,6 +188,18 @@ void SyncHttpServer::onNewConnection()
                     respond(sock, 413, {}, "text/plain", st->method, st->target);
                     return;
                 }
+
+                // Auth gate at header-parse time: reject an invalid/missing
+                // token BEFORE buffering any body, so an unauthenticated caller
+                // can't make the server absorb up to MAX_BODY_BYTES. The
+                // Authorization header was already parsed above; /ping and every
+                // other route still requires auth because route() runs only past
+                // this point.
+                if (!tokensEqual(st->authToken, m_token)) {
+                    st->dispatched = true;
+                    respond(sock, 401, {}, "text/plain", st->method, st->target);
+                    return;
+                }
             }
 
             // Wait until the full declared body has arrived.
@@ -186,12 +208,6 @@ void SyncHttpServer::onNewConnection()
                 return;
 
             st->dispatched = true;
-
-            // Auth gate — before any routing or filesystem touch.
-            if (!tokensEqual(st->authToken, m_token)) {
-                respond(sock, 401, {}, "text/plain", st->method, st->target);
-                return;
-            }
 
             const QByteArray body = st->buf.mid(st->bodyStart,
                                                 static_cast<int>(st->contentLength));
