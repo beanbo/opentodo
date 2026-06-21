@@ -304,6 +304,41 @@ Rectangle {
                             color: ThemeManager.secondaryTextColor
                         }
                     }
+
+                    // LAN / Wi-Fi opt-in: bind the server to the local network so
+                    // a phone on the same Wi-Fi can sync without Tailscale. Off by
+                    // default (loopback only); takes effect on next app start.
+                    Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; height: 1; color: ThemeManager.borderColor }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 1
+                            Text { text: qsTr("Доступ по Wi-Fi (локальная сеть)"); font.pixelSize: 13; font.bold: true; color: ThemeManager.textColor }
+                            Text { Layout.fillWidth: true; text: qsTr("Без Tailscale — телефон должен быть в той же сети Wi-Fi"); wrapMode: Text.WordWrap; font.pixelSize: 11; color: ThemeManager.secondaryTextColor }
+                        }
+                        Switch {
+                            checked: settingsViewModel.syncLanEnabled
+                            onToggled: settingsViewModel.syncLanEnabled = checked
+                        }
+                    }
+                    ColumnLayout {
+                        visible: settingsViewModel.syncLanEnabled
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text { text: qsTr("Адрес в локальной сети (введите на телефоне):"); font.pixelSize: 12; color: ThemeManager.secondaryTextColor }
+                        TextField {
+                            Layout.fillWidth: true
+                            readOnly: true
+                            selectByMouse: true
+                            text: settingsViewModel.localSyncUrl()
+                            placeholderText: qsTr("адрес не найден")
+                            color: ThemeManager.textColor
+                            font.family: "monospace"
+                        }
+                        Text { Layout.fillWidth: true; text: qsTr("Включите, затем перезапустите приложение."); wrapMode: Text.WordWrap; font.pixelSize: 11; color: ThemeManager.secondaryTextColor }
+                    }
                 }
             }
         }
