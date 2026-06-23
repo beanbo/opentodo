@@ -69,4 +69,12 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: { haptics.light(); root.toggled() }
     }
+
+    // Completion pop — a quick scale-bounce when the task is checked off.
+    SequentialAnimation {
+        id: pop
+        NumberAnimation { target: circ; property: "scale"; from: 1.0; to: 1.25; duration: 120; easing.type: Easing.OutCubic }
+        NumberAnimation { target: circ; property: "scale"; to: 1.0; duration: 150; easing.type: Easing.OutBack }
+    }
+    onDoneChanged: if (root.done) pop.restart()
 }

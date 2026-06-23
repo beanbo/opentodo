@@ -747,8 +747,55 @@ Item {
                 model: root._flatModel
                 clip: true
                 spacing: 0
-                boundsBehavior: Flickable.StopAtBounds
+                // Pull-to-refresh: allow a downward overscroll past the top so a
+                // pull past the threshold triggers a sync.
+                boundsBehavior: Flickable.DragAndOvershootBounds
                 topMargin: mdens.listTopGap
+
+                readonly property real _pullThreshold: 72
+                property bool _refreshArmed: false
+                readonly property bool _syncing: (typeof syncViewModel !== "undefined") && syncViewModel.isSyncing
+                onVerticalOvershootChanged: {
+                    if (verticalOvershoot < -_pullThreshold && !_refreshArmed && !_syncing) {
+                        _refreshArmed = true
+                        haptics.light()
+                    }
+                }
+                onDraggingChanged: {
+                    if (!dragging && _refreshArmed) {
+                        _refreshArmed = false
+                        if (!_syncing && typeof syncViewModel !== "undefined") {
+                            haptics.medium()
+                            syncViewModel.sync()
+                        }
+                    }
+                }
+
+                // Pull-to-refresh indicator: rides into view as the list is pulled
+                // down (the header floats above the first row; clip hides it
+                // otherwise). Shows a spinner while a sync is in flight.
+                header: Item {
+                    width: taskListView.width
+                    height: 0
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: -34
+                        spacing: 8
+                        visible: taskListView.verticalOvershoot < -4 || taskListView._syncing
+                        BusyIndicator {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 22; height: 22
+                            running: taskListView._syncing || taskListView._refreshArmed
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: taskListView._syncing ? qsTr("Синхронизация…")
+                                  : (taskListView._refreshArmed ? qsTr("Отпустите для обновления")
+                                                                : qsTr("Потяните для обновления"))
+                            font.pixelSize: 12; color: ThemeManager.secondaryTextColor
+                        }
+                    }
+                }
 
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AsNeeded
