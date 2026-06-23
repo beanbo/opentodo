@@ -156,6 +156,7 @@ set(DOMAIN_SOURCES
     src/model/filter.cpp
     src/model/reminder.cpp
     src/model/comment.cpp
+    src/model/template.cpp
     src/filter/filterparser.cpp
     src/nlp/dateparser.cpp
     src/nlp/rules_en.cpp
@@ -173,6 +174,7 @@ set(DOMAIN_HEADERS
     src/model/filter.h
     src/model/reminder.h
     src/model/comment.h
+    src/model/template.h
     src/filter/tokens.h
     src/filter/filterparser.h
     src/nlp/dateparser.h
