@@ -105,6 +105,9 @@ MSheet {
         Loader { sourceComponent: actionRow; width: parent.width - 20
             onLoaded: { item.actIcon = "plus"; item.actLabel = qsTr("Дублировать"); item.onTrigger = function(){ root.duplicateRequested(root.taskId); root.open = false } } }
         Loader { sourceComponent: actionRow; width: parent.width - 20
+            visible: typeof templateViewModel !== "undefined"
+            onLoaded: { item.actIcon = "star"; item.actLabel = qsTr("Сохранить как шаблон"); item.onTrigger = function(){ if (typeof templateViewModel !== "undefined") templateViewModel.saveAsTemplate(root.taskText, [root.taskId]); root.open = false } } }
+        Loader { sourceComponent: actionRow; width: parent.width - 20
             onLoaded: { item.actIcon = "trash"; item.actColor = ThemeManager.errorColor; item.actTextColor = ThemeManager.errorColor; item.actLabel = qsTr("Удалить"); item.onTrigger = function(){ root.deleteRequested(root.taskId); root.open = false } } }
     }
 }

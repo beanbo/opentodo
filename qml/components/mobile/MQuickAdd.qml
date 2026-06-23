@@ -194,6 +194,62 @@ Item {
                     chipColor: ThemeManager.priorityP2Color
                     onClicked: root.hasLabel = !root.hasLabel
                 }
+                // Шаблон — insert a saved template into the current project.
+                MQuickAddChip {
+                    visible: typeof templateViewModel !== "undefined" && templateViewModel.count > 0
+                    active: false
+                    iconName: "note"
+                    label: qsTr("Шаблон")
+                    chipColor: ThemeManager.accentColor
+                    onClicked: tplPopup.open()
+                }
+            }
+        }
+
+        // Template picker — tap a template to materialise it into the current
+        // project and close quick-add.
+        Popup {
+            id: tplPopup
+            x: 16
+            y: -height - 8
+            width: panel.width - 32
+            padding: 6
+            background: Rectangle {
+                color: ThemeManager.surfaceColor; radius: 14
+                border.width: 1; border.color: ThemeManager.borderColor
+            }
+            contentItem: ListView {
+                implicitHeight: Math.min(contentHeight, 260)
+                clip: true
+                model: (typeof templateViewModel !== "undefined") ? templateViewModel : null
+                delegate: Rectangle {
+                    required property var model
+                    width: ListView.view ? ListView.view.width : 0
+                    height: 48
+                    radius: 8
+                    color: tplMa.pressed ? ThemeManager.hoverColor : "transparent"
+                    Row {
+                        anchors.fill: parent; anchors.leftMargin: 12; spacing: 10
+                        IconSvg { anchors.verticalCenter: parent.verticalCenter; name: "note"; size: 18; color: ThemeManager.accentColor }
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter; spacing: 1
+                            Text { text: model.name; font.pixelSize: 14; font.weight: Font.DemiBold; color: ThemeManager.textColor }
+                            Text { text: qsTr("Задач: %1").arg(model.itemCount); font.pixelSize: 11; color: ThemeManager.secondaryTextColor }
+                        }
+                    }
+                    MouseArea {
+                        id: tplMa
+                        anchors.fill: parent
+                        onClicked: {
+                            var pid = root._curProj ? root._curProj.id : ""
+                            templateViewModel.insertTemplate(model.tplId, pid, "")
+                            if (typeof haptics !== "undefined") haptics.medium()
+                            tplPopup.close()
+                            root.open = false
+                            root.created(qsTr("Шаблон добавлен"))
+                        }
+                    }
+                }
             }
         }
     }
