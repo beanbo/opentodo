@@ -37,6 +37,9 @@ public:
     void setAccessToken(const QString &t);
     void setRefreshToken(const QString &t);
 
+    // Sec-1: route the OAuth access/refresh tokens through the OS keyring.
+    void setSecretStore(SecretStore *store) { m_auth->setSecretStore(store); }
+
     // File operations (RemoteStore contract)
     bool uploadFile(const QString &remotePath, const QByteArray &data) override
         { return m_drive->uploadFile(remotePath, data); }

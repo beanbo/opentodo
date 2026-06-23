@@ -4,10 +4,12 @@
 #include <QString>
 #include <QNetworkAccessManager>
 #include <QJsonObject>
+#include <QPointer>
 
 class QTcpServer;
 class QTcpSocket;
 class QNetworkReply;
+class SecretStore;
 
 /**
  * @brief Handles the Google OAuth 2.0 "installed app" authorization flow.
@@ -56,6 +58,12 @@ public:
     void injectAccessToken(const QString &token);
     void injectRefreshToken(const QString &token);
 
+    // Sec-1: route the gdrive access/refresh tokens through the OS keyring
+    // (SecretStore) instead of plaintext QSettings. Runs a one-time migration of
+    // any existing plaintext tokens and (on later runs) loads them back from the
+    // keyring. The account email stays in QSettings (not a secret). No-op if null.
+    void setSecretStore(SecretStore *store);
+
 signals:
     void authenticatedChanged();
     void accountEmailChanged();
@@ -71,7 +79,11 @@ private:
 
     void saveTokens();
     void loadTokens();
+    // Synchronously warm the SecretStore cache for `key` (pumps a local event
+    // loop until the async keyring read resolves, with a guard timeout).
+    void warmSecretSync(const QString &key);
 
+    QPointer<SecretStore> m_secretStore;   // Sec-1: nullable; QSettings path when unset
     QNetworkAccessManager m_nam;
     QString m_accessToken;
     QString m_refreshToken;

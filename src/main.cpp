@@ -332,6 +332,10 @@ int main(int argc, char *argv[])
     // resolves correctly (setSecretStore warms settingsVM's cache synchronously).
     auto *secretStore = new SecretStore(&app);
     settingsVM->setSecretStore(secretStore);
+    // Sec-1: also route the Google Drive OAuth tokens through the keyring
+    // (one-time migration off plaintext QSettings).
+    if (auto *gd = syncEngine->gdriveClient())
+        gd->setSecretStore(secretStore);
 
     // ── Sync backend selection (self-hosted PC vs Google Drive) ─────────────
     // Device-local choice in QSettings (selfhost/backend). Drive is the default

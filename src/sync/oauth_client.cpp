@@ -1,5 +1,7 @@
 #include "oauth_client.h"
 
+#include "services/secretstore.h"
+
 #include <QCryptographicHash>
 #include <QDebug>
 #include <QDesktopServices>
@@ -632,18 +634,82 @@ void OAuthClient::injectRefreshToken(const QString &token)
 void OAuthClient::saveTokens()
 {
     QSettings settings;
-    settings.setValue(QStringLiteral("gdrive/access_token"),  m_accessToken);
-    settings.setValue(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
-    settings.setValue(QStringLiteral("gdrive/email"),         m_accountEmail);
+    settings.setValue(QStringLiteral("gdrive/email"), m_accountEmail);
+    if (m_secretStore) {
+        // Sec-1: secrets go to the keyring; never leave a plaintext copy behind.
+        m_secretStore->setSecret(QStringLiteral("gdrive/access_token"),  m_accessToken);
+        m_secretStore->setSecret(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
+        settings.remove(QStringLiteral("gdrive/access_token"));
+        settings.remove(QStringLiteral("gdrive/refresh_token"));
+    } else {
+        settings.setValue(QStringLiteral("gdrive/access_token"),  m_accessToken);
+        settings.setValue(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
+    }
 }
 
 void OAuthClient::loadTokens()
 {
     QSettings settings;
-    m_accessToken  = settings.value(QStringLiteral("gdrive/access_token")).toString();
-    m_refreshToken = settings.value(QStringLiteral("gdrive/refresh_token")).toString();
     m_accountEmail = settings.value(QStringLiteral("gdrive/email")).toString();
+    if (m_secretStore) {
+        warmSecretSync(QStringLiteral("gdrive/access_token"));
+        warmSecretSync(QStringLiteral("gdrive/refresh_token"));
+        m_accessToken  = m_secretStore->cachedSecret(QStringLiteral("gdrive/access_token"));
+        m_refreshToken = m_secretStore->cachedSecret(QStringLiteral("gdrive/refresh_token"));
+    } else {
+        m_accessToken  = settings.value(QStringLiteral("gdrive/access_token")).toString();
+        m_refreshToken = settings.value(QStringLiteral("gdrive/refresh_token")).toString();
+    }
     m_authenticated = !m_accessToken.isEmpty();
+}
+
+void OAuthClient::warmSecretSync(const QString &key)
+{
+    if (!m_secretStore || m_secretStore->hasCachedSecret(key))
+        return;
+    QEventLoop loop;
+    bool done = false;
+    const QMetaObject::Connection c1 = connect(m_secretStore, &SecretStore::secretRetrieved,
+        this, [&](const QString &k, const QString &) { if (k == key) { done = true; loop.quit(); } });
+    const QMetaObject::Connection c2 = connect(m_secretStore, &SecretStore::secretError,
+        this, [&](const QString &k, const QString &) { if (k == key) { done = true; loop.quit(); } });
+    QTimer guard;
+    guard.setSingleShot(true);
+    connect(&guard, &QTimer::timeout, &loop, &QEventLoop::quit);
+    guard.start(3000);
+    m_secretStore->getSecret(key);
+    if (!done)
+        loop.exec();
+    disconnect(c1);
+    disconnect(c2);
+}
+
+void OAuthClient::setSecretStore(SecretStore *store)
+{
+    m_secretStore = store;
+    if (!store)
+        return;
+    const QString kAcc = QStringLiteral("gdrive/access_token");
+    const QString kRef = QStringLiteral("gdrive/refresh_token");
+    QSettings s;
+    if (s.contains(kAcc) || s.contains(kRef)) {
+        // First run after the keyring migration: the tokens were loaded from
+        // plaintext QSettings at construction. Push them into the keyring
+        // (write-through caches) and purge the plaintext copies — the value is
+        // preserved, so the Drive session stays authenticated.
+        if (!m_accessToken.isEmpty())  store->setSecret(kAcc, m_accessToken);
+        if (!m_refreshToken.isEmpty()) store->setSecret(kRef, m_refreshToken);
+        s.remove(kAcc);
+        s.remove(kRef);
+        s.sync();
+    } else {
+        // Already migrated (QSettings holds no tokens): load from the keyring so
+        // the session is authenticated at startup.
+        const bool wasAuth = m_authenticated;
+        loadTokens();   // now SecretStore-aware
+        if (m_authenticated != wasAuth)
+            emit authenticatedChanged();
+    }
 }
 
 #ifdef Q_OS_ANDROID
