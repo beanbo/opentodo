@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QPointer>
 #include <QString>
@@ -95,6 +96,22 @@ public:
     Q_INVOKABLE void sendMessage(const QString &userMessage);
     Q_INVOKABLE void clearConversation();
 
+    // ── Tool-use (create/modify tasks via confirmed structured actions) ───────
+    // The assistant is instructed (buildSystemPrompt) to append a fenced
+    //   ```action { "op": "...", ... }```
+    // block when the user asks to mutate tasks. onChatReplyFinished extracts it,
+    // emits actionProposed(json, humanSummary) for a confirmation UI, and strips
+    // it from the displayed text. confirmAction() applies it (the ONLY path that
+    // mutates) and emits actionExecuted. Supported ops: add_task, complete_task,
+    // set_priority, delete_task. Portable across all providers (no per-provider
+    // native tool-calling protocol).
+    Q_INVOKABLE bool confirmAction(const QString &actionJson);
+
+    // Test hooks (no network): extract the action JSON object from a raw
+    // response (returns "" if none) and the response text with the block removed.
+    static QString extractActionJson(const QString &response);
+    static QString stripActionBlock(const QString &response);
+
     // Sets the API key for the *current* provider. Kept for QML/test
     // backward compat. Prefer setApiKeyFor(id, key) when targeting a
     // specific provider from the Settings UI.
@@ -167,6 +184,10 @@ signals:
     void openAiCompatBaseUrlChanged();
     void responseReceived(const QString &text);
     void errorReceived(const QString &error);
+    // Tool-use: a task mutation the assistant proposes; QML shows `summary` with
+    // confirm/cancel and calls confirmAction(actionJson) on confirm.
+    void actionProposed(const QString &actionJson, const QString &summary);
+    void actionExecuted(const QString &summary);
     // Subtask-specific signals
     void subtasksGenerated(const QStringList &suggestions, const QString &parentId);
     void subtaskGenerationFailed(const QString &error);
@@ -192,6 +213,13 @@ private slots:
 private:
     QString buildSystemPrompt() const;        // includes current task context (S-5.22)
     QString buildUserContextSnapshot() const; // current projects/tasks summary (S-5.22)
+
+    // Tool-use: execute a parsed action against the store. Returns true on
+    // success and fills `summary` with a human one-liner. Confirmation happens
+    // in QML before this is reached (via confirmAction).
+    bool executeAction(const QJsonObject &action, QString *summary);
+    // Build the human summary for a proposed action (for the confirmation UI).
+    static QString actionSummary(const QJsonObject &action);
 
     // S-5.1 / Sec-1: XOR-obfuscation helpers for the *legacy* QSettings storage
     // path. Still public-static because:

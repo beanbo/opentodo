@@ -14,6 +14,10 @@ Item {
 
     readonly property bool _configured: typeof aiAssistant !== "undefined" && aiAssistant.isConfigured
 
+    // Tool-use: a task mutation the assistant proposed, awaiting confirmation.
+    property string _pendingAction: ""
+    property string _pendingSummary: ""
+
     MTopBar {
         id: topBar
         anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
@@ -35,8 +39,10 @@ Item {
     Connections {
         target: typeof aiAssistant !== "undefined" ? aiAssistant : null
         ignoreUnknownSignals: true
-        function onResponseReceived(text) { messages.append({ "role": "assistant", "content": text }); Qt.callLater(function(){ chat.positionViewAtEnd() }) }
+        function onResponseReceived(text) { if (text.trim() !== "") { messages.append({ "role": "assistant", "content": text }); Qt.callLater(function(){ chat.positionViewAtEnd() }) } }
         function onErrorReceived(err)     { messages.append({ "role": "assistant", "content": qsTr("Ошибка: %1").arg(err) }); Qt.callLater(function(){ chat.positionViewAtEnd() }) }
+        function onActionProposed(actionJson, summary) { root._pendingAction = actionJson; root._pendingSummary = summary }
+        function onActionExecuted(summary) { root._pendingAction = ""; messages.append({ "role": "assistant", "content": qsTr("✓ %1").arg(summary) }); Qt.callLater(function(){ chat.positionViewAtEnd() }) }
     }
 
     function _send(txt) {
@@ -150,6 +156,47 @@ Item {
                     border.width: 1; border.color: ThemeManager.borderColor
                     Text { anchors.left: parent.left; anchors.leftMargin: 16; anchors.right: parent.right; anchors.rightMargin: 16; anchors.verticalCenter: parent.verticalCenter; text: modelData; font.pixelSize: 14; color: ThemeManager.textColor; elide: Text.ElideRight }
                     MouseArea { id: cma; anchors.fill: parent; onClicked: root._send(modelData) }
+                }
+            }
+        }
+    }
+
+    // ── Action confirmation card (tool-use) ───────────────────────────────
+    Rectangle {
+        id: actionCard
+        visible: root._pendingAction !== ""
+        anchors.bottom: inputBar.top
+        anchors.left: parent.left; anchors.right: parent.right
+        anchors.leftMargin: 12; anchors.rightMargin: 12; anchors.bottomMargin: 8
+        height: visible ? cardCol.implicitHeight + 24 : 0
+        radius: 14
+        color: ThemeManager.surfaceColor
+        border.width: 1; border.color: ThemeManager.accentColor
+        Column {
+            id: cardCol
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.margins: 12
+            spacing: 10
+            Row {
+                spacing: 8
+                IconSvg { anchors.verticalCenter: parent.verticalCenter; name: "sparkles"; size: 16; color: ThemeManager.accentColor }
+                Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Подтвердите действие"); font.pixelSize: 13; font.weight: Font.Bold; color: ThemeManager.textColor }
+            }
+            Text { width: parent.width; text: root._pendingSummary; wrapMode: Text.WordWrap; font.pixelSize: 14; color: ThemeManager.textColor }
+            Row {
+                anchors.right: parent.right
+                spacing: 10
+                Rectangle {
+                    width: cancTxt.implicitWidth + 28; height: 36; radius: 10
+                    color: "transparent"; border.width: 1; border.color: ThemeManager.borderColor
+                    Text { id: cancTxt; anchors.centerIn: parent; text: qsTr("Отмена"); color: ThemeManager.textColor; font.pixelSize: 13; font.weight: Font.DemiBold }
+                    MouseArea { anchors.fill: parent; onClicked: root._pendingAction = "" }
+                }
+                Rectangle {
+                    width: confTxt.implicitWidth + 28; height: 36; radius: 10
+                    color: ThemeManager.accentColor
+                    Text { id: confTxt; anchors.centerIn: parent; text: qsTr("Подтвердить"); color: ThemeManager.accentForeground; font.pixelSize: 13; font.weight: Font.Bold }
+                    MouseArea { anchors.fill: parent; onClicked: { if (typeof haptics !== "undefined") haptics.medium(); aiAssistant.confirmAction(root._pendingAction); root._pendingAction = "" } }
                 }
             }
         }
