@@ -93,6 +93,8 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Reminder *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply present keys via setters (signals fire). Dedups reminder_update.
+    void applyJson(const QJsonObject &json);
 
     // QML-callable convenience setters: ReminderDue / LocationObject are
     // Q_GADGETs and not directly constructable from QML, so we expose plain

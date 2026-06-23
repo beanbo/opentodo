@@ -48,3 +48,16 @@ Label *Label::fromJson(const QJsonObject &json, QObject *parent)
     l->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
     return l;
 }
+
+void Label::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("color")))
+        setColor(json[QStringLiteral("color")].toString());
+    if (json.contains(QStringLiteral("order")))
+        setOrder(json[QStringLiteral("order")].toInt());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("is_favorite")))
+        setIsFavorite(json[QStringLiteral("is_favorite")].toBool());
+    // name excluded — applyCommit uses DataStore::renameLabel.
+}

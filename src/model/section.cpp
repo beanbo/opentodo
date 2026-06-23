@@ -67,3 +67,17 @@ Section *Section::fromJson(const QJsonObject &json, QObject *parent)
     s->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
     return s;
 }
+
+void Section::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("name")))
+        setName(json[QStringLiteral("name")].toString());
+    if (json.contains(QStringLiteral("order")))
+        setOrder(json[QStringLiteral("order")].toInt());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("is_collapsed")))
+        setIsCollapsed(json[QStringLiteral("is_collapsed")].toBool());
+    if (json.contains(QStringLiteral("is_archived")))
+        setIsArchived(json[QStringLiteral("is_archived")].toBool());
+}

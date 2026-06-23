@@ -73,6 +73,8 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Comment *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply present keys via setters (signals fire). Dedups comment_update.
+    void applyJson(const QJsonObject &json);
 
 signals:
     void idChanged();

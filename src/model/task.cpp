@@ -246,3 +246,58 @@ Task *Task::fromJson(const QJsonObject &json, QObject *parent)
 
     return task;
 }
+
+void Task::applyJson(const QJsonObject &json)
+{
+    // Setter-based (signals fire) partial application — mirrors exactly the
+    // field set SyncEngine::applyCommit's task_update used to hand-write. Only
+    // keys present are touched; parent_id cycle-guarding stays in applyCommit.
+    if (json.contains(QStringLiteral("content")))
+        setContent(json[QStringLiteral("content")].toString());
+    if (json.contains(QStringLiteral("description")))
+        setDescription(json[QStringLiteral("description")].toString());
+    if (json.contains(QStringLiteral("priority")))
+        setPriority(json[QStringLiteral("priority")].toInt());
+    if (json.contains(QStringLiteral("is_completed")))
+        setIsCompleted(json[QStringLiteral("is_completed")].toBool());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("project_id")))
+        setProjectId(json[QStringLiteral("project_id")].toString());
+    if (json.contains(QStringLiteral("section_id")))
+        setSectionId(json[QStringLiteral("section_id")].toString());
+    if (json.contains(QStringLiteral("parent_id")))
+        setParentId(json[QStringLiteral("parent_id")].toString());
+    if (json.contains(QStringLiteral("order")))
+        setOrder(json[QStringLiteral("order")].toInt());
+    if (json.contains(QStringLiteral("day_order")))
+        setDayOrder(json[QStringLiteral("day_order")].toInt());
+    if (json.contains(QStringLiteral("is_pinned")))
+        setIsPinned(json[QStringLiteral("is_pinned")].toBool());
+    if (json.contains(QStringLiteral("due")))
+        setDue(DueObject::fromJson(json[QStringLiteral("due")].toObject()));
+    if (json.contains(QStringLiteral("deadline"))) {
+        const QJsonValue dv = json[QStringLiteral("deadline")];
+        setDeadline(dv.isObject()
+            ? dv.toObject().value(QStringLiteral("date")).toString()
+            : dv.toString());
+    }
+    if (json.contains(QStringLiteral("labels"))) {
+        QStringList labels;
+        for (const auto &v : json[QStringLiteral("labels")].toArray())
+            labels.append(v.toString());
+        setLabels(labels);
+    }
+    if (json.contains(QStringLiteral("completed_at"))) {
+        const QString iso = json[QStringLiteral("completed_at")].toString();
+        setCompletedAt(iso.isEmpty()
+            ? QDateTime()
+            : QDateTime::fromString(iso, Qt::ISODateWithMs));
+    }
+    if (json.contains(QStringLiteral("color")))
+        setColor(json[QStringLiteral("color")].toString());
+    if (json.contains(QStringLiteral("duration")))
+        setDuration(DurationObject::fromJson(json[QStringLiteral("duration")].toObject()));
+    if (json.contains(QStringLiteral("estimate_minutes")))
+        setEstimateMinutes(json[QStringLiteral("estimate_minutes")].toInt());
+}

@@ -179,3 +179,25 @@ Reminder *Reminder::fromJson(const QJsonObject &json, QObject *parent)
     r->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
     return r;
 }
+
+void Reminder::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("due"))) {
+        // "due" is a nested object (ReminderDue) or a bare ISO datetime string.
+        const QJsonValue dueVal = json[QStringLiteral("due")];
+        if (dueVal.isObject())
+            setDue(ReminderDue::fromJson(dueVal.toObject()));
+        else if (dueVal.isString())
+            setDueDatetime(dueVal.toString());
+    }
+    if (json.contains(QStringLiteral("type")))
+        setType(json[QStringLiteral("type")].toString());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("minute_offset")))
+        setMinuteOffset(json[QStringLiteral("minute_offset")].toInt());
+    if (json.contains(QStringLiteral("location")))
+        setLocation(LocationObject::fromJson(json[QStringLiteral("location")].toObject()));
+    if (json.contains(QStringLiteral("recurrence_rule")))
+        setRecurrenceRule(json[QStringLiteral("recurrence_rule")].toString());
+}

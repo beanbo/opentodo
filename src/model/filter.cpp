@@ -67,3 +67,19 @@ Filter *Filter::fromJson(const QJsonObject &json, QObject *parent)
     f->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
     return f;
 }
+
+void Filter::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("name")))
+        setName(json[QStringLiteral("name")].toString());
+    if (json.contains(QStringLiteral("query")))
+        setQuery(json[QStringLiteral("query")].toString());
+    if (json.contains(QStringLiteral("color")))
+        setColor(json[QStringLiteral("color")].toString());
+    if (json.contains(QStringLiteral("order")))
+        setOrder(json[QStringLiteral("order")].toInt());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("is_favorite")))
+        setIsFavorite(json[QStringLiteral("is_favorite")].toBool());
+}

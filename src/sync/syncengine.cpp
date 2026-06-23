@@ -840,6 +840,54 @@ static QJsonObject applyPatch(const QJsonObject &currentJson, const QJsonObject 
     return result;
 }
 
+// Walk the candidate parent's ancestry: true if reparenting `taskId` under
+// `candidate` would create a subtask cycle (self-parent, or an ancestry chain
+// that loops back to taskId). MAX_DEPTH bounds the walk so a pre-existing remote
+// cycle can't infinite-loop this guard.
+static bool wouldCreateParentCycle(DataStore *store, const QString &taskId,
+                                   const QString &candidate)
+{
+    if (candidate == taskId)
+        return true;
+    if (candidate.isEmpty())
+        return false;
+    constexpr int MAX_DEPTH = 1000;
+    QString cursor = candidate;
+    for (int i = 0; i < MAX_DEPTH; ++i) {
+        Task *ancestor = store->taskById(cursor);
+        if (!ancestor) return false;        // chain ends at a missing task
+        const QString next = ancestor->parentId();
+        if (next.isEmpty()) return false;   // reached a root
+        if (next == taskId) return true;    // chain returns to the reparented task
+        if (next == cursor) return false;   // self-loop ancestor; stop walking
+        cursor = next;
+    }
+    return false;
+}
+
+// Project-tree variant of the cycle guard (mirrors the task one but walks the
+// project parentId graph).
+static bool wouldCreateProjectParentCycle(DataStore *store, const QString &projectId,
+                                          const QString &candidate)
+{
+    if (candidate == projectId)
+        return true;
+    if (candidate.isEmpty())
+        return false;
+    constexpr int MAX_DEPTH = 1000;
+    QString cursor = candidate;
+    for (int i = 0; i < MAX_DEPTH; ++i) {
+        Project *ancestor = store->projectById(cursor);
+        if (!ancestor) return false;
+        const QString next = ancestor->parentId();
+        if (next.isEmpty()) return false;
+        if (next == projectId) return true;
+        if (next == cursor) return false;
+        cursor = next;
+    }
+    return false;
+}
+
 void SyncEngine::applyCommit(Commit *commit)
 {
     // B-2.16/17: advance the local HLC using the commit's HLC field directly.
@@ -863,118 +911,28 @@ void SyncEngine::applyCommit(Commit *commit)
             // F-2.2, B-2.6/7: generic patch — handles all fields + preserves _meta.
             auto *task = m_store->taskById(op.entityId);
             if (task) {
-                const QJsonObject patched = applyPatch(task->toJson(), op.data);
-                // Re-hydrate the live object from the patched JSON.
-                // Task::fromJsonInto does not exist yet; use the available
-                // pattern of creating a temporary and copying fields over.
-                // NOTE TO STORAGE AGENT: addTaskFromJson(patched) or
-                // Task::applyJson(task, patched) would be cleaner; use the
-                // existing setters for now.
-                if (patched.contains(QStringLiteral("content")))
-                    task->setContent(patched[QStringLiteral("content")].toString());
-                if (patched.contains(QStringLiteral("description")))
-                    task->setDescription(patched[QStringLiteral("description")].toString());
-                if (patched.contains(QStringLiteral("priority")))
-                    task->setPriority(patched[QStringLiteral("priority")].toInt());
-                if (patched.contains(QStringLiteral("is_completed")))
-                    task->setIsCompleted(patched[QStringLiteral("is_completed")].toBool());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    task->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                if (patched.contains(QStringLiteral("project_id")))
-                    task->setProjectId(patched[QStringLiteral("project_id")].toString());
-                if (patched.contains(QStringLiteral("section_id")))
-                    task->setSectionId(patched[QStringLiteral("section_id")].toString());
-                if (patched.contains(QStringLiteral("parent_id"))) {
-                    // Q3.03-D: cycle guard. An inbound commit that sets
-                    // parent_id must not create a subtask cycle (e.g.
-                    // A→B→C followed by C→A → A reachable from C's chain).
-                    // Walk the candidate parent's ancestry — if it leads
-                    // back to the task being updated, REJECT the
-                    // parent_id update but apply every other field in
-                    // the patch. MAX_DEPTH bounds the walk so a
-                    // pre-existing remote cycle cannot infinite-loop
-                    // this guard either.
-                    const QString candidate =
-                        patched[QStringLiteral("parent_id")].toString();
-                    constexpr int MAX_DEPTH = 1000;
-                    bool wouldCycle = false;
-                    if (candidate == op.entityId) {
-                        // Self-parent — trivially a 1-cycle.
-                        wouldCycle = true;
-                    } else if (!candidate.isEmpty()) {
-                        QString cursor = candidate;
-                        for (int i = 0; i < MAX_DEPTH; ++i) {
-                            Task *ancestor = m_store->taskById(cursor);
-                            if (!ancestor) break;                  // chain ends at a missing task — no cycle.
-                            const QString next = ancestor->parentId();
-                            if (next.isEmpty()) break;             // reached root — no cycle.
-                            if (next == op.entityId) {             // chain returns to the task being reparented.
-                                wouldCycle = true;
-                                break;
-                            }
-                            if (next == cursor) break;             // self-loop on an ancestor; not our cycle, but stop walking.
-                            cursor = next;
-                        }
-                    }
-                    if (wouldCycle) {
-                        qCWarning(lcSync)
-                            << "applyCommit: rejected parent_id cycle for task"
-                            << op.entityId << "→" << candidate
-                            << "(ancestry chain would loop back).";
-                    } else {
-                        task->setParentId(candidate);
-                    }
+                QJsonObject patched = applyPatch(task->toJson(), op.data);
+                // Q3.03-D: reject a parent_id that would create a subtask cycle,
+                // but apply every other field. Dropping the key from the patch
+                // leaves the task's current parent_id untouched.
+                if (patched.contains(QStringLiteral("parent_id"))
+                    && wouldCreateParentCycle(
+                           m_store, op.entityId,
+                           patched[QStringLiteral("parent_id")].toString())) {
+                    qCWarning(lcSync)
+                        << "applyCommit: rejected parent_id cycle for task"
+                        << op.entityId << "→"
+                        << patched[QStringLiteral("parent_id")].toString();
+                    patched.remove(QStringLiteral("parent_id"));
                 }
-                if (patched.contains(QStringLiteral("order")))
-                    task->setOrder(patched[QStringLiteral("order")].toInt());
-                if (patched.contains(QStringLiteral("day_order")))
-                    task->setDayOrder(patched[QStringLiteral("day_order")].toInt());
-                if (patched.contains(QStringLiteral("is_pinned")))
-                    task->setIsPinned(patched[QStringLiteral("is_pinned")].toBool());
-                // iter-6 fix: previously this dispatch covered ~11 fields and
-                // silently skipped the rest. The follow-up loadFromJson(merged)
-                // in pull() papered over it, but any QML binding consumed by a
-                // taskChanged emit between applyCommit and loadFromJson saw a
-                // stale field. Now the live Task object actually mirrors the
-                // patched JSON for every key Task::toJson emits.
-                if (patched.contains(QStringLiteral("due")))
-                    task->setDue(DueObject::fromJson(
-                        patched[QStringLiteral("due")].toObject()));
-                if (patched.contains(QStringLiteral("deadline"))) {
-                    // Task::toJson wraps deadline as {"date": ...}; Task::fromJson
-                    // pulls .date from the wrapper. Mirror both shapes here so a
-                    // raw-string future-emit doesn't quietly break.
-                    const QJsonValue dv = patched[QStringLiteral("deadline")];
-                    if (dv.isObject())
-                        task->setDeadline(dv.toObject().value(QStringLiteral("date")).toString());
-                    else
-                        task->setDeadline(dv.toString());
-                }
-                if (patched.contains(QStringLiteral("labels"))) {
-                    QStringList labels;
-                    for (const auto &v : patched[QStringLiteral("labels")].toArray())
-                        labels.append(v.toString());
-                    task->setLabels(labels);
-                }
-                if (patched.contains(QStringLiteral("completed_at"))) {
-                    const QString iso = patched[QStringLiteral("completed_at")].toString();
-                    task->setCompletedAt(iso.isEmpty()
-                        ? QDateTime()
-                        : QDateTime::fromString(iso, Qt::ISODateWithMs));
-                }
-                if (patched.contains(QStringLiteral("color")))
-                    task->setColor(patched[QStringLiteral("color")].toString());
-                if (patched.contains(QStringLiteral("duration")))
-                    task->setDuration(DurationObject::fromJson(
-                        patched[QStringLiteral("duration")].toObject()));
-                if (patched.contains(QStringLiteral("estimate_minutes")))
-                    task->setEstimateMinutes(patched[QStringLiteral("estimate_minutes")].toInt());
-                // Q2.18-A FIX: push the inbound per-field _meta back into the
-                // DataStore's m_taskMeta map. Previously we dropped it on the
-                // floor and then called markTaskModified, which re-stamped
-                // updated_at with the LOCAL HLC — silently degrading per-field
-                // LWW to whole-object LWW for inbound updates. The merger has
-                // already determined the right stamps; trust them.
+                // iter-6: re-hydrate the LIVE object via setters so each field's
+                // NOTIFY signal fires (QML bindings + DataStore's relational
+                // bucket cache observe every change) rather than relying on the
+                // later loadFromJson to paper over a stale field.
+                task->applyJson(patched);
+                // Q2.18-A: push inbound per-field _meta back so per-field LWW
+                // survives — the merger already determined the right stamps;
+                // trust them (don't re-stamp with the local HLC).
                 m_store->applyInboundTaskMeta(task->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -992,59 +950,19 @@ void SyncEngine::applyCommit(Commit *commit)
             auto *project = m_store->projectById(op.entityId);
             if (project) {
                 const QJsonObject patched = applyPatch(project->toJson(), op.data);
-                if (patched.contains(QStringLiteral("name")))
-                    project->setName(patched[QStringLiteral("name")].toString());
-                if (patched.contains(QStringLiteral("color")))
-                    project->setColor(patched[QStringLiteral("color")].toString());
-                if (patched.contains(QStringLiteral("view_style")))
-                    project->setViewStyle(patched[QStringLiteral("view_style")].toString());
-                if (patched.contains(QStringLiteral("is_favorite")))
-                    project->setIsFavorite(patched[QStringLiteral("is_favorite")].toBool());
-                if (patched.contains(QStringLiteral("is_archived")))
-                    project->setIsArchived(patched[QStringLiteral("is_archived")].toBool());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    project->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                if (patched.contains(QStringLiteral("order")))
-                    project->setOrder(patched[QStringLiteral("order")].toInt());
-                // iter-6 fix: previously this dispatch only covered the 7 fields
-                // above. The follow-up loadFromJson(merged) covered most callers,
-                // but parent_id, description, notes, icon, weekly_goal,
-                // linked_repo_path never reached the live Project object between
-                // applyCommit and loadFromJson — QML bindings emitted with stale
-                // values, and iter-5 added parent_id stamping in addProject which
-                // expects the inverse path to actually apply on inbound.
+                // Iter-7: guard inbound project parent_id (cycle + Inbox-stays-
+                // root). Without it a peer commit creating A→B→A would overflow
+                // the JS stack in the recursive sidebar walker (Q3.19) on expand.
                 if (patched.contains(QStringLiteral("parent_id"))) {
                     const QString candidate =
                         patched[QStringLiteral("parent_id")].toString();
-                    // Iter-7: cycle + Inbox guard for inbound project parent_id.
-                    // ProjectViewModel::updateProject has the equivalent local
-                    // guard, and task_update has the equivalent inbound guard
-                    // (syncengine.cpp ~657). Without a guard here a peer can
-                    // ship a commit that creates A→B→A — the recursive
-                    // sidebar walker in SidebarContent.qml (Q3.19) would
-                    // overflow the JS stack on expand, freezing the UI.
-                    constexpr int MAX_DEPTH = 1000;
-                    bool wouldCycle = (candidate == op.entityId); // self-parent
-                    if (!wouldCycle && !candidate.isEmpty()) {
-                        QString cursor = candidate;
-                        for (int i = 0; i < MAX_DEPTH; ++i) {
-                            Project *ancestor = m_store->projectById(cursor);
-                            if (!ancestor) break;
-                            const QString next = ancestor->parentId();
-                            if (next.isEmpty()) break;
-                            if (next == op.entityId) { wouldCycle = true; break; }
-                            if (next == cursor) break; // pre-existing self-loop; stop
-                            cursor = next;
-                        }
-                    }
-                    if (wouldCycle) {
+                    if (wouldCreateProjectParentCycle(m_store, op.entityId, candidate)) {
                         qCWarning(lcSync)
                             << "applyCommit: rejected project parent_id cycle for"
                             << op.entityId << "→" << candidate;
                     } else if (project->isInbox() && !candidate.isEmpty()) {
                         // Inbox must stay root — sidebar / inbox filter mode
-                        // assume it lives at the top level. Mirrors the local
-                        // guard in ProjectViewModel::updateProject.
+                        // assume it lives at the top level.
                         qCWarning(lcSync)
                             << "applyCommit: rejected parent_id for Inbox project"
                             << op.entityId;
@@ -1052,17 +970,10 @@ void SyncEngine::applyCommit(Commit *commit)
                         project->setParentId(candidate);
                     }
                 }
-                if (patched.contains(QStringLiteral("description")))
-                    project->setDescription(patched[QStringLiteral("description")].toString());
-                if (patched.contains(QStringLiteral("notes")))
-                    project->setNotes(patched[QStringLiteral("notes")].toString());
-                if (patched.contains(QStringLiteral("icon")))
-                    project->setIcon(patched[QStringLiteral("icon")].toString());
-                if (patched.contains(QStringLiteral("weekly_goal")))
-                    project->setWeeklyGoal(patched[QStringLiteral("weekly_goal")].toInt());
-                if (patched.contains(QStringLiteral("linked_repo_path")))
-                    project->setLinkedRepoPath(patched[QStringLiteral("linked_repo_path")].toString());
-                // Q2.18-A FIX: push inbound _meta back (see task_update for rationale).
+                // All other fields via setters (signals fire). parent_id handled
+                // above; Project::applyJson deliberately skips it.
+                project->applyJson(patched);
+                // Q2.18-A: push inbound _meta back (per-field LWW survives).
                 m_store->applyInboundProjectMeta(project->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -1079,27 +990,10 @@ void SyncEngine::applyCommit(Commit *commit)
             // F-2.4: previously missing.
             auto *section = m_store->sectionById(op.entityId);
             if (section) {
-                // Q2.18-A FIX: route through applyPatch so the inbound _meta
-                // is preserved and propagated back into m_sectionMeta. Without
-                // this the merger sees zero CRDT stamps for fields the commit
-                // touched and silently downgrades to whole-object LWW.
+                // applyPatch preserves the inbound _meta so per-field CRDT stamps
+                // survive (else the merger downgrades to whole-object LWW).
                 const QJsonObject patched = applyPatch(section->toJson(), op.data);
-                if (patched.contains(QStringLiteral("name")))
-                    section->setName(patched[QStringLiteral("name")].toString());
-                if (patched.contains(QStringLiteral("order")))
-                    section->setOrder(patched[QStringLiteral("order")].toInt());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    section->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                // Q3.27: is_collapsed + is_archived were missing from the
-                // dispatch — inbound commits that toggled either field were
-                // silently dropped. Both are listed in DataStore's per-field
-                // meta keys (datastore.cpp:971), so they participate in CRDT
-                // merging at the snapshot layer; without the apply path
-                // they never reach the in-memory Section.
-                if (patched.contains(QStringLiteral("is_collapsed")))
-                    section->setIsCollapsed(patched[QStringLiteral("is_collapsed")].toBool());
-                if (patched.contains(QStringLiteral("is_archived")))
-                    section->setIsArchived(patched[QStringLiteral("is_archived")].toBool());
+                section->applyJson(patched);
                 m_store->applyInboundSectionMeta(section->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -1116,32 +1010,14 @@ void SyncEngine::applyCommit(Commit *commit)
             // F-2.4: previously missing.
             auto *label = m_store->labelById(op.entityId);
             if (label) {
-                // Q2.18-A FIX: applyPatch + push inbound _meta back.
                 const QJsonObject patched = applyPatch(label->toJson(), op.data);
-                if (patched.contains(QStringLiteral("name"))) {
-                    // Iter-night-40: route renames through renameLabel
-                    // so m_labelNameIndex stays consistent AND every
-                    // task's `labels` array is cascaded with the new
-                    // name. Bare setName left both stale until the
-                    // next loadFromJson, so peer renames were silently
-                    // invisible (labelByName returned nullptr for the
-                    // new name, tasks still showed the old chip text,
-                    // and the `@label` filter predicate missed the
-                    // renamed label).
+                // Iter-night-40: route renames through DataStore::renameLabel so
+                // m_labelNameIndex AND every task's `labels` array stay consistent
+                // (Label::applyJson deliberately skips name).
+                if (patched.contains(QStringLiteral("name")))
                     m_store->renameLabel(op.entityId,
                         patched[QStringLiteral("name")].toString());
-                }
-                if (patched.contains(QStringLiteral("color")))
-                    label->setColor(patched[QStringLiteral("color")].toString());
-                if (patched.contains(QStringLiteral("order")))
-                    label->setOrder(patched[QStringLiteral("order")].toInt());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    label->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                // Iter-15: is_favorite was in Label::toJson but not applied
-                // on inbound — peer's ★ toggle was invisible in the sidebar
-                // Favorites section until the next full loadFromJson cycle.
-                if (patched.contains(QStringLiteral("is_favorite")))
-                    label->setIsFavorite(patched[QStringLiteral("is_favorite")].toBool());
+                label->applyJson(patched);
                 m_store->applyInboundLabelMeta(label->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -1158,29 +1034,8 @@ void SyncEngine::applyCommit(Commit *commit)
             // F-2.4: previously missing.
             auto *comment = m_store->commentById(op.entityId);
             if (comment) {
-                // Q2.18-A FIX: applyPatch + push inbound _meta back.
                 const QJsonObject patched = applyPatch(comment->toJson(), op.data);
-                if (patched.contains(QStringLiteral("content")))
-                    comment->setContent(patched[QStringLiteral("content")].toString());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    comment->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                if (patched.contains(QStringLiteral("author")))
-                    comment->setAuthor(patched[QStringLiteral("author")].toString());
-                // Iter-night-41: attachment was missing from this dispatch
-                // (sibling of iter-15 is_favorite for labels, iter-60/61 for
-                // filters/reminders, iter-12 for section is_collapsed/is_archived).
-                // Comment::toJson emits an `attachment` JSON object when
-                // m_attachment.isNull() is false (comment.cpp:69-70) — peer
-                // attaches/edits a file, sets a thumbnail URL, etc., and the
-                // change rides over via the commit log. Without this dispatch
-                // the inbound attachment object is silently dropped on the
-                // receiving device until the next loadFromJson cycle, even
-                // though the patched._meta entry IS pushed back via
-                // applyInboundCommentMeta below.
-                if (patched.contains(QStringLiteral("attachment"))) {
-                    comment->setAttachment(AttachmentObject::fromJson(
-                        patched[QStringLiteral("attachment")].toObject()));
-                }
+                comment->applyJson(patched);
                 m_store->applyInboundCommentMeta(comment->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -1197,34 +1052,8 @@ void SyncEngine::applyCommit(Commit *commit)
             // F-2.4: previously missing.
             auto *reminder = m_store->reminderById(op.entityId);
             if (reminder) {
-                // Q2.18-A FIX: applyPatch + push inbound _meta back.
                 const QJsonObject patched = applyPatch(reminder->toJson(), op.data);
-                if (patched.contains(QStringLiteral("due"))) {
-                    // "due" is stored as a nested JSON object matching ReminderDue.
-                    const QJsonValue dueVal = patched[QStringLiteral("due")];
-                    if (dueVal.isObject())
-                        reminder->setDue(ReminderDue::fromJson(dueVal.toObject()));
-                    else if (dueVal.isString())
-                        reminder->setDueDatetime(dueVal.toString());
-                }
-                if (patched.contains(QStringLiteral("type")))
-                    reminder->setType(patched[QStringLiteral("type")].toString());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    reminder->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                // Iter-15: Reminder::toJson also writes minute_offset (for
-                // relative reminders), location (for geofenced ones), and
-                // recurrence_rule. All three were dropped on inbound — peer
-                // edits to "remind me 15 min before" / geofence coords /
-                // RRULE silently revert until the next loadFromJson cycle.
-                // ReminderScheduler uses these inputs directly, so the gap
-                // can also misfire OS toasts at the old offset.
-                if (patched.contains(QStringLiteral("minute_offset")))
-                    reminder->setMinuteOffset(patched[QStringLiteral("minute_offset")].toInt());
-                if (patched.contains(QStringLiteral("location")))
-                    reminder->setLocation(LocationObject::fromJson(
-                        patched[QStringLiteral("location")].toObject()));
-                if (patched.contains(QStringLiteral("recurrence_rule")))
-                    reminder->setRecurrenceRule(patched[QStringLiteral("recurrence_rule")].toString());
+                reminder->applyJson(patched);
                 m_store->applyInboundReminderMeta(reminder->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }
@@ -1241,23 +1070,8 @@ void SyncEngine::applyCommit(Commit *commit)
         } else if (type == QStringLiteral("filter_update")) {
             auto *filter = m_store->filterById(op.entityId);
             if (filter) {
-                // Q2.18-A FIX: applyPatch + push inbound _meta back.
                 const QJsonObject patched = applyPatch(filter->toJson(), op.data);
-                if (patched.contains(QStringLiteral("name")))
-                    filter->setName(patched[QStringLiteral("name")].toString());
-                if (patched.contains(QStringLiteral("query")))
-                    filter->setQuery(patched[QStringLiteral("query")].toString());
-                if (patched.contains(QStringLiteral("color")))
-                    filter->setColor(patched[QStringLiteral("color")].toString());
-                if (patched.contains(QStringLiteral("order")))
-                    filter->setOrder(patched[QStringLiteral("order")].toInt());
-                if (patched.contains(QStringLiteral("is_deleted")))
-                    filter->setIsDeleted(patched[QStringLiteral("is_deleted")].toBool());
-                // Iter-15: same as label — is_favorite was in toJson but
-                // unhandled on inbound, so a peer's ★ on a filter wasn't
-                // visible until the next loadFromJson cycle.
-                if (patched.contains(QStringLiteral("is_favorite")))
-                    filter->setIsFavorite(patched[QStringLiteral("is_favorite")].toBool());
+                filter->applyJson(patched);
                 m_store->applyInboundFilterMeta(filter->id(),
                     patched.value(QStringLiteral("_meta")).toObject());
             }

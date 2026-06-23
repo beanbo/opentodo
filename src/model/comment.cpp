@@ -94,3 +94,15 @@ Comment *Comment::fromJson(const QJsonObject &json, QObject *parent)
     c->m_author = json[QStringLiteral("author")].toString();  // "" for legacy comments
     return c;
 }
+
+void Comment::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("content")))
+        setContent(json[QStringLiteral("content")].toString());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("author")))
+        setAuthor(json[QStringLiteral("author")].toString());
+    if (json.contains(QStringLiteral("attachment")))
+        setAttachment(AttachmentObject::fromJson(json[QStringLiteral("attachment")].toObject()));
+}

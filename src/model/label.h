@@ -42,6 +42,10 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Label *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply present keys via setters (signals fire). name is NOT applied here —
+    // applyCommit routes renames through DataStore::renameLabel to keep the name
+    // index + per-task label arrays consistent.
+    void applyJson(const QJsonObject &json);
 
 signals:
     void idChanged();

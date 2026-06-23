@@ -107,3 +107,32 @@ Project *Project::fromJson(const QJsonObject &json, QObject *parent)
     p->m_linkedRepoPath = json[QStringLiteral("linked_repo_path")].toString();
     return p;
 }
+
+void Project::applyJson(const QJsonObject &json)
+{
+    if (json.contains(QStringLiteral("name")))
+        setName(json[QStringLiteral("name")].toString());
+    if (json.contains(QStringLiteral("color")))
+        setColor(json[QStringLiteral("color")].toString());
+    if (json.contains(QStringLiteral("view_style")))
+        setViewStyle(json[QStringLiteral("view_style")].toString());
+    if (json.contains(QStringLiteral("is_favorite")))
+        setIsFavorite(json[QStringLiteral("is_favorite")].toBool());
+    if (json.contains(QStringLiteral("is_archived")))
+        setIsArchived(json[QStringLiteral("is_archived")].toBool());
+    if (json.contains(QStringLiteral("is_deleted")))
+        setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("order")))
+        setOrder(json[QStringLiteral("order")].toInt());
+    if (json.contains(QStringLiteral("description")))
+        setDescription(json[QStringLiteral("description")].toString());
+    if (json.contains(QStringLiteral("notes")))
+        setNotes(json[QStringLiteral("notes")].toString());
+    if (json.contains(QStringLiteral("icon")))
+        setIcon(json[QStringLiteral("icon")].toString());
+    if (json.contains(QStringLiteral("weekly_goal")))
+        setWeeklyGoal(json[QStringLiteral("weekly_goal")].toInt());
+    if (json.contains(QStringLiteral("linked_repo_path")))
+        setLinkedRepoPath(json[QStringLiteral("linked_repo_path")].toString());
+    // parent_id intentionally excluded — applyCommit guards + sets it.
+}

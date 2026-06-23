@@ -170,6 +170,13 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Task *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply a (possibly partial) JSON object onto this live task via the public
+    // setters — so every field change emits its NOTIFY signal (live QML bindings
+    // and DataStore's relational-bucket cache observe the update). Only keys
+    // present in `json` are touched. Used by SyncEngine::applyCommit's
+    // task_update to replace ~60 lines of hand-written field dispatch. Mutable
+    // fields only — id / created_at / updated_at are managed elsewhere.
+    void applyJson(const QJsonObject &json);
 
 signals:
     void idChanged();

@@ -85,6 +85,12 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Project *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply a (possibly partial) JSON object onto this live project via setters
+    // (NOTIFY signals fire). Only present keys are touched. parent_id is
+    // deliberately NOT applied here — SyncEngine::applyCommit guards it (cycle +
+    // Inbox-stays-root) and sets it itself. Used to dedup the project_update
+    // dispatch.
+    void applyJson(const QJsonObject &json);
 
 signals:
     void idChanged();

@@ -53,6 +53,8 @@ public:
 
     Q_INVOKABLE QJsonObject toJson() const;
     static Section *fromJson(const QJsonObject &json, QObject *parent = nullptr);
+    // Apply present keys via setters (signals fire). Dedups section_update.
+    void applyJson(const QJsonObject &json);
 
 signals:
     void idChanged();
