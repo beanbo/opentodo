@@ -89,7 +89,45 @@ public class NotificationHelper {
                 .setContentIntent(pi)
                 .setPriority(NotificationCompat.PRIORITY_HIGH);
 
+        // Reminder action buttons — Complete / Snooze (task reminders only).
+        if (taskId != null && !taskId.isEmpty()) {
+            builder.addAction(android.R.drawable.checkbox_on_background, "Выполнить",
+                actionPendingIntent(context, id, taskId, "complete"));
+            builder.addAction(android.R.drawable.ic_popup_reminder, "Отложить",
+                actionPendingIntent(context, id, taskId, "snooze"));
+        }
+
         nm.notify(id, builder.build());
+    }
+
+    // Build a PendingIntent that routes a notification-action button press back
+    // to NotificationReceiver carrying the action verb + task id.
+    private static PendingIntent actionPendingIntent(Context context, int notifId,
+                                                     String taskId, String action) {
+        Intent intent = new Intent(context, NotificationReceiver.class);
+        // Distinct action string per (verb, id) so the PendingIntents differ.
+        intent.setAction("org.opentodo.NOTIF_ACTION." + action + "." + notifId);
+        intent.putExtra("notifAction", action);
+        intent.putExtra("taskId", taskId);
+        intent.putExtra("notifId", notifId);
+        int requestCode = notifId * 8 + (action.equals("complete") ? 1 : 2);
+        return PendingIntent.getBroadcast(context, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    // Route an action press to native (app process alive) or persist it to
+    // SharedPreferences (app dead) for the C++ side to drain on next start.
+    public static void dispatchAction(Context context, String taskId, String action) {
+        try {
+            nativeOnNotificationAction(taskId, action);
+        } catch (Throwable t) {
+            android.content.SharedPreferences sp =
+                context.getSharedPreferences("opentodo_notif", Context.MODE_PRIVATE);
+            String existing = sp.getString("pending_actions", "");
+            String entry = taskId + "" + action;
+            sp.edit().putString("pending_actions",
+                existing.isEmpty() ? entry : existing + "\n" + entry).apply();
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -223,4 +261,9 @@ public class NotificationHelper {
     // Qt thread via QMetaObject::invokeMethod(…, Qt::QueuedConnection).
     // -----------------------------------------------------------------------
     private static native void onPermissionResult(boolean granted);
+
+    // Native callback for a notification action button — implemented in
+    // notificationservice_android.cpp
+    // (Java_org_opentodo_NotificationHelper_nativeOnNotificationAction).
+    private static native void nativeOnNotificationAction(String taskId, String action);
 }

@@ -18,6 +18,9 @@ static constexpr const char *k_helperClass = "org/opentodo/NotificationHelper";
 // UI thread (Java_org_opentodo_…) — protected by the fact that only one
 // permission request can be in flight at a time.
 static AndroidNotificationService *s_pendingService = nullptr;
+// Set in the ctor; used by the notification-action JNI callback below to route
+// a Complete/Snooze button press from the Android UI thread to the Qt thread.
+static AndroidNotificationService *s_actionService = nullptr;
 
 // ── B-5.4: static JNI callback — called by NotificationHelper.onPermissionResult()
 // This runs on the Android UI thread.  We queue back to the Qt thread via
@@ -43,6 +46,28 @@ Java_org_opentodo_NotificationHelper_onPermissionResult(JNIEnv *, jclass, jboole
     }, Qt::QueuedConnection);
 }
 
+// ── Notification action callback (Complete / Snooze button) ─────────────────
+// Called by NotificationHelper.dispatchAction() on the Android UI thread when
+// the app process is alive. Queues to the Qt thread and emits
+// notificationActionInvoked so main.cpp can apply the action.
+extern "C" JNIEXPORT void JNICALL
+Java_org_opentodo_NotificationHelper_nativeOnNotificationAction(
+    JNIEnv *env, jclass, jstring jTaskId, jstring jAction)
+{
+    AndroidNotificationService *svc = s_actionService;
+    if (!svc || jTaskId == nullptr || jAction == nullptr)
+        return;
+    const char *t = env->GetStringUTFChars(jTaskId, nullptr);
+    const char *a = env->GetStringUTFChars(jAction, nullptr);
+    const QString taskId = QString::fromUtf8(t);
+    const QString action = QString::fromUtf8(a);
+    env->ReleaseStringUTFChars(jTaskId, t);
+    env->ReleaseStringUTFChars(jAction, a);
+    QMetaObject::invokeMethod(svc, [svc, taskId, action]() {
+        emit svc->notificationActionInvoked(taskId, action);
+    }, Qt::QueuedConnection);
+}
+
 // ── B-5.6: persistent notification-id allocator using QSettings ─────────────
 // Replaces qHash(taskId) which collides for different taskIds.
 static int allocateId(const QString &taskId)
@@ -64,7 +89,55 @@ static int allocateId(const QString &taskId)
 AndroidNotificationService::AndroidNotificationService(QObject *parent)
     : NotificationService(parent)
 {
+    s_actionService = this;
     createNotificationChannel();
+    drainPendingActions();
+}
+
+void AndroidNotificationService::drainPendingActions()
+{
+    // Read + clear SharedPreferences("opentodo_notif")["pending_actions"], a
+    // "taskIdaction" list (\n-separated) written by Java when an action
+    // button was pressed while this process was dead.
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid())
+        return;
+    QJniObject name = QJniObject::fromString(QStringLiteral("opentodo_notif"));
+    QJniObject prefs = context.callObjectMethod(
+        "getSharedPreferences",
+        "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+        name.object<jstring>(), 0);
+    if (!prefs.isValid())
+        return;
+    QJniObject key = QJniObject::fromString(QStringLiteral("pending_actions"));
+    QJniObject def = QJniObject::fromString(QString());
+    QJniObject val = prefs.callObjectMethod(
+        "getString",
+        "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+        key.object<jstring>(), def.object<jstring>());
+    const QString pending = val.isValid() ? val.toString() : QString();
+    if (pending.isEmpty())
+        return;
+    // Clear the pref so actions aren't replayed on every launch.
+    QJniObject editor = prefs.callObjectMethod(
+        "edit", "()Landroid/content/SharedPreferences$Editor;");
+    if (editor.isValid()) {
+        editor.callObjectMethod("remove",
+            "(Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;",
+            key.object<jstring>());
+        editor.callMethod<jboolean>("commit", "()Z");
+    }
+    const QStringList entries = pending.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (const QString &e : entries) {
+        const QStringList parts = e.split(QChar(0x0001));
+        if (parts.size() != 2)
+            continue;
+        const QString taskId = parts.at(0);
+        const QString action = parts.at(1);
+        QMetaObject::invokeMethod(this, [this, taskId, action]() {
+            emit notificationActionInvoked(taskId, action);
+        }, Qt::QueuedConnection);
+    }
 }
 
 void AndroidNotificationService::createNotificationChannel()

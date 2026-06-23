@@ -673,6 +673,23 @@ int main(int argc, char *argv[])
                          taskVM, [taskVM](const QString &taskId) {
             taskVM->openTaskById(taskId);
         });
+        // Reminder action buttons (Android): "complete" finishes the task,
+        // "snooze" re-fires the reminder in 10 minutes — without opening the app.
+        QObject::connect(notificationService, &NotificationService::notificationActionInvoked,
+                         taskVM, [taskVM, dataStore, notificationService](const QString &taskId,
+                                                                          const QString &action) {
+            if (taskId.isEmpty())
+                return;
+            if (action == QStringLiteral("complete")) {
+                taskVM->completeTask(taskId);
+            } else if (action == QStringLiteral("snooze")) {
+                if (Task *t = dataStore->taskById(taskId))
+                    notificationService->scheduleNotification(
+                        t->content(),
+                        QObject::tr("Отложенное напоминание"),
+                        QDateTime::currentDateTime().addSecs(600), taskId);
+            }
+        });
         // Record that the user has responded to the notification permission prompt,
         // regardless of whether they granted or denied it, so we don't re-prompt.
         QObject::connect(notificationService, &NotificationService::permissionGranted,

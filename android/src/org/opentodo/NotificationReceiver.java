@@ -12,6 +12,20 @@ public class NotificationReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        // Action-button press (Complete / Snooze) rather than an alarm firing.
+        String notifAction = intent.getStringExtra("notifAction");
+        if (notifAction != null && !notifAction.isEmpty()) {
+            int nid    = intent.getIntExtra("notifId", 0);
+            String tid = intent.getStringExtra("taskId");
+            if (tid == null) tid = "";
+            NotificationHelper.dispatchAction(context, tid, notifAction);
+            // Dismiss the notification; the C++ side applies complete / reschedules snooze.
+            android.app.NotificationManager nm = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(nid);
+            return;
+        }
+
         int notifId     = intent.getIntExtra("notifId", 0);
         String title    = intent.getStringExtra("title");
         String body     = intent.getStringExtra("body");

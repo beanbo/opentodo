@@ -34,6 +34,12 @@ public:
 
 signals:
     void notificationClicked(const QString &taskId);
+    // Fired when the user taps an ACTION BUTTON on a reminder notification
+    // (e.g. "complete" / "snooze") rather than the body. `action` is a stable
+    // verb ("complete" | "snooze"). Wired in main.cpp to apply the action
+    // without opening the app. Currently emitted by the Android backend; other
+    // platforms may emit it once their native action-button path exists.
+    void notificationActionInvoked(const QString &taskId, const QString &action);
     void permissionGranted();
     void permissionDenied();
 

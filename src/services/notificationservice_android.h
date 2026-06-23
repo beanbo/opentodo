@@ -16,6 +16,10 @@ public:
     void requestPermission() override;
 private:
     void createNotificationChannel();
+    // Cold-start: drain any notification-action presses that occurred while the
+    // app process was dead (persisted by Java to SharedPreferences) and re-emit
+    // notificationActionInvoked for each, queued so listeners are wired first.
+    void drainPendingActions();
     bool m_channelCreated = false;
 };
 #endif
