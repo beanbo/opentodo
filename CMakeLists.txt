@@ -227,6 +227,7 @@ set(INFRA_SOURCES
     src/services/aiassistant.cpp
     src/services/llmprovider.cpp
     src/services/secretstore.cpp
+    src/services/hapticservice.cpp
     src/sync/sharemanager.cpp
     src/services/updatechecker.cpp
     src/services/telemetry.cpp
@@ -265,6 +266,7 @@ set(INFRA_HEADERS
     src/services/aiassistant.h
     src/services/llmprovider.h
     src/services/secretstore.h
+    src/services/hapticservice.h
     src/sync/sharemanager.h
     src/services/crashlogger.h
     src/services/dailyreviewservice.h

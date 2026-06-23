@@ -110,7 +110,7 @@ Item {
     Timer {
         id: lpTimer
         interval: 480
-        onTriggered: { root._lpFired = true; root.longPressed() }
+        onTriggered: { root._lpFired = true; haptics.medium(); root.longPressed() }
     }
     Timer {
         id: completeTimer
@@ -124,6 +124,7 @@ Item {
         if (root.selectionMode || root._axis !== "x") { root._axis = ""; return }
         root._axis = ""
         if (root.dragOffset > root._swComplete) {
+            haptics.medium()
             root.dragOffset = root.width + 40       // fling off
             completeTimer.restart()
             return
@@ -175,7 +176,7 @@ Item {
                 IconSvg { anchors.horizontalCenter: parent.horizontalCenter; name: "trash"; size: 20; color: "#ffffff" }
                 Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Удалить"); color: "#ffffff"; font.pixelSize: 11; font.weight: Font.DemiBold }
             }
-            MouseArea { anchors.fill: parent; onClicked: { root._close(); root.deleteTask() } }
+            MouseArea { anchors.fill: parent; onClicked: { haptics.heavy(); root._close(); root.deleteTask() } }
         }
     }
 

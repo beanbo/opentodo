@@ -48,7 +48,7 @@ Item {
             id: ma
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.clicked()
+            onClicked: { haptics.medium(); root.clicked() }
         }
     }
 }

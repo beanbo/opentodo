@@ -72,7 +72,7 @@ Item {
     Timer {
         id: lpTimer
         interval: 460
-        onTriggered: { root._fired = true; root.longPressed() }
+        onTriggered: { root._fired = true; haptics.medium(); root.longPressed() }
     }
 
     MouseArea {

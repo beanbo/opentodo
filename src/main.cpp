@@ -60,6 +60,7 @@
 #include "services/windowchrome.h"
 #include "services/undostack.h"
 #include "services/aiassistant.h"
+#include "services/hapticservice.h"
 #include "services/secretstore.h"
 #include "services/updatechecker.h"
 #include "services/crashlogger.h"
@@ -777,6 +778,8 @@ int main(int argc, char *argv[])
     // Sec-1: SecretStore exposed for future direct-from-QML secret access
     // (currently unused — AIAssistant handles its own key internally).
     ctx->setContextProperty(QStringLiteral("secretStore"), secretStore);
+    // Haptic feedback for touch interactions (Android Vibrator; no-op on desktop).
+    ctx->setContextProperty(QStringLiteral("haptics"), new HapticService(&app));
     ctx->setContextProperty(QStringLiteral("updateChecker"), updateChecker);
     ctx->setContextProperty(QStringLiteral("todoistImporter"), todoistImporter);
     ctx->setContextProperty(QStringLiteral("taskExporter"), taskExporter);

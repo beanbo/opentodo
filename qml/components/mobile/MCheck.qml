@@ -67,6 +67,6 @@ Item {
         anchors.fill: parent
         anchors.margins: -8   // expand the hit-zone past the visual circle
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.toggled()
+        onClicked: { haptics.light(); root.toggled() }
     }
 }
