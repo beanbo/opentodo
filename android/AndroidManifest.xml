@@ -40,7 +40,7 @@
         android:icon="@drawable/ic_launcher"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true"
-        android:allowBackup="true">
+        android:allowBackup="false">
 
         <!--
             Q-Android-Audit #2.1: launcher activity is now our own subclass of

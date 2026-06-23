@@ -1,14 +1,31 @@
 #include "llmprovider.h"
 
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QUrl>
-#include <QUrlQuery>
 
 // ─── Common helpers ──────────────────────────────────────────────────────────
 
 namespace {
+
+// True if host is loopback or a private-LAN (RFC1918) address. Cleartext http://
+// to these is acceptable (a local/LAN LLM server); http:// to a PUBLIC host is
+// refused because the Authorization: Bearer key would cross the internet in the
+// clear.
+bool isLocalOrPrivateHost(const QString &host)
+{
+    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
+        return true;
+    const QHostAddress a(host);
+    if (a.isNull())
+        return false;
+    return a.isLoopback()
+        || a.isInSubnet(QHostAddress(QStringLiteral("10.0.0.0")), 8)
+        || a.isInSubnet(QHostAddress(QStringLiteral("172.16.0.0")), 12)
+        || a.isInSubnet(QHostAddress(QStringLiteral("192.168.0.0")), 16);
+}
 
 // Parse an API-shaped JSON error envelope. Returns the human message when
 // found, else returns an empty string. Each provider has a slightly different
@@ -167,12 +184,12 @@ GeminiProvider::buildRequest(const QString &apiKey,
 
     QUrl url(QStringLiteral("https://generativelanguage.googleapis.com/v1beta/models/")
              + model + QStringLiteral(":generateContent"));
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("key"), apiKey);
-    url.setQuery(q);
 
     QNetworkRequest req{url};
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    // Pass the key in a header rather than the URL query string, so it doesn't
+    // leak into client logs / proxy access logs / crash breadcrumbs.
+    req.setRawHeader("x-goog-api-key", apiKey.toUtf8());
 
     return { req, QJsonDocument(body).toJson(QJsonDocument::Compact) };
 }
@@ -286,6 +303,17 @@ QString OpenAICompatibleProvider::effectiveBaseUrl() const
             && parsed.scheme() != QLatin1String("https"))) {
         qWarning("OpenAICompatibleProvider: rejecting invalid base_url '%s' "
                  "— falling back to api.openai.com",
+                 qPrintable(u));
+        return QStringLiteral("https://api.openai.com");
+    }
+
+    // Refuse cleartext http:// to a PUBLIC host — the Authorization: Bearer API
+    // key would cross the internet in the clear. Loopback / private-LAN (a local
+    // Ollama / LM Studio) over http is fine.
+    if (parsed.scheme() == QLatin1String("http") && !isLocalOrPrivateHost(parsed.host())) {
+        qWarning("OpenAICompatibleProvider: rejecting cleartext http:// base_url "
+                 "'%s' to a public host (API key would leak) — use https or a "
+                 "loopback/LAN host; falling back to api.openai.com",
                  qPrintable(u));
         return QStringLiteral("https://api.openai.com");
     }

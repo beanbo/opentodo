@@ -1,6 +1,7 @@
 #include "httpremote.h"
 
 #include <QEventLoop>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
@@ -38,6 +39,32 @@ void HttpRemote::configure(const QString &baseUrl, const QString &token)
     QString u = baseUrl.trimmed();
     while (u.endsWith(QLatin1Char('/')))
         u.chop(1);
+
+    // Refuse cleartext http:// to a PUBLIC host: the bearer token must not cross
+    // the internet in the clear (use the https Tailscale-Funnel URL). http to
+    // loopback or a private-LAN address is allowed — that's the Wi-Fi sync case,
+    // where the server speaks plain HTTP on the local network. An empty base
+    // disables the remote (isAuthenticated() → false), so no token is ever sent.
+    if (!u.isEmpty()) {
+        const QUrl parsed(u, QUrl::StrictMode);
+        if (parsed.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0) {
+            const QString host = parsed.host();
+            const QHostAddress addr(host);
+            const bool localOrPrivate =
+                host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0
+                || (!addr.isNull() && (addr.isLoopback()
+                    || addr.isInSubnet(QHostAddress(QStringLiteral("10.0.0.0")), 8)
+                    || addr.isInSubnet(QHostAddress(QStringLiteral("172.16.0.0")), 12)
+                    || addr.isInSubnet(QHostAddress(QStringLiteral("192.168.0.0")), 16)));
+            if (!localOrPrivate) {
+                qWarning("HttpRemote: refusing cleartext http:// to public host "
+                         "'%s' (bearer token would leak); use https.",
+                         qPrintable(host));
+                u.clear();
+            }
+        }
+    }
+
     m_baseUrl = u;
     m_token = token.trimmed();
 }
