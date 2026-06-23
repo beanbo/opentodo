@@ -11,6 +11,11 @@ Item {
     property string iconName: "plus"
     signal clicked()
 
+    // Accessibility: announce the FAB as a button to TalkBack.
+    Accessible.role: Accessible.Button
+    Accessible.name: qsTr("Добавить задачу")
+    Accessible.onPressAction: root.clicked()
+
     readonly property int s: small ? 48 : 60
     implicitWidth:  s
     implicitHeight: s

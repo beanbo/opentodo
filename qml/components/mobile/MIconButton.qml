@@ -15,6 +15,12 @@ Item {
     property string tooltip: ""
     signal clicked()
 
+    // Accessibility: announce as a button to TalkBack/screen readers, named by
+    // its tooltip (or icon) and invokable via the accessibility press action.
+    Accessible.role: Accessible.Button
+    Accessible.name: tooltip !== "" ? tooltip : iconName
+    Accessible.onPressAction: root.clicked()
+
     implicitWidth:  diameter
     implicitHeight: diameter
 

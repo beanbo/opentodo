@@ -15,6 +15,13 @@ Item {
     signal clicked()
     signal longPressed()
 
+    // Accessibility: a navigation button that reports its selected state.
+    Accessible.role: Accessible.Button
+    Accessible.name: label
+    Accessible.checkable: true
+    Accessible.checked: root.active
+    Accessible.onPressAction: root.clicked()
+
     property bool _fired: false
 
     Column {

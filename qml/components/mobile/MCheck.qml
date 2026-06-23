@@ -13,6 +13,15 @@ Item {
     property var  dens
     signal toggled()
 
+    // Accessibility: a real checkbox to TalkBack — exposes checked state and is
+    // togglable via the accessibility toggle/press action.
+    Accessible.role: Accessible.CheckBox
+    Accessible.checkable: true
+    Accessible.checked: root.done
+    Accessible.name: qsTr("Отметить выполненной")
+    Accessible.onToggleAction: root.toggled()
+    Accessible.onPressAction: root.toggled()
+
     readonly property color checkColor: {
         switch (priority) {
         case 1:  return ThemeManager.priorityP1Color
