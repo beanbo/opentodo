@@ -411,6 +411,7 @@ set(APP_SOURCES
     src/viewmodels/karmaviewmodel.cpp
     src/viewmodels/syncviewmodel.cpp
     src/viewmodels/notificationsviewmodel.cpp
+    src/viewmodels/templateviewmodel.cpp
     src/app/clibridge.cpp
 )
 
@@ -424,6 +425,7 @@ set(APP_HEADERS
     src/viewmodels/karmaviewmodel.h
     src/viewmodels/syncviewmodel.h
     src/viewmodels/notificationsviewmodel.h
+    src/viewmodels/templateviewmodel.h
     src/app/clibridge.h
 )
 

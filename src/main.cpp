@@ -49,6 +49,7 @@
 #include "viewmodels/karmaviewmodel.h"
 #include "viewmodels/syncviewmodel.h"
 #include "viewmodels/notificationsviewmodel.h"
+#include "viewmodels/templateviewmodel.h"
 
 // Platform services
 #include "services/notificationservice.h"
@@ -324,6 +325,7 @@ int main(int argc, char *argv[])
     auto *karmaVM = new KarmaViewModel(dataStore, &app);
     auto *syncVM = new SyncViewModel(syncEngine, &app);
     auto *notificationsVM = new NotificationsViewModel(dataStore, syncEngine, &app);
+    auto *templateVM = new TemplateViewModel(dataStore, &app);
 
     // Sec-1: SecretStore — OS keyring (Windows Credential Manager / macOS
     // Keychain / libsecret|kwallet via QtKeychain) on desktop; QSettings
@@ -773,6 +775,7 @@ int main(int argc, char *argv[])
     ctx->setContextProperty(QStringLiteral("karmaViewModel"), karmaVM);
     ctx->setContextProperty(QStringLiteral("syncViewModel"), syncVM);
     ctx->setContextProperty(QStringLiteral("notificationsViewModel"), notificationsVM);
+    ctx->setContextProperty(QStringLiteral("templateViewModel"), templateVM);
     ctx->setContextProperty(QStringLiteral("undoStack"), undoStack);
     ctx->setContextProperty(QStringLiteral("aiAssistant"), aiAssistant);
     // Sec-1: SecretStore exposed for future direct-from-QML secret access
