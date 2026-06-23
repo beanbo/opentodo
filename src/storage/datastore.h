@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 #include <QList>
 #include <QMap>
 #include <QJsonObject>
@@ -386,6 +387,23 @@ private:
     QList<Task *> m_tasks;
     QMap<QString, Task *> m_taskIndex;
     QMap<QString, QJsonObject> m_taskMeta;       ///< entityId → "_meta" blob
+
+    // perf: lazy relational buckets so tasksForProject/tasksForSection/subtasks
+    // are O(1) lookups instead of O(T) scans (which previously ran inside
+    // per-edit O(P*T) UI loops). Built on demand and invalidated whenever any
+    // mutation fires dataChanged() — so no per-mutation upkeep can be missed.
+    // Order within each bucket mirrors m_tasks (the queries' original order).
+    void ensureTaskBuckets() const;
+    // Tasks are handed out as mutable pointers and callers change projectId /
+    // sectionId / parentId / isDeleted directly (not always via a DataStore
+    // method that emits dataChanged). Connect those field-change signals so a
+    // direct mutation still invalidates the buckets. Called for every task as it
+    // is registered into m_tasks.
+    void watchTaskForBuckets(Task *t);
+    mutable QHash<QString, QList<Task *>> m_tasksByProject;  ///< top-level only
+    mutable QHash<QString, QList<Task *>> m_tasksBySection;  ///< any depth
+    mutable QHash<QString, QList<Task *>> m_subtasksByParent;
+    mutable bool m_taskBucketsDirty = true;
 
     QList<Project *> m_projects;
     QMap<QString, Project *> m_projectIndex;

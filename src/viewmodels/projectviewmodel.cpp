@@ -7,6 +7,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QSettings>
+#include <QTimer>
 #include <algorithm>
 
 ProjectViewModel::ProjectViewModel(DataStore *store, QObject *parent)
@@ -20,6 +21,14 @@ ProjectViewModel::ProjectViewModel(DataStore *store, QObject *parent)
         m_projects.clear();
         endResetModel();
     });
+
+    // Debounce the weekly-goal scan: a burst of task edits coalesces into one
+    // pass after a short idle gap instead of re-scanning on every change.
+    m_goalCheckTimer = new QTimer(this);
+    m_goalCheckTimer->setSingleShot(true);
+    m_goalCheckTimer->setInterval(60);
+    connect(m_goalCheckTimer, &QTimer::timeout, this, &ProjectViewModel::checkWeeklyGoals);
+
     refresh();
 }
 
@@ -543,10 +552,17 @@ int ProjectViewModel::weeklyCompletedForProject(const QString &projectId) const
 
 void ProjectViewModel::onTasksChanged()
 {
-    // Task counts may have changed — refresh the relevant role.
+    // Task counts may have changed — refresh the relevant role immediately
+    // (cheap now that DataStore buckets the task queries).
     if (!m_projects.isEmpty())
         emit dataChanged(index(0), index(m_projects.size() - 1), {TaskCountRole});
 
+    // Coalesce the heavier weekly-goal scan across a burst of edits.
+    m_goalCheckTimer->start();
+}
+
+void ProjectViewModel::checkWeeklyGoals()
+{
     // Weekly-goal celebration: a task completion can transition any project
     // from below its weekly goal to >= goal. Detect the crossing and emit
     // exactly once per (projectId, ISO week).

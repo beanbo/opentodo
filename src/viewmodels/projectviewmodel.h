@@ -10,6 +10,7 @@
 #include "storage/datastore.h"
 
 class Telemetry;
+class QTimer;
 
 class ProjectViewModel : public QAbstractListModel
 {
@@ -122,7 +123,13 @@ private:
     // falls in the current ISO week (Monday-based, matches QDate::weekNumber).
     int weeklyCompletedForProject(const QString &projectId) const;
 
+    // The weekly-goal celebration scan over all goal-bearing projects. Driven by
+    // a debounce timer so a burst of task edits coalesces into one pass instead
+    // of re-scanning on every single change.
+    void checkWeeklyGoals();
+
     DataStore *m_store;
+    QTimer *m_goalCheckTimer = nullptr;
     QList<Project *> m_projects;
     bool m_showArchived = false;
     Telemetry *m_telemetry = nullptr;

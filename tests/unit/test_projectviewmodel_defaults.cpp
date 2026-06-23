@@ -275,7 +275,7 @@ private slots:
         // Notify VM that tasks changed so onTasksChanged() runs and evaluates goals.
         emit store->tasksChanged();
 
-        QCOMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.count(), 1);
         const QList<QVariant> args = spy.takeFirst();
         QCOMPARE(args.at(0).toString(), goalId);
 
@@ -304,7 +304,7 @@ private slots:
             t->setCompletedAt(now);
         }
         emit store->tasksChanged();
-        QCOMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.count(), 1);
 
         // Add and complete a 4th task in the same week — the (projectId, week)
         // latch in m_celebratedWeek must suppress a second fire.
@@ -313,6 +313,7 @@ private slots:
         fourth->setCompletedAt(now);
         emit store->tasksChanged();
 
+        QTest::qWait(80); // let the debounced goal scan run
         QCOMPARE(spy.count(), 1); // still exactly one — no second fire.
 
         delete store;
@@ -343,6 +344,7 @@ private slots:
         }
         emit store->tasksChanged();
 
+        QTest::qWait(80); // let the debounced goal scan run
         QCOMPARE(spy.count(), 0);
 
         delete store;
@@ -377,7 +379,7 @@ private slots:
             initialTasks.append(t);
         }
         emit store->tasksChanged();
-        QCOMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.count(), 1);
 
         // Phase 2 — push every initial task's completedAt into the past
         // (last week). This drops weeklyCompletedForProject() below goal,
@@ -386,6 +388,7 @@ private slots:
         for (Task *t : initialTasks)
             t->setCompletedAt(lastWeek);
         emit store->tasksChanged(); // un-arms the latch.
+        QTest::qWait(80); // let the debounced un-arm scan run before phase 3
 
         // Phase 3 — add 3 fresh completions inside the current week.
         // The signal must fire again (re-armed).
@@ -396,7 +399,7 @@ private slots:
         }
         emit store->tasksChanged();
 
-        QCOMPARE(spy.count(), 2);
+        QTRY_COMPARE(spy.count(), 2);
         const QList<QVariant> last = spy.takeLast();
         QCOMPARE(last.at(0).toString(), goalId);
 
@@ -430,6 +433,7 @@ private slots:
             t->setCompletedAt(now);
         }
         emit store->tasksChanged();
+        QTest::qWait(80); // let the debounced goal scan run
         QCOMPARE(spy.count(), 0);
 
         // Now complete 3 in the goal project — must fire exactly once with goalId.
@@ -440,7 +444,7 @@ private slots:
         }
         emit store->tasksChanged();
 
-        QCOMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.count(), 1);
         QCOMPARE(spy.takeFirst().at(0).toString(), goalId);
 
         delete store;

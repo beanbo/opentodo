@@ -19,6 +19,51 @@
 DataStore::DataStore(QObject *parent)
     : QObject(parent)
 {
+    // perf: invalidate the relational task buckets on any mutation. dataChanged
+    // is emitted by every entity mutation, so this can never miss a change; the
+    // rebuild is lazy (next query only). aboutToReset clears immediately so the
+    // buckets never outlive the Task objects they point at across a full reload.
+    connect(this, &DataStore::dataChanged, this, [this]() { m_taskBucketsDirty = true; });
+    connect(this, &DataStore::aboutToReset, this, [this]() {
+        m_tasksByProject.clear();
+        m_tasksBySection.clear();
+        m_subtasksByParent.clear();
+        m_taskBucketsDirty = true;
+    });
+}
+
+void DataStore::watchTaskForBuckets(Task *t)
+{
+    if (!t)
+        return;
+    const auto inval = [this]() { m_taskBucketsDirty = true; };
+    connect(t, &Task::projectIdChanged, this, inval);
+    connect(t, &Task::sectionIdChanged, this, inval);
+    connect(t, &Task::parentIdChanged,  this, inval);
+    connect(t, &Task::isDeletedChanged, this, inval);
+}
+
+void DataStore::ensureTaskBuckets() const
+{
+    if (!m_taskBucketsDirty)
+        return;
+    m_tasksByProject.clear();
+    m_tasksBySection.clear();
+    m_subtasksByParent.clear();
+    for (Task *t : m_tasks) {
+        if (!t || t->isDeleted())
+            continue;
+        // Bucket by parentId INCLUDING the empty key: subtasks("") historically
+        // returns every top-level task, and several callers rely on that.
+        m_subtasksByParent[t->parentId()].append(t);
+        // Top-level tasks (empty parentId) are additionally bucketed by project.
+        if (t->parentId().isEmpty())
+            m_tasksByProject[t->projectId()].append(t);
+        // Bucket by sectionId INCLUDING the empty key: tasksForSection("")
+        // returns the sectionless tasks.
+        m_tasksBySection[t->sectionId()].append(t);
+    }
+    m_taskBucketsDirty = false;
 }
 
 // ── CRDT helpers ─────────────────────────────────────────────────────────────
@@ -299,6 +344,7 @@ Task *DataStore::addTask(const QString &content, const QString &projectId)
 
     m_tasks.append(task);
     m_taskIndex.insert(task->id(), task);
+    watchTaskForBuckets(task);
 
     // Stamp initial scalar fields for CRDT tracking.
     const QString id = task->id();
@@ -713,22 +759,14 @@ QVariantList DataStore::allLabelsData() const { return labelsToData(allLabels())
 
 QList<Task *> DataStore::tasksForProject(const QString &projectId) const
 {
-    QList<Task *> result;
-    for (auto *t : m_tasks) {
-        if (!t->isDeleted() && t->projectId() == projectId && t->parentId().isEmpty())
-            result.append(t);
-    }
-    return result;
+    ensureTaskBuckets();
+    return m_tasksByProject.value(projectId);
 }
 
 QList<Task *> DataStore::tasksForSection(const QString &sectionId) const
 {
-    QList<Task *> result;
-    for (auto *t : m_tasks) {
-        if (!t->isDeleted() && t->sectionId() == sectionId)
-            result.append(t);
-    }
-    return result;
+    ensureTaskBuckets();
+    return m_tasksBySection.value(sectionId);
 }
 
 QList<Task *> DataStore::tasksForToday() const
@@ -782,12 +820,8 @@ QList<Task *> DataStore::completedTasks() const
 
 QList<Task *> DataStore::subtasks(const QString &parentId) const
 {
-    QList<Task *> result;
-    for (auto *t : m_tasks) {
-        if (!t->isDeleted() && t->parentId() == parentId)
-            result.append(t);
-    }
-    return result;
+    ensureTaskBuckets();
+    return m_subtasksByParent.value(parentId);
 }
 
 QList<Task *> DataStore::searchTasks(const QString &query,
@@ -829,6 +863,7 @@ void DataStore::addExistingTask(Task *task)
     task->setParent(this);
     m_tasks.append(task);
     m_taskIndex.insert(task->id(), task);
+    watchTaskForBuckets(task);
 }
 
 // ===================== PROJECTS =====================
@@ -2008,6 +2043,7 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         auto *t = Task::fromJson(obj, this);
         m_tasks.append(t);
         m_taskIndex.insert(t->id(), t);
+        watchTaskForBuckets(t);
     }
 
     const auto projectsArr = root[QStringLiteral("projects")].toArray();
