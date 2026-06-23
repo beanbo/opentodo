@@ -474,9 +474,14 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     // --- Recurring: "каждый день", "каждую неделю", "каждый понедельник", "каждые N месяцев" ---
     {
         static const QRegularExpression kazhdyRe(
-            QString::fromUtf8("^кажд(ый|ую|ое|ые)\\s+(.+)$"));
+            QString::fromUtf8("^кажд(ый|ую|ое|ые)!?\\s+(.+)$"));
         const auto m = kazhdyRe.match(lower);
         if (m.hasMatch()) {
+            // "каждые! 3 дня" / "каждый! понедельник" — a trailing "!" on кажд…
+            // anchors the next occurrence to the COMPLETION date instead of the
+            // schedule (mirrors English "every!"). The RecurrenceEngine honours
+            // the ;FROM=COMPLETION rule suffix.
+            const bool fromCompletion = lower.contains(QLatin1Char('!'));
             QString what = m.captured(2).trimmed();
             result.isRecurring = true;
             result.date = formatDate(reference);
@@ -581,6 +586,11 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                         }
                     }
                 }
+            }
+
+            if (fromCompletion && !result.recurrenceRule.isEmpty()) {
+                result.recurrenceRule += QStringLiteral(";FROM=COMPLETION");
+                result.humanString += QString::fromUtf8(" (от выполнения)");
             }
 
             result.valid = !result.recurrenceRule.isEmpty();

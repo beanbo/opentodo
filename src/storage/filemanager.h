@@ -130,4 +130,9 @@ private:
     int    m_backupRetentionCount  = 50;
     int    m_backupRetentionDays   = 30;
     qint64 m_vacuumThresholdBytes  = 10LL * 1024 * 1024;   // 10 MB
+
+    // perf: throttle the (expensive) dated-backup copy + sweep so they don't run
+    // on every 1s autosave — the 3-gen .bak chain already covers immediate
+    // recovery. 0 = never yet written this session.
+    qint64 m_lastDatedBackupMs = 0;
 };

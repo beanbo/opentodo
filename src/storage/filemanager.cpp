@@ -3,6 +3,7 @@
 #include "utils/settingskeys.h"
 #include "utils/uuid.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -574,8 +575,21 @@ void FileManager::performSave()
     // augments the 3-generation chain with a longer history that respects
     // m_backupRetentionCount / m_backupRetentionDays. Skipped on the very
     // first save (statePath doesn't exist yet — same guard as above).
-    if (QFile::exists(statePath))
-        writeDatedBackup();
+    //
+    // perf: the dated backup is a full-file copy and the sweep is a dir scan, so
+    // running them on EVERY 1s autosave is wasteful during a burst of edits. The
+    // 3-gen .bak chain above already covers immediate recovery, so throttle the
+    // dated backup + sweep to at most once per ~5 min.
+    if (QFile::exists(statePath)) {
+        static constexpr qint64 kDatedBackupIntervalMs = 5 * 60 * 1000;
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (m_lastDatedBackupMs == 0
+            || nowMs - m_lastDatedBackupMs >= kDatedBackupIntervalMs) {
+            writeDatedBackup();
+            sweepOldBackups();
+            m_lastDatedBackupMs = nowMs;
+        }
+    }
 
     const QJsonDocument doc(m_store->toJson());
     const QByteArray data = doc.toJson(QJsonDocument::Indented);
@@ -598,13 +612,12 @@ void FileManager::performSave()
     emit dirtyChanged();
     emit saved();
 
-    // Q3.10: post-save housekeeping. Order matters:
-    //   1. Sweep over-the-cap backups (safe: never touches most-recent).
-    //   2. Probe state.json size; if > threshold, signal the UI so the
-    //      user can decide whether to vacuum. We do NOT auto-vacuum
-    //      because vacuum is destructive (drops tombstones not yet seen
-    //      by peers) and the user may not want a silent mutation.
-    sweepOldBackups();
+    // Q3.10: post-save housekeeping. The backup sweep now rides the throttled
+    // dated-backup block above (no need to dir-scan on every save). Here we only
+    // probe state.json size; if > threshold, signal the UI so the user can decide
+    // whether to vacuum. We do NOT auto-vacuum because vacuum is destructive
+    // (drops tombstones not yet seen by peers) and the user may not want a silent
+    // mutation.
     if (m_vacuumThresholdBytes > 0) {
         const qint64 size = QFileInfo(statePath).size();
         if (size > m_vacuumThresholdBytes)

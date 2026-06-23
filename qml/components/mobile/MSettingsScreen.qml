@@ -92,6 +92,7 @@ Item {
                             Repeater {
                                 model: root._themes
                                 delegate: Item {
+                                    id: swatch
                                     required property var modelData
                                     readonly property bool on: settingsViewModel.theme === modelData.key
                                     readonly property var pal: ThemeManager.themes[modelData.key]
@@ -102,35 +103,35 @@ Item {
                                         radius: 12
                                         color: "transparent"
                                         border.width: 2
-                                        border.color: parent.on ? ThemeManager.accentColor : ThemeManager.borderColor
+                                        border.color: swatch.on ? ThemeManager.accentColor : ThemeManager.borderColor
                                         Column {
                                             anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
                                             anchors.margins: 4
                                             spacing: 4
                                             Rectangle {
                                                 width: parent.width; height: 46; radius: 8
-                                                color: parent.parent.parent.pal ? parent.parent.parent.pal.backgroundColor : ThemeManager.backgroundColor
+                                                color: swatch.pal ? swatch.pal.backgroundColor : ThemeManager.backgroundColor
                                                 Column {
                                                     anchors.left: parent.left; anchors.right: parent.right
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     anchors.margins: 8
                                                     spacing: 4
-                                                    Rectangle { width: parent.width * 0.65; height: 5; radius: 3; color: parent.parent.parent.parent.parent.pal ? parent.parent.parent.parent.parent.pal.accentColor : ThemeManager.accentColor }
-                                                    Rectangle { width: parent.width * 0.9; height: 4; radius: 3; color: parent.parent.parent.parent.parent.pal ? parent.parent.parent.parent.parent.pal.textColor : ThemeManager.textColor; opacity: 0.4 }
-                                                    Rectangle { width: parent.width * 0.5; height: 4; radius: 3; color: parent.parent.parent.parent.parent.pal ? parent.parent.parent.parent.parent.pal.textColor : ThemeManager.textColor; opacity: 0.22 }
+                                                    Rectangle { width: parent.width * 0.65; height: 5; radius: 3; color: swatch.pal ? swatch.pal.accentColor : ThemeManager.accentColor }
+                                                    Rectangle { width: parent.width * 0.9; height: 4; radius: 3; color: swatch.pal ? swatch.pal.textColor : ThemeManager.textColor; opacity: 0.4 }
+                                                    Rectangle { width: parent.width * 0.5; height: 4; radius: 3; color: swatch.pal ? swatch.pal.textColor : ThemeManager.textColor; opacity: 0.22 }
                                                 }
                                             }
                                             Text {
                                                 width: parent.width
                                                 horizontalAlignment: Text.AlignHCenter
-                                                text: parent.parent.parent.modelData.label
+                                                text: swatch.modelData.label
                                                 font.pixelSize: 11; font.weight: Font.DemiBold
-                                                color: parent.parent.parent.on ? ThemeManager.accentColor : ThemeManager.secondaryTextColor
+                                                color: swatch.on ? ThemeManager.accentColor : ThemeManager.secondaryTextColor
                                                 elide: Text.ElideRight
                                             }
                                         }
                                     }
-                                    MouseArea { anchors.fill: parent; onClicked: settingsViewModel.theme = parent.modelData.key }
+                                    MouseArea { anchors.fill: parent; onClicked: settingsViewModel.theme = swatch.modelData.key }
                                 }
                             }
                         }

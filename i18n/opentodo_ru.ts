@@ -2,6 +2,25 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="ru_RU" sourcelanguage="ru_RU">
 <context>
+    <name>TrayIconService</name>
+    <message>
+        <source>Open OpenTodo</source>
+        <translation>Открыть OpenTodo</translation>
+    </message>
+    <message>
+        <source>Quick Add...</source>
+        <translation>Быстрое добавление…</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Настройки</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>Выход</translation>
+    </message>
+</context>
+<context>
     <name>AIView</name>
     <message>
         <location filename="../qml/views/AIView.qml" line="+15"/>

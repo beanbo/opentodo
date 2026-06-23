@@ -938,7 +938,7 @@ private slots:
         //   side-effects (delete loop runs only after a successful upload).
         GDriveClient client;
         QVERIFY(!client.isAuthenticated());
-        sm.setGDriveClient(&client);
+        sm.setRemoteStore(&client);
 
         sm.createSnapshot();
         QCOMPARE(okSpy.count(),   0);
@@ -1003,7 +1003,7 @@ private slots:
         GDriveClient client;
         client.setAccessToken(QStringLiteral("valid-token-q304c"));
         QVERIFY(client.isAuthenticated());
-        sm.setGDriveClient(&client);
+        sm.setRemoteStore(&client);
 
         MockNAM mock;
         client.driveApiForTesting()->setNetworkManagerForTesting(&mock);

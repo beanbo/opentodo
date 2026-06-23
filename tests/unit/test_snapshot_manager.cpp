@@ -142,7 +142,7 @@ private slots:
 
         const QList<QVariant> args = failSpy.takeFirst();
         QCOMPARE(args.size(), 1);
-        QVERIFY(args.at(0).toString().contains(QStringLiteral("Google Drive"),
+        QVERIFY(args.at(0).toString().contains(QStringLiteral("not connected"),
                                                Qt::CaseInsensitive));
     }
 
@@ -159,7 +159,7 @@ private slots:
 
         GDriveClient client;
         QVERIFY(!client.isAuthenticated());
-        sm.setGDriveClient(&client);
+        sm.setRemoteStore(&client);
 
         QSignalSpy okSpy(&sm, &SnapshotManager::snapshotCreated);
         QSignalSpy failSpy(&sm, &SnapshotManager::snapshotFailed);
@@ -282,9 +282,9 @@ private slots:
         GDriveClient c1;
         GDriveClient c2;
 
-        sm.setGDriveClient(&c1);
-        sm.setGDriveClient(&c2);
-        sm.setGDriveClient(nullptr); // sign-out path
+        sm.setRemoteStore(&c1);
+        sm.setRemoteStore(&c2);
+        sm.setRemoteStore(nullptr); // sign-out path
 
         // After clearing, createSnapshot must take the "no client" branch.
         QSignalSpy failSpy(&sm, &SnapshotManager::snapshotFailed);
@@ -295,7 +295,7 @@ private slots:
         // (state.json upload is NOT attempted without auth — this stands in
         // for the "edge case: state.json doesn't exist yet" check, since
         // without auth no remote file is created or modified).
-        sm.setGDriveClient(&c1);
+        sm.setRemoteStore(&c1);
         QVERIFY(!c1.isAuthenticated());
         sm.createSnapshot();
         QCOMPARE(failSpy.count(), 2);
