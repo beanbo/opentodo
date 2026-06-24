@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QSystemTrayIcon>
 
+class QFileSystemWatcher;
+
 // Only compiled on Windows
 #ifdef Q_OS_WIN
 
@@ -44,7 +46,25 @@ public:
     // have spun up. Safe to call with nullptr (clears the borrow).
     void setSharedTrayIcon(QSystemTrayIcon *icon);
 
+    // Path of the cross-process queue file that toast action-button presses are
+    // appended to (by the relaunched `opentodo:` URI instance) and drained from
+    // (by the running instance).
+    static QString toastActionsFilePath();
+    // Called from main.cpp's early `opentodo:` URI handler in the throwaway
+    // relaunched process: parses the action URI and appends it to the queue
+    // file, then that process exits without starting the GUI.
+    static void recordToastActivation(const QString &uri);
+
+public slots:
+    // Parses a "<verb>|<taskId>" activation argument ("complete|…", "snooze|…",
+    // "open|…") and re-emits notificationActionInvoked / notificationClicked.
+    void onToastActivated(const QString &arg);
+
 private slots:
+    // Reads + clears the toast-actions queue file and routes each entry through
+    // onToastActivated. Triggered by the file watcher (live button press) and
+    // once at startup (actions queued while the app was closed).
+    void drainToastActions();
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
     void onScheduledNotificationDue(const QString &id);
 
@@ -61,6 +81,7 @@ private:
     QSystemTrayIcon *m_trayIcon = nullptr;       // our own fallback, owned via QObject parent
     QMap<QString, ScheduledNotification> m_scheduled;
     QString m_lastTaskId;
+    QFileSystemWatcher *m_toastWatcher = nullptr;  // watches toastActionsFilePath(), owned
 };
 
 #endif // Q_OS_WIN

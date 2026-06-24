@@ -105,6 +105,21 @@ int main(int argc, char *argv[])
     app.setOrganizationDomain(QStringLiteral("opentodo.org"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
 
+#ifdef Q_OS_WIN
+    // Toast action-button activation: Windows relaunches us with the `opentodo:`
+    // protocol URI ("opentodo:complete?id=…") registered by
+    // WindowsNotificationService. This throwaway instance records the action for
+    // the running instance to drain (via its file watcher) and exits at once —
+    // we never build the QML engine or show a window for it.
+    if (argc > 1) {
+        const QString uriArg = QString::fromLocal8Bit(argv[1]);
+        if (uriArg.startsWith(QStringLiteral("opentodo:"), Qt::CaseInsensitive)) {
+            WindowsNotificationService::recordToastActivation(uriArg);
+            return 0;
+        }
+    }
+#endif
+
     // Q4.01 pixel-perfect: the design canvas
     // (.design-temp/opentodo/project/OpenTodo Redesign.html) uses Inter as the
     // primary type face. Try the system-installed Inter first (Microsoft Edge

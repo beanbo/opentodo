@@ -380,6 +380,18 @@ endif()
 # Not available / not needed on WASM.
 if(WIN32 AND NOT EMSCRIPTEN)
     target_link_libraries(OpenTodoInfra PUBLIC dwmapi)
+
+    # WinRT toast notifications with Выполнить/Отложить action buttons.
+    # The Windows SDK "winrt" ABI headers are MSVC-only (their bundled WRL
+    # #errors on g++ and pulls in SDK-only headers), so notificationservice_win.cpp
+    # instead hand-declares the few interfaces it needs against MinGW's own WRL /
+    # roapi / winstring, and drives button activation through a registered
+    # `opentodo:` URI protocol (no in-process delegate IID needed). Only
+    # MinGW-shipped headers are used, so no extra include path — just the import
+    # libs. On a MinGW that lacks these the link fails fast; comment the two lines
+    # below to fall back to QSystemTrayIcon balloons.
+    target_compile_definitions(OpenTodoInfra PRIVATE OPENTODO_HAS_WINRT_TOAST=1)
+    target_link_libraries(OpenTodoInfra PUBLIC runtimeobject ole32 oleaut32 shell32 shlwapi propsys)
 endif()
 
 if(Qt6Positioning_FOUND)
