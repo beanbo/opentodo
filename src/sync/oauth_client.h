@@ -82,6 +82,15 @@ private:
     // Synchronously warm the SecretStore cache for `key` (pumps a local event
     // loop until the async keyring read resolves, with a guard timeout).
     void warmSecretSync(const QString &key);
+    // Remove the access/refresh tokens from BOTH stores (QSettings plaintext and
+    // the keyring). Used by signOut() and the invalid_grant path so a revoked /
+    // signed-out session can't resurrect from the keyring on the next launch.
+    void clearPersistedTokens();
+    // Write `value` to the keyring and purge its plaintext QSettings copy ONLY
+    // once the keyring write is confirmed (secretStored). On keyring failure the
+    // plaintext copy is left in place as a fallback, so a write error can never
+    // lose the token. Removes any stale plaintext immediately when value is empty.
+    void storeSecretThenPurgePlaintext(const QString &key, const QString &value);
 
     QPointer<SecretStore> m_secretStore;   // Sec-1: nullable; QSettings path when unset
     QNetworkAccessManager m_nam;

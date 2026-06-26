@@ -11,6 +11,7 @@
 #include <QQmlEngine>
 #include <QTimer>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -106,6 +107,17 @@ public:
     // set_priority, delete_task. Portable across all providers (no per-provider
     // native tool-calling protocol).
     Q_INVOKABLE bool confirmAction(const QString &actionJson);
+
+    // Route mutating ops (complete/delete) through the app's TaskViewModel so a
+    // confirmed AI action gets the SAME treatment as a manual one: recurring-task
+    // advance, karma, undo, and per-field CRDT _meta stamping. main.cpp injects
+    // these (capturing TaskViewModel) — kept as std::function so this service
+    // layer takes no link/header dependency on the viewmodel layer. When unset
+    // (unit tests), executeAction falls back to direct DataStore mutation (still
+    // stamping per-field _meta) so standalone fixtures keep working. Each returns
+    // true on success.
+    using TaskActionFn = std::function<bool(const QString &taskId)>;
+    void setTaskActionHandlers(TaskActionFn completeTask, TaskActionFn deleteTask);
 
     // Test hooks (no network): extract the action JSON object from a raw
     // response (returns "" if none) and the response text with the block removed.
@@ -284,6 +296,8 @@ private:
     QNetworkAccessManager *nam();
 
     DataStore *m_store;
+    TaskActionFn m_completeTaskFn;  // optional VM routing for complete_task (see setTaskActionHandlers)
+    TaskActionFn m_deleteTaskFn;    // optional VM routing for delete_task
     QPointer<SecretStore> m_secretStore;  // Sec-1: nullable; legacy QSettings path when unset
     QNetworkAccessManager m_nam;
     QPointer<QNetworkAccessManager> m_namOverride;  // test hook

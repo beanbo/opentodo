@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
+#include <QLockFile>
 #include <climits>
 
 #include <windows.h>
@@ -485,6 +486,11 @@ void WindowsNotificationService::recordToastActivation(const QString &uri)
         return;
     const QString path = toastActionsFilePath();
     QDir().mkpath(QFileInfo(path).absolutePath());
+    // Cross-process lock: the running instance's drainToastActions() does
+    // readAll()+resize(0); without this lock an append landing between those two
+    // calls would be truncated to zero and the action lost forever.
+    QLockFile lock(path + QStringLiteral(".lock"));
+    lock.lock();
     QFile f(path);
     if (f.open(QIODevice::Append | QIODevice::Text)) {
         f.write((verb + QLatin1Char('|') + id + QLatin1Char('\n')).toUtf8());
@@ -495,12 +501,20 @@ void WindowsNotificationService::recordToastActivation(const QString &uri)
 void WindowsNotificationService::drainToastActions()
 {
     const QString path = toastActionsFilePath();
-    QFile f(path);
-    if (!f.exists() || !f.open(QIODevice::ReadWrite | QIODevice::Text))
-        return;
-    const QString all = QString::fromUtf8(f.readAll());
-    f.resize(0);  // clear before processing so a concurrent append isn't lost-then-redrained
-    f.close();
+    QString all;
+    {
+        // Hold the lock only for the read+truncate so a concurrent
+        // recordToastActivation() append can't be lost; release it before
+        // dispatching (onToastActivated emits signals and may take a while).
+        QLockFile lock(path + QStringLiteral(".lock"));
+        lock.lock();
+        QFile f(path);
+        if (!f.exists() || !f.open(QIODevice::ReadWrite | QIODevice::Text))
+            return;
+        all = QString::fromUtf8(f.readAll());
+        f.resize(0);
+        f.close();
+    }
     const QStringList lines = all.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     for (const QString &line : lines)
         onToastActivated(line);  // "<verb>|<taskId>"

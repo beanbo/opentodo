@@ -16,6 +16,10 @@ Item {
     signal taskClicked(string id)
     signal viewModeChanged(string mode)   // "list" | "board" | "cal"
     signal searchRequested()
+    // Swipe/long-press on a day-list row, forwarded to MobileLayout (which owns
+    // the snooze date-sheet and the long-press context sheet).
+    signal snoozeRequested(string id)
+    signal taskContextRequested(string id)
 
     // When opened from a project (via the segment), scope to that project.
     readonly property var _proj: (typeof taskViewModel !== "undefined" && taskViewModel.currentProjectId !== "")
@@ -269,6 +273,16 @@ Item {
                     labels:      modelData.labels
                     projectId:   modelData.projectId
                     onOpenTask:  root.taskClicked(taskId)
+                    // Q-audit #9: the checkbox tap and swipe gestures were dead
+                    // here (only onOpenTask was wired) — completing/deleting from
+                    // the calendar did nothing. Mirror the main list delegate.
+                    onToggleComplete: {
+                        if (isCompleted) taskViewModel.uncompleteTask(taskId)
+                        else             taskViewModel.completeTask(taskId)
+                    }
+                    onDeleteTask:  taskViewModel.deleteTask(taskId)
+                    onSnooze:      root.snoozeRequested(taskId)
+                    onLongPressed: root.taskContextRequested(taskId)
                 }
             }
 

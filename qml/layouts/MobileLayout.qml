@@ -512,20 +512,10 @@ Item {
         }
     }
 
-    // Bug 1 fix (mobile): holds the active NotificationsView instance so the
-    // Connections block below can forward openTaskRequested to taskViewModel.
-    // Wire this from any Loader that loads NotificationsView on mobile:
-    //   notificationsViewItem = loader.item
-    property var notificationsViewItem: null
-
-    Connections {
-        target: root.notificationsViewItem
-        ignoreUnknownSignals: true
-        function onOpenTaskRequested(taskId) {
-            if (taskId && taskId.length > 0)
-                taskViewModel.openTaskById(taskId)
-        }
-    }
+    // Q-audit #19: the former `notificationsViewItem` bridge + its Connections
+    // listened for onOpenTaskRequested, but MNotificationsScreen emits
+    // taskClicked — so the block was dead. Notification taps are handled by the
+    // generic onTaskClicked on fullPageLoader.item (see below), so it was removed.
 
     // ── Main ColumnLayout ─────────────────────────────────────────────────────
     ColumnLayout {
@@ -618,21 +608,6 @@ Item {
                 return ""
             }
 
-            // Bridge for the existing notificationsViewItem connection in
-            // qml/layouts/MobileLayout.qml. When NotificationsView is the
-            // active full-page view, expose its instance so the Connections
-            // block can forward openTaskRequested to taskViewModel.
-            onLoaded: {
-                if (taskViewModel.filterMode === TaskViewModel.Notifications)
-                    root.notificationsViewItem = item
-                else
-                    root.notificationsViewItem = null
-            }
-            onActiveChanged: {
-                if (!active)
-                    root.notificationsViewItem = null
-            }
-
             // Q3.27: forward BoardView.taskClicked (board mode on mobile) into
             // the editor stack. Mirrors the inline list delegate at line ~450
             // so a card tap opens the same full-screen editor page.
@@ -649,6 +624,10 @@ Item {
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
                 function onOpenSettingsRequested() { sidebarViewModel.navigateTo("settings") }
                 function onSyncRequested() { root.subScreen = "sync" }
+                // MCalendarScreen day-list swipe/long-press (forwarded up because
+                // the snooze sheet + context sheet live here, not in the screen).
+                function onSnoozeRequested(id)      { root._snoozeTask(id) }
+                function onTaskContextRequested(id) { root._openTaskContext(id) }
                 // MBoardScreen: + button → quick-add; search → overlay; segment → view mode.
                 function onAddRequested()    { quickAdd.openAdd() }
                 function onSearchRequested() { searchOverlay.open() }

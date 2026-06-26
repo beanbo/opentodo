@@ -20,6 +20,8 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#include <memory>
+
 #ifdef Q_OS_ANDROID
 #include <jni.h>
 #endif
@@ -502,13 +504,60 @@ void OAuthClient::signOut()
     m_accountEmail.clear();
     m_authenticated = false;
 
-    QSettings settings;
-    settings.remove(QStringLiteral("gdrive/access_token"));
-    settings.remove(QStringLiteral("gdrive/refresh_token"));
-    settings.remove(QStringLiteral("gdrive/email"));
+    clearPersistedTokens();          // QSettings + keyring
+    QSettings().remove(QStringLiteral("gdrive/email"));
 
     emit authenticatedChanged();
     emit accountEmailChanged();
+}
+
+void OAuthClient::clearPersistedTokens()
+{
+    QSettings settings;
+    settings.remove(QStringLiteral("gdrive/access_token"));
+    settings.remove(QStringLiteral("gdrive/refresh_token"));
+    // Sec: the tokens now live in the OS keyring after migration; QSettings
+    // removal alone would leave them there and silently re-authenticate the
+    // user (or resurrect a revoked token) on the next launch.
+    if (m_secretStore) {
+        m_secretStore->deleteSecret(QStringLiteral("gdrive/access_token"));
+        m_secretStore->deleteSecret(QStringLiteral("gdrive/refresh_token"));
+    }
+}
+
+void OAuthClient::storeSecretThenPurgePlaintext(const QString &key, const QString &value)
+{
+    if (!m_secretStore)
+        return;
+    if (value.isEmpty()) {
+        // Nothing to persist — just make sure no stale plaintext lingers.
+        QSettings s;
+        s.remove(key);
+        s.sync();
+        return;
+    }
+    // Purge the plaintext copy only after the keyring write is CONFIRMED. If the
+    // write fails (locked Credential Manager / KWallet / unavailable libsecret),
+    // secretStored never fires, so the plaintext copy survives as a fallback and
+    // the token is not lost across a restart.
+    auto ok  = std::make_shared<QMetaObject::Connection>();
+    auto err = std::make_shared<QMetaObject::Connection>();
+    *ok = connect(m_secretStore, &SecretStore::secretStored, this,
+                  [this, key, ok, err](const QString &k) {
+        if (k != key) return;
+        QSettings s;
+        s.remove(key);
+        s.sync();
+        disconnect(*ok);
+        disconnect(*err);
+    });
+    *err = connect(m_secretStore, &SecretStore::secretError, this,
+                   [key, ok, err](const QString &k, const QString &) {
+        if (k != key) return;
+        disconnect(*ok);
+        disconnect(*err);   // keep the plaintext fallback in place
+    });
+    m_secretStore->setSecret(key, value);
 }
 
 bool OAuthClient::refreshAccessToken()
@@ -596,9 +645,7 @@ bool OAuthClient::refreshAccessToken()
                 m_accessToken.clear();
                 m_refreshToken.clear();
                 m_authenticated = false;
-                QSettings settings;
-                settings.remove(QStringLiteral("gdrive/access_token"));
-                settings.remove(QStringLiteral("gdrive/refresh_token"));
+                clearPersistedTokens();   // QSettings + keyring — don't resurrect a revoked token
                 emit authenticatedChanged();
                 // Emit signOut equivalent via authenticationFailed so UI can react.
                 emit authenticationFailed(QStringLiteral("Сессия истекла. Войдите в аккаунт Google снова."));
@@ -636,11 +683,11 @@ void OAuthClient::saveTokens()
     QSettings settings;
     settings.setValue(QStringLiteral("gdrive/email"), m_accountEmail);
     if (m_secretStore) {
-        // Sec-1: secrets go to the keyring; never leave a plaintext copy behind.
-        m_secretStore->setSecret(QStringLiteral("gdrive/access_token"),  m_accessToken);
-        m_secretStore->setSecret(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
-        settings.remove(QStringLiteral("gdrive/access_token"));
-        settings.remove(QStringLiteral("gdrive/refresh_token"));
+        // Sec-1: secrets go to the keyring; never leave a plaintext copy behind —
+        // but only purge the plaintext AFTER the keyring write is confirmed, so a
+        // keyring failure can't lose the token (see storeSecretThenPurgePlaintext).
+        storeSecretThenPurgePlaintext(QStringLiteral("gdrive/access_token"),  m_accessToken);
+        storeSecretThenPurgePlaintext(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
     } else {
         settings.setValue(QStringLiteral("gdrive/access_token"),  m_accessToken);
         settings.setValue(QStringLiteral("gdrive/refresh_token"), m_refreshToken);
@@ -694,14 +741,13 @@ void OAuthClient::setSecretStore(SecretStore *store)
     QSettings s;
     if (s.contains(kAcc) || s.contains(kRef)) {
         // First run after the keyring migration: the tokens were loaded from
-        // plaintext QSettings at construction. Push them into the keyring
-        // (write-through caches) and purge the plaintext copies — the value is
-        // preserved, so the Drive session stays authenticated.
-        if (!m_accessToken.isEmpty())  store->setSecret(kAcc, m_accessToken);
-        if (!m_refreshToken.isEmpty()) store->setSecret(kRef, m_refreshToken);
-        s.remove(kAcc);
-        s.remove(kRef);
-        s.sync();
+        // plaintext QSettings at construction. Push them into the keyring and
+        // purge the plaintext copies ONLY once each keyring write is confirmed —
+        // so a keyring failure mid-migration can't lose the token (it stays in
+        // QSettings as a fallback). The value is preserved either way, so the
+        // Drive session stays authenticated.
+        if (!m_accessToken.isEmpty())  storeSecretThenPurgePlaintext(kAcc, m_accessToken);
+        if (!m_refreshToken.isEmpty()) storeSecretThenPurgePlaintext(kRef, m_refreshToken);
     } else {
         // Already migrated (QSettings holds no tokens): load from the keyring so
         // the session is authenticated at startup.

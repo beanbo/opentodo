@@ -616,6 +616,13 @@ int main(int argc, char *argv[])
     // any XOR-obfuscated key still living under "ai/k" in QSettings is
     // decoded, pushed into the SecretStore, and removed from QSettings.
     aiAssistant->setSecretStore(secretStore);
+    // Route confirmed AI complete/delete actions through TaskViewModel so they
+    // get recurring-task advance, karma, undo and per-field CRDT _meta — the same
+    // treatment as a manual completion (otherwise a recurring task would be
+    // wrongly marked done and karma/undo skipped).
+    aiAssistant->setTaskActionHandlers(
+        [taskVM](const QString &id) { return taskVM->completeTask(id); },
+        [taskVM](const QString &id) { return taskVM->deleteTask(id); });
 
     // Todoist importer
     auto *todoistImporter = new TodoistImporter(dataStore, &app);

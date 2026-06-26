@@ -481,7 +481,14 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             // anchors the next occurrence to the COMPLETION date instead of the
             // schedule (mirrors English "every!"). The RecurrenceEngine honours
             // the ;FROM=COMPLETION rule suffix.
-            const bool fromCompletion = lower.contains(QLatin1Char('!'));
+            //
+            // NB: punctuation-normalisation above replaced "!" with a space
+            // before `lower` was built, so `lower.contains('!')` is ALWAYS false.
+            // Detect the bang on the RAW `input`, adjacent to the кажд… stem.
+            static const QRegularExpression kazhdyBangRe(
+                QString::fromUtf8("кажд(?:ый|ую|ое|ые)\\s*!"),
+                QRegularExpression::CaseInsensitiveOption);
+            const bool fromCompletion = kazhdyBangRe.match(input).hasMatch();
             QString what = m.captured(2).trimmed();
             result.isRecurring = true;
             result.date = formatDate(reference);

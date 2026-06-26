@@ -12,6 +12,7 @@
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSettings>
+#include <memory>
 #include <QTimer>
 
 SettingsViewModel::SettingsViewModel(DataStore *store, QObject *parent)
@@ -313,9 +314,29 @@ void SettingsViewModel::setSecretStore(SecretStore *store) {
         QSettings s;
         const QString legacy = s.value(key).toString();
         if (!legacy.isEmpty() && !store->hasCachedSecret(key)) {
+            // Purge the plaintext copy ONLY after the keyring write is confirmed.
+            // setSecret() warms the cache synchronously (write-through) so
+            // syncToken() works immediately, but if the keyring write ultimately
+            // fails we must keep the plaintext as a fallback rather than lose the
+            // token across a restart.
+            auto ok  = std::make_shared<QMetaObject::Connection>();
+            auto err = std::make_shared<QMetaObject::Connection>();
+            *ok = connect(store, &SecretStore::secretStored, this,
+                          [key, ok, err](const QString &k) {
+                if (k != key) return;
+                QSettings s2;
+                s2.remove(key);
+                s2.sync();
+                disconnect(*ok);
+                disconnect(*err);
+            });
+            *err = connect(store, &SecretStore::secretError, this,
+                           [key, ok, err](const QString &k, const QString &) {
+                if (k != key) return;
+                disconnect(*ok);
+                disconnect(*err);   // keep the plaintext fallback in place
+            });
             store->setSecret(key, legacy);   // write-through: cachedSecret() now warm
-            s.remove(key);
-            s.sync();
             return;
         }
     }

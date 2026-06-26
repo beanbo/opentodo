@@ -132,7 +132,7 @@ QString TemplateViewModel::saveAsTemplate(const QString &name, const QStringList
         return {};
 
     auto *tpl = new Template(this);
-    tpl->setName(name.trimmed().isEmpty() ? QStringLiteral("Шаблон") : name.trimmed());
+    tpl->setName(name.trimmed().isEmpty() ? tr("Шаблон") : name.trimmed());
     tpl->setItems(items);
 
     beginInsertRows(QModelIndex(), m_templates.size(), m_templates.size());
@@ -161,6 +161,19 @@ void TemplateViewModel::materialise(const QJsonObject &spec, const QString &proj
         t->setSectionId(sectionId);
     if (!parentId.isEmpty())
         t->setParentId(parentId);
+
+    // Stamp per-field CRDT _meta for everything we set directly on the Task after
+    // addTask(). addTask() only stamps content/project_id, so without this the
+    // labels/section_id/parent_id/priority fields keep an empty _meta and the
+    // Merger falls back to whole-entity LWW — a concurrent (even older) peer edit
+    // would then silently revert them (data loss). Mirrors TaskViewModel::addTask
+    // and duplicateProject, which stamp these explicitly for the same reason.
+    QStringList stampedFields{QStringLiteral("priority")};
+    if (!labels.isEmpty())    stampedFields << QStringLiteral("labels");
+    if (!sectionId.isEmpty()) stampedFields << QStringLiteral("section_id");
+    if (!parentId.isEmpty())  stampedFields << QStringLiteral("parent_id");
+    m_store->markTaskFieldsModified(t->id(), stampedFields);
+
     // Children become subtasks of this freshly-created task.
     for (const QJsonValue &cv : spec.value(QStringLiteral("children")).toArray())
         materialise(cv.toObject(), projectId, sectionId, t->id());

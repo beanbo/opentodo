@@ -7,6 +7,11 @@ Item {
     id: root
     anchors.fill: parent
 
+    // Q-audit #18: pending AI tool-use action awaiting user confirmation.
+    // confirmAction() is the ONLY path that executes it — nothing auto-runs.
+    property string _pendingAction: ""
+    property string _pendingSummary: ""
+
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
 
     // ── Clear-chat confirmation dialog ────────────────────────────────────────
@@ -325,6 +330,50 @@ Item {
             }
         }
 
+        // Q-audit #18: AI tool-use confirmation card. The model proposes a
+        // mutating action (add/complete/set-priority/delete); the user must
+        // confirm before aiAssistant.confirmAction() applies it. Desktop AIView
+        // previously ignored actionProposed entirely, leaving the feature dead.
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root._pendingAction !== ""
+            implicitHeight: confCol.implicitHeight + 20
+            radius: Radius.md
+            color: ThemeManager.surfaceColor
+            border.color: ThemeManager.accentColor
+            border.width: 1
+
+            ColumnLayout {
+                id: confCol
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 8
+                Label {
+                    Layout.fillWidth: true
+                    text: root._pendingSummary
+                    wrapMode: Text.WordWrap
+                    color: ThemeManager.textColor
+                    font.pixelSize: FontSize.body
+                }
+                RowLayout {
+                    Layout.alignment: Qt.AlignRight
+                    spacing: 8
+                    Button {
+                        text: qsTr("Отмена")
+                        onClicked: root._pendingAction = ""
+                    }
+                    Button {
+                        text: qsTr("Выполнить")
+                        highlighted: true
+                        onClicked: {
+                            aiAssistant.confirmAction(root._pendingAction)
+                            root._pendingAction = ""
+                        }
+                    }
+                }
+            }
+        }
+
         // Input row
         // Q4.01 (redesign): input + send переделаны под design-canvas —
         // высота 38, radius Radius.lg, custom Rectangle background для
@@ -417,6 +466,16 @@ Item {
         }
         function onErrorReceived(err) {
             messages.append({ role: "assistant", content: qsTr("❌ Ошибка: %1").arg(err) })
+            Qt.callLater(() => chatList.positionViewAtEnd())
+        }
+        // Q-audit #18: surface the proposed action for confirmation (was ignored).
+        function onActionProposed(actionJson, summary) {
+            root._pendingAction = actionJson
+            root._pendingSummary = summary
+        }
+        function onActionExecuted(summary) {
+            root._pendingAction = ""
+            messages.append({ role: "assistant", content: qsTr("✓ %1").arg(summary) })
             Qt.callLater(() => chatList.positionViewAtEnd())
         }
     }

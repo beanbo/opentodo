@@ -36,6 +36,10 @@ void DataStore::watchTaskForBuckets(Task *t)
 {
     if (!t)
         return;
+    // Invalidate immediately: this runs at every task-append site, so a path that
+    // appends without emitting dataChanged() (e.g. addExistingTask) still forces
+    // the relational buckets to rebuild and include the new task on next query.
+    m_taskBucketsDirty = true;
     const auto inval = [this]() { m_taskBucketsDirty = true; };
     connect(t, &Task::projectIdChanged, this, inval);
     connect(t, &Task::sectionIdChanged, this, inval);

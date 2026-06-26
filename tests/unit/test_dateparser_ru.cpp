@@ -345,6 +345,32 @@ private slots:
         QCOMPARE(r.date, QStringLiteral("2027-05-09"));
     }
 
+    // ── FROM=COMPLETION ("каждые! N") ─────────────────────────────────────
+    // Q-audit #8: punctuation-normalisation strips '!' before the lowercased
+    // string is built, so the old `lower.contains('!')` test was dead — the
+    // completion-anchored recurrence never fired in Russian. The fix detects the
+    // bang on the raw input next to the кажд… stem.
+
+    void recurring_bang_anchorsFromCompletion()
+    {
+        const auto r = DateParser::parseRussian(
+            QString::fromUtf8("каждые! 3 дня"), REF);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QVERIFY2(r.recurrenceRule.contains(QStringLiteral("FROM=COMPLETION")),
+                 qPrintable(r.recurrenceRule));
+    }
+
+    void recurring_noBang_doesNotAnchorFromCompletion()
+    {
+        const auto r = DateParser::parseRussian(
+            QString::fromUtf8("каждые 3 дня"), REF);
+        QVERIFY(r.valid);
+        QVERIFY(r.isRecurring);
+        QVERIFY2(!r.recurrenceRule.contains(QStringLiteral("FROM=COMPLETION")),
+                 qPrintable(r.recurrenceRule));
+    }
+
     void annual_kazhdoe_numeric()
     {
         const auto r = DateParser::parseRussian(

@@ -331,7 +331,7 @@ void SyncHttpServer::respond(QTcpSocket *sock, int status, const QByteArray &bod
 
 SyncHttpServer::SyncHttpServer(LocalDirRemote *store, QObject *parent)
     : QObject(parent), m_store(store) {}
-bool SyncHttpServer::start(quint16, const QString &) {
+bool SyncHttpServer::start(quint16, const QString &, bool) {
     qCWarning(lcSyncServer) << "sync server unavailable on this platform (WASM)";
     return false;
 }

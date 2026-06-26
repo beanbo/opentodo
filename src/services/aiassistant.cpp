@@ -1542,7 +1542,9 @@ bool AIAssistant::executeAction(const QJsonObject &a, QString *summary)
         const int prio = a.value(QStringLiteral("priority")).toInt(0);
         if (prio >= 1 && prio <= 4) {
             t->setPriority(prio);
-            m_store->markTaskModified(t->id());
+            // Per-field _meta so a concurrent (even older) peer edit can't revert
+            // the priority via the Merger's whole-object LWW fallback.
+            m_store->markTaskFieldsModified(t->id(), {QStringLiteral("priority")});
         }
         if (summary) *summary = QStringLiteral("Задача «%1» создана").arg(content);
         return true;
@@ -1552,9 +1554,18 @@ bool AIAssistant::executeAction(const QJsonObject &a, QString *summary)
         Task *t = findTask(content);
         if (!t)
             return false;
-        t->setIsCompleted(true);
-        t->setCompletedAt(QDateTime::currentDateTimeUtc());
-        m_store->markTaskModified(t->id());
+        const QString id = t->id();
+        if (m_completeTaskFn) {
+            // VM path: recurring-task advance, karma, undo, per-field _meta.
+            if (!m_completeTaskFn(id))
+                return false;
+        } else {
+            // Standalone fallback (tests): still stamp per-field _meta.
+            t->setIsCompleted(true);
+            t->setCompletedAt(QDateTime::currentDateTimeUtc());
+            m_store->markTaskFieldsModified(id, {QStringLiteral("is_completed"),
+                                                 QStringLiteral("completed_at")});
+        }
         if (summary) *summary = QStringLiteral("Задача «%1» выполнена").arg(content);
         return true;
     }
@@ -1565,7 +1576,7 @@ bool AIAssistant::executeAction(const QJsonObject &a, QString *summary)
         if (!t || prio < 1 || prio > 4)
             return false;
         t->setPriority(prio);
-        m_store->markTaskModified(t->id());
+        m_store->markTaskFieldsModified(t->id(), {QStringLiteral("priority")});
         if (summary) *summary = QStringLiteral("Приоритет «%1» → P%2").arg(content).arg(prio);
         return true;
     }
@@ -1574,12 +1585,20 @@ bool AIAssistant::executeAction(const QJsonObject &a, QString *summary)
         Task *t = findTask(content);
         if (!t)
             return false;
-        const bool ok = m_store->removeTask(t->id());
+        const QString id = t->id();
+        // VM path pushes an undo entry; fallback soft-deletes via the store.
+        const bool ok = m_deleteTaskFn ? m_deleteTaskFn(id) : m_store->removeTask(id);
         if (ok && summary) *summary = QStringLiteral("Задача «%1» удалена").arg(content);
         return ok;
     }
 
     return false;
+}
+
+void AIAssistant::setTaskActionHandlers(TaskActionFn completeTask, TaskActionFn deleteTask)
+{
+    m_completeTaskFn = std::move(completeTask);
+    m_deleteTaskFn = std::move(deleteTask);
 }
 
 bool AIAssistant::confirmAction(const QString &actionJson)
