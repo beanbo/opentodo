@@ -59,6 +59,13 @@ Java_org_opentodo_NotificationHelper_nativeOnNotificationAction(
         return;
     const char *t = env->GetStringUTFChars(jTaskId, nullptr);
     const char *a = env->GetStringUTFChars(jAction, nullptr);
+    if (!t || !a) {
+        // OOM: GetStringUTFChars returned null and may have a pending exception.
+        if (t) env->ReleaseStringUTFChars(jTaskId, t);
+        if (a) env->ReleaseStringUTFChars(jAction, a);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        return;
+    }
     const QString taskId = QString::fromUtf8(t);
     const QString action = QString::fromUtf8(a);
     env->ReleaseStringUTFChars(jTaskId, t);
@@ -92,6 +99,16 @@ AndroidNotificationService::AndroidNotificationService(QObject *parent)
     s_actionService = this;
     createNotificationChannel();
     drainPendingActions();
+}
+
+AndroidNotificationService::~AndroidNotificationService()
+{
+    // Don't leave the JNI back-pointers dangling if a notification action fires
+    // after this instance is gone (only resets them if they point at us).
+    if (s_actionService == this)
+        s_actionService = nullptr;
+    if (s_pendingService == this)
+        s_pendingService = nullptr;
 }
 
 void AndroidNotificationService::drainPendingActions()
@@ -177,6 +194,10 @@ void AndroidNotificationService::showNotification(const QString &title, const QS
     QJniObject jTitle = QJniObject::fromString(title);
     QJniObject jBody = QJniObject::fromString(body);
     QJniObject jTaskId = QJniObject::fromString(taskId);
+    // Q-audit #14: pass the action-button labels from C++ (via tr(), so they go
+    // through Qt's translation system) rather than hardcoding them in Java.
+    QJniObject jComplete = QJniObject::fromString(tr("Выполнить"));
+    QJniObject jSnooze   = QJniObject::fromString(tr("Отложить"));
 
     // B-5.6: use persistent allocator instead of qHash
     int notifId = taskId.isEmpty() ? 0 : allocateId(taskId);
@@ -184,13 +205,15 @@ void AndroidNotificationService::showNotification(const QString &title, const QS
     QJniObject::callStaticMethod<void>(
         k_helperClass,
         "showNotification",
-        "(Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        "(Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
         context.object<jobject>(),
         channelId.object<jstring>(),
         notifId,
         jTitle.object<jstring>(),
         jBody.object<jstring>(),
-        jTaskId.object<jstring>()
+        jTaskId.object<jstring>(),
+        jComplete.object<jstring>(),
+        jSnooze.object<jstring>()
     );
 }
 

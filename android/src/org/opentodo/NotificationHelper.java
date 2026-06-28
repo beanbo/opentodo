@@ -57,15 +57,27 @@ public class NotificationHelper {
         nm.createNotificationChannel(ch);
     }
 
-    // -----------------------------------------------------------------------
-    // showNotification — C++ JNI signature:
-    //   (Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-    // Parameter order matches the C++ callStaticMethod call:
-    //   (context, channelId, notifId, title, body, taskId)
-    // -----------------------------------------------------------------------
+    // Backward-compatible 6-arg overload for callers that don't supply action
+    // labels (e.g. NotificationReceiver's alarm path). Delegates with null labels,
+    // which the main method falls back to its Russian defaults for.
     public static void showNotification(Context context, String channelId,
                                         int id, String title, String body,
                                         String taskId) {
+        showNotification(context, channelId, id, title, body, taskId, null, null);
+    }
+
+    // -----------------------------------------------------------------------
+    // showNotification — C++ JNI signature:
+    //   (Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+    // Parameter order matches the C++ callStaticMethod call:
+    //   (context, channelId, notifId, title, body, taskId, completeLabel, snoozeLabel)
+    // The action-button labels are supplied by C++ (tr()'d) so they go through
+    // Qt's translation system rather than being hardcoded here.
+    // -----------------------------------------------------------------------
+    public static void showNotification(Context context, String channelId,
+                                        int id, String title, String body,
+                                        String taskId, String completeLabel,
+                                        String snoozeLabel) {
         NotificationManager nm =
             (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
@@ -90,10 +102,13 @@ public class NotificationHelper {
                 .setPriority(NotificationCompat.PRIORITY_HIGH);
 
         // Reminder action buttons — Complete / Snooze (task reminders only).
+        // Labels come from C++ (tr()'d); fall back to Russian defaults if absent.
         if (taskId != null && !taskId.isEmpty()) {
-            builder.addAction(android.R.drawable.checkbox_on_background, "Выполнить",
+            String complete = (completeLabel != null && !completeLabel.isEmpty()) ? completeLabel : "Выполнить";
+            String snooze   = (snoozeLabel   != null && !snoozeLabel.isEmpty())   ? snoozeLabel   : "Отложить";
+            builder.addAction(android.R.drawable.checkbox_on_background, complete,
                 actionPendingIntent(context, id, taskId, "complete"));
-            builder.addAction(android.R.drawable.ic_popup_reminder, "Отложить",
+            builder.addAction(android.R.drawable.ic_popup_reminder, snooze,
                 actionPendingIntent(context, id, taskId, "snooze"));
         }
 

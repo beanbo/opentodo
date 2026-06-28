@@ -128,6 +128,17 @@ QString TemplateViewModel::saveAsTemplate(const QString &name, const QStringList
         if (t && !t->isDeleted() && t->parentId().isEmpty())   // top-level only
             items.append(specFromTask(id));
     }
+    // Q-audit #16: if the selection was made up entirely of subtasks (the
+    // top-level filter above produced nothing), capture them as template roots
+    // anyway — otherwise "Сохранить как шаблон" on a subtask was a silent no-op.
+    // specFromTask() still captures each one's own subtree.
+    if (items.isEmpty()) {
+        for (const QString &id : taskIds) {
+            Task *t = m_store->taskById(id);
+            if (t && !t->isDeleted())
+                items.append(specFromTask(id));
+        }
+    }
     if (items.isEmpty())
         return {};
 

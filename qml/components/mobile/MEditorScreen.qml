@@ -33,7 +33,12 @@ Rectangle {
     property var _comments: []
     function _refreshComments() { _comments = (tid !== "") ? dataStore.commentsForTask(tid) : [] }
 
-    onTidChanged: { _refreshSubs(); _refreshComments(); titleField.text = task ? task.content : ""; descField.text = task ? task.description : "" }
+    // Q-audit #17: do NOT imperatively assign titleField.text/descField.text here
+    // — that breaks the declarative `text: root.task.content/description` bindings
+    // below, so an inbound sync or AI edit of the open task would never refresh the
+    // fields. The bindings already re-seed when root.task changes (and a user edit
+    // naturally takes over the field until the editor is reopened).
+    onTidChanged: { _refreshSubs(); _refreshComments() }
     Component.onCompleted: { _refreshSubs(); _refreshComments() }
     Connections {
         target: taskViewModel

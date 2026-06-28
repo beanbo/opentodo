@@ -360,7 +360,10 @@ void SettingsViewModel::setSecretStore(SecretStore *store) {
         guard.start(3000);
         store->getSecret(key);
         if (!done)
-            loop.exec();
+            // Q-audit #22: ExcludeUserInputEvents — this runs during startup
+            // wiring (before the QML engine loads); don't deliver reentrant user
+            // input into a half-constructed service graph while we pump.
+            loop.exec(QEventLoop::ExcludeUserInputEvents);
         disconnect(c1);
         disconnect(c2);
     }

@@ -726,7 +726,10 @@ void OAuthClient::warmSecretSync(const QString &key)
     guard.start(3000);
     m_secretStore->getSecret(key);
     if (!done)
-        loop.exec();
+        // Q-audit #22: ExcludeUserInputEvents so this startup-time warm loop
+        // can't deliver a reentrant user action (e.g. a "Sign out" click) into a
+        // half-initialised OAuthClient while we pump for the keyring read.
+        loop.exec(QEventLoop::ExcludeUserInputEvents);
     disconnect(c1);
     disconnect(c2);
 }
