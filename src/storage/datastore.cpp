@@ -1835,6 +1835,153 @@ void DataStore::addExistingComment(Comment *comment)
     m_commentIndex.insert(comment->id(), comment);
 }
 
+// ===================== COLLABORATORS =====================
+//
+// Author identities resolved from built-in defaults + user overrides stored in
+// settings["collaborators"]. See the doc block in datastore.h. Empty id ⇒ "me".
+
+namespace {
+
+struct BuiltinCollab {
+    const char *id;
+    const char *name;      // default display name (tr()'d for "me" below)
+    const char *icon;      // default avatar icon (IconSvg name), "" = initial
+    bool        assistant; // renders with the distinct assistant styling
+};
+
+// The two identities every OpenTodo store knows about. Order defines the
+// display order in the settings editor.
+const BuiltinCollab kBuiltinCollabs[] = {
+    { "me",     "Я",      "",       false },
+    { "claude", "Claude", "claude", true  },
+};
+
+const BuiltinCollab *builtinCollab(const QString &id)
+{
+    for (const auto &b : kBuiltinCollabs)
+        if (id == QLatin1String(b.id))
+            return &b;
+    return nullptr;
+}
+
+} // namespace
+
+// Normalise a raw comment author id: empty ⇒ the built-in "me".
+QString DataStore::normCollaboratorId(const QString &id)
+{
+    return id.isEmpty() ? QStringLiteral("me") : id;
+}
+
+// Per-collaborator override object from settings, or an empty object.
+QJsonObject DataStore::collaboratorOverride(const QString &id) const
+{
+    return m_settings.value(QStringLiteral("collaborators")).toObject()
+                     .value(normCollaboratorId(id)).toObject();
+}
+
+QString DataStore::collaboratorName(const QString &id) const
+{
+    const QString cid = normCollaboratorId(id);
+    const QString stored = collaboratorOverride(cid).value(QStringLiteral("name")).toString();
+    if (!stored.isEmpty())
+        return stored;
+    if (const BuiltinCollab *b = builtinCollab(cid)) {
+        // Only "me" is a translatable literal; brand names ("Claude") are not.
+        return b->assistant ? QString::fromLatin1(b->name) : tr(b->name);
+    }
+    return cid; // unknown collaborator ⇒ show its id
+}
+
+QString DataStore::collaboratorColor(const QString &id) const
+{
+    // Empty ⇒ "no override": the UI falls back to a theme-derived colour.
+    return collaboratorOverride(id).value(QStringLiteral("color")).toString();
+}
+
+QString DataStore::collaboratorIcon(const QString &id) const
+{
+    const QString cid = normCollaboratorId(id);
+    const QJsonObject ov = collaboratorOverride(cid);
+    // An override may explicitly clear the icon (stored as ""); distinguish
+    // "key present" (honour it) from "key absent" (use the built-in default).
+    if (ov.contains(QStringLiteral("icon")))
+        return ov.value(QStringLiteral("icon")).toString();
+    if (const BuiltinCollab *b = builtinCollab(cid))
+        return QString::fromLatin1(b->icon);
+    return {};
+}
+
+bool DataStore::collaboratorIsAssistant(const QString &id) const
+{
+    if (const BuiltinCollab *b = builtinCollab(normCollaboratorId(id)))
+        return b->assistant;
+    return false;
+}
+
+QVariantList DataStore::collaborators() const
+{
+    QVariantList out;
+    for (const auto &b : kBuiltinCollabs) {
+        const QString cid = QString::fromLatin1(b.id);
+        QVariantMap m;
+        m.insert(QStringLiteral("id"),        cid);
+        m.insert(QStringLiteral("name"),      collaboratorName(cid));
+        m.insert(QStringLiteral("color"),     collaboratorColor(cid));
+        m.insert(QStringLiteral("icon"),      collaboratorIcon(cid));
+        m.insert(QStringLiteral("assistant"), b.assistant);
+        out.append(m);
+    }
+    return out;
+}
+
+void DataStore::setCollaboratorProfile(const QString &id, const QString &name,
+                                       const QString &color, const QString &icon)
+{
+    const QString cid = normCollaboratorId(id);
+    QJsonObject all = m_settings.value(QStringLiteral("collaborators")).toObject();
+    QJsonObject ov  = all.value(cid).toObject();
+
+    // Store overrides only when they differ from the built-in default; clearing
+    // a field back to default removes the key so the object stays minimal.
+    const BuiltinCollab *b = builtinCollab(cid);
+    const QString defaultName = b ? (b->assistant ? QString::fromLatin1(b->name)
+                                                   : tr(b->name))
+                                  : cid;
+
+    const QString trimmedName = name.trimmed();
+    if (trimmedName.isEmpty() || trimmedName == defaultName)
+        ov.remove(QStringLiteral("name"));
+    else
+        ov[QStringLiteral("name")] = trimmedName;
+
+    if (color.isEmpty())
+        ov.remove(QStringLiteral("color"));
+    else
+        ov[QStringLiteral("color")] = color;
+
+    // Icon default differs per built-in; only persist when the caller's icon
+    // diverges from that default, otherwise drop the key.
+    const QString defaultIcon = b ? QString::fromLatin1(b->icon) : QString();
+    if (icon == defaultIcon)
+        ov.remove(QStringLiteral("icon"));
+    else
+        ov[QStringLiteral("icon")] = icon;
+
+    if (ov.isEmpty())
+        all.remove(cid);
+    else
+        all[cid] = ov;
+
+    if (all.isEmpty())
+        m_settings.remove(QStringLiteral("collaborators"));
+    else
+        m_settings[QStringLiteral("collaborators")] = all;
+
+    emit collaboratorsChanged();
+    emit settingsChanged();
+    emit dataChanged();
+}
+
 // ===================== SETTINGS =====================
 
 QJsonObject DataStore::settings() const

@@ -44,6 +44,9 @@ ColumnLayout {
     Connections {
         target: dataStore
         function onCommentsChanged() { root._refreshModel() }
+        // Renaming/recolouring a collaborator (Settings) should re-resolve the
+        // author labels live — rebuild the list so delegates re-read profiles.
+        function onCollaboratorsChanged() { root._refreshModel() }
     }
 
     // ── Section header ─────────────────────────────────────────────────────
@@ -115,30 +118,40 @@ ColumnLayout {
                 spacing: Spacing.sm
 
                 // ── Avatar ─────────────────────────────────────────────────
-                // Claude-authored comments (added by the OpenTodo→Claude bridge)
-                // get a distinct darker-accent avatar + "C" initial so they read
-                // apart from the user's own "Я" comments at a glance.
+                // The comment's `author` id resolves to a first-class
+                // collaborator profile (name / colour / icon) via dataStore, so
+                // an assistant comment (e.g. Claude) reads apart from the user's
+                // own comments at a glance — and both are user-configurable in
+                // Settings. Empty author ⇒ the built-in "me".
                 Rectangle {
-                    readonly property bool isClaude: commentRow.modelData.author === "claude"
+                    readonly property string authorId:     commentRow.modelData.author
+                    readonly property bool   isAssistant:  dataStore.collaboratorIsAssistant(authorId)
+                    readonly property string overrideColor: dataStore.collaboratorColor(authorId)
+                    readonly property string avatarIcon:   dataStore.collaboratorIcon(authorId)
+                    readonly property string displayName:  dataStore.collaboratorName(authorId)
                     width:  28
                     height: 28
                     radius: 14
-                    color:  isClaude ? Qt.darker(ThemeManager.accentColor, 1.35)
-                                     : ThemeManager.accentColor
+                    color:  overrideColor !== ""
+                                ? overrideColor
+                                : (isAssistant ? Qt.darker(ThemeManager.accentColor, 1.35)
+                                               : ThemeManager.accentColor)
                     Layout.alignment: Qt.AlignTop
 
-                    // Claude → official spark mark; the user → "Я" initial.
+                    // Icon avatar when the profile defines one (Claude's spark);
+                    // otherwise the first letter of the display name.
                     IconSvg {
                         anchors.centerIn: parent
-                        visible:       parent.isClaude
-                        name:          "claude"
+                        visible:       parent.avatarIcon !== ""
+                        name:          parent.avatarIcon
                         size:          16
                         color:         ThemeManager.accentForeground
                     }
                     Text {
                         anchors.centerIn: parent
-                        visible:       !parent.isClaude
-                        text:          qsTr("Я")
+                        visible:       parent.avatarIcon === ""
+                        text:          parent.displayName.length > 0
+                                       ? parent.displayName.charAt(0) : "?"
                         font.pixelSize: FontSize.caption
                         font.bold:      true
                         color:          ThemeManager.accentForeground
@@ -156,8 +169,7 @@ ColumnLayout {
                         spacing: 6
 
                         Text {
-                            text:          commentRow.modelData.author === "claude"
-                                           ? "Claude" : qsTr("Я")
+                            text:          dataStore.collaboratorName(commentRow.modelData.author)
                             font.pixelSize: FontSize.small
                             font.weight:   Font.Medium
                             color:         ThemeManager.textColor

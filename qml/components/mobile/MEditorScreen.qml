@@ -46,7 +46,11 @@ Rectangle {
         function onTaskAdded() { root._refreshSubs() }
         function onTaskRemoved() { root._refreshSubs() }
     }
-    Connections { target: dataStore; ignoreUnknownSignals: true; function onCommentsChanged() { root._refreshComments() } }
+    Connections { target: dataStore; ignoreUnknownSignals: true
+        function onCommentsChanged() { root._refreshComments() }
+        // Re-resolve author labels when a collaborator profile is edited.
+        function onCollaboratorsChanged() { root._refreshComments() }
+    }
 
     function _dueLabel() {
         if (!task) return qsTr("Без срока")
@@ -277,18 +281,34 @@ Rectangle {
                     Repeater {
                         model: root._comments
                         delegate: Item {
+                            id: cmtDelegate
                             required property var modelData
-                            readonly property bool isClaude: modelData.author === "claude"
+                            // Author id resolves to a first-class collaborator
+                            // profile (name/colour/icon), configurable in Settings.
+                            // Empty author ⇒ the built-in "me".
+                            readonly property string authorId:      modelData.author
+                            readonly property bool   isAssistant:   dataStore.collaboratorIsAssistant(authorId)
+                            readonly property string overrideColor: dataStore.collaboratorColor(authorId)
+                            readonly property string avatarIcon:    dataStore.collaboratorIcon(authorId)
+                            readonly property string displayName:   dataStore.collaboratorName(authorId)
                             width: cmtCol.width
                             height: cmtBody.implicitHeight + 26
                             Rectangle {
                                 id: avatar
                                 anchors.left: parent.left; anchors.top: parent.top
                                 width: 32; height: 32; radius: 16
-                                color: isClaude ? ThemeManager.accentColor : (ThemeManager.isDark ? "#444444" : "#d8d8d4")
+                                color: cmtDelegate.overrideColor !== "" ? cmtDelegate.overrideColor
+                                       : (cmtDelegate.isAssistant ? ThemeManager.accentColor
+                                                                  : (ThemeManager.isDark ? "#444444" : "#d8d8d4"))
+                                IconSvg { anchors.centerIn: parent
+                                    visible: cmtDelegate.avatarIcon !== ""
+                                    name: cmtDelegate.avatarIcon
+                                    size: 16
+                                    color: cmtDelegate.isAssistant ? ThemeManager.accentForeground : ThemeManager.textColor }
                                 Text { anchors.centerIn: parent
-                                    text: isClaude ? "C" : (modelData.author && modelData.author.length ? modelData.author.charAt(0).toUpperCase() : "Я")
-                                    color: isClaude ? ThemeManager.accentForeground : ThemeManager.textColor
+                                    visible: cmtDelegate.avatarIcon === ""
+                                    text: cmtDelegate.displayName.length ? cmtDelegate.displayName.charAt(0).toUpperCase() : "?"
+                                    color: cmtDelegate.isAssistant ? ThemeManager.accentForeground : ThemeManager.textColor
                                     font.pixelSize: 13; font.weight: Font.Bold }
                             }
                             Column {
@@ -297,7 +317,7 @@ Rectangle {
                                 anchors.top: parent.top
                                 spacing: 3
                                 Row { spacing: 8
-                                    Text { text: isClaude ? "Claude" : (modelData.author && modelData.author.length ? modelData.author : qsTr("Я")); font.pixelSize: 13; font.weight: Font.Bold; color: ThemeManager.textColor }
+                                    Text { text: cmtDelegate.displayName; font.pixelSize: 13; font.weight: Font.Bold; color: ThemeManager.textColor }
                                     Text { text: modelData.postedAt ? Qt.formatDateTime(modelData.postedAt, "dd.MM HH:mm") : ""; font.pixelSize: 11; color: ThemeManager.faintTextColor; anchors.bottom: parent.bottom } }
                                 Text { width: parent.width; text: modelData.content || ""; wrapMode: Text.WordWrap; font.pixelSize: 14; color: ThemeManager.textColor; lineHeight: 1.45; lineHeightMode: Text.ProportionalHeight }
                             }

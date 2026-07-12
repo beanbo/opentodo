@@ -504,6 +504,14 @@ private slots:
     {
         runSectionSmoke(QStringLiteral("Defer"), sectionUrl(QStringLiteral("Defer")));
     }
+
+    void collaborators_loads_without_error()
+    {
+        // Depends only on `dataStore` (collaborators()/collaboratorColor/…) and
+        // the ThemeManager singleton — both available in this scope.
+        runSectionSmoke(QStringLiteral("Collaborators"),
+                        sectionUrl(QStringLiteral("Collaborators")));
+    }
 };
 
 // QTEST_MAIN: needs QGuiApplication (we instantiate QQmlApplicationEngine and

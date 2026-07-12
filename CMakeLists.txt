@@ -564,6 +564,7 @@ set(QML_FILES
     qml/components/settings/SettingsSectionAbout.qml
     qml/components/settings/SettingsSectionSupport.qml
     qml/components/settings/SettingsSectionAI.qml
+    qml/components/settings/SettingsSectionCollaborators.qml
     qml/views/ProductivityView.qml
     qml/views/NotificationsView.qml
     qml/views/AIView.qml

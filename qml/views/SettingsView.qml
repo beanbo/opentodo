@@ -53,6 +53,7 @@ Item {
             SettingsSectionAppearance   { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
             SettingsSectionSync         { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
             SettingsSectionAI           { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
+            SettingsSectionCollaborators{ Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
             SettingsSectionProductivity { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
             SettingsSectionReminders    { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}
             SettingsSectionDefer        { Layout.fillWidth: true; Layout.leftMargin: Spacing.md; Layout.rightMargin: Spacing.md}

@@ -202,6 +202,31 @@ public:
     QList<Comment *> commentsForProject(const QString &projectId) const;
     void addExistingComment(Comment *comment);
 
+    // --- Collaborators ---
+    // First-class author identities for comments (and future attribution).
+    // A comment's `author` field holds the collaborator id; an EMPTY author id
+    // means the built-in "me" (all comments predate this field), so no data
+    // migration is required. Profiles (display name / avatar colour / icon) are
+    // persisted inside the synced `settings` blob under the "collaborators" key
+    // — { "<id>": {name, color, icon}, ... } — riding the existing whole-object
+    // -LWW settings sync with no new entity plumbing. Two built-ins always
+    // resolve: "me" (the user) and "claude" (the OpenTodo→Claude bridge /
+    // in-app assistant). Passing an unknown id resolves to sensible defaults so
+    // extra collaborators can be introduced later without code changes.
+    //
+    // Resolvers apply stored overrides on top of the built-in defaults; an
+    // empty colour/icon return means "no override — let the theme decide".
+    Q_INVOKABLE QString collaboratorName(const QString &id) const;
+    Q_INVOKABLE QString collaboratorColor(const QString &id) const;   // "" ⇒ theme default
+    Q_INVOKABLE QString collaboratorIcon(const QString &id) const;    // "" ⇒ show initial
+    Q_INVOKABLE bool    collaboratorIsAssistant(const QString &id) const;
+    // Editable identities for a settings UI: [{id,name,color,icon,assistant}].
+    Q_INVOKABLE QVariantList collaborators() const;
+    // Persist an override. Empty name/color/icon clears that field back to the
+    // built-in default. Emits collaboratorsChanged + settingsChanged + dataChanged.
+    Q_INVOKABLE void setCollaboratorProfile(const QString &id, const QString &name,
+                                            const QString &color, const QString &icon);
+
     // --- Settings / Karma ---
     QJsonObject settings() const;
     void setSettings(const QJsonObject &settings);
@@ -349,6 +374,7 @@ signals:
     void filtersChanged();
     void remindersChanged();
     void commentsChanged();
+    void collaboratorsChanged();
     void settingsChanged();
     void dataChanged();
 
@@ -359,6 +385,10 @@ private:
     static QVariantList tasksToData(const QList<Task *> &list);
     static QVariantList projectsToData(const QList<Project *> &list);
     static QVariantList labelsToData(const QList<Label *> &list);
+
+    // Collaborator helpers (see the public --- Collaborators --- block).
+    static QString normCollaboratorId(const QString &id);   // "" ⇒ "me"
+    QJsonObject collaboratorOverride(const QString &id) const;
 
     // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
     void stampEntityField(const QString &entityId,
