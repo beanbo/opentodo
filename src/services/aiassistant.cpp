@@ -8,6 +8,7 @@
 #include <QSettings>
 #include <QUrl>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <QSysInfo>
 #include <QTimer>
 #include <QRegularExpression>
@@ -15,6 +16,7 @@
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
+#include "services/aiproxy.h"
 #include "services/secretstore.h"
 
 // ─── Legacy constants (Anthropic-only) ───────────────────────────────────────
@@ -33,6 +35,9 @@ static const char *kAnthropicSecretKey = "claude_api_key";
 // only the API key itself is sensitive and that lives in SecretStore.
 static const char *kSettingsProviderId      = "ai/provider";
 static const char *kSettingsOpenAiBaseUrl   = "ai/openai_compat/base_url";
+static const char *kSettingsProxyMode       = "ai/proxy/mode";
+static const char *kSettingsProxyUrl        = "ai/proxy/url";
+static const char *kSettingsAnthropicWsId   = "ai/anthropic/workspace_id";
 
 // QSettings key template for per-provider model selection: "ai/<id>/model".
 static QString settingsModelKey(const QString &providerId)
@@ -103,13 +108,15 @@ AIAssistant::AIAssistant(DataStore *store, QObject *parent)
 {
     // Register providers in display-order. The dropdown in QML iterates
     // providerIds() and produces the dropdown in this order.
-    m_providers.emplace_back(std::make_unique<AnthropicProvider>());
+    QSettings s;
+    auto anthropic = std::make_unique<AnthropicProvider>();
+    anthropic->setWorkspaceId(s.value(QLatin1String(kSettingsAnthropicWsId)).toString());
+    m_providers.emplace_back(std::move(anthropic));
     m_providers.emplace_back(std::make_unique<GeminiProvider>());
     auto openai = std::make_unique<OpenAICompatibleProvider>();
 
     // Load persisted OpenAI-compatible base URL into the provider so it's
     // ready before the first buildRequest() call.
-    QSettings s;
     openai->setBaseUrl(s.value(QLatin1String(kSettingsOpenAiBaseUrl)).toString());
     m_providers.emplace_back(std::move(openai));
 
@@ -120,6 +127,8 @@ AIAssistant::AIAssistant(DataStore *store, QObject *parent)
                                    QStringLiteral("anthropic")).toString();
     if (!providerById(m_currentProviderId))
         m_currentProviderId = QStringLiteral("anthropic");
+
+    applyProxySettings();
 }
 
 AIAssistant::~AIAssistant() = default;
@@ -206,6 +215,7 @@ void AIAssistant::setCurrentProviderId(const QString &id)
     }
     emit isConfiguredChanged();
     emit currentModelChanged();
+    emit proxyChanged();  // the route depends on the provider's endpoint
 }
 
 QString AIAssistant::currentModel() const
@@ -238,6 +248,76 @@ void AIAssistant::setOpenAiCompatBaseUrl(const QString &url)
         if (auto *oc = dynamic_cast<OpenAICompatibleProvider *>(p))
             oc->setBaseUrl(url);
     emit openAiCompatBaseUrlChanged();
+    emit proxyChanged();  // a local base URL bypasses the proxy
+}
+
+// ─── Proxy ────────────────────────────────────────────────────────────────────
+
+QString AIAssistant::proxyMode() const
+{
+    QSettings s;
+    return AiProxyFactory::modeToString(
+        AiProxyFactory::modeFromString(s.value(QLatin1String(kSettingsProxyMode)).toString()));
+}
+
+void AIAssistant::setProxyMode(const QString &mode)
+{
+    const QString normalized =
+        AiProxyFactory::modeToString(AiProxyFactory::modeFromString(mode));
+    if (normalized == proxyMode())
+        return;
+    QSettings s;
+    s.setValue(QLatin1String(kSettingsProxyMode), normalized);
+    applyProxySettings();
+    emit proxyChanged();
+}
+
+QString AIAssistant::proxyUrl() const
+{
+    QSettings s;
+    return s.value(QLatin1String(kSettingsProxyUrl)).toString();
+}
+
+void AIAssistant::setProxyUrl(const QString &url)
+{
+    const QString trimmed = url.trimmed();
+    if (trimmed == proxyUrl())
+        return;
+    QSettings s;
+    s.setValue(QLatin1String(kSettingsProxyUrl), trimmed);
+    applyProxySettings();
+    emit proxyChanged();
+}
+
+QString AIAssistant::proxyStatus() const
+{
+    const AiProxyFactory factory(AiProxyFactory::modeFromString(proxyMode()), proxyUrl());
+    return factory.describeRoute(currentEndpointUrl());
+}
+
+QString AIAssistant::validateProxyUrl(const QString &url) const
+{
+    QString error;
+    AiProxyFactory::parseProxyUrl(url, nullptr, &error);
+    return error;
+}
+
+void AIAssistant::applyProxySettings()
+{
+    // QNetworkAccessManager takes ownership and deletes the previous factory.
+    m_nam.setProxyFactory(new AiProxyFactory(AiProxyFactory::modeFromString(proxyMode()),
+                                             proxyUrl()));
+    // Pooled keep-alive connections were opened over the previous route.
+    m_nam.clearConnectionCache();
+}
+
+QUrl AIAssistant::currentEndpointUrl() const
+{
+    auto *p = currentProvider();
+    if (!p)
+        return QUrl(QStringLiteral("https://api.anthropic.com"));
+    // buildRequest is pure; an empty key and message list just yield the URL.
+    return p->buildRequest(QString(), modelFor(*p), QString(), {}, 1).request.url();
 }
 
 // S-AISafety: All chat/subtask/description/priority requests funnel through nam()
@@ -431,6 +511,132 @@ void AIAssistant::setApiKeyFor(const QString &providerId, const QString &key)
 void AIAssistant::clearConversation()
 {
     m_history.clear();
+}
+
+// ─── Anthropic workspace ──────────────────────────────────────────────────────
+
+QString AIAssistant::anthropicWorkspaceId() const
+{
+    QSettings s;
+    return s.value(QLatin1String(kSettingsAnthropicWsId)).toString();
+}
+
+void AIAssistant::setAnthropicWorkspaceId(const QString &id)
+{
+    const QString trimmed = id.trimmed();
+    if (trimmed == anthropicWorkspaceId())
+        return;
+    QSettings s;
+    if (trimmed.isEmpty())
+        s.remove(QLatin1String(kSettingsAnthropicWsId));
+    else
+        s.setValue(QLatin1String(kSettingsAnthropicWsId), trimmed);
+    if (auto *p = dynamic_cast<AnthropicProvider *>(providerById(QStringLiteral("anthropic"))))
+        p->setWorkspaceId(trimmed);
+    emit anthropicWorkspaceIdChanged();
+}
+
+void AIAssistant::fetchAnthropicWorkspaces()
+{
+    LlmProvider *provider = providerById(QStringLiteral("anthropic"));
+    const QString apiKey = provider ? loadKeyFor(*provider) : QString();
+    if (apiKey.isEmpty()) {
+        emit anthropicWorkspacesFetched({}, QStringLiteral("API ключ Anthropic не настроен."));
+        return;
+    }
+
+    // include_default=true: the Default Workspace is omitted otherwise.
+    QNetworkRequest req{QUrl(QStringLiteral(
+        "https://api.anthropic.com/v1/organizations/workspaces?include_default=true&limit=100"))};
+    req.setRawHeader("x-api-key", apiKey.toUtf8());
+    req.setRawHeader("anthropic-version", "2023-06-01");
+    applyTransferTimeout(req);
+
+    QNetworkReply *reply = nam()->get(req);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString apiErr = root.value(QStringLiteral("error")).toObject()
+                                   .value(QStringLiteral("message")).toString();
+        if (!apiErr.isEmpty() || reply->error() != QNetworkReply::NoError) {
+            emit anthropicWorkspacesFetched({}, apiErr.isEmpty() ? reply->errorString() : apiErr);
+            return;
+        }
+        QVariantList workspaces;
+        const QJsonArray data = root.value(QStringLiteral("data")).toArray();
+        for (const QJsonValue &v : data) {
+            const QJsonObject w = v.toObject();
+            const QJsonValue archivedAt = w.value(QStringLiteral("archived_at"));
+            if (!archivedAt.isNull() && !archivedAt.isUndefined())
+                continue;
+            workspaces.append(QVariantMap{
+                { QStringLiteral("id"),   w.value(QStringLiteral("id")).toString() },
+                { QStringLiteral("name"), w.value(QStringLiteral("name")).toString() },
+            });
+        }
+        emit anthropicWorkspacesFetched(workspaces, workspaces.isEmpty()
+            ? QStringLiteral("Ключу не доступен ни один workspace.") : QString());
+    });
+}
+
+// ─── Connection test ──────────────────────────────────────────────────────────
+
+void AIAssistant::testConnection()
+{
+    if (m_isTestingConnection)
+        return;
+
+    LlmProvider *provider = currentProvider();
+    if (!provider) {
+        emit connectionTestFinished(false, QStringLiteral("AI провайдер не выбран."));
+        return;
+    }
+    const QString apiKey = loadKeyFor(*provider);
+    if (apiKey.isEmpty()) {
+        emit connectionTestFinished(false, QStringLiteral("API ключ не настроен."));
+        return;
+    }
+
+    const QString model = modelFor(*provider);
+    const QString route = proxyStatus();
+    auto rd = provider->buildRequest(apiKey, model, QString(),
+                                     { { QStringLiteral("user"),
+                                         QStringLiteral("Ответь одним словом: работает.") } },
+                                     16);
+    applyTransferTimeout(rd.request);
+
+    m_isTestingConnection = true;
+    emit isTestingConnectionChanged();
+
+    QElapsedTimer timer;
+    timer.start();
+    QNetworkReply *reply = nam()->post(rd.request, rd.body);
+    m_testReply = reply;
+    QObject::connect(reply, &QNetworkReply::finished, this,
+                     [this, reply, provider, timer, model, route]() {
+        reply->deleteLater();
+        m_testReply = nullptr;
+        m_isTestingConnection = false;
+        emit isTestingConnectionChanged();
+
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QString err;
+        const QString text = provider->parseResponse(reply->readAll(), httpStatus, &err).trimmed();
+        if (err.isEmpty() && reply->error() != QNetworkReply::NoError)
+            err = reply->errorString();
+        if (err.isEmpty() && text.isEmpty())
+            err = QStringLiteral("Пустой ответ от API.");
+
+        const QString details = QStringLiteral(" · %1 · %2").arg(model, route);
+        if (!err.isEmpty()) {
+            emit connectionTestFinished(false, QStringLiteral("Ошибка: %1%2").arg(err, details));
+            return;
+        }
+        emit connectionTestFinished(true, QStringLiteral("Ответ за %1 с: «%2»%3")
+                                              .arg(QString::number(timer.elapsed() / 1000.0, 'f', 1),
+                                                   text.left(80), details));
+    });
 }
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────

@@ -373,6 +373,96 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
+
+                // Anthropic keys created for several workspaces must name one
+                // per request (anthropic-workspace-id).
+                ColumnLayout {
+                    visible: root.activeProviderId === "anthropic"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    spacing: 6
+
+                    Text {
+                        text: qsTr("Workspace ID")
+                        font.pixelSize: FontSize.bodySmall
+                        color: ThemeManager.textColor
+                        Layout.fillWidth: true
+                    }
+                    Text {
+                        text: qsTr("Нужен, только если ключ не привязан к одному workspace (API отвечает «anthropic-workspace-id is required»). «Найти» спросит у API доступные workspace.")
+                        font.pixelSize: FontSize.caption
+                        color: ThemeManager.secondaryTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        TextField {
+                            id: workspaceField
+                            Layout.fillWidth: true
+                            placeholderText: "wrkspc_…"
+                            text: aiAssistant.anthropicWorkspaceId
+                            onEditingFinished: {
+                                if (text.trim() !== aiAssistant.anthropicWorkspaceId)
+                                    aiAssistant.anthropicWorkspaceId = text.trim()
+                            }
+                        }
+                        Button {
+                            text: qsTr("Найти")
+                            flat: true
+                            enabled: aiAssistant.providerHasKey("anthropic")
+                            onClicked: {
+                                workspaceStatus.text = qsTr("Запрашиваю список…")
+                                aiAssistant.fetchAnthropicWorkspaces()
+                            }
+                        }
+                    }
+                    DesignSelect {
+                        id: workspaceCombo
+                        visible: count > 0
+                        Layout.fillWidth: true
+                        textRole: "label"
+                        valueRole: "id"
+                        model: []
+                        onActivated: (index) => aiAssistant.anthropicWorkspaceId = model[index].id
+                    }
+                    Text {
+                        id: workspaceStatus
+                        visible: text.length > 0
+                        font.pixelSize: FontSize.caption
+                        color: ThemeManager.secondaryTextColor
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+
+                    Connections {
+                        target: aiAssistant
+                        // Typing into the field breaks its binding; keep it in
+                        // sync when «Найти» picks a workspace.
+                        function onAnthropicWorkspaceIdChanged() {
+                            workspaceField.text = aiAssistant.anthropicWorkspaceId
+                        }
+                        function onAnthropicWorkspacesFetched(workspaces, error) {
+                            if (error.length > 0) {
+                                workspaceStatus.text = error
+                                workspaceCombo.model = []
+                                return
+                            }
+                            const items = workspaces.map(w => ({ id: w.id, label: w.name + " — " + w.id }))
+                            workspaceCombo.model = items
+                            // Nothing chosen yet: take the Default Workspace.
+                            let idx = items.findIndex(w => w.id === aiAssistant.anthropicWorkspaceId)
+                            if (idx < 0) {
+                                idx = Math.max(0, workspaces.findIndex(w => w.name === "Default"))
+                                aiAssistant.anthropicWorkspaceId = items[idx].id
+                            }
+                            workspaceCombo.currentIndex = idx
+                            workspaceStatus.text = qsTr("Выбран workspace: ") + workspaces[idx].name
+                        }
+                    }
+                }
             }
 
             Rectangle {
@@ -441,6 +531,142 @@ Rectangle {
                     onAccepted: {
                         if (editText.trim() !== aiAssistant.currentModel)
                             aiAssistant.currentModel = editText.trim()
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                height: 1
+                color: ThemeManager.borderColor
+            }
+        }
+
+        // ── Proxy + connection test ─────────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: proxyContent.implicitHeight + 20
+            color: "transparent"
+
+            ColumnLayout {
+                id: proxyContent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.leftMargin: 20
+                anchors.rightMargin: 20
+                anchors.topMargin: 10
+                spacing: 6
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 16
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            text: qsTr("Прокси")
+                            font.pixelSize: FontSize.bodySmall
+                            color: ThemeManager.textColor
+                            Layout.fillWidth: true
+                        }
+                        Text {
+                            text: qsTr("Из РФ и РБ API Anthropic, Google и OpenAI напрямую недоступны. «Авто» берёт переменную HTTPS_PROXY, а без неё системный прокси. Для Xray/v2ray укажи его HTTP-вход, например http://127.0.0.1:10809.")
+                            font.pixelSize: FontSize.caption
+                            color: ThemeManager.secondaryTextColor
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    DesignSelect {
+                        id: proxyModeCombo
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        textRole: "label"
+                        valueRole: "id"
+                        model: [
+                            { id: "auto",   label: qsTr("Авто") },
+                            { id: "manual", label: qsTr("Вручную") },
+                            { id: "none",   label: qsTr("Без прокси") }
+                        ]
+                        currentIndex: ["auto", "manual", "none"].indexOf(aiAssistant.proxyMode)
+                        onActivated: (index) => aiAssistant.proxyMode = model[index].id
+                    }
+                }
+
+                TextField {
+                    id: proxyUrlField
+                    visible: aiAssistant.proxyMode === "manual"
+                    Layout.fillWidth: true
+                    placeholderText: "http://127.0.0.1:10809"
+                    text: aiAssistant.proxyUrl
+                    property string error: ""
+                    onEditingFinished: {
+                        error = aiAssistant.validateProxyUrl(text)
+                        if (text.trim() !== aiAssistant.proxyUrl)
+                            aiAssistant.proxyUrl = text.trim()
+                    }
+                }
+                Text {
+                    visible: proxyUrlField.visible && proxyUrlField.error.length > 0
+                    text: proxyUrlField.error
+                    font.pixelSize: FontSize.caption
+                    color: "#d1453b"
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Text {
+                    text: qsTr("Сейчас: ") + aiAssistant.proxyStatus
+                    font.pixelSize: FontSize.caption
+                    color: ThemeManager.secondaryTextColor
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Button {
+                        text: qsTr("Проверить соединение")
+                        enabled: !aiAssistant.isTestingConnection
+                                 && aiAssistant.providerHasKey(root.activeProviderId)
+                        onClicked: {
+                            testResult.text = ""
+                            aiAssistant.testConnection()
+                        }
+                    }
+                    BusyIndicator {
+                        running: aiAssistant.isTestingConnection
+                        visible: running
+                        implicitWidth: 24
+                        implicitHeight: 24
+                    }
+                    Item { Layout.fillWidth: true }
+                }
+
+                Text {
+                    id: testResult
+                    property bool ok: false
+                    visible: text.length > 0
+                    font.pixelSize: FontSize.caption
+                    color: ok ? "#3fa34d" : "#d1453b"
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+
+                    Connections {
+                        target: aiAssistant
+                        function onConnectionTestFinished(ok, message) {
+                            testResult.ok = ok
+                            testResult.text = message
+                        }
                     }
                 }
             }

@@ -9,6 +9,7 @@ Item {
     id: root
     signal menuRequested()
     signal openSettingsRequested()
+    signal aiSettingsRequested()
 
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
 
@@ -77,7 +78,7 @@ Item {
             Row { id: btnRow; anchors.centerIn: parent; spacing: 8
                 IconSvg { anchors.verticalCenter: parent.verticalCenter; name: "settings"; size: 17; color: ThemeManager.accentForeground }
                 Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Открыть настройки"); color: ThemeManager.accentForeground; font.pixelSize: 14; font.weight: Font.Bold } }
-            MouseArea { anchors.fill: parent; onClicked: root.openSettingsRequested() }
+            MouseArea { anchors.fill: parent; onClicked: root.aiSettingsRequested() }
         }
     }
 

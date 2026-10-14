@@ -100,10 +100,21 @@ public:
 // Anthropic Claude. Endpoint /v1/messages, header x-api-key + anthropic-version.
 // This is the original provider — the request shape is preserved exactly so
 // that pre-existing tests (which inspect the x-api-key header and the
-// content[].type=="text" response field) continue to pass.
+// content[].type=="text" response field) continue to pass. Models that think
+// by default (the 5.x generation, Fable) additionally get
+// output_config.effort="low" plus max_tokens headroom for the thinking, and
+// the ones that support it opt into the server-side refusal fallback.
 class AnthropicProvider : public LlmProvider
 {
 public:
+    // Workspace for keys that are not scoped to one (personal / service
+    // account keys created for several workspaces): the API rejects their
+    // requests unless an anthropic-workspace-id header names the workspace.
+    // Empty ⇒ no header (single-workspace and legacy workspace keys). Set by
+    // AIAssistant from QSettings.
+    void setWorkspaceId(const QString &id) { m_workspaceId = id.trimmed(); }
+    QString workspaceId() const            { return m_workspaceId; }
+
     RequestData buildRequest(const QString &apiKey,
                              const QString &model,
                              const QString &systemPrompt,
@@ -119,6 +130,9 @@ public:
     QStringList suggestedModels() const override;
     QString apiKeyPlaceholder() const override { return QStringLiteral("sk-ant-api03-…"); }
     QString consoleUrl() const override        { return QStringLiteral("https://console.anthropic.com/settings/keys"); }
+
+private:
+    QString m_workspaceId;
 };
 
 // Google Gemini. Key goes in the URL query string (?key=…); the body uses

@@ -227,6 +227,7 @@ set(INFRA_SOURCES
     src/services/windowchrome.cpp
     src/services/undostack.cpp
     src/services/aiassistant.cpp
+    src/services/aiproxy.cpp
     src/services/llmprovider.cpp
     src/services/secretstore.cpp
     src/services/hapticservice.cpp
@@ -266,6 +267,7 @@ set(INFRA_HEADERS
     src/services/windowchrome.h
     src/services/undostack.h
     src/services/aiassistant.h
+    src/services/aiproxy.h
     src/services/llmprovider.h
     src/services/secretstore.h
     src/services/hapticservice.h
@@ -546,6 +548,7 @@ set(QML_FILES
     qml/components/mobile/MBoardScreen.qml
     qml/components/mobile/MSearchScreen.qml
     qml/components/mobile/MAIScreen.qml
+    qml/components/mobile/MAISettingsScreen.qml
     qml/components/mobile/MSyncScreen.qml
     qml/views/ProjectView.qml
     qml/views/BoardView.qml

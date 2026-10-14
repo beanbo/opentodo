@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 #include <QList>
 #include <QPair>
 #include <QQmlEngine>
@@ -45,6 +46,22 @@ class AIAssistant : public QObject
                                            WRITE setOpenAiCompatBaseUrl
                                            NOTIFY openAiCompatBaseUrlChanged)
     Q_PROPERTY(QStringList providerIds READ providerIds CONSTANT)
+
+    // Outbound proxy for every AI request (services/aiproxy.h), persisted in
+    // QSettings ai/proxy/*. proxyMode is "auto" | "manual" | "none"; proxyUrl
+    // is used in "manual". proxyStatus describes the route the current
+    // provider's requests take right now (never shows a proxy password).
+    Q_PROPERTY(QString proxyMode   READ proxyMode WRITE setProxyMode NOTIFY proxyChanged)
+    Q_PROPERTY(QString proxyUrl    READ proxyUrl  WRITE setProxyUrl  NOTIFY proxyChanged)
+    Q_PROPERTY(QString proxyStatus READ proxyStatus NOTIFY proxyChanged)
+    Q_PROPERTY(bool isTestingConnection READ isTestingConnection NOTIFY isTestingConnectionChanged)
+
+    // wrkspc_… sent as anthropic-workspace-id; needed only for Anthropic keys
+    // that are not scoped to a single workspace. Persisted in QSettings
+    // ai/anthropic/workspace_id.
+    Q_PROPERTY(QString anthropicWorkspaceId READ anthropicWorkspaceId
+                                             WRITE setAnthropicWorkspaceId
+                                             NOTIFY anthropicWorkspaceIdChanged)
 
 public:
     explicit AIAssistant(DataStore *store, QObject *parent = nullptr);
@@ -93,6 +110,29 @@ public:
     Q_INVOKABLE QString  providerConsoleUrl(const QString &id) const;
     Q_INVOKABLE QString  providerApiKeyPlaceholder(const QString &id) const;
     Q_INVOKABLE bool     providerHasKey(const QString &id) const;
+
+    // ── Proxy ─────────────────────────────────────────────────────────────
+    QString proxyMode() const;
+    void setProxyMode(const QString &mode);
+    QString proxyUrl() const;
+    void setProxyUrl(const QString &url);
+    QString proxyStatus() const;
+    // Empty when `url` is a usable proxy address, else a user-facing error.
+    Q_INVOKABLE QString validateProxyUrl(const QString &url) const;
+
+    // Sends a one-line prompt with the current provider, model, key and
+    // proxy, outside the chat history. Emits connectionTestFinished(ok,
+    // message) where message carries the reply or error, the latency, the
+    // model and the route.
+    Q_INVOKABLE void testConnection();
+    bool isTestingConnection() const { return m_isTestingConnection; }
+
+    QString anthropicWorkspaceId() const;
+    void setAnthropicWorkspaceId(const QString &id);
+    // Lists the workspaces the stored Anthropic key can act in (Admin API
+    // List Workspaces, which accepts keys not scoped to a workspace) and
+    // emits anthropicWorkspacesFetched([{id, name}], error).
+    Q_INVOKABLE void fetchAnthropicWorkspaces();
 
     Q_INVOKABLE void sendMessage(const QString &userMessage);
     Q_INVOKABLE void clearConversation();
@@ -194,6 +234,11 @@ signals:
     void currentProviderChanged();
     void currentModelChanged();
     void openAiCompatBaseUrlChanged();
+    void proxyChanged();
+    void isTestingConnectionChanged();
+    void connectionTestFinished(bool ok, const QString &message);
+    void anthropicWorkspaceIdChanged();
+    void anthropicWorkspacesFetched(const QVariantList &workspaces, const QString &error);
     void responseReceived(const QString &text);
     void errorReceived(const QString &error);
     // Tool-use: a task mutation the assistant proposes; QML shows `summary` with
@@ -253,6 +298,11 @@ private:
 
     LlmProvider *currentProvider() const;
     LlmProvider *providerById(const QString &id) const;
+
+    // Installs a fresh AiProxyFactory on m_nam from the persisted settings.
+    void applyProxySettings();
+    // Endpoint URL of the current provider (for the proxyStatus route).
+    QUrl currentEndpointUrl() const;
 
     // Per-provider key load/save. SecretStore when wired; QSettings XOR
     // fallback otherwise. The Anthropic legacy path is preserved exactly.
@@ -325,6 +375,8 @@ private:
     QPointer<QNetworkReply> m_chatReply;
     QPointer<QNetworkReply> m_descriptionReply;
     QPointer<QNetworkReply> m_priorityReply;
+    QPointer<QNetworkReply> m_testReply;
+    bool m_isTestingConnection = false;
 
     QList<QPair<QString, QString>> m_history;  // (role, text) pairs
     static constexpr int MAX_HISTORY = 20;

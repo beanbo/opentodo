@@ -512,6 +512,20 @@ private slots:
         runSectionSmoke(QStringLiteral("Collaborators"),
                         sectionUrl(QStringLiteral("Collaborators")));
     }
+
+    void ai_loads_without_error()
+    {
+        // Needs only `aiAssistant` (provider/model/key, proxy, workspace,
+        // connection test) — registered in this scope; no network on load.
+        runSectionSmoke(QStringLiteral("AI"), sectionUrl(QStringLiteral("AI")));
+    }
+
+    void mobile_ai_settings_loads_without_error()
+    {
+        // The phone counterpart of SettingsSectionAI (same aiAssistant API).
+        runSectionSmoke(QStringLiteral("MAISettingsScreen"),
+                        QStringLiteral("qrc:/qt/qml/OpenTodoUI/qml/components/mobile/MAISettingsScreen.qml"));
+    }
 };
 
 // QTEST_MAIN: needs QGuiApplication (we instantiate QQmlApplicationEngine and

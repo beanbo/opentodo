@@ -26,6 +26,10 @@ opentodo_add_unit_test(test_undostack         Infra)
 opentodo_add_unit_test(test_label_color       Infra)
 opentodo_add_unit_test(test_aiassistant       Infra)
 opentodo_add_unit_test(test_aiassistant_tooluse Infra)
+# AI proxy selection + Anthropic request/response shape (offline).
+opentodo_add_unit_test(test_aiproxy           Infra)
+# Real API round-trip through the proxy; skipped unless OPENTODO_LIVE_AI=1.
+opentodo_add_unit_test(test_aiassistant_live  Infra)
 opentodo_add_unit_test(test_subtask_generator Infra)
 opentodo_add_unit_test(test_dragdrop          App)
 opentodo_add_unit_test(test_updatechecker     Infra)

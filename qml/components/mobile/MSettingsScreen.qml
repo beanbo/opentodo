@@ -11,6 +11,7 @@ Item {
     id: root
     signal menuRequested()
     signal aiRequested()
+    signal aiSettingsRequested()
     signal syncRequested()
 
     Rectangle { anchors.fill: parent; color: ThemeManager.backgroundColor }
@@ -243,9 +244,12 @@ Item {
                     MSettingsRow {
                         width: parent.width; last: true
                         rowIcon: "sparkles"; rowIconColor: ThemeManager.accentColor
-                        rowLabel: qsTr("AI-помощник"); rowValue: qsTr("Разбивка задач, подсказки")
+                        rowLabel: qsTr("AI-помощник")
+                        rowValue: aiAssistant.isConfigured
+                                  ? (aiAssistant.providerDisplayName(aiAssistant.currentProviderId) + " · " + aiAssistant.currentModel)
+                                  : qsTr("Ключ, модель, прокси")
                         showChevron: true
-                        onRowClicked: root.aiRequested()
+                        onRowClicked: root.aiSettingsRequested()
                     }
                 }
             }

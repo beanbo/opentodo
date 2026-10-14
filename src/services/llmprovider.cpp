@@ -1,31 +1,16 @@
 #include "llmprovider.h"
 
-#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QUrl>
+
+#include "services/aiproxy.h"  // isLocalOrPrivateHost
 
 // ─── Common helpers ──────────────────────────────────────────────────────────
 
 namespace {
-
-// True if host is loopback or a private-LAN (RFC1918) address. Cleartext http://
-// to these is acceptable (a local/LAN LLM server); http:// to a PUBLIC host is
-// refused because the Authorization: Bearer key would cross the internet in the
-// clear.
-bool isLocalOrPrivateHost(const QString &host)
-{
-    if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0)
-        return true;
-    const QHostAddress a(host);
-    if (a.isNull())
-        return false;
-    return a.isLoopback()
-        || a.isInSubnet(QHostAddress(QStringLiteral("10.0.0.0")), 8)
-        || a.isInSubnet(QHostAddress(QStringLiteral("172.16.0.0")), 12)
-        || a.isInSubnet(QHostAddress(QStringLiteral("192.168.0.0")), 16);
-}
 
 // Parse an API-shaped JSON error envelope. Returns the human message when
 // found, else returns an empty string. Each provider has a slightly different
@@ -50,6 +35,34 @@ QString emptyResponseError()
 {
     return QStringLiteral("Пустой ответ от API.");
 }
+
+// Claude models that think by default: the 5.x generation (Opus 5 / 5.5,
+// Sonnet 5 / 5.5, Haiku 5.5) and the Fable / Mythos tier; on Opus 5.5 and the
+// Fable tier thinking cannot be switched off at all. Older models (4.x, the
+// claude-3-* names) answer without thinking when the field is omitted.
+bool anthropicThinksByDefault(const QString &model)
+{
+    if (model.startsWith(QLatin1String("claude-fable-"))
+        || model.startsWith(QLatin1String("claude-mythos-")))
+        return true;
+    static const QRegularExpression re(QStringLiteral("^claude-(?:opus|sonnet|haiku)-(\\d+)"));
+    const QRegularExpressionMatch m = re.match(model);
+    return m.hasMatch() && m.captured(1).toInt() >= 5;
+}
+
+// Models that take the server-side refusal fallback `fallbacks: "default"`.
+// Claude Haiku 5.5 has no fallback target, so it is left out.
+bool anthropicSupportsDefaultFallback(const QString &model)
+{
+    return model == QLatin1String("claude-opus-5-5")
+        || model == QLatin1String("claude-opus-5")
+        || model == QLatin1String("claude-sonnet-5-5")
+        || model == QLatin1String("claude-fable-5-1");
+}
+
+// Thinking counts toward max_tokens. The callers' caps are sized for the reply
+// alone (8 tokens for a priority digit), so thinking models get this on top.
+constexpr int kAnthropicThinkingHeadroom = 4096;
 
 }  // namespace
 
@@ -82,12 +95,29 @@ AnthropicProvider::buildRequest(const QString &apiKey,
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("x-api-key",         apiKey.toUtf8());
     req.setRawHeader("anthropic-version", "2023-06-01");
+    if (!m_workspaceId.isEmpty())
+        req.setRawHeader("anthropic-workspace-id", m_workspaceId.toUtf8());
+
+    if (anthropicThinksByDefault(model)) {
+        // Effort is the thinking control on these models; "low" keeps it short
+        // for these one-shot assistant prompts (and inside the 30 s timeout).
+        QJsonObject outputConfig;
+        outputConfig[QStringLiteral("effort")] = QStringLiteral("low");
+        body[QStringLiteral("output_config")] = outputConfig;
+        body[QStringLiteral("max_tokens")]    = maxTokens + kAnthropicThinkingHeadroom;
+    }
+    if (anthropicSupportsDefaultFallback(model)) {
+        // A safety-classifier decline is re-run server-side on the model
+        // Anthropic recommends for that refusal category.
+        body[QStringLiteral("fallbacks")] = QStringLiteral("default");
+        req.setRawHeader("anthropic-beta", "server-side-fallback-2026-07-01");
+    }
 
     return { req, QJsonDocument(body).toJson(QJsonDocument::Compact) };
 }
 
 QString AnthropicProvider::parseResponse(const QByteArray &rawBody,
-                                          int /*httpStatus*/,
+                                          int httpStatus,
                                           QString *errorOut) const
 {
     const QJsonDocument doc = QJsonDocument::fromJson(rawBody);
@@ -97,10 +127,31 @@ QString AnthropicProvider::parseResponse(const QByteArray &rawBody,
     }
     const QJsonObject root = doc.object();
 
-    // Error envelope: { "error": { "message": "..." } }
+    // Error envelope: { "error": { "type": "...", "message": "..." } }
     const QString apiErr = jsonStringAt(root, {"error", "message"});
     if (!apiErr.isEmpty()) {
-        if (errorOut) *errorOut = apiErr;
+        QString msg = apiErr;
+        // A direct connection from an unsupported region gets a bare
+        // 403 forbidden "Request not allowed" — say what actually fixes it.
+        if (httpStatus == 403
+            && jsonStringAt(root, {"error", "type"}) == QLatin1String("forbidden")) {
+            msg += QStringLiteral(" — API Anthropic недоступен из этого региона напрямую. "
+                                  "Укажи прокси в настройках AI помощника.");
+        }
+        // A key created for several workspaces must name one per request.
+        if (httpStatus == 400 && apiErr.contains(QLatin1String("anthropic-workspace-id"))) {
+            msg += QStringLiteral(" — Ключ не привязан к workspace: укажи Workspace ID "
+                                  "в настройках AI помощника (кнопка «Найти»).");
+        }
+        if (errorOut) *errorOut = msg;
+        return {};
+    }
+
+    // A safety-classifier decline is an HTTP 200 with stop_reason "refusal"
+    // (after any server-side fallback also declined).
+    const QString stopReason = root.value(QStringLiteral("stop_reason")).toString();
+    if (stopReason == QLatin1String("refusal")) {
+        if (errorOut) *errorOut = QStringLiteral("Claude отказался отвечать на этот запрос.");
         return {};
     }
 
@@ -109,30 +160,40 @@ QString AnthropicProvider::parseResponse(const QByteArray &rawBody,
         if (errorOut) *errorOut = emptyResponseError();
         return {};
     }
+    // Read blocks by type: thinking models put (empty) thinking blocks first.
+    // A "fallback" block marks a server-side switch to another model; text
+    // before it is the declined model's partial output and is dropped.
+    QString text;
     for (const QJsonValue &block : content) {
         const QJsonObject b = block.toObject();
-        if (b.value(QStringLiteral("type")).toString() == QLatin1String("text"))
-            return b.value(QStringLiteral("text")).toString();
+        const QString type = b.value(QStringLiteral("type")).toString();
+        if (type == QLatin1String("fallback"))
+            text.clear();
+        else if (type == QLatin1String("text"))
+            text += b.value(QStringLiteral("text")).toString();
     }
+    if (!text.isEmpty())
+        return text;
 
+    if (stopReason == QLatin1String("max_tokens")) {
+        if (errorOut) *errorOut = QStringLiteral("Ответ обрезан по лимиту токенов.");
+        return {};
+    }
     if (errorOut) *errorOut = QStringLiteral("Не удалось извлечь текст из ответа.");
     return {};
 }
 
 QString AnthropicProvider::defaultModel() const
 {
-    // Keeping Haiku 4.5 as the default since it's the cheap workhorse the
-    // current build is already wired to. Users who want stronger reasoning
-    // can pick Sonnet/Opus from the dropdown.
-    return QStringLiteral("claude-haiku-4-5-20251001");
+    return QStringLiteral("claude-opus-5-5");
 }
 
 QStringList AnthropicProvider::suggestedModels() const
 {
     return {
-        QStringLiteral("claude-haiku-4-5-20251001"),
-        QStringLiteral("claude-sonnet-4-6"),
-        QStringLiteral("claude-opus-4-7"),
+        QStringLiteral("claude-opus-5-5"),
+        QStringLiteral("claude-sonnet-5-5"),
+        QStringLiteral("claude-haiku-5-5"),
     };
 }
 

@@ -624,6 +624,7 @@ Item {
                 function onAiRequested()   { sidebarViewModel.navigateTo("ai") }
                 function onOpenSettingsRequested() { sidebarViewModel.navigateTo("settings") }
                 function onSyncRequested() { root.subScreen = "sync" }
+                function onAiSettingsRequested() { root.subScreen = "ai" }
                 // MCalendarScreen day-list swipe/long-press (forwarded up because
                 // the snooze sheet + context sheet live here, not in the screen).
                 function onSnoozeRequested(id)      { root._snoozeTask(id) }
@@ -956,7 +957,7 @@ Item {
         }
     }
 
-    // ── Settings sub-screen overlay (sync setup) ──────────────────────────────
+    // ── Settings sub-screen overlay (sync / AI setup) ─────────────────────────
     Loader {
         id: subScreenLoader
         anchors.left: parent.left
@@ -967,7 +968,9 @@ Item {
         z: 18
         active: root.subScreen !== ""
         visible: active
-        source: root.subScreen === "sync" ? "../components/mobile/MSyncScreen.qml" : ""
+        source: root.subScreen === "sync" ? "../components/mobile/MSyncScreen.qml"
+              : root.subScreen === "ai"   ? "../components/mobile/MAISettingsScreen.qml"
+              : ""
         Connections {
             target: subScreenLoader.item
             ignoreUnknownSignals: true
