@@ -409,7 +409,9 @@ private slots:
         QVERIFY(!remote.blobs.contains(QStringLiteral("HEAD")));
 
         DataStore store;
-        Task *mine = store.addTask(QStringLiteral("local task"), QString());
+        // Keep the id, not the pointer: a merging pull reloads the store
+        // (DataStore::clear() deletes every Task), so `mine` would dangle.
+        const QString mineId = store.addTask(QStringLiteral("local task"), QString())->id();
         SyncEngine engine(&store);
         engine.setRemote(&remote);
         QSignalSpy completed(&engine, &SyncEngine::syncCompleted);
@@ -417,7 +419,7 @@ private slots:
 
         QCOMPARE(engine.status(), SyncEngine::Synced);
         QVERIFY2(store.taskById(pt->id()), "pull() must merge remote state.json when HEAD is absent");
-        QVERIFY(store.taskById(mine->id()));     // merge, not overwrite
+        QVERIFY(store.taskById(mineId));     // merge, not overwrite
         QVERIFY(engine.lastSyncTime().isValid());
         QCOMPARE(completed.count(), 1);
         QVERIFY(!remote.locked);
@@ -437,7 +439,7 @@ private slots:
         e3.setRemote(&corrupt);
         e3.pull();
         QCOMPARE(e3.status(), SyncEngine::Error);
-        QVERIFY(store.taskById(mine->id()));
+        QVERIFY(store.taskById(mineId));
         QVERIFY(!corrupt.locked);
     }
 
