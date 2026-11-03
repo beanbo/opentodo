@@ -4,7 +4,7 @@
 #   _cap.ps1 -ClickX 0.4 -ClickY 0.95 -Out p.png # click at fractional client coords, then shot
 #   _cap.ps1 -DragFromX .. -DragFromY .. -DragToX .. -DragToY .. -Out p.png  # drag (swipe)
 param(
-  [string]$Out = "C:\Main\Projects\Smart Home\opentodo\design_handoff_android_mobile\_verify.png",
+  [string]$Out = (Join-Path $PSScriptRoot "_verify.png"),
   [double]$ClickX = -1, [double]$ClickY = -1,
   [double]$DragFromX = -1, [double]$DragFromY = -1, [double]$DragToX = -1, [double]$DragToY = -1
 )

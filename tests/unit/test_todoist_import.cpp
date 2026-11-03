@@ -598,19 +598,21 @@ private slots:
         QVERIFY(found);
     }
 
-    // ─── Regression: real Todoist backup with 15 projects ───────────────────
+    // ─── Regression: real-format Todoist backup with 15 projects ────────────
     // The user reported "only one project is imported, not all of them" when
     // feeding a real backup ZIP whose filenames look like
     // "🔨 Мастерская [6fvVcrX3Ww23ghmj].csv" (UTF-8, with emoji + bracketed
     // Todoist project id). All 15 CSVs must produce 14 new projects + the
     // existing Inbox map; project names must NOT contain the "[id]" suffix.
+    // The fixture is a synthetic replica of that export's format (made-up
+    // content) built by fixtures/todoist_sample/generate_fixture.py.
     void real_user_backup_imports_all_projects()
     {
         const QString zipPath =
             QCoreApplication::applicationDirPath()
-            + QStringLiteral("/fixtures/todoist_sample/user_backup.zip");
+            + QStringLiteral("/fixtures/todoist_sample/realformat_backup.zip");
         if (!QFileInfo::exists(zipPath))
-            QSKIP("user_backup.zip fixture not present");
+            QSKIP("realformat_backup.zip fixture not present");
 
         QScopedPointer<DataStore> ds(makeStore(this));
         QScopedPointer<TodoistImporter> importer(new TodoistImporter(ds.data(), this));
@@ -631,7 +633,7 @@ private slots:
                  qPrintable(QStringLiteral("Imported only %1 projects, expected ≥14")
                                 .arg(projectCount)));
 
-        // Real backup has dozens of tasks — be permissive.
+        // The fixture has 35 tasks — be permissive.
         QVERIFY2(taskCount >= 30,
                  qPrintable(QStringLiteral("Imported only %1 tasks").arg(taskCount)));
 
@@ -650,9 +652,9 @@ private slots:
         }
         QCOMPARE(inboxCount, 1);
 
-        // Spot-check a few of the user's actual project names — they
-        // contain emoji + Cyrillic and were the ones being silently
-        // dropped by Qt's broken QZipReader.
+        // Spot-check a few project names — emoji + Cyrillic (and a flag
+        // emoji) were the ones being silently dropped by Qt's broken
+        // QZipReader.
         QStringList names;
         for (auto *p : ds->allProjects()) names << p->name();
         QVERIFY2(names.contains(QStringLiteral("🔨 Мастерская")),
@@ -661,8 +663,8 @@ private slots:
         QVERIFY2(names.contains(QStringLiteral("🥷 Личное")),
                  qPrintable(QStringLiteral("Personal project missing. Got: %1")
                                 .arg(names.join(QStringLiteral(", ")))));
-        QVERIFY2(names.contains(QStringLiteral("🇮🇹 Италия")),
-                 qPrintable(QStringLiteral("Italy project missing. Got: %1")
+        QVERIFY2(names.contains(QStringLiteral("🇯🇵 Япония")),
+                 qPrintable(QStringLiteral("Flag-emoji project missing. Got: %1")
                                 .arg(names.join(QStringLiteral(", ")))));
     }
 };

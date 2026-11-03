@@ -271,7 +271,7 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Адрес для телефона: https://my-pc.tail0000.ts.net")
+                        text: qsTr("Адрес для телефона — тот, что выдаст Tailscale Funnel (вида https://имя-пк.tailXXXX.ts.net)")
                         wrapMode: Text.WordWrap
                         font.pixelSize: 12
                         color: ThemeManager.textColor

@@ -1,7 +1,8 @@
 """
-Generates a synthetic Todoist backup ZIP fixture for unit tests.
+Generates the synthetic Todoist backup ZIP fixtures for unit tests.
 Run once: python generate_fixture.py
-Output: Todoist Backup 2024-01-01.zip
+Output: Todoist Backup 2024-01-01.zip  (old 12-column export format)
+        realformat_backup.zip          (current export format, see the bottom)
 """
 import zipfile, io, os
 
@@ -66,3 +67,104 @@ print(f"Written: {out_path}")
 print(f"  Inbox: {inbox_csv.count(chr(10))-1} data rows")
 print(f"  Work: {work_csv.count(chr(10))-1} data rows")
 print(f"  Personal: {personal_csv.count(chr(10))-1} data rows")
+
+# ── realformat_backup.zip — a replica of a current Todoist export ─────────────
+# All content is made up, but the shape matches what Todoist produces today:
+# one CSV per project named "<name> [<16-char id>].csv" (emoji, Cyrillic, a flag
+# emoji, an emoji with a variation selector, a name with no space after the
+# emoji), UTF-8 with BOM, CRLF line endings, 15 columns, a leading
+# "meta,view_style=list" row, blank separator rows, sections, notes with an
+# author and ISO timestamp (one of them multi-line), subtasks at INDENT 2, and
+# entries STORED rather than deflated. 15 files: Inbox + 14 projects.
+
+RF_HEADER = ("TYPE,CONTENT,DESCRIPTION,IS_COLLAPSED,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,"
+             "DATE,DATE_LANG,TIMEZONE,DURATION,DURATION_UNIT,DEADLINE,DEADLINE_LANG")
+RF_AUTHOR = "Test User (10000001)"
+RF_TZ = "Europe/Berlin"
+
+
+def rf_row(*fields):
+    fields = list(fields) + [""] * (15 - len(fields))
+    return csv(*fields).rstrip("\n")
+
+
+def rf_task(content, indent=1, description=""):
+    return rf_row("task", content, description, "", 4, indent, RF_AUTHOR, "", "", "", RF_TZ)
+
+
+def rf_section(name):
+    return rf_row("section", name, "", "False")
+
+
+def rf_note(text, ts="2026-01-15T10:30:00.000000Z"):
+    return rf_row("note", text, "", "", "", "", RF_AUTHOR, "", ts)
+
+
+RF_BLANK = rf_row()
+
+# (project name, Todoist id, rows)
+RF_PROJECTS = [
+    ("Inbox", "6aaaaaaaaaaaaa01", [rf_task("Разобрать входящие")]),
+    ("🔨 Мастерская", "6aaaaaaaaaaaaa02", [
+        rf_task("Наточить стамески"), rf_task("Купить наждачку P240"),
+        rf_task("Собрать полку", description="Размеры в комментарии"),
+        rf_task("Разметить доски", indent=2), rf_note("Ширина 80 см, глубина 25 см"),
+        rf_section("Инструменты"), rf_task("Починить лобзик"), rf_task("Смазать фрезер"),
+        rf_note("Многострочная заметка:\r\nпервая строка\r\n\"вторая\" строка", "2026-02-01T08:00:00.000000Z"),
+    ]),
+    ("🧹 Домашние дела", "6aaaaaaaaaaaaa03", [
+        rf_section("Каждую неделю"), rf_task("Пропылесосить"), rf_task("Полить цветы"),
+        rf_section("Раз в месяц"), rf_task("Разморозить холодильник"), rf_task("Почистить фильтры"),
+    ]),
+    ("📚 Учёба", "6aaaaaaaaaaaaa04", [rf_section("Курсы")]),
+    ("💡Идеи", "6aaaaaaaaaaaaa05", [
+        rf_task("Идея: приложение для рецептов"), rf_task("Идея: блог о путешествиях"),
+        rf_task("Идея: настольная игра"),
+    ]),
+    ("👾 Работа", "6aaaaaaaaaaaaa06", [
+        rf_section("Спринт"), rf_task("Подготовить демо"), rf_note("Демо в пятницу"),
+        rf_section("Бэклог"), rf_task("Обновить зависимости"),
+        rf_section("Готово"), rf_task("Написать ретро"),
+    ]),
+    ("🥷 Личное", "6aaaaaaaaaaaaa07", [
+        rf_task("Записаться к стоматологу"), rf_task("Продлить страховку"),
+        rf_task("Найти полис", indent=2), rf_task("Сравнить тарифы", indent=2),
+        rf_section("Спорт"), rf_task("Купить кроссовки"), rf_note("Размер 43"),
+    ]),
+    ("🎬 Media", "6aaaaaaaaaaaaa08", [
+        rf_task("Посмотреть фильм из списка"), rf_task("Выбрать сериал", indent=2),
+        rf_task("Разобрать фото за год"),
+    ]),
+    ("🗄️ Очень длинное название проекта для проверки переноса строк в интерфейсе", "6aaaaaaaaaaaaa09", [
+        rf_task("Первая задача"), rf_task("Вторая задача"), rf_note("Заметка к проекту"),
+    ]),
+    ("🤖 Нейросети и ИИ", "6aaaaaaaaaaaaa10", [rf_task("Попробовать локальную модель")]),
+    ("🏘️ Соседи", "6aaaaaaaaaaaaa11", [
+        rf_section("Собрание"), rf_task("Составить повестку"), rf_task("Разослать приглашения"),
+        rf_note("Собрание в 19:00"),
+    ]),
+    ("🛒 Покупки", "6aaaaaaaaaaaaa12", [rf_section("Продукты"), rf_task("Хлеб")]),
+    ("🇯🇵 Япония", "6aaaaaaaaaaaaa13", [
+        rf_task("Оформить визу"), rf_task("Забронировать отель"), rf_task("Купить JR Pass"),
+        rf_task("Скачать офлайн-карты"),
+    ]),
+    ("🏠 Дом", "6aaaaaaaaaaaaa14", []),
+    ("💡 Развитие", "6aaaaaaaaaaaaa15", []),
+]
+
+rf_path = os.path.join(os.path.dirname(__file__), "realformat_backup.zip")
+rf_tasks = 0
+with zipfile.ZipFile(rf_path, "w", compression=zipfile.ZIP_STORED) as zf:
+    for name, pid, rows in RF_PROJECTS:
+        lines = [RF_HEADER, rf_row("meta", "view_style=list"), RF_BLANK]
+        for row in rows:
+            lines.append(row)
+            if row.startswith("section,"):
+                continue
+            lines.append(RF_BLANK)
+        info = zipfile.ZipInfo(f"{name} [{pid}].csv", date_time=(2026, 1, 1, 0, 0, 0))
+        zf.writestr(info, ("﻿" + "\r\n".join(lines) + "\r\n").encode("utf-8"))
+        rf_tasks += sum(1 for r in rows if r.startswith("task,"))
+
+print(f"Written: {rf_path}")
+print(f"  {len(RF_PROJECTS)} projects, {rf_tasks} tasks")

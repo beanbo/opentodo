@@ -21,6 +21,7 @@ class Telemetry : public QObject
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(bool prompted READ prompted CONSTANT)
     Q_PROPERTY(int pendingEventCount READ pendingEventCount NOTIFY pendingEventCountChanged)
+    Q_PROPERTY(bool available READ available CONSTANT)
 
 public:
     explicit Telemetry(QObject *parent = nullptr);
@@ -29,6 +30,9 @@ public:
     bool enabled() const;
     void setEnabled(bool e);
     bool prompted() const;
+    // True only when this build has a collector endpoint configured; the
+    // Settings toggle is hidden otherwise.
+    bool available() const;
 
     // Diagnostics: number of events currently waiting in the in-memory queue.
     // Includes events that were just persisted to disk but not yet flushed.

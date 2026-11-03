@@ -209,7 +209,8 @@ Rectangle {
             }
         }
 
-        // Telemetry toggle — B-7.72: hide when telemetry context property is absent
+        // Telemetry toggle — B-7.72: hide when telemetry context property is absent,
+        // and when the build has no collector endpoint (the toggle would do nothing)
         Rectangle {
             Layout.fillWidth: true
             Layout.leftMargin: 20
@@ -217,7 +218,7 @@ Rectangle {
             height: telemetryRow.implicitHeight + 24
             radius: 8
             color: ThemeManager.hoverColor
-            visible: typeof telemetry !== "undefined" && telemetry !== null
+            visible: typeof telemetry !== "undefined" && telemetry !== null && telemetry.available
 
             RowLayout {
                 id: telemetryRow

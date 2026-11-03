@@ -12,6 +12,9 @@ private slots:
     void initTestCase()
     {
         QStandardPaths::setTestModeEnabled(true);
+        // Builds ship without a collector; give the queue an endpoint that can
+        // never resolve (RFC 2606 .invalid) so trackEvent() enqueues as before.
+        qputenv("OPENTODO_TELEMETRY_ENDPOINT", "https://telemetry.invalid/track");
         QCoreApplication::setOrganizationName(QStringLiteral("OpenTodoTest_Telemetry"));
         QCoreApplication::setApplicationName(QStringLiteral("test_telemetry"));
     }

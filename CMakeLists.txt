@@ -367,6 +367,15 @@ if(TARGET Qt6::CorePrivate)
     target_link_libraries(OpenTodoInfra PUBLIC Qt6::CorePrivate)
 endif()
 
+# Opt-in usage telemetry has no default collector. A distributor that runs one
+# passes -DOPENTODO_TELEMETRY_ENDPOINT=https://...; left empty, the Settings
+# toggle is hidden and nothing is ever sent (see src/services/telemetry.cpp).
+set(OPENTODO_TELEMETRY_ENDPOINT "" CACHE STRING "Telemetry collector URL (empty = telemetry unavailable)")
+if(OPENTODO_TELEMETRY_ENDPOINT)
+    target_compile_definitions(OpenTodoInfra PRIVATE
+        OPENTODO_TELEMETRY_ENDPOINT="${OPENTODO_TELEMETRY_ENDPOINT}")
+endif()
+
 # zlib is needed for the in-process ZIP reader used by the Todoist importer.
 # Qt bundles zlib internally but doesn't export all symbols, so we look for
 # a system zlib first and fall back to Qt's headers (linked via Qt6::Core).
@@ -1247,10 +1256,10 @@ if(WIN32 AND NOT EMSCRIPTEN AND NOT ANDROID)
         set(CPACK_NSIS_DISPLAY_NAME            "OpenTodo")
         set(CPACK_NSIS_PACKAGE_NAME            "OpenTodo")
         set(CPACK_NSIS_HELP_LINK
-            "https://github.com/opentodo/opentodo")
+            "https://github.com/beanbo/opentodo")
         set(CPACK_NSIS_URL_INFO_ABOUT
-            "https://github.com/opentodo/opentodo")
-        set(CPACK_NSIS_CONTACT                 "opentodo@example.invalid")
+            "https://github.com/beanbo/opentodo")
+        set(CPACK_NSIS_CONTACT                 "https://github.com/beanbo/opentodo/issues")
         set(CPACK_NSIS_MODIFY_PATH             OFF)
         set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
         # Start menu shortcut — name shown ; relative .exe path.

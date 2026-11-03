@@ -20,11 +20,11 @@ developer-facing canonical reference).
 | [PRIVACY.md](PRIVACY.md) | What data OpenTodo touches, what leaves the device, opt-in controls. |
 | [TERMS.md](TERMS.md) | Terms of use covering the open-source distribution. |
 
-Both `PRIVACY.md` and `TERMS.md` are **templates**. Fields tagged `<TODO>`
-must be filled in (or removed) by whoever distributes a specific build —
-maintainer email, repository URL, governing-law jurisdiction. If you are
-shipping a commercial or hosted derivative, review them with a lawyer in
-your jurisdiction.
+Both documents describe the builds published from this repository. If you
+redistribute a build that handles data differently (for example, one with a
+telemetry endpoint configured), or ship a commercial or hosted derivative,
+publish your own revised versions and review them with a lawyer in your
+jurisdiction.
 
 ## Translations
 

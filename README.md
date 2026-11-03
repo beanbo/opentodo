@@ -1,7 +1,7 @@
 # OpenTodo
 
-[![CI](https://github.com/USER/opentodo/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/opentodo/actions/workflows/ci.yml)
-[![Release](https://github.com/USER/opentodo/actions/workflows/release.yml/badge.svg)](https://github.com/USER/opentodo/actions/workflows/release.yml)
+[![CI](https://github.com/beanbo/opentodo/actions/workflows/ci.yml/badge.svg)](https://github.com/beanbo/opentodo/actions/workflows/ci.yml)
+[![Release](https://github.com/beanbo/opentodo/actions/workflows/release.yml/badge.svg)](https://github.com/beanbo/opentodo/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Кросс-платформенный планировщик задач на Qt 6 / QML / C++20, вдохновлённый Todoist — с локальным хранением и Google Drive-синхронизацией.
@@ -11,17 +11,13 @@
 - 📋 Проекты с иерархией, разделы, подзадачи (без ограничения глубины)
 - 🏷 Метки, фильтры с собственным DSL (`today & p1 | #Work`)
 - 🔄 Естественный язык для дат на русском и английском (`завтра в 9`, `каждый понедельник`)
-- ☁️ Синхронизация через Google Drive с CRDT-разрешением конфликтов (HLC + per-field LWW)
+- ☁️ Синхронизация через Google Drive или через свой ПК (Tailscale Funnel / Wi-Fi) с CRDT-разрешением конфликтов (HLC + per-field LWW)
 - 🔔 Системные уведомления (Windows toast, Android notifications)
 - 🎯 Pomodoro-таймер, ежедневный обзор, статистика и очки прогресса
-- 🤖 AI-помощник для разбиения задач на подзадачи (Anthropic Claude API)
+- 🤖 AI-помощник для разбиения задач на подзадачи (Anthropic Claude, OpenAI-совместимые API, Google Gemini — со своим ключом)
 - 🎨 8 тем оформления, светлая/тёмная, узкий режим
 - ⌨️ Глобальная горячая клавиша для быстрого добавления (Ctrl+Alt+A)
 - 🌐 Поддержка платформ: Windows, Linux, macOS (десктоп) · Android · Web (WASM)
-
-## Скриншот
-
-_(добавьте скриншот сюда после первой публикации)_
 
 ## Сборка
 
@@ -73,12 +69,12 @@ QML в `qml/` — `OpenTodoUI` модуль, точка входа `Main.qml`.
 
 ## Конфиденциальность и условия использования
 
-OpenTodo хранит все данные локально; облачная синхронизация, AI-интеграция и анонимная телеметрия — строго опциональные функции с отключённым состоянием по умолчанию.
+OpenTodo хранит все данные локально; синхронизация и AI-интеграция — строго опциональные функции, выключенные по умолчанию. Телеметрии в сборках из этого репозитория нет.
 
 - [docs/PRIVACY.md](docs/PRIVACY.md) — что передаётся при включении синхронизации, AI и телеметрии, и что **не** собирается никогда.
 - [docs/TERMS.md](docs/TERMS.md) — условия использования (open-source дистрибутив, без аккаунтов и подписок).
 
-Документы выложены как **шаблоны**: поля, помеченные `<TODO>` (email мейнтейнера, юрисдикция и т.п.), должны быть заполнены перед публикацией вашей сборки. Полный индекс документации — [docs/README.md](docs/README.md).
+Если вы распространяете свою сборку, которая обращается с данными иначе, опубликуйте собственные версии этих документов. Полный индекс документации — [docs/README.md](docs/README.md).
 
 ## Лицензия
 

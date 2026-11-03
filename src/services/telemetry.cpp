@@ -18,9 +18,21 @@
 #include <QVariant>
 
 // S-5.37: If the endpoint is empty or contains "TODO", no HTTP requests are made.
-// Replace this constant with the real endpoint before shipping.
-static const QString TELEMETRY_ENDPOINT =
-    QStringLiteral("https://telemetry.opentodo.app/track");
+// Open-source builds ship with NO collector: whoever distributes a build that
+// should report usage sets the endpoint at configure time
+// (-DOPENTODO_TELEMETRY_ENDPOINT=https://...) or at run time via the
+// OPENTODO_TELEMETRY_ENDPOINT environment variable (the latter wins).
+static QString telemetryEndpoint()
+{
+    const QString fromEnv = qEnvironmentVariable("OPENTODO_TELEMETRY_ENDPOINT").trimmed();
+    if (!fromEnv.isEmpty())
+        return fromEnv;
+#ifdef OPENTODO_TELEMETRY_ENDPOINT
+    return QStringLiteral(OPENTODO_TELEMETRY_ENDPOINT);
+#else
+    return QString();
+#endif
+}
 
 static constexpr int FLUSH_INTERVAL_MS    = 5 * 60 * 1000; // 5 minutes
 static constexpr int QUIT_FLUSH_DEADLINE  = 2000;           // 2 s synchronous deadline on quit
@@ -149,6 +161,12 @@ void Telemetry::markPrompted()
     settings.setValue(QStringLiteral("telemetry/prompted"), true);
 }
 
+bool Telemetry::available() const
+{
+    const QString endpoint = telemetryEndpoint();
+    return !endpoint.isEmpty() && !endpoint.contains(QStringLiteral("TODO"));
+}
+
 int Telemetry::pendingEventCount() const
 {
     return m_queue.size();
@@ -160,12 +178,10 @@ void Telemetry::trackEvent(const QString &name, const QVariantMap &props)
     if (!enabled())
         return;
 
-    // S-5.37: Skip all sends if the endpoint is a placeholder or empty.
-    if (TELEMETRY_ENDPOINT.isEmpty() || TELEMETRY_ENDPOINT.contains(QStringLiteral("TODO"))) {
-        qWarning("Telemetry: endpoint is not configured — event '%s' dropped.",
-                 qPrintable(name));
+    // S-5.37: no endpoint configured → nothing is queued or sent. This is the
+    // normal state of open-source builds, so it is silent.
+    if (!available())
         return;
-    }
 
     // Q3.09: sliding-window rate limit — drop SILENTLY on overflow so a
     // bursty source can't fill the log just as hard as it would have filled
@@ -213,7 +229,9 @@ void Telemetry::trackEvent(const QString &name, const QVariantMap &props)
 
 void Telemetry::flush(bool synchronous)
 {
-    if (m_queue.isEmpty())
+    // A queue rehydrated from disk may predate the endpoint being removed;
+    // without an endpoint it must stay put rather than POST to nowhere.
+    if (m_queue.isEmpty() || !available())
         return;
 
     // Snapshot the queue contents we're about to upload so we can either
@@ -232,7 +250,7 @@ void Telemetry::flush(bool synchronous)
 
     const QByteArray body = QJsonDocument(batch).toJson(QJsonDocument::Compact);
 
-    QNetworkRequest request{QUrl(TELEMETRY_ENDPOINT)};
+    QNetworkRequest request{QUrl(telemetryEndpoint())};
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QStringLiteral("application/json"));
     request.setRawHeader("User-Agent", "OpenTodo-Telemetry");

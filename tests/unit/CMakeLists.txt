@@ -846,7 +846,7 @@ add_custom_command(TARGET test_todoist_import POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample/Todoist Backup 2024-01-01.zip"
         "$<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample/Todoist Backup 2024-01-01.zip"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample/user_backup.zip"
-        "$<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample/user_backup.zip"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/todoist_sample/realformat_backup.zip"
+        "$<TARGET_FILE_DIR:test_todoist_import>/fixtures/todoist_sample/realformat_backup.zip"
     COMMENT "Copying Todoist fixture ZIPs to test output dir"
 )

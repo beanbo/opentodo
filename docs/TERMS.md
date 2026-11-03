@@ -1,12 +1,11 @@
 # Terms of Service
 
-_Last updated: 2026-05-17_
+_Last updated: 2026-11-03_
 
-> This is a template provided by the OpenTodo project. Fields tagged `<TODO>`
-> must be filled in (or removed) by whoever distributes a particular build of
-> OpenTodo before publication. If you are monetising OpenTodo, redistributing
-> it under a different name, or operating a hosted version, you should review
-> this document with a lawyer in your jurisdiction.
+> These Terms cover OpenTodo as published at
+> <https://github.com/beanbo/opentodo>. If you are monetising OpenTodo,
+> redistributing it under a different name, or operating a hosted version,
+> ship your own terms and review them with a lawyer in your jurisdiction.
 
 These Terms cover the OpenTodo desktop / mobile / WASM application
 distributed from this repository. They are intentionally short because
@@ -52,7 +51,7 @@ You agree not to use OpenTodo:
   protection law.
 - To store or transmit content that is illegal in your jurisdiction.
 - In a way that violates the third-party terms referenced in section 5
-  (Google Drive, Anthropic) if you enable those integrations.
+  (Google Drive, AI providers, Todoist) if you enable those integrations.
 
 ## 4. No warranty
 
@@ -75,15 +74,18 @@ you also agree to be bound by the relevant third party's terms:
   and [Privacy Policy](https://policies.google.com/privacy). OpenTodo
   requests only the narrow `drive.file` scope plus standard `email` /
   `profile`.
-- **Claude AI integration** — Anthropic
-  [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms)
+- **AI assistance** — the terms of the provider you choose:
+  Anthropic [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms)
   (or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms),
-  depending on your account) and
-  [Usage Policy](https://www.anthropic.com/legal/aup). You are the API
-  customer of Anthropic; OpenTodo is not a reseller or proxy.
+  depending on your account) and [Usage Policy](https://www.anthropic.com/legal/aup);
+  OpenAI [Terms of Use](https://openai.com/policies/terms-of-use); or the
+  [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms).
+  You are the API customer of that provider; OpenTodo is not a reseller or
+  proxy.
+- **Todoist import** — Doist [Terms of Service](https://doist.com/terms-of-service).
 
 The OpenTodo project is not affiliated with, endorsed by, or sponsored by
-Google or Anthropic.
+Google, Anthropic, OpenAI, or Doist.
 
 ## 6. Accounts, subscriptions, fees
 
@@ -91,11 +93,11 @@ Google or Anthropic.
   paid tier and no in-app purchase.
 - **Google Drive**: free up to Google's standard quota; subject to their
   own pricing if you exceed it.
-- **Anthropic API usage**: billed by Anthropic against your own API key.
+- **AI API usage**: billed by your AI provider against your own API key.
   OpenTodo does not see your billing relationship and does not charge a
   margin. You alone are responsible for any cost incurred from sending
-  requests through the AI integration. Set a usage limit on your Anthropic
-  account if you want a hard ceiling.
+  requests through the AI integration. Set a usage limit with your provider
+  if you want a hard ceiling.
 
 ## 7. Data loss
 
@@ -109,7 +111,7 @@ The maintainers and contributors are not liable for:
 - Lost or corrupted tasks, projects, or settings.
 - Sync conflicts that resolve in a way you did not expect.
 - Data that becomes inaccessible because of an OS upgrade, a hardware
-  failure, a Google Drive outage, an Anthropic outage, or an account
+  failure, a Google Drive outage, an AI provider outage, or an account
   suspension by a third party.
 
 Export your data periodically via `Settings → Backup` (JSON, `.ics`, or
@@ -120,7 +122,7 @@ Export your data periodically via `Settings → Backup` (JSON, `.ics`, or
 OpenTodo is open source. You are free, under the terms of the MIT license,
 to fork it, modify it, and redistribute it. If you redistribute a modified
 version that meaningfully changes data handling, please ship your own
-revised PRIVACY and TERMS documents — these templates were written for the
+revised PRIVACY and TERMS documents — these were written for the
 upstream open-source distribution.
 
 Contributions are welcomed via pull request; by submitting a contribution
@@ -147,25 +149,16 @@ of data, use, goodwill, or other intangible losses, resulting from your
 use of (or inability to use) OpenTodo. This limitation is in addition to,
 and does not supersede, the disclaimer of warranty in the MIT license.
 
-## 11. Governing law
-
-These Terms are governed by the laws of `<TODO — jurisdiction; pick the
-maintainer's country / state, e.g. "the Russian Federation" or "the State
-of California, USA". Open-source forks distributed by a different entity
-should substitute their own.>`, without regard to its conflict-of-laws
-rules. Disputes that cannot be resolved informally shall be brought
-before the competent courts of that jurisdiction.
+## 11. Mandatory rights
 
 If the applicable consumer-protection law in your country grants you
-mandatory rights that conflict with the above, those mandatory rights
+mandatory rights that conflict with these Terms, those mandatory rights
 prevail.
 
 ## 12. Contact
 
-For questions about these Terms:
-
-- Open an issue at `<TODO — repository URL>`.
-- Or email the maintainer: `<TODO — maintainer email>`.
+For questions about these Terms, open an issue at
+<https://github.com/beanbo/opentodo/issues>.
 
 ## 13. Changes to these Terms
 
@@ -175,4 +168,4 @@ the top of this document and noting the change in the log below.
 | Date       | Change                                        |
 |------------|-----------------------------------------------|
 | 2026-05-17 | Initial template.                             |
-| `<TODO>`   | `<TODO — describe future revisions here>`     |
+| 2026-11-03 | First published version; covers all AI providers and Todoist import; no governing-law clause. |

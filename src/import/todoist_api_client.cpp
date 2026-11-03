@@ -118,7 +118,7 @@ void TodoistApiClient::issueSyncRequest(const QString &syncToken)
     req.setRawHeader(QByteArrayLiteral("Authorization"),
                      QByteArrayLiteral("Bearer ") + m_apiToken.toUtf8());
     req.setRawHeader(QByteArrayLiteral("User-Agent"),
-                     QByteArrayLiteral("OpenTodo/0.1 (https://github.com/opentodo)"));
+                     QByteArrayLiteral("OpenTodo/0.1 (https://github.com/beanbo/opentodo)"));
 
     QUrlQuery body;
     body.addQueryItem(QStringLiteral("sync_token"), syncToken);
@@ -231,7 +231,7 @@ void TodoistApiClient::issueCompletedRequest(int offset)
     req.setRawHeader(QByteArrayLiteral("Authorization"),
                      QByteArrayLiteral("Bearer ") + m_apiToken.toUtf8());
     req.setRawHeader(QByteArrayLiteral("User-Agent"),
-                     QByteArrayLiteral("OpenTodo/0.1 (https://github.com/opentodo)"));
+                     QByteArrayLiteral("OpenTodo/0.1 (https://github.com/beanbo/opentodo)"));
 
     // GET request with query parameters
     QUrl url{QLatin1String(COMPLETED_API_URL)};  // braces avoid the vexing-parse interpretation as fn decl
@@ -244,7 +244,7 @@ void TodoistApiClient::issueCompletedRequest(int offset)
     getReq.setRawHeader(QByteArrayLiteral("Authorization"),
                         QByteArrayLiteral("Bearer ") + m_apiToken.toUtf8());
     getReq.setRawHeader(QByteArrayLiteral("User-Agent"),
-                        QByteArrayLiteral("OpenTodo/0.1 (https://github.com/opentodo)"));
+                        QByteArrayLiteral("OpenTodo/0.1 (https://github.com/beanbo/opentodo)"));
 
     m_completedReply = m_nam->get(getReq);
     connect(m_completedReply, &QNetworkReply::finished,

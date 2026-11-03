@@ -545,20 +545,16 @@ private slots:
     // SLOT 3 — pull_with_oversized_state_json_aborts_or_caps
     //
     // Contract under test: a sane upper bound on remote state.json size.
-    // Currently there is NONE — DriveApi::downloadFile reads the entire reply
-    // body into memory unconditionally (reply->readAll()) and SyncEngine
-    // then parses it. A malicious or accidentally-huge state.json (e.g. 100
-    // MB) gets fully read.
+    // SyncEngine passes MAX_STATE_SIZE (50 MB) as downloadFile's maxBytes;
+    // SLOT 3b below checks that a body over the cap is rejected.
     //
-    // We can't realistically build a 100 MB payload inside a test without
-    // bloating the binary, so we test the SHAPE of the contract: pull() with
-    // a moderately large (1 MB) but otherwise-valid state.json must succeed
-    // and not corrupt local state. Then we DOCUMENT the gap that no size cap
-    // exists by inspecting that downloadFile has no maxBytes parameter.
+    // Here we test the other side of the contract: pull() with a moderately
+    // large (1 MB) but otherwise-valid state.json must succeed and not
+    // corrupt local state.
     //
     // PIN: 1 MB state.json with a single huge task content survives the
-    // round-trip; local "survivor" task is replaced by the remote payload
-    // (so the merge replaced local with remote, no partial state).
+    // round-trip and is merged in; the local-only "local-pre" task is kept
+    // (the merge is a union, not a replace).
     // ════════════════════════════════════════════════════════════════════════
     void pull_with_oversized_state_json_aborts_or_caps()
     {
@@ -622,9 +618,11 @@ private slots:
         QVERIFY2(store.taskById(QStringLiteral("remote-big")) != nullptr,
                  "1 MB remote task was rejected — MAX_STATE_SIZE may have been "
                  "lowered below 1 MB. Update the test to match the new cap.");
-        // The pre-existing "local-pre" task is replaced because there are no
-        // pending commits and loadFromJson clears + repopulates.
-        QVERIFY(store.taskById(QStringLiteral("local-pre")) == nullptr);
+        // pull() merges the remote snapshot into local state (Merger::mergeStates)
+        // instead of replacing it, so the local-only "local-pre" task survives:
+        // absence from the remote snapshot is not a deletion — only a tombstone
+        // is (same contract as test_merger::localOnly_kept).
+        QVERIFY(store.taskById(QStringLiteral("local-pre")) != nullptr);
     }
 
     // ════════════════════════════════════════════════════════════════════════

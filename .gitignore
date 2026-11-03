@@ -91,10 +91,21 @@ $RECYCLE.BIN/
 # lines if you want them tracked.
 AUDIT.md
 AUDIT_ITER*.md
+DESIGN_DIFF.md
+
+# One-off GUI debugging scripts (the real suite is tests/gui/test_*.py)
+tests/gui/_check_*.py
+tests/gui/_final_verify.py
 
 # Personal test data / backups
 Todoist backup *.zip
+# ...except the synthetic test fixtures (see generate_fixture.py)
+!tests/unit/fixtures/todoist_sample/*.zip
 state-backup-*.json
+
+# Generated test / screenshot output
+tests/gui/_artifacts/
+tools/screenshots/
 
 # Claude-related local state (not part of the project)
 .claude/
