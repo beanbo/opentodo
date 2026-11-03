@@ -53,7 +53,7 @@ jobs:
           ctest --test-dir build --output-on-failure -C Release --timeout 300
 
       - name: Upload Windows binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opentodo-windows-x64
           path: build/OpenTodo.exe
@@ -140,7 +140,7 @@ jobs:
         run: cmake --build build-wasm --parallel
 
       - name: Upload WASM bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opentodo-wasm
           path: |
