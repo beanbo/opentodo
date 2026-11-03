@@ -128,6 +128,9 @@ private:
     QList<Notification> m_notifications;
     QSet<QString>       m_overdueTaskIds; // tasks already notified as overdue
     QSet<QString>       m_completedTaskIds; // tasks already notified as completed
+    // V13: set on DataStore::aboutToReset; the next tasksChanged (end of the
+    // reload) re-seeds m_completedTaskIds without pushing notifications.
+    bool                m_rebuildCompletedAfterReset = false;
 
     int m_capacity = 100;
 

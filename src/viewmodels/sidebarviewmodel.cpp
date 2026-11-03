@@ -9,6 +9,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QPair>
 #include <QSet>
 #include <QSettings>
 
@@ -254,15 +255,23 @@ void SidebarViewModel::updateCounts()
     const QString inboxId = inbox ? inbox->id() : QString();
     const QDate today = QDate::currentDate();
 
+    // V7: mirror TaskViewModel's row rule for the flat date views — a subtask
+    // is its own row there UNLESS its parent is in the same view (then it
+    // renders nested under the parent row and is not a separate entry). So a
+    // subtask is counted in a bucket only when its parent is not.
+    QSet<QString> todayIds;
+    QSet<QString> upcomingIds;
+    QList<QPair<const Task *, int>> dated;   // 1 = today/overdue, 2 = upcoming
+
     const auto tasks = m_store->allTasks();
     for (const auto *t : tasks) {
         if (t->isCompleted()) continue;
 
-        // Inbox count
+        // Inbox count (hierarchy view: top-level rows only)
         if (t->projectId() == inboxId && t->parentId().isEmpty())
             ++newInbox;
 
-        // Today count (due today or overdue) / upcoming count.
+        // Today bucket (due today or overdue) / upcoming bucket.
         //
         // Iter-night-16: also handle datetime-only tasks (dueDate empty,
         // dueDatetime set). Pre-fix this branch fired only when dueDate
@@ -274,20 +283,28 @@ void SidebarViewModel::updateCounts()
         // DailyReviewService::checkAndNotify). The sidebar VM was the only
         // count consumer that hadn't received the matching branch, leaving
         // the user with a badge that disagreed with the view it links to.
+        QDate d;
         if (!t->dueDate().isEmpty()) {
-            const QDate d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
-            if (d.isValid()) {
-                if (d <= today) ++newToday;
-                if (d > today) ++newUpcoming;
-            }
+            d = QDate::fromString(t->dueDate(), QStringLiteral("yyyy-MM-dd"));
         } else if (!t->dueDatetime().isEmpty()) {
             const QDateTime dt = DateTimeHelper::fromIsoString(t->dueDatetime());
-            if (dt.isValid()) {
-                const QDate d = dt.date();
-                if (d <= today) ++newToday;
-                else            ++newUpcoming;
-            }
+            if (dt.isValid())
+                d = dt.date();
         }
+        if (!d.isValid())
+            continue;
+        const int bucket = (d <= today) ? 1 : 2;
+        (bucket == 1 ? todayIds : upcomingIds).insert(t->id());
+        dated.append({t, bucket});
+    }
+
+    for (const auto &entry : std::as_const(dated)) {
+        const Task *t = entry.first;
+        const QSet<QString> &bucketIds = (entry.second == 1) ? todayIds : upcomingIds;
+        if (!t->parentId().isEmpty() && bucketIds.contains(t->parentId()))
+            continue;   // nested under its parent's row in that view
+        if (entry.second == 1) ++newToday;
+        else                   ++newUpcoming;
     }
 
     bool changed = (newInbox != m_inboxCount || newToday != m_todayCount || newUpcoming != m_upcomingCount);

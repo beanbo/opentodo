@@ -390,11 +390,24 @@ int main(int argc, char *argv[])
 
     // Wire cross-VM signals
     QObject::connect(sidebarVM, &SidebarViewModel::navigationRequested,
-                     taskVM, [taskVM](const QString &view, const QString &itemId) {
+                     taskVM, [taskVM, dataStore](const QString &view, const QString &itemId) {
         taskVM->setFilterMode(TaskViewModel::filterModeFromString(view));
-        if (view == QStringLiteral("project"))
+        // V1: set currentProjectId on EVERY navigation. navigateTo() updates
+        // sidebar.currentItemId before emitting this signal, so a still-loaded
+        // ProjectView (projectId: sidebarViewModel.currentItemId) first writes
+        // the label name / filter UUID into currentProjectId; and a project id
+        // left over from an earlier visit made the Inbox/Today quick-add file
+        // tasks into that project. Overwrite it with the right scope here.
+        if (view == QStringLiteral("project") || view == QStringLiteral("board")) {
             taskVM->setCurrentProjectId(itemId);
-        else if (view == QStringLiteral("label") || view == QStringLiteral("filter"))
+        } else if (view == QStringLiteral("inbox")) {
+            const Project *inbox = dataStore->inboxProject();
+            taskVM->setCurrentProjectId(!itemId.isEmpty() ? itemId
+                                        : (inbox ? inbox->id() : QString()));
+        } else {
+            taskVM->setCurrentProjectId(QString());
+        }
+        if (view == QStringLiteral("label") || view == QStringLiteral("filter"))
             taskVM->setCurrentFilter(itemId);
     });
 

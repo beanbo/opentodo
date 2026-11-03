@@ -28,6 +28,9 @@ public:
     using UndoFn = std::function<void()>;
 
     // Push a new undoable action. `description` shows in the snackbar.
+    // No-op while an entry is being undone (P10): the inverse action an undo
+    // fn replays must not register its own "redo" entry, or Ctrl+Z ping-pongs
+    // on the same action forever.
     void push(const QString &description, UndoFn undoFn);
 
     // B-5.28/29: Typed API — captures task by ID + JSON snapshot.
@@ -51,5 +54,6 @@ signals:
 private:
     struct Entry { QString description; UndoFn fn; };
     QStack<Entry> m_stack;
+    bool m_executing = false;   // true while undo() runs an entry's fn
     static constexpr int MAX_ENTRIES = 20;
 };

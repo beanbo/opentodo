@@ -86,6 +86,8 @@ private slots:
 
 private:
     void updateCompletionCounts();
+    // V3: restart the goal-crossing baseline at 0 on a new day / week.
+    void rollGoalBaselineToCalendar();
     void updateKarmaLevel();
     QString levelForScore(int score) const;
 
@@ -100,12 +102,24 @@ private:
     int m_completedToday = 0;
     int m_completedThisWeek = 0;
 
-    // B-3.15: transient "previous" counts for goal-crossing bonus guard.
+    // B-3.15 / V3: goal-crossing baseline — the completion counts as of the
+    // previous onTaskCompleted/onTaskUncompleted EVENT (not the last store
+    // recount, which in the app already includes the completion being
+    // handled). Restarted at 0 when the day / week of the baseline is over.
     int m_prevCompletedToday = 0;
     int m_prevCompletedThisWeek = 0;
+    QDate m_goalBaselineDate;
+    QDate m_goalBaselineWeekStart;
+
+    // First day of the current week per the week_start setting; refreshed by
+    // updateCompletionCounts().
+    QDate m_weekStartDate;
 
     // B-3.16: streak dedup — only increment streak once per calendar day.
     QDate m_lastStreakIncrementDate;
+    // V3: week (its first day) of the last weekly-streak bump — dedups the
+    // bump within a week and detects missed weeks. QSettings-persisted.
+    QDate m_lastWeeklyStreakWeekStart;
 
     // Track which milestone thresholds have already emitted achievementUnlocked.
     // Stored as comma-separated ints under QSettings key "karma/shown_milestones".

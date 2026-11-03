@@ -11,13 +11,16 @@
 #include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSettings>
 #include <memory>
+#include <utility>
 #include <QTimer>
 
 SettingsViewModel::SettingsViewModel(DataStore *store, QObject *parent)
     : QObject(parent)
     , m_store(store)
+    , m_settingsSnapshot(store->settings())
 {
     connect(m_store, &DataStore::settingsChanged, this, &SettingsViewModel::onSettingsChanged);
 }
@@ -32,11 +35,15 @@ QVariant SettingsViewModel::setting(const QString &key) const
 void SettingsViewModel::set(const QString &key, const QVariant &value)
 {
     // Mark this as a single-key update so onSettingsChanged() (fired by the
-    // DataStore::settingsChanged signal) knows not to re-emit all NOTIFYs.
+    // DataStore::settingsChanged signal) leaves this key's NOTIFY to the
+    // calling setter, which emits it itself.
     m_pendingNotifyKey = key;
     m_store->setSetting(key, value);
+    // Cleared here rather than in onSettingsChanged(): if the store ever skips
+    // the signal (e.g. an unchanged value), a stale pending key would make the
+    // next external change of that key go unnoticed.
+    m_pendingNotifyKey.clear();
     emit settingChanged(key);
-    // m_pendingNotifyKey is cleared by onSettingsChanged().
 }
 
 // --- General ---
@@ -74,8 +81,16 @@ void SettingsViewModel::setTimeFormat(int format) { set(QLatin1String(SettingsKe
 QString SettingsViewModel::dateFormat() const { return setting(QLatin1String(SettingsKeys::DateFormat)).toString(); }
 void SettingsViewModel::setDateFormat(const QString &format) { set(QLatin1String(SettingsKeys::DateFormat), format); emit dateFormatChanged(); }
 
-int SettingsViewModel::weekStart() const { return setting(QLatin1String(SettingsKeys::WeekStart)).toInt(); }
-void SettingsViewModel::setWeekStart(int day) { set(QLatin1String(SettingsKeys::WeekStart), day); emit weekStartChanged(); }
+// V10: canonical week start is ISO 1..7 (1 = Monday … 7 = Sunday) — the
+// FileManager default and what KarmaViewModel expects. Older UI builds wrote
+// 0 for Monday; that, an unset key, and any other out-of-range value read as
+// Monday (1).
+static int normalizedWeekStart(int day)
+{
+    return (day >= 1 && day <= 7) ? day : 1;
+}
+int SettingsViewModel::weekStart() const { return normalizedWeekStart(setting(QLatin1String(SettingsKeys::WeekStart)).toInt()); }
+void SettingsViewModel::setWeekStart(int day) { set(QLatin1String(SettingsKeys::WeekStart), normalizedWeekStart(day)); emit weekStartChanged(); }
 
 int SettingsViewModel::nextWeekDay() const { return setting(QLatin1String(SettingsKeys::NextWeekDay)).toInt(); }
 void SettingsViewModel::setNextWeekDay(int day) { set(QLatin1String(SettingsKeys::NextWeekDay), day); emit nextWeekDayChanged(); }
@@ -666,44 +681,74 @@ void SettingsViewModel::restartApp()
 void SettingsViewModel::onSettingsChanged()
 {
     // This slot fires when the DataStore emits settingsChanged, which happens
-    // for *every* setSetting() call — including the ones from our own setters.
-    // The individual setters already emit their specific NOTIFY after calling
-    // set(), so we do nothing here to avoid double-firing.  The slot exists to
-    // handle the case where settings are replaced wholesale from outside
-    // (e.g. sync applied a full settings snapshot); in that case we need to
-    // notify all properties.  We detect this by checking whether there is a
-    // pending per-key notification: if m_pendingNotifyKey is set the setter
-    // handles it; otherwise emit everything.
-    if (!m_pendingNotifyKey.isEmpty()) {
-        // Single-key update: already handled by the setter — nothing to do.
-        m_pendingNotifyKey.clear();
-        return;
-    }
+    // for *every* setSetting()/setSettings() call — our own setters (which
+    // emit their specific NOTIFY themselves), other writers of unrelated keys
+    // (KarmaViewModel writes karma_score on every completion, SearchViewModel
+    // writes recent_searches) and wholesale replacements (sync / import).
+    //
+    // V9: previously any change without a pending key fired EVERY NOTIFY —
+    // so each completed task re-emitted syncModeChanged/syncIntervalChanged
+    // (main.cpp restarts the periodic sync timer on those, so for an active
+    // user it never fired), themeChanged (window chrome re-applied) and
+    // languageChanged (tray retranslated). Diff against a snapshot instead and
+    // notify only for keys whose value actually changed.
+    using Notify = void (SettingsViewModel::*)();
+    struct KeyNotify { QString key; Notify notify; };
+    static const QList<KeyNotify> notifyForKey = {
+        {QLatin1String(SettingsKeys::Theme),               &SettingsViewModel::themeChanged},
+        {QLatin1String(SettingsKeys::DailyGoal),           &SettingsViewModel::dailyGoalChanged},
+        {QLatin1String(SettingsKeys::WeeklyGoal),          &SettingsViewModel::weeklyGoalChanged},
+        {QLatin1String(SettingsKeys::VacationMode),        &SettingsViewModel::vacationModeChanged},
+        {QLatin1String(SettingsKeys::StartPage),           &SettingsViewModel::startPageChanged},
+        {QLatin1String(SettingsKeys::TimeFormat),          &SettingsViewModel::timeFormatChanged},
+        {QLatin1String(SettingsKeys::DateFormat),          &SettingsViewModel::dateFormatChanged},
+        {QLatin1String(SettingsKeys::WeekStart),           &SettingsViewModel::weekStartChanged},
+        {QLatin1String(SettingsKeys::NextWeekDay),         &SettingsViewModel::nextWeekDayChanged},
+        {QLatin1String(SettingsKeys::DefaultReminderTime), &SettingsViewModel::defaultReminderTimeChanged},
+        {QLatin1String(SettingsKeys::AutoReminderOffset),  &SettingsViewModel::autoReminderOffsetChanged},
+        {QLatin1String(SettingsKeys::Language),            &SettingsViewModel::languageChanged},
+        {QLatin1String(SettingsKeys::ShowInboxCount),      &SettingsViewModel::sidebarSettingsChanged},
+        {QLatin1String(SettingsKeys::ShowTodayCount),      &SettingsViewModel::sidebarSettingsChanged},
+        {QLatin1String(SettingsKeys::ShowUpcomingCount),   &SettingsViewModel::sidebarSettingsChanged},
+        {QLatin1String(SettingsKeys::AutoArchiveOldProjectsDays),
+                                                           &SettingsViewModel::autoArchiveDaysChanged},
+        {QStringLiteral("daily_review_enabled"),           &SettingsViewModel::dailyReviewEnabledChanged},
+        {QLatin1String(SettingsKeys::TaskDensity),         &SettingsViewModel::compactDensityChanged},
+        {QLatin1String(SettingsKeys::ShowTrayIcon),        &SettingsViewModel::showTrayIconChanged},
+        {QLatin1String(SettingsKeys::CustomAccentHex),     &SettingsViewModel::accentColorChanged},
+        {QLatin1String(SettingsKeys::SyncInterval),        &SettingsViewModel::syncIntervalChanged},
+        {QLatin1String(SettingsKeys::SyncMode),            &SettingsViewModel::syncModeChanged},
+        {QLatin1String(SettingsKeys::NotificationPermissionAsked),
+                                                           &SettingsViewModel::notificationPermissionAskedChanged},
+        {QLatin1String(SettingsKeys::BackupRetentionCount), &SettingsViewModel::backupRetentionCountChanged},
+        {QLatin1String(SettingsKeys::BackupRetentionDays),  &SettingsViewModel::backupRetentionDaysChanged},
+        {QLatin1String(SettingsKeys::VacuumThresholdBytes), &SettingsViewModel::vacuumThresholdBytesChanged},
+        {QLatin1String(SettingsKeys::SearchAccentSensitive),
+                                                           &SettingsViewModel::searchAccentSensitiveChanged},
+    };
 
-    // Bulk update (e.g. from sync): fire every NOTIFY once.
-    emit themeChanged();
-    emit dailyGoalChanged();
-    emit weeklyGoalChanged();
-    emit vacationModeChanged();
-    emit startPageChanged();
-    emit timeFormatChanged();
-    emit dateFormatChanged();
-    emit weekStartChanged();
-    emit nextWeekDayChanged();
-    emit defaultReminderTimeChanged();
-    emit autoReminderOffsetChanged();
-    emit languageChanged();
-    emit sidebarSettingsChanged();
-    emit autoArchiveDaysChanged();
-    emit dailyReviewEnabledChanged();
-    emit compactDensityChanged();
-    emit showTrayIconChanged();
-    emit accentColorChanged();
-    emit syncIntervalChanged();
-    emit syncModeChanged();
-    emit notificationPermissionAskedChanged();
-    emit backupRetentionCountChanged();
-    emit backupRetentionDaysChanged();
-    emit vacuumThresholdBytesChanged();
-    emit searchAccentSensitiveChanged();
+    const QJsonObject current = m_store->settings();
+    const QJsonObject previous = std::exchange(m_settingsSnapshot, current);
+
+    QSet<QString> changedKeys;
+    for (auto it = current.constBegin(); it != current.constEnd(); ++it) {
+        if (previous.value(it.key()) != it.value())
+            changedKeys.insert(it.key());
+    }
+    for (auto it = previous.constBegin(); it != previous.constEnd(); ++it) {
+        if (!current.contains(it.key()))
+            changedKeys.insert(it.key());   // removed by a wholesale replace
+    }
+    // The key a setter is writing right now gets its NOTIFY from that setter.
+    changedKeys.remove(m_pendingNotifyKey);
+
+    // Emit each NOTIFY at most once (several keys share sidebarSettingsChanged),
+    // in the fixed table order so the emission order is deterministic.
+    QList<Notify> emitted;
+    for (const KeyNotify &kn : notifyForKey) {
+        if (!changedKeys.contains(kn.key) || emitted.contains(kn.notify))
+            continue;
+        emitted.append(kn.notify);
+        (this->*(kn.notify))();
+    }
 }

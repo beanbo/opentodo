@@ -31,7 +31,10 @@
 //              view consumes deletedTasks() / trashCount() instead.
 //
 // Other invariants checked:
-//   * Subtasks (parentId != "") are stripped from every list except Filter.
+//   * Subtasks (parentId != "") are stripped from the project-hierarchy lists
+//     (Inbox/Project/Board/project Calendar; they render nested under their
+//     parent). The flat date/label views drop a subtask only when its parent
+//     is in the same list (V7, see test_viewmodel_fixpass); Filter keeps all.
 //   * Selection is NOT auto-cleared on filter mode change (must be cleared
 //     explicitly by the caller).
 //   * filterModeChanged + countChanged fire on transitions.

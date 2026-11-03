@@ -581,6 +581,11 @@ opentodo_add_unit_test(test_syncengine_lifecycle          Infra)
 #   2. karmaScore double-counts on toggle (uncomplete → recomplete adds
 #      +2) while completedToday only counts +1 — karma is farmable.
 opentodo_add_unit_test(test_karma_rollover                App)
+# Fix pass (ViewModels): navigation/project scope, saved filters, karma goal
+# crossing via completeTask, Upcoming/priority sort, reorder autosave, subtask
+# rows in flat views, settings NOTIFY diffing, purge signals, snooze, bulk-move
+# undo, undo re-entrancy, selection survival across a store reload.
+opentodo_add_unit_test(test_viewmodel_fixpass             App)
 
 # Quality round 2.17-D: SnapshotManager compaction equivalence property
 # test. Replay-A == Replay-B-then-compact == Load-snapshot-then-tail. SURFACED

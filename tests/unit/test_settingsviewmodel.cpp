@@ -95,7 +95,8 @@ private slots:
         QCOMPARE(vm.dailyGoal(), 0);
         QCOMPARE(vm.weeklyGoal(), 0);
         QCOMPARE(vm.timeFormat(), 0);
-        QCOMPARE(vm.weekStart(), 0);
+        // V10: week start is ISO 1..7; an unset key reads as Monday (1).
+        QCOMPARE(vm.weekStart(), 1);
         QCOMPARE(vm.nextWeekDay(), 0);
         QCOMPARE(vm.autoReminderOffset(), 0);
         QCOMPARE(vm.autoArchiveDays(), 0);

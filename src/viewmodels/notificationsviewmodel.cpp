@@ -27,7 +27,26 @@ NotificationsViewModel::NotificationsViewModel(DataStore *store,
     // taskChanged fires whenever TaskViewModel calls markTaskModified or when
     // the store mutates a task.  We inspect the new state and push a notification
     // when the task was just completed.
+    // V13: a whole-store reload (sync merge, backup restore, reset) goes
+    // through DataStore::clear() → aboutToReset. The first tasksChanged after
+    // it describes a freshly loaded store, not user completions — rebuild the
+    // completed set silently, or every task completed elsewhere / restored
+    // completed looks "newly completed" (up to 100 "Задача выполнена" toasts).
+    connect(m_store, &DataStore::aboutToReset, this, [this]() {
+        m_rebuildCompletedAfterReset = true;
+    });
+
     connect(m_store, &DataStore::tasksChanged, this, [this]() {
+        if (m_rebuildCompletedAfterReset) {
+            m_rebuildCompletedAfterReset = false;
+            m_completedTaskIds.clear();
+            for (const Task *t : m_store->allTasks()) {
+                if (t && !t->isDeleted() && t->isCompleted())
+                    m_completedTaskIds.insert(t->id());
+            }
+            return;
+        }
+
         // tasksChanged is a bulk signal; iterate all tasks to find newly
         // completed ones we haven't seen yet.
         const auto tasks = m_store->allTasks();
