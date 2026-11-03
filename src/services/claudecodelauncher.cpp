@@ -11,9 +11,120 @@
 #  include <QProcessEnvironment>
 #endif
 
+namespace {
+
+// cmd.exe rejects command lines over 8191 characters ("The command line is
+// too long"), which would leave the user staring at an error in the new
+// window after launch() already reported success. Leave headroom for the
+// cmd.exe / claude paths and switches around the prompt.
+constexpr int kMaxPromptChars = 6000;
+
+// Windows Terminal splits its command line into subcommands at every ';'
+// that is not preceded by a backslash — even inside a quoted argument — and
+// turns "\;" back into ";" afterwards (wt's Commandline::AddArg). Unescaped,
+// task text "x; <cmdline>" would make wt open a second tab running <cmdline>.
+QString escapeWtDelimiters(QString arg)
+{
+    arg.replace(QLatin1Char(';'), QStringLiteral("\\;"));
+    return arg;
+}
+
+}  // namespace
+
 ClaudeCodeLauncher::ClaudeCodeLauncher(QObject *parent)
     : QObject(parent)
 {
+}
+
+// Threat model: the prompt is untrusted text placed inside ONE double-quoted
+// argument that is parsed by cmd.exe (twice in the `start` fallback, plus the
+// CALL re-parse, plus claude.cmd's %*). Inside double quotes cmd treats
+// & | < > ^ ( ) literally, so the prompt stays inert as long as it can never
+// close that quote and nothing else in it is expanded:
+//   * '"' would toggle cmd's quote state and expose what follows → it becomes
+//     an apostrophe (the model reads 'x' and "x" the same way).
+//   * '%' is expanded by cmd even inside quotes, so %SOME_TOKEN% in a synced
+//     task would silently paste the user's environment (API keys) into the
+//     prompt → it becomes U+FF05 FULLWIDTH PERCENT SIGN.
+//   * CR/LF would end the command; other C0 controls are dropped.
+//   * A leading '-' would let the task text be parsed by the claude CLI as an
+//     option (e.g. a pre-approved tool list) → a space is prepended.
+// The fixed hint suffix contains spaces, so Qt and wt always quote the prompt.
+QString ClaudeCodeLauncher::buildPrompt(const QString &taskContent,
+                                        const QString &taskDescription)
+{
+    // Point the launched session at the `opentodo` CLI so it can see the rest
+    // of this project's tasks and report progress back — not just act on this
+    // one task. Requires `opentodo-cli` on PATH. Must stay free of '"', '%'
+    // and ';' — it is appended after sanitising.
+    static const QString hint = QStringLiteral(
+        " (This repo is linked to an OpenTodo project: run "
+        "`opentodo-cli list --json` to see all its tasks, "
+        "`opentodo-cli done <id>` to report completion, and "
+        "`opentodo-cli add <text>` to capture follow-ups.)");
+
+    QString body = taskContent;
+    if (!taskDescription.trimmed().isEmpty())
+        body += QStringLiteral("\n\n") + taskDescription;
+
+    QString sanitized;
+    sanitized.reserve(body.size());
+    for (QChar ch : body) {
+        const char16_t u = ch.unicode();
+        if (u == u'\n' || u == u'\r')
+            sanitized.append(QLatin1Char(' '));
+        else if (u == u'"')
+            sanitized.append(QLatin1Char('\''));
+        else if (u == u'%')
+            sanitized.append(QChar(0xFF05));
+        else if (u >= 0x20 || u == u'\t')
+            sanitized.append(ch);
+        // else: drop other C0 control codes (BEL, ESC, etc.)
+    }
+
+    const int budget = kMaxPromptChars - int(hint.size());
+    if (sanitized.size() > budget) {
+        int cut = budget - 1;  // room for the ellipsis
+        if (cut > 0 && sanitized.at(cut - 1).isHighSurrogate())
+            --cut;             // don't split a surrogate pair
+        sanitized.truncate(cut);
+        sanitized.append(QChar(0x2026));
+    }
+
+    QString prompt = sanitized + hint;
+    if (prompt.startsWith(QLatin1Char('-')))
+        prompt.prepend(QLatin1Char(' '));
+    return prompt;
+}
+
+// `call` keeps the first character after /k from being a quote. Without it a
+// claude path with a space ("C:\Users\First Last\…\claude.cmd", which Qt / wt
+// quote) triggers cmd's /K rule "more than two quotes ⇒ strip the first and
+// the last one": the launch fails AND the prompt is shifted outside its
+// quotes, where & | < > in the task text become live. (Side effect of CALL:
+// a '^' in the prompt reaches claude doubled — cosmetic.)
+QStringList ClaudeCodeLauncher::windowsTerminalArgs(const QString &nativeRepo,
+                                                    const QString &cmdExe,
+                                                    const QString &claudePath,
+                                                    const QString &prompt)
+{
+    QStringList args{ QStringLiteral("-d"), nativeRepo,
+                      cmdExe, QStringLiteral("/k"), QStringLiteral("call"),
+                      claudePath, prompt };
+    for (QString &a : args)
+        a = escapeWtDelimiters(a);
+    return args;
+}
+
+QStringList ClaudeCodeLauncher::cmdStartArgs(const QString &cmdExe,
+                                             const QString &claudePath,
+                                             const QString &prompt)
+{
+    // cmd.exe /c start "Claude Code" <cmdExe> /k call <claude> <prompt>
+    // ("Claude Code" is start's window-title argument.)
+    return { QStringLiteral("/c"), QStringLiteral("start"), QStringLiteral("Claude Code"),
+             cmdExe, QStringLiteral("/k"), QStringLiteral("call"),
+             claudePath, prompt };
 }
 
 bool ClaudeCodeLauncher::launch(const QString &taskContent,
@@ -23,8 +134,9 @@ bool ClaudeCodeLauncher::launch(const QString &taskContent,
 #ifdef Q_OS_WIN
     // ── Validate repoPath ────────────────────────────────────────────────────
     // Reject empty / whitespace-only path: `wt -d ""` opens in the user's
-    // home and `cmd /D ""` errors silently, both producing a flash-and-die
-    // terminal that we'd misreport as "Запущено в новом окне".
+    // home and the cmd fallback would start in OpenTodo's own cwd — either
+    // way a session in the wrong directory that we'd misreport as
+    // "Запущено в новом окне".
     if (repoPath.trimmed().isEmpty())
         return false;
     // The directory must actually exist. linkedRepoPath round-trips through
@@ -56,71 +168,35 @@ bool ClaudeCodeLauncher::launch(const QString &taskContent,
         return false;
     }
 
-    // ── Build the prompt ─────────────────────────────────────────────────────
-    QString prompt = taskContent;
-    if (!taskDescription.trimmed().isEmpty())
-        prompt += QStringLiteral("\n\n") + taskDescription;
+    const QString prompt = buildPrompt(taskContent, taskDescription);
 
-    // Point the launched session at the `opentodo` CLI so it can see the rest of
-    // this project's tasks and report progress back — not just act on this one
-    // task. (No double-quotes here: the prompt is passed as a single cmd.exe
-    // argument and quotes would need escaping.) Requires `opentodo` on PATH.
-    prompt += QStringLiteral(" (This repo is linked to an OpenTodo project: run "
-                             "`opentodo-cli list --json` to see all its tasks, "
-                             "`opentodo-cli done <id>` to report completion, and "
-                             "`opentodo-cli add <text>` to capture follow-ups.)");
-
-    // Strip control characters that survive Qt's per-argument escaping but
-    // get re-interpreted by `cmd /k`. A task content of "foo\r\necho pwned"
-    // would, after cmd opens, paste the second line as a fresh command at the
-    // claude prompt. Replace CR/LF with spaces, drop everything else below 0x20.
-    // Tab survives (	) — claude treats it as ordinary whitespace.
-    QString sanitized;
-    sanitized.reserve(prompt.size());
-    for (QChar ch : prompt) {
-        const ushort u = ch.unicode();
-        if (u == '\n' || u == '\r')
-            sanitized.append(QLatin1Char(' '));
-        else if (u >= 0x20 || u == '\t')
-            sanitized.append(ch);
-        // else: drop other C0 control codes (BEL, ESC, etc.)
-    }
-    // Windows cmd.exe quoting: escape embedded double-quotes as "".
-    QString escapedPrompt = sanitized;
-    escapedPrompt.replace(QStringLiteral("\""), QStringLiteral("\"\""));
+    // Absolute cmd.exe (%ComSpec%) rather than a bare "cmd": `start` resolves
+    // a bare name through the current directory first, and in the fallback
+    // below that directory is the (synced, not necessarily trusted) repo.
+    QString cmdExe = qEnvironmentVariable("ComSpec");
+    if (!QFileInfo(cmdExe).isAbsolute() || !QFileInfo::exists(cmdExe))
+        cmdExe = QStandardPaths::findExecutable(QStringLiteral("cmd"));
+    if (cmdExe.isEmpty())
+        cmdExe = QStringLiteral("cmd.exe");
+    cmdExe = QDir::toNativeSeparators(cmdExe);
 
     // ── Detect preferred terminal ────────────────────────────────────────────
     const QString wt = QStandardPaths::findExecutable(QStringLiteral("wt"));
 
-    // ── Build argument list and launch ───────────────────────────────────────
-    // The process is started DETACHED so the terminal lives independently of
-    // OpenTodo — closing or crashing OpenTodo does not kill the Claude session.
-    QString program;
-    QStringList args;
-
     // Normalise repoPath to native separators so wt / cmd are happy.
     const QString nativeRepo = QDir::toNativeSeparators(repoPath);
 
-    if (!wt.isEmpty()) {
-        // wt.exe -d "<repoPath>" cmd /k claude "<prompt>"
-        program = wt;
-        args << QStringLiteral("-d") << nativeRepo
-             << QStringLiteral("cmd") << QStringLiteral("/k")
-             << claudePath
-             << escapedPrompt;
-    } else {
-        // cmd /c start "Claude Code" /D "<repoPath>" cmd /k claude "<prompt>"
-        program = QStringLiteral("cmd.exe");
-        args << QStringLiteral("/c")
-             << QStringLiteral("start")
-             << QStringLiteral("Claude Code")
-             << QStringLiteral("/D") << nativeRepo
-             << QStringLiteral("cmd") << QStringLiteral("/k")
-             << claudePath
-             << escapedPrompt;
-    }
+    // The process is started DETACHED so the terminal lives independently of
+    // OpenTodo — closing or crashing OpenTodo does not kill the Claude session.
+    if (!wt.isEmpty())
+        return QProcess::startDetached(
+            wt, windowsTerminalArgs(nativeRepo, cmdExe, QDir::toNativeSeparators(claudePath), prompt));
 
-    return QProcess::startDetached(program, args);
+    // Fallback: the outer cmd.exe runs IN the repo and `start` passes that
+    // directory to the new window, so the repo path never has to be quoted
+    // onto a cmd.exe command line (a directory named "a&b" would split it).
+    return QProcess::startDetached(
+        cmdExe, cmdStartArgs(cmdExe, QDir::toNativeSeparators(claudePath), prompt), nativeRepo);
 
 #else
     // TODO: implement for Linux (xterm / gnome-terminal / konsole) and macOS (Terminal.app / iTerm2).

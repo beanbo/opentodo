@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QQmlEngine>
 
 // ClaudeCodeLauncher spawns the `claude` CLI in a new terminal window,
@@ -15,6 +16,11 @@
 // Terminal preference: Windows Terminal (wt.exe) → cmd.exe fallback.
 //
 // Linux / macOS: stub — returns false (TODO: add xterm / Terminal.app path).
+//
+// The task text is untrusted (it syncs from peers and arrives via Todoist
+// import) and ends up on a cmd.exe command line, so the command-line
+// construction lives in the pure static helpers below — compiled on every
+// platform so the quoting rules are unit-tested off Windows too.
 class ClaudeCodeLauncher : public QObject
 {
     Q_OBJECT
@@ -38,4 +44,27 @@ public:
     // the desktop binary. Used by the "Добавить навык в Claude" dialog as the
     // fallback path baked into the generated skill. Returns native separators.
     Q_INVOKABLE QString opentodoCliPath() const;
+
+    // ── Command-line construction (pure; public for tests) ──────────────────
+
+    // The initial prompt: content, optional description and the opentodo-cli
+    // hint, flattened to one line and made safe to sit inside ONE
+    // double-quoted cmd.exe argument (no '"', no '%', no control chars, never
+    // starting with '-'), capped below cmd.exe's 8191-character line limit.
+    static QString buildPrompt(const QString &taskContent,
+                               const QString &taskDescription);
+
+    // Arguments for `wt.exe`: -d <repo> <cmdExe> /k call <claude> <prompt>,
+    // with ';' escaped so wt does not split them into extra subcommands.
+    static QStringList windowsTerminalArgs(const QString &nativeRepo,
+                                           const QString &cmdExe,
+                                           const QString &claudePath,
+                                           const QString &prompt);
+
+    // Arguments for the `cmd.exe /c start` fallback. The repo is NOT on the
+    // command line: the caller makes it the process working directory, which
+    // `start` hands on to the new window.
+    static QStringList cmdStartArgs(const QString &cmdExe,
+                                    const QString &claudePath,
+                                    const QString &prompt);
 };
