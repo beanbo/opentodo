@@ -218,7 +218,7 @@ public:
 
     // Methods
     Q_INVOKABLE void updateSetting(const QString &key, const QVariant &value);
-    QVariant getSetting(const QString &key) const;
+    Q_INVOKABLE QVariant getSetting(const QString &key) const;
     Q_INVOKABLE void resetDefaults();
     Q_INVOKABLE QStringList availableThemes() const;
     Q_INVOKABLE QStringList availableLanguages() const;
