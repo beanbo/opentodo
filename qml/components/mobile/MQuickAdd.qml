@@ -16,7 +16,9 @@ Item {
     // Cycling state
     property string dueState: "Сегодня"      // "Сегодня" | "Завтра" | "" (none)
     property int    prio: 4
-    property int    projIdx: 0
+    // Index into _projects, or -1 = no explicit pick (TaskViewModel's default:
+    // the current project, else the Inbox).
+    property int    projIdx: -1
     property bool   hasLabel: false
     property var    _projects: []
     property string _labelName: ""
@@ -25,7 +27,7 @@ Item {
         var ps = []
         for (var i = 0; i < projectViewModel.count; i++) {
             var p = projectViewModel.projectAt(i)
-            if (p && !p.isArchived) ps.push({ "id": p.id, "name": p.name,
+            if (p && !p.isArchived) ps.push({ "id": p.id, "name": p.name, "isInbox": p.isInbox,
                                               "icon": (p.icon && p.icon.length > 0) ? p.icon : "hash",
                                               "color": (p.color && p.color.length > 0) ? p.color : ThemeManager.accentColor })
         }
@@ -34,9 +36,34 @@ Item {
         root._labelName = labs.length > 0 ? (labs[0].name || "") : ""
     }
 
+    // Preselect the project being viewed (project list / board / calendar);
+    // elsewhere leave it to the VM default instead of forcing _projects[0]
+    // (which filed tasks from Today/Upcoming/labels into an arbitrary project).
+    function _defaultProjIdx() {
+        var fm = taskViewModel.filterMode
+        var cur = taskViewModel.currentProjectId
+        if (!cur || !(fm === TaskViewModel.Project || fm === TaskViewModel.Board
+                      || fm === TaskViewModel.Calendar))
+            return -1
+        for (var i = 0; i < _projects.length; i++)
+            if (_projects[i].id === cur) return i
+        return -1
+    }
+    // What the "no explicit pick" state resolves to (for display, and for the
+    // template path whose C++ side does not apply the VM default).
+    function _defaultProject() {
+        var cur = taskViewModel.currentProjectId
+        var inbox = null
+        for (var i = 0; i < _projects.length; i++) {
+            if (cur && _projects[i].id === cur) return _projects[i]
+            if (_projects[i].isInbox && !inbox) inbox = _projects[i]
+        }
+        return inbox
+    }
+
     function openAdd() {
         _refreshLists()
-        dueState = "Сегодня"; prio = 4; projIdx = 0; hasLabel = false
+        dueState = "Сегодня"; prio = 4; projIdx = _defaultProjIdx(); hasLabel = false
         input.text = ""
         root.open = true
         Qt.callLater(function() { input.forceActiveFocus() })
@@ -50,7 +77,9 @@ Item {
         default: return ThemeManager.priorityP4Color
         }
     }
-    readonly property var _curProj: (_projects.length > 0) ? _projects[projIdx % _projects.length] : null
+    readonly property var _curProj: (projIdx >= 0 && projIdx < _projects.length) ? _projects[projIdx] : null
+    // Shown on the chip: the explicit pick, else what the default resolves to.
+    readonly property var _shownProj: _curProj ? _curProj : (_projects.length > 0 ? _defaultProject() : null)
 
     function _send() {
         var txt = input.text.trim()
@@ -178,11 +207,12 @@ Item {
                 }
                 // Проект
                 MQuickAddChip {
-                    visible: root._curProj !== null
+                    visible: root._projects.length > 0
                     active: true
-                    iconName: root._curProj ? root._curProj.icon : "hash"
-                    label: root._curProj ? root._curProj.name : ""
-                    chipColor: root._curProj ? root._curProj.color : ThemeManager.accentColor
+                    iconName: root._shownProj ? root._shownProj.icon : "inbox"
+                    label: root._shownProj ? root._shownProj.name : qsTr("Входящие")
+                    chipColor: root._shownProj ? root._shownProj.color : ThemeManager.accentColor
+                    // -1 (default) → 0 → 1 … → wraps back to 0
                     onClicked: if (root._projects.length > 0) root.projIdx = (root.projIdx + 1) % root._projects.length
                 }
                 // Метка
@@ -241,7 +271,10 @@ Item {
                         id: tplMa
                         anchors.fill: parent
                         onClicked: {
-                            var pid = root._curProj ? root._curProj.id : ""
+                            // insertTemplate has no project fallback — an empty id
+                            // would create project-less (invisible) tasks.
+                            var proj = root._shownProj
+                            var pid = proj ? proj.id : ""
                             templateViewModel.insertTemplate(model.tplId, pid, "")
                             if (typeof haptics !== "undefined") haptics.medium()
                             tplPopup.close()

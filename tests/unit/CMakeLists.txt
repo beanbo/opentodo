@@ -288,6 +288,15 @@ set_tests_properties(test_inapp_banner_smoke PROPERTIES
 opentodo_add_unit_test(test_task_lifecycle                App)
 opentodo_add_unit_test(test_settings_export_import        App)
 
+# QML component behaviour regressions (reminder save, DatePicker ISO quick
+# buttons, QuickAdd picker override + NLP, EditorMetaRow label bindings).
+opentodo_add_unit_test(test_qml_component_regressions     App)
+target_link_libraries(test_qml_component_regressions PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_qml_component_regressions PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_qml_component_regressions>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Quality round 2.14: ProjectView/TrashView/AIView smoke (3 in one) +
 # recurrence engine advance() chain & extreme edges.
 opentodo_add_unit_test(test_views_smoke                   App)

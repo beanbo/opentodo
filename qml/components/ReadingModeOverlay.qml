@@ -177,7 +177,7 @@ Popup {
             Layout.topMargin:    Spacing.sm
             Layout.bottomMargin: Spacing.md
 
-            text:                "Esc — закрыть"
+            text:                qsTr("Esc — закрыть")
             color:               ThemeManager.secondaryTextColor
             font.pixelSize:      FontSize.caption
             horizontalAlignment: Text.AlignHCenter

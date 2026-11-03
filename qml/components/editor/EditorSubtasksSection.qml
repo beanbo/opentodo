@@ -209,8 +209,10 @@ ColumnLayout {
                                 taskViewModel.uncompleteTask(modelData.id)
                             else
                                 taskViewModel.completeTask(modelData.id)
-                            // Refresh list after completion toggle
-                            subtaskRepeater.model = taskViewModel.subtasksOf(root.taskId)
+                            // Refresh list after completion toggle. Bump the token
+                            // instead of assigning .model, which would sever the
+                            // model binding (later sync/undo changes never shown).
+                            root._editorSubtaskRefreshToken = root._editorSubtaskRefreshToken + 1
                         }
                     }
                 }
@@ -305,8 +307,9 @@ ColumnLayout {
 
                     drop.accept(Qt.MoveAction)
 
-                    // Refresh the Repeater to reflect the new order.
-                    subtaskRepeater.model = taskViewModel.subtasksOf(root.taskId)
+                    // Refresh the Repeater to reflect the new order (token bump
+                    // keeps the model binding alive).
+                    root._editorSubtaskRefreshToken = root._editorSubtaskRefreshToken + 1
                 }
 
                 // Insertion-line indicator: a 2-px accent-coloured bar shown at
@@ -354,8 +357,8 @@ ColumnLayout {
                 if (trimmed !== "" && root.taskId !== "") {
                     taskViewModel.addSubtask(root.taskId, trimmed)
                     text = ""
-                    // Refresh the repeater model
-                    subtaskRepeater.model = taskViewModel.subtasksOf(root.taskId)
+                    // Refresh the repeater (token bump keeps the model binding)
+                    root._editorSubtaskRefreshToken = root._editorSubtaskRefreshToken + 1
                 }
             }
         }
@@ -368,8 +371,8 @@ ColumnLayout {
         parent: Overlay.overlay
 
         onSubtasksAdded: function(count) {
-            // Refresh the inline subtask list
-            subtaskRepeater.model = taskViewModel.subtasksOf(root.taskId)
+            // Refresh the inline subtask list (token bump keeps the binding)
+            root._editorSubtaskRefreshToken = root._editorSubtaskRefreshToken + 1
             if (count > 0) {
                 // B-7.8: proper Russian plural for numbers like 11-14
                 const noun = _pluralize(count)

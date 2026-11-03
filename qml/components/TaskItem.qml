@@ -90,36 +90,54 @@ Item {
         Qt.callLater(function() { inlineEditField.selectAll() })
     }
 
+    // Selection state as a real binding: taskViewModel.isSelected(id) is a
+    // method call, so bindings on it never re-evaluated when the selection
+    // changed. selectedIds carries NOTIFY selectionChanged.
+    readonly property bool _selected: (typeof taskViewModel !== "undefined" && !!taskViewModel
+                                       && root.id !== "")
+                                      ? taskViewModel.selectedIds.indexOf(root.id) >= 0
+                                      : false
+
     // ── F2 shortcut: rename when this row is the (single) selected task ──
+    // DesktopLayout binds F2 to "open the hovered task" while a task is
+    // hovered and the editor is closed. Two enabled Shortcuts for one key are
+    // ambiguous and NEITHER fires, so stand down whenever that one is live.
     Shortcut {
         sequence: "F2"
-        enabled: root.id !== "" && taskViewModel.isSelected(root.id)
+        enabled: root._selected && taskViewModel.selectionCount === 1
                  && !root._inlineEditing
+                 && !(taskViewModel.hoveredTaskId !== "" && taskViewModel.selectedTask === null)
         onActivated: root._beginInlineRename()
     }
 
     // ── Subtask expansion persistence ─────────────────────────────────────
-    // A single Settings object is shared across all TaskItem instances
-    // (same category, same backing QSettings group). expandedIds holds a
-    // comma-separated list of task UUIDs whose subtask section is open.
+    // Every TaskItem has its own Settings instance on the same category /
+    // QSettings group. Instances do NOT notify each other, so a declared
+    // `property string expandedIds` was a per-delegate snapshot taken at
+    // creation and each delegate wrote the whole list back from its stale
+    // copy (dropping other rows' changes). The "expandedIds" key (a
+    // comma-separated list of task UUIDs whose subtask section is open) is
+    // therefore read/written with value()/setValue() at use time, which go
+    // straight to the shared QSettings store.
     //
     // TODO: prune orphan IDs on app start — deleted tasks accumulate in
     //       expandedIds indefinitely. For now the QSettings string stays
     //       manageable (a few hundred UUIDs ≈ ~10 KB). When pruning is
-    //       added, iterate dataStore.allTasks() IDs and remove entries
+    //       added, iterate dataStore.allTasksData() IDs and remove entries
     //       not present in that set.
     Settings {
         id: expandedSettings
         category: "TaskItemExpansion"
-        property string expandedIds: ""   // comma-separated task UUIDs
-        // Bulk expand/collapse triggers — bumped by header buttons in
-        // TaskListView.qml (or any other host) to fan out an expand-all /
-        // collapse-all command to every TaskItem delegate currently alive.
-        // Using a Settings-backed token avoids a context-property dependency
-        // and keeps the mechanism shared across the whole UI tree.
-        property int expandAllToken: 0
-        property int collapseAllToken: 0
     }
+
+    // ── Bulk expand/collapse ──────────────────────────────────────────────
+    // Host-provided object exposing int expandAllToken / collapseAllToken
+    // properties (with change notification); bumping one fans out to every
+    // TaskItem bound to the same host. It must be ONE shared object — a
+    // per-delegate Settings token never saw the host's increments. Hosts:
+    // TaskListView passes its own bus; DesktopLayout / ProjectView pass the
+    // object their expand-all / collapse-all buttons bump.
+    property var expansionHost: null
 
     // ── User-configurable «Отложить» durations ───────────────────────────────
     // Five slots persisted via Qt.labs.settings (category "deferDurations") and
@@ -150,22 +168,31 @@ Item {
             qsTr("Отложенное напоминание"), body, due, "snooze-" + root.id)
     }
 
-    // Returns true when taskId is in the persisted expanded set.
-    function _isExpandedPersisted(taskId) {
-        if (!taskId || expandedSettings.expandedIds === "") return false
-        return ("," + expandedSettings.expandedIds + ",").indexOf("," + taskId + ",") >= 0
+    // Current shared "expandedIds" value, read from QSettings at call time.
+    function _expandedIdsNow() {
+        const v = expandedSettings.value("expandedIds", "")
+        return v ? String(v) : ""
     }
 
-    // Adds or removes taskId from the persisted expanded set.
+    // Returns true when taskId is in the persisted expanded set.
+    function _isExpandedPersisted(taskId) {
+        if (!taskId) return false
+        const ids = _expandedIdsNow()
+        if (ids === "") return false
+        return ("," + ids + ",").indexOf("," + taskId + ",") >= 0
+    }
+
+    // Adds or removes taskId from the persisted expanded set. Reads the
+    // current shared value first so other delegates' entries survive.
     function _setExpandedPersisted(taskId, exp) {
         if (!taskId) return
-        const ids = expandedSettings.expandedIds
-            ? expandedSettings.expandedIds.split(",").filter(function(s) { return s !== "" })
-            : []
+        const cur = _expandedIdsNow()
+        const ids = cur ? cur.split(",").filter(function(s) { return s !== "" }) : []
         const idx = ids.indexOf(taskId)
         if (exp && idx < 0)  ids.push(taskId)
         else if (!exp && idx >= 0) ids.splice(idx, 1)
-        expandedSettings.expandedIds = ids.join(",")
+        else return                       // no change — skip the write
+        expandedSettings.setValue("expandedIds", ids.join(","))
     }
 
     // Subtask expansion state — initialised from QSettings so the value
@@ -376,7 +403,9 @@ Item {
     }
 
     function _findTaskIdByTitle(title) {
-        const all = dataStore.allTasks()
+        // allTasksData(): allTasks() is a QList<Task*>, not a JS array in QML
+        // (.length undefined → [[Task]] links never resolved).
+        const all = dataStore.allTasksData()
         const target = title.toLowerCase()
         for (let i = 0; i < all.length; i++) {
             const t = all[i]
@@ -483,7 +512,8 @@ Item {
     // and orphan rows have no expand affordance so toggling their state is a
     // no-op that would still pollute QSettings via _setExpandedPersisted().
     Connections {
-        target: expandedSettings
+        target: root.expansionHost
+        ignoreUnknownSignals: true
         function onExpandAllTokenChanged() {
             if (!root.isSubtask && root.id !== ""
                     && taskViewModel.hasSubtasks(root.id))
@@ -500,7 +530,7 @@ Item {
         id: background
         anchors.fill: parent
         color: {
-            if (taskViewModel.isSelected(root.id))
+            if (root._selected)
                 return Qt.rgba(ThemeManager.accentColor.r,
                                ThemeManager.accentColor.g,
                                ThemeManager.accentColor.b, 0.15)
@@ -671,7 +701,10 @@ Item {
                 visible: !root.isSubtask
                 z: 5
 
-                readonly property bool _hasSub: taskViewModel.hasSubtasks(root.id)
+                // Was taskViewModel.hasSubtasks(root.id): a method call with no
+                // dependencies, so the chevron never lit up for a subtask added
+                // later. _subtaskTotal is kept fresh by _refreshSubtaskCounts.
+                readonly property bool _hasSub: root._subtaskTotal > 0
 
                 IconSvg {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -834,6 +867,14 @@ Item {
                             if (visible) text = root.content
                         }
                         onAccepted: root._commitInlineRename(text)
+                        // Claim Esc/Return before the window-level Shortcuts
+                        // (Escape closes the editor app-wide, Return opens the
+                        // hovered task) so they reach this field.
+                        Keys.onShortcutOverride: (event) => {
+                            if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return
+                                    || event.key === Qt.Key_Enter)
+                                event.accepted = true
+                        }
                         Keys.onEscapePressed: root._cancelInlineRename()
                         onActiveFocusChanged: {
                             if (!activeFocus && root._inlineEditing)
@@ -999,8 +1040,12 @@ Item {
                         // "сегодня" / "завтра" / "12.05" / "12.05.2027"
                         function _nextOccurrenceShort() {
                             if (!root.dueDate) return ""
-                            const today    = Qt.formatDate(new Date(), "yyyy-MM-dd")
-                            const tomorrow = Qt.formatDate(new Date(Date.now() + 86400000), "yyyy-MM-dd")
+                            const nowD     = new Date()
+                            const today    = Qt.formatDate(nowD, "yyyy-MM-dd")
+                            // Calendar arithmetic: +86400000 ms is off by a day
+                            // around DST transitions near midnight.
+                            const tomorrow = Qt.formatDate(new Date(nowD.getFullYear(), nowD.getMonth(),
+                                                                    nowD.getDate() + 1), "yyyy-MM-dd")
                             if (root.dueDate === today)    return qsTr("сегодня")
                             if (root.dueDate === tomorrow) return qsTr("завтра")
                             const d = new Date(root.dueDate + "T00:00:00")
@@ -1793,16 +1838,23 @@ Item {
                             if (trimmed !== "") {
                                 taskViewModel.addSubtask(root.id, trimmed)
                                 text = ""
-                                // Force the Repeater to pick up the new subtask.
-                                // Use dataStore.subtasks() (QList<Task*>) for
-                                // consistency with the rest of subtaskRepeater
-                                // bindings — taskViewModel.subtasksOf returns
-                                // QVariantList<QVariantMap> which renders empty
-                                // delegates in Qt 6.11 AOT-compiled QML.
-                                subtaskRepeater.model = dataStore.subtasks(root.id)
+                                // Force the Repeater to pick up the new subtask by
+                                // bumping the refresh token its model binding reads.
+                                // Assigning subtaskRepeater.model here severed that
+                                // binding, and dataStore.subtasks() (QList<Task*>)
+                                // isn't a JS array in QML → the Repeater showed 0 rows.
+                                subtaskColumn._subtaskRefreshToken =
+                                    subtaskColumn._subtaskRefreshToken + 1
                             }
                         }
 
+                        // Keep Esc/Return here instead of the window Shortcuts
+                        // (Escape = ApplicationShortcut, Return = open hovered task).
+                        Keys.onShortcutOverride: (event) => {
+                            if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return
+                                    || event.key === Qt.Key_Enter)
+                                event.accepted = true
+                        }
                         // ITER1 #19: Esc clears the field and collapses the subtask section.
                         Keys.onEscapePressed: {
                             text = ""
@@ -1830,10 +1882,12 @@ Item {
 
         readonly property var _today: new Date()
 
-        // weekStart из настроек (0=Mon..6=Sun), как в DatePicker.qml.
+        // weekStart из настроек: ISO 1=Mon..7=Sun (legacy 0 = Mon), как в
+        // DatePicker.qml. JS getDay(): 0=Sun → ISO % 7; вне диапазона → Пн.
         property int _weekStartIdx: (typeof settingsViewModel !== "undefined" && settingsViewModel)
-                                    ? settingsViewModel.weekStart : 0
-        property int _jsWeekStart:  (_weekStartIdx + 1) % 7
+                                    ? settingsViewModel.weekStart : 1
+        property int _jsWeekStart:  (_weekStartIdx >= 1 && _weekStartIdx <= 7)
+                                    ? _weekStartIdx % 7 : 1
         readonly property var _allLabels: [qsTr("Вс"), qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб")]
         property var _weekdayLabels: {
             var arr = []
@@ -1843,15 +1897,18 @@ Item {
 
         function openForTask() {
             // Дата по умолчанию: завтра, или текущий due + 1 день, если он есть.
+            // Calendar-day arithmetic (not +86400000 ms) so DST can't skew it.
+            var now = new Date()
+            var tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
             var base
             if (root.dueDate && root.dueDate !== "") {
                 var parsed = _parse(root.dueDate)
                 base = parsed ? new Date(parsed.getFullYear(),
                                           parsed.getMonth(),
                                           parsed.getDate() + 1)
-                              : new Date(Date.now() + 86400000)
+                              : tomorrow
             } else {
-                base = new Date(Date.now() + 86400000)
+                base = tomorrow
             }
             _pendingDate = _format(base)
             _viewYear  = base.getFullYear()

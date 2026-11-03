@@ -58,15 +58,14 @@ Item {
         navPins = arr
         navPinSettings.pinned = arr.join(",")
     }
-    // Snooze (defer to tomorrow). setTaskDue does NOT push to the undo stack,
-    // so we snapshot the prior due here and restore it from the snackbar.
-    property var _pendingSnooze: null
+    // Snooze by one day. snoozeTask shifts the due date but keeps the
+    // recurrence (setTaskDue(id, "завтра") re-parsed a one-shot phrase and
+    // wiped "every …" rules), and pushes its own undo entry — so the snackbar's
+    // "Отменить" goes through undoStack.undo() like every other action instead
+    // of re-setting a snapshotted due string (which also lost the recurrence).
     function _snoozeTask(id) {
-        var t = dataStore.taskById(id)
-        var prev = t ? ((t.dueString && t.dueString.length) ? t.dueString : (t.dueDate || "")) : ""
-        taskViewModel.setTaskDue(id, "завтра")
-        root._pendingSnooze = { "id": id, "prev": prev }
-        mSnackbar.show(qsTr("Отложено на завтра"), qsTr("Отменить"))
+        if (!taskViewModel.snoozeTask(id, 1)) return
+        mSnackbar.show(qsTr("Отложено на день"), qsTr("Отменить"))
     }
 
     // Long-press context menu (block 4).
@@ -105,7 +104,10 @@ Item {
     property var _flatModel: []
     function _humanDate(iso) {
         if (!iso || iso === "zzz") return qsTr("Без даты")
-        var tomorrow = Qt.formatDate(new Date(Date.now() + 86400000), "yyyy-MM-dd")
+        // Calendar arithmetic (not +86400000 ms) so DST can't skew "tomorrow".
+        var now = new Date()
+        var tomorrow = Qt.formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+                                     "yyyy-MM-dd")
         if (iso === ThemeManager.todayStr) return qsTr("Сегодня")
         if (iso === tomorrow)              return qsTr("Завтра")
         return DateFormatter.format(iso)
@@ -419,6 +421,10 @@ Item {
             // (root) item, and StackView.pop() is a no-op on the last/root item —
             // so pop() could NEVER close it (✕ and swipe-back both appeared
             // broken). clear() removes all items → depth 0 → editor closes.
+            // Commit first (as the editor's own ✕ does): clear() destroys the
+            // page while a TextArea may still hold focus with unsaved text.
+            const page = taskEditorStack.currentItem
+            if (page && page.editor) page.editor.commitEdits()
             taskEditorStack.clear()
             return true
         }
@@ -655,19 +661,22 @@ Item {
             widePanel: false
 
             onDayPicked: function(picked) {
-                // Scroll the mobile task list to the picked date
+                // Scroll the mobile task list to the picked date. The ListView
+                // model is _flatModel (date headers + tasks, collapsed groups
+                // omitted), so taskViewModel row indices don't line up with it —
+                // jump to the date's group header (sid = "yyyy-MM-dd") instead.
                 var iso = Qt.formatDate(picked, "yyyy-MM-dd")
-                for (var i = 0; i < taskViewModel.count; i++) {
-                    var t = taskViewModel.taskAt(i)
-                    if (t && t.dueDate === iso) {
+                var flat = root._flatModel
+                for (var i = 0; i < flat.length; i++) {
+                    if (flat[i].kind === "header" && flat[i].sid === iso) {
                         taskListView.positionViewAtIndex(i, ListView.Beginning)
                         return
                     }
                 }
-                // Fallback: first task on or after picked date
-                for (var j = 0; j < taskViewModel.count; j++) {
-                    var tj = taskViewModel.taskAt(j)
-                    if (tj && tj.dueDate >= iso) {
+                // Fallback: first dated group on or after the picked date
+                // ("zzz" is the no-date bucket, sorted last).
+                for (var j = 0; j < flat.length; j++) {
+                    if (flat[j].kind === "header" && flat[j].sid !== "zzz" && flat[j].sid >= iso) {
                         taskListView.positionViewAtIndex(j, ListView.Beginning)
                         return
                     }
@@ -924,7 +933,7 @@ Item {
         anchors.fill: parent
         z: 105
         onCloseRequested: open = false
-        onCreated: function(message) { root._pendingSnooze = null; mSnackbar.show(message, "") }
+        onCreated: function(message) { mSnackbar.show(message, "") }
     }
 
     // Single editor-open mechanism: setting taskViewModel.selectedTask (from a
@@ -994,14 +1003,7 @@ Item {
         anchors.fill: parent
         z: 95
         bottomMargin: root.navVisible ? (bottomNav.height + 12) : 18
-        onActionTriggered: {
-            if (root._pendingSnooze) {
-                taskViewModel.setTaskDue(root._pendingSnooze.id, root._pendingSnooze.prev)
-                root._pendingSnooze = null
-            } else {
-                undoStack.undo()
-            }
-        }
+        onActionTriggered: undoStack.undo()
     }
 
     // ── Multi-select toolbar (replaces the top bar while selecting) ────────────
@@ -1094,7 +1096,6 @@ Item {
             else                            taskViewModel.bulkMoveToProject(id)
             movePicker.open = false
             var p = projectViewModel.projectById(id)
-            root._pendingSnooze = null
             mSnackbar.show(qsTr("Перемещено → %1").arg(p ? p.name : ""), qsTr("Отменить"))
             taskViewModel.clearSelection()
         }
@@ -1104,19 +1105,16 @@ Item {
     Connections {
         target: taskViewModel
         function onTaskRemoved(id) {
-            root._pendingSnooze = null
             mSnackbar.show(undoStack.lastDescription || qsTr("Задача удалена"), qsTr("Отменить"))
         }
         function onTasksRemoved(ids) {
             var n = ids ? ids.length : 0
             if (n <= 0) return
-            root._pendingSnooze = null
             mSnackbar.show(undoStack.lastDescription || qsTr("Удалено задач: %1").arg(n), qsTr("Отменить"))
         }
         function onTaskChanged(id) {
             var t = dataStore.taskById(id)
             if (t && t.isCompleted) {
-                root._pendingSnooze = null
                 mSnackbar.show(undoStack.lastDescription || qsTr("Задача завершена"), qsTr("Отменить"))
             }
         }
@@ -1166,10 +1164,13 @@ Item {
 
             Rectangle {
                 color: contentColor
+                // Lets the back handler flush edits before clear().
+                readonly property var editor: mEditorScreen
 
                 // Mobile redesign: full-screen MEditorScreen (its own toolbar,
                 // property pickers, subtasks, comments, history).
                 MEditorScreen {
+                    id: mEditorScreen
                     anchors.fill: parent
                     onCloseRequested: taskEditorStack.clear()
                 }

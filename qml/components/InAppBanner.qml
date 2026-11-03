@@ -281,9 +281,10 @@ Rectangle {
                         ToolTip.text: qsTr("Отложить до понедельника 9:00")
                         onTriggered: {
                             var minutes = root._minutesUntilNextDayOfWeek(1, 9, 0);
-                            if (typeof telemetry !== "undefined" && telemetry !== null) {
+                            // Telemetry's invokable is trackEvent(); track() never existed.
+                            if (typeof telemetry !== "undefined" && telemetry !== null && telemetry.enabled) {
                                 try {
-                                    telemetry.track("banner_snooze_workweek",
+                                    telemetry.trackEvent("banner_snooze_workweek",
                                                     { taskId: root.bannerTaskId });
                                 } catch (e) { /* telemetry must never break UX */ }
                             }
@@ -301,9 +302,9 @@ Rectangle {
                         ToolTip.text: qsTr("Отложить до субботы 9:00")
                         onTriggered: {
                             var minutes = root._minutesUntilNextDayOfWeek(6, 9, 0);
-                            if (typeof telemetry !== "undefined" && telemetry !== null) {
+                            if (typeof telemetry !== "undefined" && telemetry !== null && telemetry.enabled) {
                                 try {
-                                    telemetry.track("banner_snooze_weekend",
+                                    telemetry.trackEvent("banner_snooze_weekend",
                                                     { taskId: root.bannerTaskId });
                                 } catch (e) { /* telemetry must never break UX */ }
                             }
@@ -342,9 +343,9 @@ Rectangle {
 
                 onClicked: {
                     var minutes = root._minutesUntilMorning();
-                    if (typeof telemetry !== "undefined" && telemetry !== null) {
+                    if (typeof telemetry !== "undefined" && telemetry !== null && telemetry.enabled) {
                         try {
-                            telemetry.track("banner_snooze_morning",
+                            telemetry.trackEvent("banner_snooze_morning",
                                             { taskId: root.bannerTaskId });
                         } catch (e) { /* telemetry must never break UX */ }
                     }

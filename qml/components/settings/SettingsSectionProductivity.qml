@@ -45,12 +45,25 @@ Rectangle {
     // service is not exposed as a context property in every build, so the
     // call is guarded by typeof — when absent, the new time will simply be
     // picked up at the next app start (the service reads QSettings in ctor).
+    //
+    // Settings property writes reach QSettings only after a write-delay timer
+    // (sync() does not flush them), so the C++ side re-reading QSettings right
+    // away saw the OLD value. Push the current values with setValue() — which
+    // writes through immediately — before asking the service to reload.
     function applyDailyReviewTime() {
+        dailyReviewSettings.setValue("dailyReviewHour",   dailyReviewSettings.dailyReviewHour)
+        dailyReviewSettings.setValue("dailyReviewMinute", dailyReviewSettings.dailyReviewMinute)
+        dailyReviewSettings.sync()
         if (typeof dailyReviewService !== "undefined" && dailyReviewService)
             dailyReviewService.rescheduleFromSettings()
     }
 
     function reloadPomo() {
+        pomoSettings.setValue("workMinutes",           pomoSettings.workMinutes)
+        pomoSettings.setValue("shortBreakMinutes",     pomoSettings.shortBreakMinutes)
+        pomoSettings.setValue("longBreakMinutes",      pomoSettings.longBreakMinutes)
+        pomoSettings.setValue("cyclesBeforeLongBreak", pomoSettings.cyclesBeforeLongBreak)
+        pomoSettings.sync()
         if (typeof pomodoroService !== "undefined" && pomodoroService
                 && typeof pomodoroService.reloadDurationsFromSettings === "function")
             pomodoroService.reloadDurationsFromSettings()

@@ -252,8 +252,10 @@ Rectangle {
                     checked: (typeof telemetry !== "undefined" && telemetry)
                              ? telemetry.enabled : false
                     onToggled: {
+                        // setEnabled() is a plain C++ setter (not invokable) and
+                        // threw; write the Q_PROPERTY instead.
                         if (typeof telemetry !== "undefined" && telemetry)
-                            telemetry.setEnabled(checked)
+                            telemetry.enabled = checked
                         // No trackEvent here intentionally: if the user just turned
                         // telemetry OFF this event would fire despite their opt-out,
                         // and if they turned it ON we'd be logging before they've
@@ -580,8 +582,11 @@ Rectangle {
                         }
 
                         onClicked: {
-                            if (typeof crashLogger !== "undefined" && crashLogger)
-                                crashLogger.openLogFolderInExplorer()
+                            // Open the data directory shown above (it used to
+                            // open the crash-log folder instead).
+                            const p = String(dataPathRoot._dataDir).replace(/\\/g, "/")
+                            // "/home/…" → file:///home/…, "C:/…" → file:///C:/…
+                            Qt.openUrlExternally("file://" + (p.startsWith("/") ? "" : "/") + p)
                             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                                 telemetry.trackEvent("settings_open_data_folder", {})
                         }
@@ -694,8 +699,10 @@ Rectangle {
                     // Convert QUrl to a local file-system path that C++ can open.
                     // Qt gives us a proper QUrl; toString() yields "file:///C:/..."
                     // on Windows or "file:///home/..." on Linux.
-                    const raw = selectedFile.toString()
-                    const localPath = raw.startsWith("file:///")
+                    // Only a drive-letter URL is Windows: "file:///home/…" also
+                    // starts with "file:///" and must keep its leading "/".
+                    const raw = decodeURIComponent(selectedFile.toString())
+                    const localPath = /^file:\/\/\/[A-Za-z]:/.test(raw)
                         ? raw.substring(8).replace(/\//g, "\\")  // Windows
                         : raw.replace(/^file:\/\//, "")          // Unix/WASM
                     importConfirmDialog.targetPath = localPath

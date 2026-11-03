@@ -12,6 +12,14 @@ Rectangle {
 
     signal closeRequested()
 
+    // Flush in-progress title/description edits. Hosts call this before
+    // tearing the editor down (e.g. the Android back gesture), since
+    // destroying a focused TextArea doesn't reliably commit it.
+    function commitEdits() {
+        titleField.commit()
+        descField.commit()
+    }
+
     readonly property var    task: taskViewModel.selectedTask
     readonly property string tid: task ? task.id : ""
     readonly property color  _prio: {
@@ -70,7 +78,7 @@ Rectangle {
             anchors.left: parent.left; anchors.leftMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             iconName: "chevron-down"; iconColor: ThemeManager.textColor; iconSize: 24
-            onClicked: { titleField.commit(); descField.commit(); root.closeRequested() }
+            onClicked: { root.commitEdits(); root.closeRequested() }
         }
         Row {
             anchors.right: parent.right; anchors.rightMargin: 4
@@ -111,7 +119,7 @@ Rectangle {
                     color: (root.task && root.task.isCompleted) ? ThemeManager.successColor : "transparent"
                     border.width: 2
                     border.color: (root.task && root.task.isCompleted) ? ThemeManager.successColor : root._prio
-                    IconSvg { visible: root.task && root.task.isCompleted; anchors.centerIn: parent; name: "check"; size: 14; color: "#ffffff" }
+                    IconSvg { visible: root.task && root.task.isCompleted; anchors.centerIn: parent; name: "check"; size: 14; color: ThemeManager.accentForeground }
                     MouseArea {
                         anchors.fill: parent; anchors.margins: -6
                         onClicked: {
@@ -179,7 +187,7 @@ Rectangle {
                     MEditorMetaRow { width: parent.width; iconName: "hash"; label: qsTr("Проект"); value: root._projName(); onClicked: { projSheet.options = root._projectOptions(); projSheet.open = true } }
                     MEditorMetaRow { width: parent.width; iconName: "tag"; label: qsTr("Метки"); value: (root.task && root.task.labels && root.task.labels.length) ? root.task.labels.join(", ") : qsTr("Добавить"); valueColor: (root.task && root.task.labels && root.task.labels.length) ? ThemeManager.textColor : ThemeManager.secondaryTextColor; onClicked: { labelsSheet.options = root._labelOptions(); labelsSheet.selectedIds = (root.task ? root.task.labels.slice() : []); labelsSheet.open = true } }
                     MEditorMetaRow { width: parent.width; iconName: "repeat"; label: qsTr("Повтор"); value: (root.task && root.task.dueIsRecurring) ? qsTr("Повтор") : qsTr("Не повторять"); valueColor: (root.task && root.task.dueIsRecurring) ? ThemeManager.accentColor : ThemeManager.secondaryTextColor; onClicked: repeatSheet.open = true }
-                    MEditorMetaRow { width: parent.width; iconName: "alarm"; label: qsTr("Напоминание"); value: root._reminderLabel; valueColor: root._reminderLabel.indexOf("Без") === 0 ? ThemeManager.secondaryTextColor : ThemeManager.textColor; last: true; onClicked: reminderSheet.open = true }
+                    MEditorMetaRow { width: parent.width; iconName: "alarm"; label: qsTr("Напоминание"); value: root._reminderLabel; valueColor: root._reminderId === "Без напоминания" ? ThemeManager.secondaryTextColor : ThemeManager.textColor; last: true; onClicked: reminderSheet.open = true }
                 }
             }
 
@@ -229,7 +237,7 @@ Rectangle {
                                 width: 21; height: 21; radius: 11
                                 color: modelData.isCompleted ? ThemeManager.successColor : "transparent"
                                 border.width: 2; border.color: modelData.isCompleted ? ThemeManager.successColor : ThemeManager.secondaryTextColor
-                                IconSvg { visible: modelData.isCompleted; anchors.centerIn: parent; name: "check"; size: 11; color: "#ffffff" }
+                                IconSvg { visible: modelData.isCompleted; anchors.centerIn: parent; name: "check"; size: 11; color: ThemeManager.accentForeground }
                                 MouseArea { anchors.fill: parent; anchors.margins: -6; onClicked: { if (modelData.isCompleted) taskViewModel.uncompleteTask(modelData.id); else taskViewModel.completeTask(modelData.id) } }
                             }
                             Text {
@@ -299,7 +307,7 @@ Rectangle {
                                 width: 32; height: 32; radius: 16
                                 color: cmtDelegate.overrideColor !== "" ? cmtDelegate.overrideColor
                                        : (cmtDelegate.isAssistant ? ThemeManager.accentColor
-                                                                  : (ThemeManager.isDark ? "#444444" : "#d8d8d4"))
+                                                                  : ThemeManager.borderColor)
                                 IconSvg { anchors.centerIn: parent
                                     visible: cmtDelegate.avatarIcon !== ""
                                     name: cmtDelegate.avatarIcon
@@ -435,7 +443,73 @@ Rectangle {
         root._refreshComments()
     }
 
-    property string _reminderLabel: qsTr("Без напоминания")
+    // ── Reminder ───────────────────────────────────────────────────────────
+    // Backed by real Reminder entities (type "relative" = minuteOffset before
+    // the task's due) created / updated / removed through dataStore, so they
+    // persist, sync and are scheduled (and re-planned when the due moves) by
+    // ReminderScheduler — like the desktop EditorRemindersSection. This used
+    // to fire a bare one-shot "reminder-<tid>" notification: no entity, the
+    // label reset on reopen, "Без напоминания" cancelled nothing, never synced.
+    readonly property var _reminderOffsets: ({ "В момент срока": 0, "За 10 минут": 10,
+                                               "За 1 час": 60, "За день": 1440 })
+    property int _reminderToken: 0            // bumped on dataStore.remindersChanged
+    function _taskReminders() {
+        var out = []
+        if (root.tid === "") return out
+        var list = dataStore.remindersForTask(root.tid)
+        if (list) for (var i = 0; i < list.length; i++) if (list[i]) out.push(list[i])
+        return out
+    }
+    function _relativeReminder(rems) {
+        for (var i = 0; i < rems.length; i++) if (rems[i].type === "relative") return rems[i]
+        return null
+    }
+    // Option id of the current state ("" when it matches no preset).
+    readonly property string _reminderId: {
+        var _dep = root._reminderToken
+        var rems = root._taskReminders()
+        if (rems.length === 0) return "Без напоминания"
+        var rel = root._relativeReminder(rems)
+        if (!rel) return ""
+        for (var k in root._reminderOffsets)
+            if (root._reminderOffsets[k] === rel.minuteOffset) return k
+        return ""
+    }
+    readonly property string _reminderLabel: {
+        var _dep = root._reminderToken
+        switch (root._reminderId) {
+        case "Без напоминания": return qsTr("Без напоминания")
+        case "В момент срока":  return qsTr("В момент срока")
+        case "За 10 минут":     return qsTr("За 10 минут")
+        case "За 1 час":        return qsTr("За 1 час")
+        case "За день":         return qsTr("За день")
+        }
+        var rems = root._taskReminders()
+        var rel = root._relativeReminder(rems)
+        if (rel) return qsTr("За %1 мин").arg(rel.minuteOffset)
+        return qsTr("Напоминаний: %1").arg(rems.length)
+    }
+    Connections { target: dataStore; ignoreUnknownSignals: true
+        function onRemindersChanged() { root._reminderToken++ }
+    }
+    function _applyReminderChoice(choice) {
+        if (root.tid === "") return
+        var rems = root._taskReminders()
+        if (choice === "Без напоминания") {
+            for (var i = 0; i < rems.length; i++) dataStore.removeReminder(rems[i].id)
+            return
+        }
+        var off = root._reminderOffsets[choice]
+        if (off === undefined) return
+        var rel = root._relativeReminder(rems)
+        if (!rel) rel = dataStore.addReminder(root.tid, "relative")
+        if (!rel) return
+        // minuteOffset is a Q_PROPERTY (its setter is not invokable); stamp the
+        // field so the change wins on sync — this also emits remindersChanged,
+        // which makes ReminderScheduler (re)arm it.
+        rel.minuteOffset = off
+        dataStore.markReminderFieldsModified(rel.id, ["minute_offset"])
+    }
 
     // ── Picker sheets ──────────────────────────────────────────────────────
     MEditorDateSheet {
@@ -512,23 +586,9 @@ Rectangle {
             { "id": "За 1 час", "label": qsTr("За 1 час"), "icon": "alarm", "color": ThemeManager.priorityP2Color },
             { "id": "За день", "label": qsTr("За день"), "icon": "alarm", "color": ThemeManager.priorityP2Color }
         ]
-        currentId: root._reminderLabel
-        onSelected: function(id) { root._reminderLabel = id; root._scheduleReminder(id); open = false }
+        currentId: root._reminderId
+        onSelected: function(id) { root._applyReminderChoice(id); open = false }
         onCloseRequested: open = false
-    }
-
-    function _scheduleReminder(choice) {
-        if (choice.indexOf("Без") === 0) return
-        if (typeof notificationService === "undefined" || !notificationService) return
-        if (!root.task) return
-        var baseStr = root.task.dueDatetime && root.task.dueDatetime.length ? root.task.dueDatetime
-                     : (root.task.dueDate && root.task.dueDate.length ? root.task.dueDate + "T09:00:00" : "")
-        if (baseStr === "") return
-        var base = new Date(baseStr)
-        if (isNaN(base.getTime())) return
-        var off = choice === "За 10 минут" ? 10*60000 : choice === "За 1 час" ? 60*60000 : choice === "За день" ? 24*60*60000 : 0
-        var when = new Date(base.getTime() - off)
-        notificationService.scheduleNotification(qsTr("Напоминание"), root.task.content, when, "reminder-" + root.tid)
     }
 
     // AI subtask generator (reuses the existing dialog).

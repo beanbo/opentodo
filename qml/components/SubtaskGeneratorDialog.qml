@@ -291,7 +291,7 @@ Popup {
             // Retry button (only after suggestions shown)
             Button {
                 visible: root._suggestions.length > 0
-                text:    "↺ Сгенерировать снова"
+                text:    qsTr("↺ Сгенерировать снова")
                 flat:    true
                 contentItem: Text {
                     text:                parent.text

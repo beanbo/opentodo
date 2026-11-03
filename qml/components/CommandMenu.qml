@@ -350,15 +350,13 @@ Item {
             if (typeof sidebarViewModel !== "undefined"
                     && typeof sidebarViewModel.navigateToUpcoming === "function")
                 sidebarViewModel.navigateToUpcoming()
-        } else if (action === "settings") {
-            if (typeof taskViewModel !== "undefined")
-                taskViewModel.setFilterMode(TaskViewModel.Settings)
-        } else if (action === "productivity") {
-            if (typeof taskViewModel !== "undefined")
-                taskViewModel.setFilterMode(TaskViewModel.Productivity)
-        } else if (action === "notifications") {
-            if (typeof taskViewModel !== "undefined")
-                taskViewModel.setFilterMode(TaskViewModel.Notifications)
+        } else if (action === "settings" || action === "productivity"
+                   || action === "notifications") {
+            // TaskViewModel::setFilterMode is a plain setter (not invokable):
+            // calling it threw and left the palette open. Navigate the same
+            // way the sidebar entries do.
+            if (typeof sidebarViewModel !== "undefined")
+                sidebarViewModel.navigateTo(action)
         } else if (action.indexOf("project:") === 0) {
             var pid = action.substring(8)
             if (typeof sidebarViewModel !== "undefined")

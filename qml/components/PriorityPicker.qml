@@ -7,6 +7,7 @@ Popup {
     id: root
 
     // ─── Public API ────────────────────────────────────────────────────────────
+    // Caller-owned (bind it); the picker only reports picks via prioritySelected.
     property int selectedPriority: 4
     signal prioritySelected(int priority)
 
@@ -115,7 +116,10 @@ Popup {
                     hoverEnabled:  true
 
                     onClicked: {
-                        root.selectedPriority = modelData.value
+                        // Don't assign selectedPriority: callers bind it
+                        // (selectedPriority: root.selectedPriority) and an
+                        // assignment here broke that binding, leaving a stale
+                        // checkmark after the caller reset its value.
                         root.prioritySelected(modelData.value)
                         root.close()
                     }

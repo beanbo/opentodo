@@ -239,10 +239,22 @@ Popup {
                         Layout.preferredHeight: 18
                         Layout.alignment: Qt.AlignVCenter
 
+                        readonly property string _icon: modelData.icon || ""
+                        // Stroke icons are stored as "projects/<name>" — render
+                        // them as SVG (they used to show up as literal text).
+                        readonly property bool _isStroke: _icon.indexOf("projects/") === 0
+
+                        IconSvg {
+                            anchors.centerIn: parent
+                            visible: parent._isStroke
+                            name: parent._icon
+                            size: 14
+                            color: ThemeManager.textColor
+                        }
                         Text {
                             anchors.centerIn: parent
-                            visible: !!modelData.icon && modelData.icon.length > 0
-                            text: modelData.icon || ""
+                            visible: parent._icon.length > 0 && !parent._isStroke
+                            text: parent._icon
                             font.pixelSize: FontSize.body
                         }
                         Rectangle {
@@ -310,7 +322,7 @@ Popup {
 
             Text {
                 anchors.centerIn: parent
-                text: "↑ ↓ — навигация · Enter — переместить · Esc — отмена"
+                text: qsTr("↑ ↓ — навигация · Enter — переместить · Esc — отмена")
                 font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
             }

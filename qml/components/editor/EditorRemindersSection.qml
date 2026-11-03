@@ -150,6 +150,7 @@ ColumnLayout {
     // ── Reminder list ──────────────────────────────────────────────────────
     Repeater {
         id: reminderRepeater
+        objectName: "reminderRepeater"
 
         delegate: Rectangle {
             required property var modelData
@@ -246,6 +247,7 @@ ColumnLayout {
     // ── Add Reminder Dialog ────────────────────────────────────────────────
     Dialog {
         id:     addReminderDialog
+        objectName: "addReminderDialog"
         parent: Overlay.overlay
         anchors.centerIn: parent
         title:  qsTr("Добавить напоминание")
@@ -285,6 +287,85 @@ ColumnLayout {
         property bool   repeat_:           false
         property string repeatRule:        ""
         property int    minuteOffsetIndex: 0        // index into offsetOptions
+
+        // Offset options for the By-Time tab. Must live on the Dialog itself:
+        // the combo and the save handler read addReminderDialog.offsetOptions,
+        // which was undefined while this sat on the inner ColumnLayout (TypeError
+        // on save → reminder half-created, dialog left open).
+        readonly property var offsetOptions: [
+            { label: qsTr("В точное время"), value: 0    },
+            { label: qsTr("За 5 минут"),     value: 5    },
+            { label: qsTr("За 10 минут"),    value: 10   },
+            { label: qsTr("За 15 минут"),    value: 15   },
+            { label: qsTr("За 30 минут"),    value: 30   },
+            { label: qsTr("За 1 час"),       value: 60   },
+            { label: qsTr("За 2 часа"),      value: 120  },
+            { label: qsTr("За 1 день"),      value: 1440 }
+        ]
+
+        readonly property bool canSave: {
+            if (activeTab === 0)
+                return pickedDate.length > 0
+            // location tab — need lat and lon
+            return locLat.length > 0 && locLon.length > 0
+        }
+
+        // Creates the reminder from the dialog state (Save button).
+        function save() {
+            if (!canSave || root.taskId === "") return
+
+            const dlg = addReminderDialog
+            if (dlg.activeTab === 0) {
+                // ── B-7.37: Time-based reminder ────────────
+                const rem = dataStore.addReminder(root.taskId, "absolute")
+                if (rem) {
+                    // setDueDatetime(iso) is Q_INVOKABLE on Reminder
+                    const dtStr = dlg.pickedDate + "T" + dlg.pickedTime + ":00"
+                    rem.setDueDatetime(dtStr)
+                    // setRepeatRule(rule) is Q_INVOKABLE on Reminder
+                    if (dlg.repeat_ && dlg.repeatRule.length > 0)
+                        rem.setRepeatRule(dlg.repeatRule)
+                    // minuteOffset — 0 means exact time (default). The C++
+                    // setter is not Q_INVOKABLE; write the Q_PROPERTY.
+                    const opt = dlg.offsetOptions[dlg.minuteOffsetIndex]
+                    const offVal = opt ? opt.value : 0
+                    if (offVal > 0)
+                        rem.minuteOffset = offVal
+                    // Iter-night-14: stamp per-field _meta for the fields the
+                    // QML just mutated on the model object. Without this, Merger
+                    // falls back to whole-entity LWW on conflict and silently
+                    // loses the new due time / RRULE / offset across sync.
+                    const stampedFields = ["due"]
+                    if (dlg.repeat_ && dlg.repeatRule.length > 0)
+                        stampedFields.push("recurrence_rule")
+                    if (offVal > 0)
+                        stampedFields.push("minute_offset")
+                    // Also emits remindersChanged + dataChanged (autosave,
+                    // ReminderScheduler). markDataChanged() is not invokable.
+                    dataStore.markReminderFieldsModified(rem.id, stampedFields)
+                }
+            } else {
+                // ── B-7.37: Location-based reminder ────────
+                const remLoc = dataStore.addReminder(root.taskId, "location")
+                if (remLoc) {
+                    const lat = parseFloat(dlg.locLat)
+                    const lon = parseFloat(dlg.locLon)
+                    const rad = parseInt(dlg.locRadius) || 200
+                    const trig = dlg.locTriggerEnter ? "on_enter" : "on_leave"
+                    // setLocationCoords(lat, lon, radiusMeters, name, trigger)
+                    remLoc.setLocationCoords(lat, lon, rad, dlg.locName, trig)
+                    if (typeof locationService !== "undefined") {
+                        locationService.addGeofence(remLoc.id, lat, lon, rad)
+                    }
+                    // Iter-night-14: stamp the location field after mutating
+                    // it on the model object (see absolute-branch comment).
+                    dataStore.markReminderFieldsModified(remLoc.id, ["location"])
+                }
+            }
+
+            root._refreshModel()
+            addReminderDialog.close()
+        }
 
         // Location tab state
         property string locLat:        ""
@@ -350,18 +431,6 @@ ColumnLayout {
                 }
             }
 
-            // ── Offset options (shared property, used by By-Time tab) ──────
-            readonly property var offsetOptions: [
-                { label: qsTr("В точное время"), value: 0    },
-                { label: qsTr("За 5 минут"),     value: 5    },
-                { label: qsTr("За 10 минут"),    value: 10   },
-                { label: qsTr("За 15 минут"),    value: 15   },
-                { label: qsTr("За 30 минут"),    value: 30   },
-                { label: qsTr("За 1 час"),       value: 60   },
-                { label: qsTr("За 2 часа"),      value: 120  },
-                { label: qsTr("За 1 день"),      value: 1440 }
-            ]
-
             // ── By Time tab ────────────────────────────────────────────────
             ColumnLayout {
                 visible:          addReminderDialog.activeTab === 0
@@ -413,6 +482,9 @@ ColumnLayout {
                     DatePicker {
                         id:           reminderDatePicker
                         selectedDate: addReminderDialog.pickedDate
+                        // pickedDate is concatenated into an ISO datetime, so the
+                        // quick buttons must yield "yyyy-MM-dd", not "today".
+                        emitIsoDates: true
                         onDateSelected: function(ds) {
                             addReminderDialog.pickedDate = ds
                         }
@@ -863,13 +935,7 @@ ColumnLayout {
                     width:  saveReminderText.implicitWidth + 20
                     radius: Radius.sm
 
-                    readonly property bool canSave: {
-                        if (addReminderDialog.activeTab === 0)
-                            return addReminderDialog.pickedDate.length > 0
-                        // location tab — need lat and lon
-                        return addReminderDialog.locLat.length > 0
-                               && addReminderDialog.locLon.length > 0
-                    }
+                    readonly property bool canSave: addReminderDialog.canSave
 
                     color: {
                         if (!canSave) return ThemeManager.borderColor
@@ -896,59 +962,7 @@ ColumnLayout {
                         cursorShape:  saveReminderBtn.canSave
                                       ? Qt.PointingHandCursor : Qt.ArrowCursor
                         enabled:      saveReminderBtn.canSave
-                        onClicked: {
-                            if (!saveReminderBtn.canSave || root.taskId === "") return
-
-                            const dlg = addReminderDialog
-                            if (dlg.activeTab === 0) {
-                                // ── B-7.37: Time-based reminder ────────────
-                                const rem = dataStore.addReminder(root.taskId, "absolute")
-                                if (rem) {
-                                    // setDueDatetime(iso) is Q_INVOKABLE on Reminder
-                                    const dtStr = dlg.pickedDate + "T" + dlg.pickedTime + ":00"
-                                    rem.setDueDatetime(dtStr)
-                                    // setRepeatRule(rule) is Q_INVOKABLE on Reminder
-                                    if (dlg.repeat_ && dlg.repeatRule.length > 0)
-                                        rem.setRepeatRule(dlg.repeatRule)
-                                    // setMinuteOffset(minutes) — 0 means exact time (default)
-                                    const offVal = dlg.offsetOptions[dlg.minuteOffsetIndex].value
-                                    if (offVal > 0)
-                                        rem.setMinuteOffset(offVal)
-                                    // Iter-night-14: stamp per-field _meta for the fields the
-                                    // QML just mutated on the model object. Without this, Merger
-                                    // falls back to whole-entity LWW on conflict and silently
-                                    // loses the new due time / RRULE / offset across sync.
-                                    const stampedFields = ["due"]
-                                    if (dlg.repeat_ && dlg.repeatRule.length > 0)
-                                        stampedFields.push("recurrence_rule")
-                                    if (offVal > 0)
-                                        stampedFields.push("minute_offset")
-                                    dataStore.markReminderFieldsModified(rem.id, stampedFields)
-                                    dataStore.markDataChanged()
-                                }
-                            } else {
-                                // ── B-7.37: Location-based reminder ────────
-                                const remLoc = dataStore.addReminder(root.taskId, "location")
-                                if (remLoc) {
-                                    const lat = parseFloat(dlg.locLat)
-                                    const lon = parseFloat(dlg.locLon)
-                                    const rad = parseInt(dlg.locRadius) || 200
-                                    const trig = dlg.locTriggerEnter ? "on_enter" : "on_leave"
-                                    // setLocationCoords(lat, lon, radiusMeters, name, trigger)
-                                    remLoc.setLocationCoords(lat, lon, rad, dlg.locName, trig)
-                                    if (typeof locationService !== "undefined") {
-                                        locationService.addGeofence(remLoc.id, lat, lon, rad)
-                                    }
-                                    // Iter-night-14: stamp the location field after mutating
-                                    // it on the model object (see absolute-branch comment).
-                                    dataStore.markReminderFieldsModified(remLoc.id, ["location"])
-                                    dataStore.markDataChanged()
-                                }
-                            }
-
-                            root._refreshModel()
-                            addReminderDialog.close()
-                        }
+                        onClicked: addReminderDialog.save()
                     }
                 }
             }
