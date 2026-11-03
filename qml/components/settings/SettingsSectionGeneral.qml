@@ -243,8 +243,13 @@ Rectangle {
                     id: weekStartCombo
                     model: [qsTr("Понедельник"), qsTr("Вторник"), qsTr("Среда"), qsTr("Четверг"), qsTr("Пятница"), qsTr("Суббота"), qsTr("Воскресенье")]
                     implicitWidth: 160
-                    currentIndex: settingsViewModel.weekStart
-                    onActivated: settingsViewModel.updateSetting("weekStart", currentIndex)
+                    // weekStart is ISO 1=Mon..7=Sun (a legacy stored 0 also
+                    // means Monday); the combo index is 0=Mon..6=Sun.
+                    currentIndex: {
+                        const ws = settingsViewModel.weekStart
+                        return (ws >= 1 && ws <= 7) ? ws - 1 : 0
+                    }
+                    onActivated: settingsViewModel.updateSetting("weekStart", currentIndex + 1)
                 }
             }
 

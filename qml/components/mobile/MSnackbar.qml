@@ -36,7 +36,9 @@ Item {
         anchors.rightMargin: 12
         height: 50
         radius: 13
-        color: ThemeManager.isDark ? "#e8e8e8" : "#2c2c2c"
+        // Inverse surface from theme tokens (text colour as the bar, surface
+        // colour for its text) instead of hardcoded greys.
+        color: ThemeManager.textColor
         y: root.showing ? (root.height - root.bottomMargin - height) : (root.height + 20)
         Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
         opacity: root.showing ? 1 : 0
@@ -49,7 +51,7 @@ Item {
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             text: root.message
-            color: ThemeManager.isDark ? "#1d1d1d" : "#ffffff"
+            color: ThemeManager.surfaceColor
             font.pixelSize: 14
             font.weight: Font.Medium
             elide: Text.ElideRight

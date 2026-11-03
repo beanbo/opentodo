@@ -22,6 +22,10 @@ Rectangle {
     property string projectId:  sidebarViewModel.currentItemId
     property var    project:    projectViewModel.projectById(projectId)
     property string viewStyle:  project ? project.viewStyle : "list"
+    // Object exposing expandAllToken / collapseAllToken (DesktopLayout sets its
+    // top-bar expand-all / collapse-all bus here on load); forwarded to every
+    // TaskItem so those buttons reach this view's rows.
+    property var    expansionHost: null
 
     color: bgColor
 
@@ -40,15 +44,24 @@ Rectangle {
     }
 
     // ── Weekly goal helpers ───────────────────────────────────────────────────
+    // Local midnight of the first day of the current week, honouring the
+    // user's weekStart (ISO 1 = Monday … 7 = Sunday; a legacy 0 means Monday).
+    function _weekStartDate() {
+        const raw = (typeof settingsViewModel !== "undefined" && settingsViewModel)
+                    ? settingsViewModel.weekStart : 1
+        const ws  = (raw >= 1 && raw <= 7) ? raw : 1
+        const now = new Date()
+        const isoDow = now.getDay() === 0 ? 7 : now.getDay()   // 1=Mon..7=Sun
+        const since  = (isoDow - ws + 7) % 7
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate() - since)
+    }
+
     function _completedThisWeek() {
         if (!project || !projectId) return 0
-        const now    = new Date()
-        const day    = now.getDay()           // 0=Sun..6=Sat
-        const dayMo  = (day + 6) % 7         // 0=Mon..6=Sun
-        const monday = new Date(now)
-        monday.setDate(now.getDate() - dayMo)
-        monday.setHours(0, 0, 0, 0)
-        const isoMonday = monday.toISOString().substring(0, 10)
+        // Compare instants, not date strings: the old isoMonday came from
+        // toISOString() (UTC), so east of UTC the "week" began on Sunday, and
+        // completedAt is a UTC timestamp whose date part is not the local day.
+        const weekStart = _weekStartDate()
 
         // Q4.01 night iter-50: tasksForProject() (QList<Task*>) has no usable
         // .length in QML — this loop iterated 0× so the weekly-goal "done"
@@ -59,8 +72,8 @@ Rectangle {
         for (let i = 0; i < tasks.length; i++) {
             const t = tasks[i]
             if (t && t.isCompleted && t.completedAt) {
-                const completedDate = String(t.completedAt).substring(0, 10)
-                if (completedDate >= isoMonday) done++
+                const completed = new Date(t.completedAt)
+                if (!isNaN(completed.getTime()) && completed >= weekStart) done++
             }
         }
         return done
@@ -97,9 +110,24 @@ Rectangle {
     // Returns visible (non-archived, non-deleted) sections for the current
     // project sorted by their `order` value. Used by the Up/Down menu items.
     function _siblingSections() {
-        const raw = dataStore.sectionsForProject(root.projectId) || []
+        const raw = root._toArray(dataStore.sectionsForProject(root.projectId))
         // sectionsForProject already excludes deleted + archived; sort by order.
-        return raw.slice().sort(function(a, b) { return a.order - b.order })
+        return raw.sort(function(a, b) { return a.order - b.order })
+    }
+
+    // sectionsForProject()/archivedSectionsForProject() return QList<Section*>,
+    // which is not guaranteed to reach QML as a real JS array (Section is not
+    // part of the QML module) — `.slice()` on it threw a TypeError and disabled
+    // the section reorder menu. Copy whatever is indexable into a JS array.
+    function _toArray(list) {
+        const out = []
+        if (!list || typeof list.length !== "number")
+            return out
+        for (let i = 0; i < list.length; i++) {
+            if (list[i])
+                out.push(list[i])
+        }
+        return out
     }
 
     // Swap the `order` field of the active section with its neighbour.
@@ -299,6 +327,7 @@ Rectangle {
 
                 // ── Weekly goal progress pill ─────────────────────────────────
                 Rectangle {
+                    id: weeklyGoalPill
                     visible: project && project.weeklyGoal > 0
                     Layout.preferredHeight: 26
                     Layout.preferredWidth: 120
@@ -335,9 +364,11 @@ Rectangle {
                     }
 
                     ToolTip.visible: goalHover.containsMouse
-                    ToolTip.text: parent._achieved
+                    // Attached to the pill itself — `parent` is the header
+                    // RowLayout, which has neither property (→ NaN).
+                    ToolTip.text: weeklyGoalPill._achieved
                         ? qsTr("Цель на эту неделю выполнена!")
-                        : qsTr("Осталось: %1").arg((project ? project.weeklyGoal : 0) - parent._completedNow)
+                        : qsTr("Осталось: %1").arg((project ? project.weeklyGoal : 0) - weeklyGoalPill._completedNow)
 
                     MouseArea {
                         id: goalHover
@@ -519,7 +550,7 @@ Rectangle {
                     checkable: true
                     checked: taskViewModel.showHiddenSections
                     visible: projectId !== ""
-                             && dataStore.archivedSectionsForProject(projectId).length > 0
+                             && root._toArray(dataStore.archivedSectionsForProject(projectId)).length > 0
                     height: visible ? implicitHeight : 0
                     onTriggered: taskViewModel.showHiddenSections = checked
                 }
@@ -1172,6 +1203,7 @@ Rectangle {
                                 durationUnit:   delegateRoot.durationUnit
                                 dayOrder:       delegateRoot.dayOrder
                                 color:          delegateRoot.color
+                                expansionHost:  root.expansionHost
 
                                 onTaskClicked: function(taskId) {
                                     const t = dataStore.taskById(taskId)
@@ -2144,12 +2176,11 @@ Rectangle {
         }
     }
 
+    // String compare on "yyyy-MM-dd": new Date("yyyy-MM-dd") is UTC midnight,
+    // which west of UTC is the previous local day → due-today read as overdue.
     function _isOverdue(dateStr) {
         if (!dateStr || dateStr === "") return false
-        var due   = new Date(dateStr)
-        var today = new Date()
-        today.setHours(0, 0, 0, 0)
-        return due < today
+        return String(dateStr).substring(0, 10) < Qt.formatDate(new Date(), "yyyy-MM-dd")
     }
 
     // ── Right-pane TaskEditor ────────────────────────────────────────────────

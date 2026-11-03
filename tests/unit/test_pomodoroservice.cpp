@@ -434,6 +434,32 @@ private slots:
         tickUntilPhaseChange(&svc);
         QCOMPARE(svc.phase(), QStringLiteral("longBreak"));
     }
+
+    // F4/P14: after pause → resume, a restart must restore the countdown
+    // where it was, not (almost) a full phase. resume() used to anchor
+    // started_at at "now", so the crash-recovery math (planned − elapsed)
+    // gave back nearly the whole phase.
+    void pause_resume_then_restart_restoresRemaining()
+    {
+        int remainingBefore = 0;
+        {
+            PomodoroService svc(nullptr);   // default 25-min work phase
+            svc.start();
+            for (int i = 0; i < 600; ++i)   // 10 "minutes" into the phase
+                tick(&svc);
+            remainingBefore = svc.remainingSeconds();
+            QCOMPARE(remainingBefore, 25 * 60 - 600);
+            svc.pause();
+            svc.resume();
+            svc.flushStateToDisk();
+        }
+        PomodoroService restored(nullptr);
+        QVERIFY(restored.running());
+        QCOMPARE(restored.phase(), QStringLiteral("work"));
+        QVERIFY2(qAbs(restored.remainingSeconds() - remainingBefore) <= 2,
+                 qPrintable(QStringLiteral("restored %1 s, expected ~%2 s")
+                                .arg(restored.remainingSeconds()).arg(remainingBefore)));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestPomodoroService)

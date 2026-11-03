@@ -141,24 +141,27 @@ static bool isFatalWarning(const QString &m)
 
 
 // -----------------------------------------------------------------------------
-// Tiny telemetry stub. The InAppBanner does `telemetry.track(name, props)`
-// inside try/catch blocks (it must never break UX). Providing a real-shaped
-// stub means the try/catch path is not the silent-fallback path in the test —
-// we want to catch a regression where the call site stops protecting itself.
+// Tiny telemetry stub. The InAppBanner does `telemetry.trackEvent(name, props)`
+// (gated on `telemetry.enabled`) inside try/catch blocks (it must never break
+// UX). The stub mirrors the real Telemetry surface — an `enabled` property and
+// trackEvent(); the banner used to call a non-existent track() — so the call
+// path is actually exercised rather than silently swallowed by the catch.
 // -----------------------------------------------------------------------------
 class TelemetryStub : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool enabled MEMBER m_enabled CONSTANT)
 public:
     explicit TelemetryStub(QObject *parent = nullptr) : QObject(parent) {}
 
-    Q_INVOKABLE void track(const QString &name, const QVariantMap &props = {})
+    Q_INVOKABLE void trackEvent(const QString &name, const QVariantMap &props = {})
     {
         Q_UNUSED(props)
         m_lastEvent = name;
         ++m_callCount;
     }
 
+    bool    m_enabled = true;
     QString m_lastEvent;
     int     m_callCount = 0;
 };

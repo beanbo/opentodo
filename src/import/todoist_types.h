@@ -4,6 +4,30 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QList>
+#include <QRegularExpression>
+
+// ---------------------------------------------------------------------------
+// D9: calendar date (YYYY-MM-DD) of a Todoist due datetime, in LOCAL time.
+//
+// Todoist sends fixed-timezone dues as UTC instants ("2024-01-16T01:00:00Z")
+// and floating ones without an offset ("2024-01-16T09:00:00"). Taking the
+// first 10 characters is only right for the floating form: in UTC-5 the UTC
+// instant above is 2024-01-15 20:00 local, so left(10) filed the task under
+// the wrong day. Strings with "Z" or a ±hh[:mm] offset are converted to local
+// time; floating strings (and anything unparseable) keep their literal date.
+// ---------------------------------------------------------------------------
+inline QString todoistLocalDueDate(const QString &iso)
+{
+    static const QRegularExpression offsetRe(
+        QStringLiteral(R"(T.*(Z|[+-]\d{2}(:?\d{2})?)$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (iso.size() > 10 && offsetRe.match(iso).hasMatch()) {
+        const QDateTime dt = QDateTime::fromString(iso, Qt::ISODate);
+        if (dt.isValid())
+            return dt.toLocalTime().date().toString(QStringLiteral("yyyy-MM-dd"));
+    }
+    return iso.left(10);
+}
 
 // ---------------------------------------------------------------------------
 // Intermediate data structures produced by both CSV and API import paths.

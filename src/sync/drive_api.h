@@ -89,15 +89,25 @@ public:
     bool isLocked() const;
 
 private:
+    // S7: tri-state lookup. A failed query (5xx / 429 / 403 / transport error /
+    // token refresh failure) is NOT "no such file": callers must abort rather
+    // than create a duplicate file / folder or report a missing blob.
+    enum class Lookup { Found, NotFound, Error };
+    Lookup lookupFileId(const QString &name, const QString &parentId, QString *outId);
+    // Convenience wrapper: id when found, empty on not-found OR error.
     QString findFileId(const QString &name, const QString &parentId = {});
+    // Empty on error (never creates when the lookup itself failed).
     QString findOrCreateFolder(const QString &name, const QString &parentId = {});
     QNetworkReply *makeRequest(const QString &url, const QByteArray &method,
                                const QByteArray &data = {},
                                const QString &contentType = {});
     // Returns parsed JSON body; on 401 refreshes token and retries once (B-2.33).
-    QJsonObject waitForReply(QNetworkReply *reply);
+    // `ok` (optional) is set to true only when the final reply had no error —
+    // an empty object alone can't distinguish "{}" from a failure.
+    QJsonObject waitForReply(QNetworkReply *reply, bool *ok = nullptr);
     // Internal helper: retry the request with a fresh token when allowRetry=true.
-    QJsonObject waitForReplyWithRetry(QNetworkReply *reply, bool allowRetry);
+    QJsonObject waitForReplyWithRetry(QNetworkReply *reply, bool allowRetry,
+                                      bool *ok = nullptr);
 
     // Returns the active network manager — either the test-injected one or
     // the internal m_nam. All HTTP requests MUST go through this accessor.
@@ -106,7 +116,11 @@ private:
     OAuthClient *m_auth;
     QNetworkAccessManager m_nam;
     QPointer<QNetworkAccessManager> m_namOverride;  // test hook
+    // Cached id of the app's root folder. S7: cleared on sign-out / account
+    // change, when Drive answers 404 for it, and at the start of every sync
+    // session (acquireLock) so a trashed / deleted folder is re-resolved.
     QString m_rootFolderId;
+    int m_lastHttpStatus = 0;   // HTTP status of the last waitForReply()
 
     static constexpr auto ROOT_FOLDER_NAME = "opentodo_data";
     static constexpr auto LOCK_FILE_NAME   = ".lock";

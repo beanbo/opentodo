@@ -81,8 +81,8 @@ public:
         SectionGroupKeyRole,
         // night iter-134: the scheduled date used to GROUP the Upcoming view —
         // dueDate, else the date part of dueDatetime. The Upcoming list is
-        // already SORTED by this effective date (sortTasks "date" branch,
-        // iter-115), but day-grouping keyed off raw dueDate, which is empty for
+        // always SORTED by this effective date (sortTasks Upcoming branch,
+        // V4), but day-grouping keyed off raw dueDate, which is empty for
         // datetime-only tasks (B-1.28/B-1.30). A timed task (e.g. "1 июня 15:00")
         // thus sorted INTO the 1-июня block yet carried section "" — fragmenting
         // that day with a stray "Без даты" header. Grouping by this role matches
@@ -186,6 +186,15 @@ public:
     Q_INVOKABLE bool setTaskPriority(const QString &id, int priority);
     Q_INVOKABLE bool setTaskLabels(const QString &id, const QStringList &labels);
     Q_INVOKABLE bool setTaskDue(const QString &id, const QString &dueString);
+    // M3: postpone a task by `days` without touching its recurrence. Shifts
+    // the due date (and the due datetime, keeping its time of day) forward
+    // from max(current due date, today) — so an overdue task snoozed by 1 lands
+    // on tomorrow, a future one moves one day later. A task without a due date
+    // gets today + days. dueString / isRecurring / RRULE are kept (unlike
+    // setTaskDue("завтра"), which re-parses and drops the recurrence). Stamps
+    // the "due" field and pushes ONE undo entry. Returns false for an unknown /
+    // deleted task or days == 0.
+    Q_INVOKABLE bool snoozeTask(const QString &taskId, int days);
     Q_INVOKABLE QString duplicateTask(const QString &id);
 
     // Insert a new empty task above/below the given anchor task. Returns the
@@ -243,6 +252,10 @@ public:
     Q_INVOKABLE Task *taskAt(int index) const;
     Q_INVOKABLE int indexOfTask(const QString &id) const;
 
+    // V12 test hook: pretend the last-seen date was yesterday and run the
+    // once-a-minute rollover check immediately (no 60 s wait).
+    void simulateDateRolloverForTesting();
+
 signals:
     void currentProjectIdChanged();
     void currentSectionIdChanged();
@@ -260,12 +273,20 @@ signals:
     // ITER3 #1: bulk variant — emitted once after bulkDelete so the snackbar
     // shows a single "Удалено N задач" entry instead of N stacked toasts.
     void tasksRemoved(const QStringList &ids);
+    // V11: permanent deletion from the Trash (permanentlyDelete / emptyTrash).
+    // Distinct from taskRemoved/tasksRemoved because a purge has NO undo entry
+    // — the undo snackbar listens to taskRemoved and its button would pop an
+    // unrelated older entry. Trash views should refresh on these.
+    void taskPurged(const QString &id);
+    void tasksPurged(const QStringList &ids);
     void selectionChanged();
     void hoveredTaskIdChanged();
     void selectedTaskChanged();
 
 private slots:
     void onTasksChanged();
+    // V12: once-a-minute calendar-date check; refresh() on rollover.
+    void checkDateRollover();
 
 private:
     void refresh();
@@ -332,6 +353,13 @@ private:
     // so the QML null guard `if (taskViewModel.selectedTask) ...` continues
     // to work after a sync pull, restoreFromBackup, or reset-all-data.
     QPointer<QObject> m_selectedTask;
+    // S2-VM: id of the task that was selected when the store announced
+    // aboutToReset; re-selected on the next tasksChanged if it still exists.
+    QString m_reselectAfterResetId;
+
+    // V12: date-rollover guard for Today/Upcoming.
+    QDate m_lastSeenDate;
+    QTimer m_dateRolloverTimer;
 
     // Q3.24: debounce rapid tasksChanged bursts so refresh() runs at most
     // once per 30 ms.  Single task edits flush immediately (the timer fires

@@ -469,36 +469,40 @@ private slots:
     // Lambdas that throw / observe the live state during execution.
     // The production code does NOT wrap the lambda in try/catch, so a
     // throwing lambda would propagate. We don't test that path (it would
-    // terminate the harness) — instead we test that the stack entry has
-    // already been popped *before* the lambda runs, which means the
-    // lambda can safely re-push without infinite recursion.
+    // terminate the harness) — instead we test that a push() issued from
+    // inside a running lambda is ignored (no recursion, no "redo" entry).
     // ---------------------------------------------------------------
 
-    void lambda_can_re_push_during_undo_without_recursion()
+    void lambda_re_push_during_undo_is_dropped()
     {
+        // P10 (fix pass): a push() issued from inside a running undo fn is
+        // now a no-op. Previously it added a fresh "redo" entry, which made
+        // Ctrl+Z ping-pong on the same action (complete ⇄ uncomplete) and
+        // never reach the older entries underneath.
         UndoStack stack;
+        int olderRuns = 0;
         int reentries = 0;
 
+        stack.push(QStringLiteral("older"), [&]() { ++olderRuns; });
         stack.push(QStringLiteral("self-pushing"), [&]() {
-            // At this point the entry has been popped already
-            // (see UndoStack::undo: pop() before fn()), so re-pushing
-            // here adds a fresh entry rather than mutating the
-            // running entry. This guarantees no infinite recursion.
             ++reentries;
-            if (reentries == 1)
-                stack.push(QStringLiteral("re-pushed"), [](){});
+            stack.push(QStringLiteral("re-pushed"), [](){});
         });
 
         QVERIFY(stack.undo());
         QCOMPARE(reentries, 1);
 
-        // The re-push left a new entry on the stack.
+        // The re-push was dropped: the older entry is next in line.
         QCOMPARE(stack.count(), 1);
-        QCOMPARE(stack.lastDescription(), QStringLiteral("re-pushed"));
+        QCOMPARE(stack.lastDescription(), QStringLiteral("older"));
 
-        // Undoing the re-pushed entry does not loop.
         QVERIFY(stack.undo());
+        QCOMPARE(olderRuns, 1);
         QCOMPARE(stack.count(), 0);
+
+        // Normal pushes work again once undo() has returned.
+        stack.push(QStringLiteral("after"), [](){});
+        QCOMPARE(stack.count(), 1);
     }
 };
 

@@ -93,9 +93,12 @@ Then open **http://localhost:8000/OpenTodo.html** in Chrome or Firefox.
 ## File persistence
 
 On the desktop, OpenTodo stores `state.json` in `%APPDATA%\OpenTodo\`.
-On WASM, Emscripten mounts an **IndexedDB-backed virtual filesystem** at the same
-logical path. Data persists across page reloads within the same browser profile.
-Clearing browser storage will erase local data.
+On WASM, `FileManager` mounts an **IndexedDB-backed virtual filesystem** (IDBFS,
+linked via `-lidbfs.js`) at the same logical path before the first load. The
+restore from IndexedDB is asynchronous, so the first load (and any save) waits
+until it completes; every successful save is then flushed back to IndexedDB
+(`FS.syncfs`). Data persists across page reloads within the same browser
+profile. Clearing browser storage will erase local data.
 
 ## Known limitations
 

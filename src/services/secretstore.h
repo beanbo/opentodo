@@ -77,6 +77,14 @@ private:
     mutable QHash<QString, QString> m_cache;
     mutable QHash<QString, bool>    m_present;
 
+    // Per-key mutation generation, bumped by setSecret()/deleteSecret().
+    // QtKeychain runs jobs FIFO, so a read queued before a write completes
+    // first and would otherwise overwrite the newer write-through value in
+    // the cache (e.g. startup warm-up read → EntryNotFound clobbering the
+    // key the migration just stored). Reads remember the generation they
+    // were issued at and leave the cache alone if it has moved on.
+    QHash<QString, quint64> m_writeGen;
+
 #ifndef HAS_QTKEYCHAIN
     // QSettings fallback group. Values are stored as plaintext — this path is
     // only used on Android / WASM where there is no OS keyring to target.

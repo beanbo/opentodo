@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -14,6 +15,10 @@
 #include <QUrl>
 #include <QVariant>
 #include <algorithm>
+
+#ifdef Q_OS_WASM
+#  include <emscripten.h>
+#endif
 
 FileManager::FileManager(DataStore *store, QObject *parent)
     : QObject(parent)
@@ -31,6 +36,22 @@ FileManager::FileManager(DataStore *store, QObject *parent)
 
     connect(&m_saveTimer, &QTimer::timeout, this, &FileManager::performSave);
     connect(m_store, &DataStore::dataChanged, this, &FileManager::onDataChanged);
+
+    // D10: flush pending edits when the app leaves the foreground. On Android
+    // a backgrounded app can be killed without aboutToQuit ever firing, so
+    // anything still inside the 1 s autosave debounce was lost. (Desktop: the
+    // window losing focus just saves a little earlier.) Only with a GUI app —
+    // QCoreApplication-based tools/tests have no application state.
+    if (auto *guiApp = qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
+        connect(guiApp, &QGuiApplication::applicationStateChanged, this,
+                [this, last = guiApp->applicationState()](Qt::ApplicationState state) mutable {
+            const bool leftForeground = (last == Qt::ApplicationActive
+                                         && state != Qt::ApplicationActive);
+            last = state;
+            if (leftForeground && (m_dirty || m_saveTimer.isActive()))
+                saveImmediate();
+        });
+    }
 
     // Q3.10: hydrate retention policy from settings AFTER load() runs.
     // We can't read m_store->setting() here (settings are loaded later by
@@ -79,6 +100,20 @@ bool FileManager::isDirty() const
 
 void FileManager::load()
 {
+#ifdef Q_OS_WASM
+    // D11: restore the IndexedDB-backed data directory first. This is async;
+    // startWasmPersistentFs() calls load() again once the restore finished.
+    if (m_wasmFsPending)
+        return;
+    if (!m_wasmFsReady) {
+        startWasmPersistentFs();
+        return;
+    }
+#endif
+
+    // A fresh load attempt decides afresh whether state.json is writable.
+    m_saveBlocked = false;
+
     ensureDataDirectory();
 
     const QString filePath = stateFilePath();
@@ -114,8 +149,41 @@ void FileManager::load()
     }
 
     if (!file.open(QIODevice::ReadOnly)) {
-        emit loadError(QStringLiteral("Cannot open state file: %1").arg(file.errorString()));
-        createDefaultState();
+        // D5: the file exists but cannot be read (permissions, a lock held by
+        // another process, a directory in its place…). It used to fall
+        // straight through to createDefaultState(), whose saveImmediate()
+        // wrote the empty default state OVER the user's real data. Treat it
+        // like corruption instead: move it aside, then recover from backups
+        // or start fresh. If it cannot even be moved aside, keep it intact and
+        // refuse to write state.json for this session.
+        const QString openError = file.errorString();
+        const QString asidePath = filePath + QStringLiteral(".unreadable-")
+            + QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMddhhmmss"));
+        if (QFile::rename(filePath, asidePath)) {
+            qWarning("FileManager: cannot open state.json (%s); moved it to %s",
+                     qPrintable(openError), qPrintable(asidePath));
+            emit loadError(QStringLiteral("Cannot open state file: %1 (file moved to %2)")
+                           .arg(openError, asidePath));
+            if (tryRecoverFromBackups(filePath, "unreadable")) {
+                saveImmediate();   // state.json is gone now — no rotation, .bak kept
+                emit loaded();
+                return;
+            }
+            createDefaultState();
+            return;
+        }
+
+        qWarning("FileManager: cannot open or move state.json (%s); saving disabled "
+                 "so the file is not overwritten", qPrintable(openError));
+        emit loadError(QStringLiteral("Cannot open state file: %1. Changes will not be "
+                                      "saved until it can be read.").arg(openError));
+        m_saveBlocked = true;
+        // Still show the user their most recent backup (read-only session).
+        if (!tryRecoverFromBackups(filePath, "unreadable"))
+            createDefaultState();   // its saveImmediate() is refused while blocked
+        m_saveTimer.stop();
+        m_dirty = false;
+        emit dirtyChanged();
         return;
     }
 
@@ -163,17 +231,32 @@ void FileManager::load()
     }
 
     m_store->loadFromJson(rootObj);
+    bool changedOnLoad = m_store->lastLoadModifiedState();
 
     // Auto-archive stale projects if user opted in via settings.
     const int archiveDays = m_store->setting(
         QLatin1String(SettingsKeys::AutoArchiveOldProjectsDays)).toInt();
     if (archiveDays > 0) {
         const int n = m_store->autoArchiveStaleProjects(archiveDays);
-        if (n > 0)
+        if (n > 0) {
             qInfo("FileManager: auto-archived %d stale project(s)", n);
+            changedOnLoad = true;
+        }
     }
 
-    m_dirty = false;
+    // D13: loadFromJson() emits dataChanged(), which started the autosave
+    // debounce — so every launch rewrote an unchanged state.json one second
+    // later and rotated a redundant copy through the .bak chain (pushing the
+    // older, distinct generations out). Only keep that save when the load
+    // itself changed something (Inbox repair, auto-archive).
+    if (changedOnLoad) {
+        m_dirty = true;
+        m_saveTimer.start();
+    } else {
+        m_saveTimer.stop();
+        m_dirty = false;
+    }
+    emit dirtyChanged();
     emit loaded();
 }
 
@@ -476,6 +559,7 @@ bool FileManager::restoreBackup(const QString &backupPath)
     // Replace in-memory store with backup data, then persist atomically.
     m_store->clear();
     m_store->loadFromJson(doc.object());
+    m_saveBlocked = false;   // D5: an explicit restore may replace state.json
     saveImmediate();
 
     qInfo("FileManager: successfully restored from %s", qPrintable(backupPath));
@@ -507,21 +591,18 @@ bool FileManager::importData(const QString &jsonString)
         return false;
 
     const QJsonObject obj = doc.object();
-    // Sanity: an OpenTodo export must have at least one of these top-level
-    // keys. Reject obvious not-an-OpenTodo-file payloads (an empty {} is
-    // also rejected because no key is present). The same set is what
-    // createDefaultState writes and what state.json carries on disk.
-    static const QStringList kRequired = {
-        QStringLiteral("schema_version"),
-        QStringLiteral("projects"),
-        QStringLiteral("tasks"),
-        QStringLiteral("settings"),
-    };
-    bool looksLikeOurs = false;
-    for (const QString &k : kRequired) {
-        if (obj.contains(k)) { looksLikeOurs = true; break; }
-    }
-    if (!looksLikeOurs)
+    // D4: an OpenTodo state export always carries a `tasks` and/or `projects`
+    // ARRAY (DataStore::toJson / createDefaultState write both). The previous
+    // "any one of schema_version / projects / tasks / settings" gate let a
+    // settings snapshot ({"format":"opentodo-settings-snapshot","settings":
+    // {...}} from DataStore::exportSettings) through, and loading it wiped
+    // every task and project. A state export never has a `format` sentinel —
+    // that marks the other OpenTodo JSON formats (settings snapshot, project
+    // snapshot, shared project/tasks), none of which is a full state.
+    if (obj.contains(QStringLiteral("format")))
+        return false;
+    if (!obj.value(QStringLiteral("tasks")).isArray()
+        && !obj.value(QStringLiteral("projects")).isArray())
         return false;
 
     // Pre-import safety snapshot — matches restoreBackup's behaviour so a
@@ -531,6 +612,9 @@ bool FileManager::importData(const QString &jsonString)
     // not from "the moment right before import".
     saveImmediate();
     m_store->loadFromJson(obj);
+    // D5: an explicit import replaces the state on purpose, so it may write
+    // state.json even if the startup load could not read it.
+    m_saveBlocked = false;
     saveImmediate();
     return true;
 }
@@ -544,6 +628,18 @@ void FileManager::onDataChanged()
 
 void FileManager::performSave()
 {
+    // D11: the IndexedDB restore has not finished — the store is still empty
+    // and writing it would replace the persisted state on the next syncfs.
+    if (m_wasmFsPending)
+        return;
+    // D5: state.json could not be read at load time and is still in place.
+    if (m_saveBlocked) {
+        m_saveTimer.stop();
+        emit saveError(QStringLiteral("Not saving: state.json could not be read at "
+                                      "startup and would be overwritten."));
+        return;
+    }
+
     ensureDataDirectory();
 
     const QString statePath = stateFilePath();
@@ -611,6 +707,10 @@ void FileManager::performSave()
     m_dirty = false;
     emit dirtyChanged();
     emit saved();
+
+#ifdef Q_OS_WASM
+    persistWasmFs();
+#endif
 
     // Q3.10: post-save housekeeping. The backup sweep now rides the throttled
     // dated-backup block above (no need to dir-scan on every save). Here we only
@@ -703,3 +803,78 @@ QString FileManager::localLogPath() const
 {
     return m_dataPath + QStringLiteral("/local_log");
 }
+
+#ifdef Q_OS_WASM
+// D11: Emscripten's default filesystem is MEMFS, so without an IDBFS mount
+// everything under the data directory (state.json, backups, local_log/) is
+// gone on page reload — `-lidbfs.js` only links the backend, nothing mounted
+// it. Mount IDBFS over the data directory and populate it from IndexedDB
+// before the first real load. FS.syncfs is asynchronous and the
+// single-threaded build cannot block on it, so the completion is published
+// on a JS global and polled from a Qt timer; load() then resumes. Saves are
+// held back while the restore is pending (an empty store would otherwise be
+// written and later synced over the user's data).
+void FileManager::startWasmPersistentFs()
+{
+    m_wasmFsPending = true;
+    QDir().mkpath(m_dataPath);   // IDBFS mounts onto an existing directory
+
+    const QByteArray dir = m_dataPath.toUtf8();
+    EM_ASM({
+        var dir = UTF8ToString($0);
+        globalThis.__opentodoIdbfsState = 0;   // 0 pending, 1 ok, 2 failed
+        try {
+            FS.mount(IDBFS, {}, dir);
+        } catch (e) {
+            // Already mounted (e.g. a second FileManager): just re-populate.
+        }
+        FS.syncfs(true, function (err) {
+            if (err)
+                console.warn("OpenTodo: restoring data from IndexedDB failed", err);
+            globalThis.__opentodoIdbfsState = err ? 2 : 1;
+        });
+    }, dir.constData());
+
+    auto *poll = new QTimer(this);
+    poll->setInterval(20);
+    connect(poll, &QTimer::timeout, this, [this, poll]() {
+        const int state = EM_ASM_INT({ return globalThis.__opentodoIdbfsState | 0; });
+        if (state == 0)
+            return;
+        poll->stop();
+        poll->deleteLater();
+        if (state == 2)
+            qWarning("FileManager: IndexedDB unavailable; data will not persist across reloads");
+        m_wasmFsPending = false;
+        m_wasmFsReady = true;
+        load();
+    });
+    poll->start();
+}
+
+void FileManager::persistWasmFs()
+{
+    if (!m_wasmFsReady)
+        return;
+    // Coalesce: Emscripten warns about (and redoes work for) overlapping
+    // syncfs calls, so run at most one and re-run once if more saves landed.
+    EM_ASM({
+        if (globalThis.__opentodoIdbfsBusy) {
+            globalThis.__opentodoIdbfsAgain = true;
+            return;
+        }
+        var run = function () {
+            globalThis.__opentodoIdbfsBusy = true;
+            globalThis.__opentodoIdbfsAgain = false;
+            FS.syncfs(false, function (err) {
+                if (err)
+                    console.warn("OpenTodo: saving data to IndexedDB failed", err);
+                globalThis.__opentodoIdbfsBusy = false;
+                if (globalThis.__opentodoIdbfsAgain)
+                    run();
+            });
+        };
+        run();
+    });
+}
+#endif

@@ -104,6 +104,8 @@ void renderTaskLine(QTextStream &out, const QJsonObject &t)
         out << "  @" << t.value(QStringLiteral("due")).toString();
     if (t.value(QStringLiteral("recurring")).toBool())
         out << " ↻";
+    // Short id for readability — show/done/comment/delete resolve unique
+    // prefixes (clicore::resolveTask), so this is directly usable.
     out << "   [" << t.value(QStringLiteral("id")).toString().left(8) << "]\n";
 }
 
@@ -191,7 +193,9 @@ int main(int argc, char **argv)
         "  done <id>           mark a task completed (optionally --note)\n"
         "  add  <content>      create a task (optionally --due/--priority)\n"
         "  comment <id> <text> append a comment to a task\n"
-        "  delete <id>         soft-delete a task (recoverable in Trash)");
+        "  delete <id>         soft-delete a task (recoverable in Trash)\n\n"
+        "<id> is a full task id or any unique prefix of at least 4 characters\n"
+        "(e.g. the 8-character id shown by `list`).");
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(QStringLiteral("command"),

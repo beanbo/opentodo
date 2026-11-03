@@ -204,7 +204,7 @@ Popup {
 
             Text {
                 anchors.centerIn: parent
-                text: "↑ ↓ — навигация · Enter — открыть · Esc — закрыть"
+                text: qsTr("↑ ↓ — навигация · Enter — открыть · Esc — закрыть")
                 font.pixelSize: FontSize.caption
                 color: ThemeManager.secondaryTextColor
             }

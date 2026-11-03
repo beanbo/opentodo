@@ -69,6 +69,51 @@ Rectangle {
         return !!sidebarContent.expandedProjects[projectId]
     }
 
+    // Move the saved filter at `index` one step up (-1) or down (+1).
+    // Setting its order to ±1 only created a tie with the neighbour, so the
+    // list never changed. Swap with the neighbour instead (like
+    // ProjectView._moveSection); when orders are not unique (legacy data,
+    // earlier ±1 ties) renumber the whole list 0..n-1 in the new order.
+    // Lives here, not in the delegate: every reorderFilter() resets
+    // filterViewModel, which destroys the delegate that invoked the menu.
+    function _moveFilter(index, direction) {
+        const n = filterRepeater.count
+        const target = index + direction
+        if (index < 0 || index >= n || target < 0 || target >= n)
+            return
+        const ids = []
+        const orders = []
+        for (let i = 0; i < n; i++) {
+            const it = filterRepeater.itemAt(i)
+            if (!it || !it.filterId)
+                return
+            ids.push(it.filterId)
+            orders.push(it.filterOrder)
+        }
+        const uniqueOrders = orders.filter(function(o, i) { return orders.indexOf(o) === i })
+        if (uniqueOrders.length === n) {
+            const a = ids[index], b = ids[target]
+            const aOrder = orders[index], bOrder = orders[target]
+            filterViewModel.reorderFilter(a, bOrder)
+            filterViewModel.reorderFilter(b, aOrder)
+            return
+        }
+        const oldOrder = {}
+        for (let i = 0; i < n; i++)
+            oldOrder[ids[i]] = orders[i]
+        const moved = ids[index]
+        ids[index] = ids[target]
+        ids[target] = moved
+        // Snapshot the writes first: each reorderFilter() resets the model.
+        const writes = []
+        for (let j = 0; j < n; j++) {
+            if (oldOrder[ids[j]] !== j)
+                writes.push({ id: ids[j], order: j })
+        }
+        for (let k = 0; k < writes.length; k++)
+            filterViewModel.reorderFilter(writes[k].id, writes[k].order)
+    }
+
     // -------------------------------------------------------------------------
     // Scroll area
     // -------------------------------------------------------------------------
@@ -100,10 +145,10 @@ Rectangle {
                     _overdueCount = 0
                     return
                 }
-                var now = new Date()
-                var todayY = now.getFullYear()
-                var todayM = now.getMonth()
-                var todayD = now.getDate()
+                // Compare "yyyy-MM-dd" strings: new Date("yyyy-MM-dd") parses as
+                // UTC midnight, which west of UTC lands on the previous local
+                // day and flagged tasks due today as overdue.
+                var todayStr = Qt.formatDate(new Date(), "yyyy-MM-dd")
                 var n = 0
                 // Q4.01 night iter-54: was dataStore.allTasks() (QList<Task*>,
                 // .length undefined in QML → loop ran 0× → overdue badge stuck at 0).
@@ -125,14 +170,10 @@ Rectangle {
                     // a higher number than the view it represents.
                     var dateStr = t.dueDate || ""
                     if (!dateStr && t.dueDatetime) dateStr = String(t.dueDatetime).substring(0, 10)
-                    if (!dateStr) continue
-                    var d = new Date(dateStr)
-                    if (isNaN(d.getTime())) continue
-                    if (d.getFullYear() < todayY ||
-                        (d.getFullYear() === todayY && d.getMonth() < todayM) ||
-                        (d.getFullYear() === todayY && d.getMonth() === todayM && d.getDate() < todayD)) {
+                    dateStr = String(dateStr).substring(0, 10)
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue
+                    if (dateStr < todayStr)
                         n += 1
-                    }
                 }
                 _overdueCount = n
             }
@@ -556,7 +597,9 @@ Rectangle {
                         cursorShape: Qt.PointingHandCursor
                     }
 
-                    ToolTip.text: mainColumn._overdueCount + " " + mainColumn._overduePlural(mainColumn._overdueCount) + " просрочено"
+                    ToolTip.text: qsTr("%1 %2 просрочено")
+                                      .arg(mainColumn._overdueCount)
+                                      .arg(mainColumn._overduePlural(mainColumn._overdueCount))
                     ToolTip.visible: overdueHover.hovered
                     ToolTip.delay: 400
                 }
@@ -1802,14 +1845,12 @@ Rectangle {
                         MenuItem {
                             text: qsTr("Переместить вверх")
                             enabled: filterCtxMenu.filterIndex > 0
-                            onTriggered: filterViewModel.reorderFilter(filterCtxMenu.filterId,
-                                                                       filterCtxMenu.filterOrder - 1)
+                            onTriggered: sidebarContent._moveFilter(filterCtxMenu.filterIndex, -1)
                         }
                         MenuItem {
                             text: qsTr("Переместить вниз")
                             enabled: filterCtxMenu.filterIndex < filterViewModel.count - 1
-                            onTriggered: filterViewModel.reorderFilter(filterCtxMenu.filterId,
-                                                                       filterCtxMenu.filterOrder + 1)
+                            onTriggered: sidebarContent._moveFilter(filterCtxMenu.filterIndex, +1)
                         }
                         MenuSeparator {}
                         MenuItem {

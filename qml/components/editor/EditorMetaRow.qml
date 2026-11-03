@@ -49,9 +49,22 @@ ColumnLayout {
     }
 
     // ── Derived state from task ───────────────────────────────────────────
-    property int    _priority:  task ? (task.priority  !== undefined ? task.priority : 4) : 4
-    property var    _labels:    task ? (task.labels    || []) : []
-    property string _dueString: task ? (task.dueString || "") : ""
+    // Read-only bindings: handlers write to C++ (taskViewModel.*) and the
+    // Task NOTIFY signals refresh these. Assigning them would sever the
+    // binding, so after undo/sync or editor reuse a later edit was computed
+    // from a stale copy (e.g. label edit writing back old labels).
+    readonly property int    _priority:  task ? (task.priority  !== undefined ? task.priority : 4) : 4
+    readonly property var    _labels:    task ? (task.labels    || []) : []
+    readonly property string _dueString: task ? (task.dueString || "") : ""
+
+    // Fresh plain-JS copy of the task's labels, read at use time (the
+    // QStringList wrapper isn't a real Array, so concat() would nest it).
+    function _currentLabels() {
+        const out = []
+        const src = root.task ? root.task.labels : null
+        if (src) for (let i = 0; i < src.length; ++i) out.push(src[i])
+        return out
+    }
 
     // ── Project row ───────────────────────────────────────────────────────
     RowLayout {
@@ -86,6 +99,16 @@ ColumnLayout {
             Connections {
                 target: root
                 function onTaskChanged() {
+                    if (root.task)
+                        projectCombo.currentIndex =
+                            projectCombo.indexOfValue(root.task.projectId)
+                }
+            }
+            // Undo / sync move the same Task in place — follow its NOTIFY.
+            Connections {
+                target: root.task
+                ignoreUnknownSignals: true
+                function onProjectIdChanged() {
                     if (root.task)
                         projectCombo.currentIndex =
                             projectCombo.indexOfValue(root.task.projectId)
@@ -240,6 +263,11 @@ ColumnLayout {
                 function onTaskChanged() { sectionCombo._matchTaskSection();
                                            Qt.callLater(sectionCombo._matchTaskSection) }
             }
+            Connections {
+                target: root.task
+                ignoreUnknownSignals: true
+                function onSectionIdChanged() { Qt.callLater(sectionCombo._matchTaskSection) }
+            }
 
             onActivated: {
                 if (root.taskId !== "")
@@ -349,7 +377,9 @@ ColumnLayout {
         // ── Calendar date picker (reuses the QuickAdd's DatePicker popup) ─
         DatePicker {
             id: editorDatePicker
-            selectedDate: root._dueString
+            // dueDate is "yyyy-MM-dd" (dueString is the human label, which the
+            // picker can't parse into a highlighted day).
+            selectedDate: root.task ? (root.task.dueDate || "") : ""
             onDateSelected: function(dateString) {
                 // ITER3 #13: same — don't shadow the binding.
                 if (root.taskId !== "")
@@ -370,7 +400,8 @@ ColumnLayout {
         // ITER2 #7: direct property binding so in-place task mutations (sync, undo)
         // are reflected immediately without waiting for the task object reference
         // to change. The Connections onTaskChanged block is no longer needed here.
-        property string _deadlineStr: root.task ? (root.task.deadline || "") : ""
+        // Read-only: never assigned (that broke the binding — see _priority).
+        readonly property string _deadlineStr: root.task ? (root.task.deadline || "") : ""
 
         Text {
             text:                 qsTr("Дедлайн")
@@ -455,7 +486,6 @@ ColumnLayout {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    deadlineRow._deadlineStr = ""
                     if (root.taskId !== "")
                         taskViewModel.updateTask(root.taskId, "deadline", "")
                 }
@@ -465,8 +495,10 @@ ColumnLayout {
         DatePicker {
             id: deadlinePicker
             selectedDate: deadlineRow._deadlineStr
+            // The deadline is stored verbatim, so quick buttons must yield
+            // "yyyy-MM-dd" rather than the literal "today"/"tomorrow".
+            emitIsoDates: true
             onDateSelected: function(dateString) {
-                deadlineRow._deadlineStr = dateString
                 if (root.taskId !== "")
                     taskViewModel.updateTask(root.taskId, "deadline", dateString)
             }
@@ -522,7 +554,6 @@ ColumnLayout {
                         hoverEnabled: true
                         cursorShape:  Qt.PointingHandCursor
                         onClicked: {
-                            root._priority = pVal
                             if (root.taskId !== "")
                                 taskViewModel.setTaskPriority(root.taskId, pVal)
                         }
@@ -542,8 +573,9 @@ ColumnLayout {
 
         // ITER2 #7: direct property bindings so sync/undo mutations are reactive
         // without needing the task object reference to change.
-        property int    _amount: root.task ? (root.task.durationAmount || 0) : 0
-        property string _unit:   root.task ? (root.task.durationUnit   || "minute") : "minute"
+        // Read-only: never assigned (that broke the binding — see _priority).
+        readonly property int    _amount: root.task ? (root.task.durationAmount || 0) : 0
+        readonly property string _unit:   root.task ? (root.task.durationUnit   || "minute") : "minute"
 
         Text {
             text:                 qsTr("Длительность")
@@ -567,7 +599,6 @@ ColumnLayout {
             implicitWidth: 120
 
             onValueModified: {
-                durationRow._amount = value
                 if (root.taskId !== "")
                     taskViewModel.updateTask(root.taskId, "durationAmount", value)
             }
@@ -604,10 +635,15 @@ ColumnLayout {
                 target: root
                 function onTaskChanged() { durationUnitCombo.syncUnitIndex() }
             }
+            // Undo / sync mutate the same Task in place — follow its NOTIFY.
+            Connections {
+                target: root.task
+                ignoreUnknownSignals: true
+                function onDurationChanged() { durationUnitCombo.syncUnitIndex() }
+            }
 
             onActivated: {
                 const key = model[currentIndex].key
-                durationRow._unit = key
                 if (root.taskId !== "")
                     taskViewModel.updateTask(root.taskId, "durationUnit", key)
             }
@@ -753,9 +789,8 @@ ColumnLayout {
                     }
                     removable: true
                     onRemoved: {
-                        const newLabels = root._labels.filter(
+                        const newLabels = root._currentLabels().filter(
                             function(l) { return l !== modelData })
-                        root._labels = newLabels
                         if (root.taskId !== "")
                             taskViewModel.setTaskLabels(root.taskId, newLabels)
                     }
@@ -931,9 +966,10 @@ ColumnLayout {
             }
 
             onAccepted: {
-                if (text.trim() !== "") {
-                    const newLabels = root._labels.concat([text.trim()])
-                    root._labels = newLabels
+                const name = text.trim()
+                if (name !== "") {
+                    const newLabels = root._currentLabels()
+                    if (newLabels.indexOf(name) < 0) newLabels.push(name)
                     if (root.taskId !== "")
                         taskViewModel.setTaskLabels(root.taskId, newLabels)
                     text = ""
@@ -941,6 +977,14 @@ ColumnLayout {
                 labelInputRow.visible = false
             }
 
+            // Keep Esc/Return in the field: the window-level Escape
+            // (ApplicationShortcut) / Return (open hovered task) Shortcuts
+            // would otherwise consume them first.
+            Keys.onShortcutOverride: (event) => {
+                if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return
+                        || event.key === Qt.Key_Enter)
+                    event.accepted = true
+            }
             Keys.onEscapePressed: {
                 text = ""
                 labelInputRow.visible = false

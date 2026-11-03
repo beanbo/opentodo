@@ -12,6 +12,15 @@ UndoStack::UndoStack(QObject *parent)
 
 void UndoStack::push(const QString &description, UndoFn undoFn)
 {
+    // P10: an undo entry's fn usually replays the inverse VM action
+    // (completeTask's entry calls uncompleteTask, moveTask's calls moveTask),
+    // and those actions push their OWN undo entry. Accepting that push turned
+    // Ctrl+Z into a toggle: undo B → pushes B' → undo B' → pushes B'' … and
+    // the older entry A underneath was never reached. While an entry runs,
+    // pushes are dropped so each undo() consumes exactly one entry.
+    if (m_executing)
+        return;
+
     // Enforce capacity: drop the oldest entry (bottom of stack) when full.
     // QStack is LIFO, so we trim from index 0 (oldest pushed).
     while (m_stack.size() >= MAX_ENTRIES)
@@ -74,8 +83,15 @@ bool UndoStack::undo()
         return false;
 
     Entry entry = m_stack.pop();
-    if (entry.fn)
+    if (entry.fn) {
+        // P10: suppress re-entrant push() while the inverse action runs
+        // (see push()). Restored via the saved value so a nested undo()
+        // from inside a fn can't clear the outer guard early.
+        const bool wasExecuting = m_executing;
+        m_executing = true;
         entry.fn();
+        m_executing = wasExecuting;
+    }
 
     emit canUndoChanged();
     emit undoExecuted(entry.description);

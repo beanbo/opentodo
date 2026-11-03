@@ -9,6 +9,10 @@ Rectangle {
 
     // ─── Public API ────────────────────────────────────────────────────────────
     property int    selectedPriority:  4
+    // True once the user (or the AI suggestion) picked a priority. 4 is also
+    // the default, so selectedPriority alone can't tell an explicit P4 pick
+    // from "not chosen" — an inline "p1" in the text must not beat a P4 pick.
+    property bool   _priorityPicked:   false
     property string selectedDueString: ""
     property var    selectedLabels:    []
     // ITER1 #30: selected section for the task (empty = project root)
@@ -126,6 +130,7 @@ Rectangle {
     // Q4.01 pixel-perfect: gap plus→text 10, fontSize 13 (дизайн placeholder).
     TextInput {
         id: taskField
+        objectName: "quickAddInput"
         anchors.left:           plusIcon.right
         anchors.leftMargin:     10
         anchors.right:          parent.right
@@ -155,6 +160,13 @@ Rectangle {
             visible: taskField.text.length === 0
         }
 
+        // Claim Esc/Return before the window-level Shortcuts (Escape is an
+        // ApplicationShortcut, Return opens the hovered task) can steal them.
+        Keys.onShortcutOverride: (event) => {
+            if (event.key === Qt.Key_Escape || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter)
+                event.accepted = true
+        }
         Keys.onEscapePressed: { root.collapse(); focus = false }
         Keys.onReturnPressed: (event) => {
             if (event.modifiers & Qt.ShiftModifier) event.accepted = false
@@ -257,6 +269,9 @@ Rectangle {
 
                 DatePicker {
                     id: datePicker
+                    // The picker no longer writes selectedDate itself; bind it so
+                    // the chosen day stays highlighted and clears on reset.
+                    selectedDate: root.selectedDueString
                     onDateSelected: (dateString) => {
                         root.selectedDueString = dateString
                     }
@@ -279,7 +294,9 @@ Rectangle {
                     name: "repeat"
                     size: 16
                     color: {
-                        var re = /\b(каждый|каждую|каждые)\b/i
+                        // JS \b is ASCII-only and never matches around Cyrillic
+                        // words, so delimit with whitespace / string ends instead.
+                        var re = /(^|\s)(каждый|каждую|каждые)(?=\s|$)/i
                         return re.test(taskField.text) ? root.accentRed : root.subTextCol
                     }
                 }
@@ -338,9 +355,11 @@ Rectangle {
                                 }
                                 var phrase = modelData.phrase
                                 var s = taskField.text
-                                var re = /\b(каждый|каждую|каждые)\b[^,]*/i
+                                // Whitespace-delimited (JS \b doesn't work for
+                                // Cyrillic); $1 keeps the leading separator.
+                                var re = /(^|\s)(каждый|каждую|каждые)(?=\s|$)[^,]*/i
                                 if (re.test(s)) {
-                                    taskField.text = s.replace(re, phrase)
+                                    taskField.text = s.replace(re, "$1" + phrase)
                                 } else {
                                     taskField.text = (s.length > 0 ? s + " " : "") + phrase
                                 }
@@ -359,6 +378,9 @@ Rectangle {
                     // Year is intentionally ignored — annual recurrence is year-agnostic.
                     DatePicker {
                         id: annualDatePicker
+                        // Quick buttons must also yield "YYYY-MM-DD" (they emitted
+                        // "today"/"tomorrow", which the split below silently dropped).
+                        emitIsoDates: true
                         // dateSelected delivers a "YYYY-MM-DD" string from DatePicker.formatDate()
                         onDateSelected: function(dateString) {
                             // Extract DD and MM from "YYYY-MM-DD"
@@ -367,9 +389,10 @@ Rectangle {
                             var ddmm = parts[2] + "." + parts[1]   // e.g. "15.05"
                             var phrase = "каждый год " + ddmm
                             var s = taskField.text
-                            var re = /\b(каждый|каждую|каждые)\b[^,]*/i
+                            // See recurMenu: whitespace-delimited, $1 keeps the separator.
+                            var re = /(^|\s)(каждый|каждую|каждые)(?=\s|$)[^,]*/i
                             if (re.test(s)) {
-                                taskField.text = s.replace(re, phrase)
+                                taskField.text = s.replace(re, "$1" + phrase)
                             } else {
                                 taskField.text = (s.length > 0 ? s + " " : "") + phrase
                             }
@@ -413,9 +436,11 @@ Rectangle {
 
                 PriorityPicker {
                     id: priorityPicker
+                    objectName: "quickAddPriorityPicker"
                     selectedPriority: root.selectedPriority
                     onPrioritySelected: (p) => {
                         root.selectedPriority = p
+                        root._priorityPicked = true
                     }
                 }
             }
@@ -524,15 +549,17 @@ Rectangle {
                 // B-7.13: use textRole/valueRole so ComboBox resolves role names
                 // via the model's roleNames() hash rather than a hardcoded UserRole
                 // integer. ProjectViewModel exposes "name" and "id" as named roles.
-                Component.onCompleted: {
-                    if (model) {
-                        for (let i = 0; i < model.rowCount(); ++i) {
-                            if (model.index(i, 0).data(Qt.UserRole + 1) === root.selectedProjectId) {
-                                currentIndex = i
-                                break
-                            }
-                        }
-                    }
+                // indexOfValue() goes through valueRole ("id"); the old
+                // model.index(i,0).data(Qt.UserRole + 1) loop was not callable
+                // from QML (QModelIndex has no data()) and guessed the role number.
+                function _syncToSelectedProject() {
+                    currentIndex = indexOfValue(root.selectedProjectId)
+                }
+                Component.onCompleted: _syncToSelectedProject()
+                onCountChanged: _syncToSelectedProject()
+                Connections {
+                    target: root
+                    function onSelectedProjectIdChanged() { projectCombo._syncToSelectedProject() }
                 }
 
                 onActivated: {
@@ -1209,8 +1236,10 @@ Rectangle {
         function onPrioritySuggested(p) {
             root._aiBusy = false
             // Clamp defensively in case future changes widen the contract.
-            if (p >= 1 && p <= 4)
+            if (p >= 1 && p <= 4) {
                 root.selectedPriority = p
+                root._priorityPicked = true
+            }
             // Telemetry: ai_priority_suggested {priority: N}
             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled) {
                 try {
@@ -1267,26 +1296,53 @@ Rectangle {
             // be applied: in that case we still go through the structured
             // path but seed it with the NLP-parsed components so dates and
             // labels typed inline still work.
-            let userOverrode = root.selectedPriority !== 4
+            let userOverrode = root._priorityPicked
+                            || root.selectedPriority !== 4
                             || root.selectedDueString !== ""
                             || (root.selectedLabels && root.selectedLabels.length > 0)
 
             if (userOverrode) {
-                // Merge project default labels into the manually picked set,
+                // Still run the NLP parser: addTask() takes the content
+                // verbatim, so passing rawText turned "Позвонить маме завтра
+                // @дом #Работа" + a P1 pick into a literal title with no date,
+                // label or project. Each picker overrides only the field it
+                // set; everything else comes from the parsed text.
+                let parsed = taskViewModel.previewQuickAdd(rawText)
+                let parsedContent  = (parsed && parsed.content) ? parsed.content : ""
+                let parsedDue      = (parsed && parsed.dueString) ? parsed.dueString : ""
+                let parsedLabels   = (parsed && parsed.labels) ? parsed.labels : []
+                let parsedPriority = (parsed && parsed.priority) ? parsed.priority : 4
+                let parsedProject  = (parsed && parsed.projectName) ? parsed.projectName : ""
+
+                // An inline #project redirect wins over the combo (same as the
+                // addTaskFromQuickAdd path); the picked section and the
+                // selected project's default labels then no longer apply.
+                let targetProjectId = root.selectedProjectId
+                let redirectId = parsedProject !== "" ? root._projectIdByName(parsedProject) : ""
+                let redirected = redirectId !== "" && redirectId !== root.selectedProjectId
+                if (redirected) targetProjectId = redirectId
+
+                let effectivePriority = (root._priorityPicked || root.selectedPriority !== 4)
+                                        ? root.selectedPriority : parsedPriority
+                let effectiveDue = root.selectedDueString !== "" ? root.selectedDueString
+                                                                 : parsedDue
+                let pickedLabels = root._mergeLabels(root.selectedLabels, parsedLabels)
+                // Merge project default labels into the picked + inline set,
                 // dedup by name (case-insensitive). The merge happens even
                 // when selectedLabels is non-empty — the user explicitly
                 // adding labels does NOT mean they want to opt out of the
                 // project's defaults, only that they want both.
-                let mergedLabels = root._mergeLabels(root.selectedLabels, projectDefaultLabels)
-                let appliedDefaultsCount = mergedLabels.length - (root.selectedLabels ? root.selectedLabels.length : 0)
+                let mergedLabels = redirected ? pickedLabels
+                                              : root._mergeLabels(pickedLabels, projectDefaultLabels)
+                let appliedDefaultsCount = mergedLabels.length - pickedLabels.length
 
-                var newId = taskViewModel.addTask(rawText,
-                                                   root.selectedProjectId,
-                                                   root.selectedPriority,
-                                                   root.selectedDueString,
+                var newId = taskViewModel.addTask(parsedContent.length > 0 ? parsedContent : rawText,
+                                                   targetProjectId,
+                                                   effectivePriority,
+                                                   effectiveDue,
                                                    mergedLabels)
                 // ITER1 #30: move to section if one was selected
-                if (newId && root.selectedSectionId !== "")
+                if (newId && !redirected && root.selectedSectionId !== "")
                     taskViewModel.moveTask(newId, root.selectedProjectId, root.selectedSectionId)
 
                 if (appliedDefaultsCount > 0)
@@ -1375,6 +1431,7 @@ Rectangle {
     function clearFields() {
         taskField.text         = ""
         root.selectedPriority  = 4
+        root._priorityPicked   = false
         root.selectedDueString = ""
         root.selectedLabels    = []
         // ITER1 #30: reset section selection
@@ -1456,6 +1513,20 @@ Rectangle {
                 out.push(lbl.name)
         }
         return out
+    }
+
+    // Resolve an inline "#Project" name to a project id, case-insensitively —
+    // mirrors TaskViewModel::addTaskFromQuickAdd. allProjectsData() is used
+    // because allProjects() (QList<Project*>) is not a JS array in QML.
+    function _projectIdByName(name) {
+        if (!name || typeof dataStore === "undefined") return ""
+        let wanted = name.toLowerCase()
+        let projects = dataStore.allProjectsData()
+        for (let i = 0; i < projects.length; i++) {
+            let p = projects[i]
+            if (p && p.name && p.name.toLowerCase() === wanted) return p.id
+        }
+        return ""
     }
 
     // I22-D follow-up: merge two label-name arrays, preserving order of

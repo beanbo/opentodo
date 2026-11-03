@@ -43,5 +43,9 @@ public class NotificationReceiver extends BroadcastReceiver {
             android.app.NotificationManager.IMPORTANCE_HIGH);
 
         NotificationHelper.showNotification(context, channelId, notifId, title, body, taskId);
+
+        // Drop the persisted alarm (it fired) and report the firing to C++ when
+        // the app is running, so the reminder is logged at its real time.
+        NotificationHelper.onScheduledAlarmFired(context, notifId, taskId, title, body);
     }
 }

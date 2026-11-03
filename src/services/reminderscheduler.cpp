@@ -24,11 +24,10 @@ ReminderScheduler::ReminderScheduler(DataStore *dataStore,
     if (!m_dataStore || !m_notif)
         return;
 
-    // Iter-9: load persisted m_lastScheduledFor so the iter-8 emit-once-per-
-    // reminder guard survives app restart. Without this, every cold start
-    // would treat all already-scheduled reminders as "first scheduling" and
-    // re-emit reminderFired, duplicating entries in the in-app notification
-    // centre on every launch.
+    // Iter-9: load persisted m_lastScheduledFor so the recurring-advance
+    // detection and the "which reminders did we arm" set survive app restart
+    // (Android alarms outlive the process, so a reminder armed in a previous
+    // run must still be cancelled when its task is completed).
     {
         QSettings s;
         s.beginGroup(QLatin1String(kLastScheduledForGroup));
@@ -57,6 +56,18 @@ ReminderScheduler::ReminderScheduler(DataStore *dataStore,
     m_debounceTimer.setSingleShot(true);
     connect(&m_debounceTimer, &QTimer::timeout, this, &ReminderScheduler::rescheduleAll);
 
+    // The push toggle lives in DataStore settings; settingsChanged fires for
+    // every setting, so only reschedule when the effective push state flips.
+    connect(m_dataStore, &DataStore::settingsChanged, this, [this]() {
+        if (pushEnabled() != m_lastPushEnabled)
+            rescheduleAll();
+    });
+
+    // Log a reminder in the notification centre when it really fires — the
+    // platform backend reports the scheduling id, we resolve the task here.
+    connect(m_notif, &NotificationService::scheduledNotificationFired,
+            this, &ReminderScheduler::onScheduledNotificationFired);
+
     // Initial synchronous pass for reminders already in memory.
     rescheduleAll();
 }
@@ -65,6 +76,52 @@ ReminderScheduler::ReminderScheduler(DataStore *dataStore,
 void ReminderScheduler::onDataSignal()
 {
     m_debounceTimer.start();
+}
+
+void ReminderScheduler::setHonourPushSetting(bool honour)
+{
+    if (m_honourPushSetting == honour)
+        return;
+    m_honourPushSetting = honour;
+    rescheduleAll();
+}
+
+bool ReminderScheduler::pushEnabled() const
+{
+    if (!m_honourPushSetting || !m_dataStore)
+        return true;
+    // The mobile settings screen writes the toggle through
+    // settingsViewModel.updateSetting() → DataStore. Older builds kept it in
+    // QSettings (QML Settings); honour that value when the store has none.
+    QVariant v = m_dataStore->setting(QLatin1String(kPushSettingKey));
+    if (!v.isValid() || v.isNull())
+        v = QSettings().value(QLatin1String(kPushSettingKey));
+    if (!v.isValid() || v.isNull())
+        return true;
+    if (v.typeId() == QMetaType::QString) {
+        const QString s = v.toString().trimmed().toLower();
+        if (s.isEmpty())
+            return true;
+        return s != QStringLiteral("false") && s != QStringLiteral("0");
+    }
+    return v.toBool();
+}
+
+void ReminderScheduler::onScheduledNotificationFired(const QString &id,
+                                                     const QString &title,
+                                                     const QString &body)
+{
+    if (!m_dataStore || !m_notif)
+        return;
+    // Ids that don't map to a live task (daily review, diagnostics) are not
+    // task reminders and stay out of the notification centre.
+    const QString taskId = m_dataStore->taskIdForNotification(id);
+    if (taskId.isEmpty())
+        return;
+    const Task *task = m_dataStore->taskById(taskId);
+    emit m_notif->reminderFired(taskId,
+                                task ? task->content() : title,
+                                task ? task->description() : body);
 }
 
 // B-5.11: Parse reminder trigger time, respecting the reminder's timezone field.
@@ -199,6 +256,17 @@ void ReminderScheduler::rescheduleAll()
         }
     }
 
+    // Mobile "Пуш-уведомления" toggle: when off, pending reminders are
+    // cancelled below (cancelScheduled) and nothing new is armed.
+    const bool push = pushEnabled();
+    m_lastPushEnabled = push;
+
+    // Live reminders of OPEN tasks seen in this pass. Anything this scheduler
+    // armed earlier (m_lastScheduledFor) that is not in here belongs to a task
+    // that is now completed, deleted (by any path, including sync) or gone —
+    // it is cancelled after the loop.
+    QSet<QString> openTaskReminders;
+
     const auto tasks = m_dataStore->allTasks();
     for (auto *task : tasks) {
         if (!task || task->isDeleted() || task->isCompleted())
@@ -208,62 +276,57 @@ void ReminderScheduler::rescheduleAll()
         for (auto *reminder : reminders) {
             if (!reminder || reminder->isDeleted())
                 continue;
+            openTaskReminders.insert(reminder->id());
 
             const QDateTime triggerTime = resolveTriggerTime(reminder, task);
 
-            // B-5.13: Recurring task re-arming detection.
-            // Track the due date at last scheduling time; if the recurring task's
-            // due date has advanced (after completion and re-arm), the previous
-            // notification is already stale — we cancel and reschedule unconditionally
-            // below, so no extra cancel step is needed. We record the new date so we
-            // can detect future advances.
+            // B-5.13: Recurring task re-arming. When a recurring task's due
+            // date advances (completion re-arm), the previous schedule is stale;
+            // the unconditional cancel below + reschedule covers it, and the
+            // recorded due date below lets future advances be told apart.
             const QString currentDueDate = task->dueDate();
-            const QString lastScheduled  = m_lastScheduledFor.value(reminder->id());
-            if (task->dueIsRecurring() && !currentDueDate.isEmpty()
-                    && !lastScheduled.isEmpty() && currentDueDate != lastScheduled) {
-                // Due date has advanced — reschedule for new instance (handled below).
-                // The old notification is cancelled by the unconditional cancel call.
-            }
 
-            // Always cancel before re-scheduling to avoid duplicate notifications.
-            m_notif->cancelNotification(reminder->id());
+            // Cancel the pending schedule before re-arming to avoid duplicates.
+            // cancelScheduled (not cancelNotification): a reminder that already
+            // fired and is still on screen must survive this pass — it runs on
+            // every edit, sync apply and app start.
+            m_notif->cancelScheduled(reminder->id());
 
-            if (!triggerTime.isValid() || triggerTime <= now)
+            if (!push || !triggerTime.isValid() || triggerTime <= now)
                 continue;
 
             m_notif->scheduleNotification(task->content(),
                                           task->description(),
                                           triggerTime,
                                           reminder->id());
-
-            // Iter-8: only log to the in-app notification centre on the FIRST
-            // scheduling of this reminder, or when a recurring task's due date
-            // advances. rescheduleAll() runs on every tasksChanged /
-            // remindersChanged tick — emitting unconditionally was producing
-            // duplicate "Напоминание: …" entries in the centre on every keypress
-            // edit of any task. The OS-side toast (real "fired" event) is
-            // already tracked separately when the QTimer actually expires;
-            // the per-platform showNotification() is the right surface for a
-            // "true fired" signal.
-            const bool isFirstScheduling = !m_lastScheduledFor.contains(reminder->id());
-            const bool recurringAdvance  = task->dueIsRecurring()
-                && !lastScheduled.isEmpty()
-                && currentDueDate != lastScheduled;
-            if (isFirstScheduling || recurringAdvance) {
-                emit m_notif->reminderFired(task->id(),
-                                            task->content(),
-                                            task->description());
-            }
+            // NB: reminderFired is NOT emitted here — scheduling is not firing.
+            // The backend reports the real expiry via scheduledNotificationFired
+            // (see onScheduledNotificationFired).
 
             // B-5.13: Record the due date for which this reminder was scheduled.
             m_lastScheduledFor.insert(reminder->id(), currentDueDate);
         }
     }
 
-    // Iter-9: persist m_lastScheduledFor changes so the iter-8 emit-once-per-
-    // reminder guard survives app restart. We re-write the whole group rather
-    // than tracking deltas — the map is small (one entry per active reminder)
-    // and rescheduleAll is already debounced for tasksChanged bursts.
+    // A reminder armed while its task was open must not fire after the task
+    // is completed or deleted (the loop above skips such tasks, so it used to
+    // leave their pending timers / alarms running). Full cancel — a stale
+    // reminder already on screen is dismissed too — and forget the entry so
+    // later passes cost nothing. Uncompleting the task re-arms it normally.
+    for (auto it = m_lastScheduledFor.begin(); it != m_lastScheduledFor.end(); ) {
+        if (!openTaskReminders.contains(it.key())) {
+            m_notif->cancelNotification(it.key());
+            persistDrops.append(it.key());
+            it = m_lastScheduledFor.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Iter-9: persist m_lastScheduledFor changes so they survive app restart.
+    // We re-write the whole group rather than tracking deltas — the map is
+    // small (one entry per active reminder) and rescheduleAll is already
+    // debounced for tasksChanged bursts.
     if (!m_lastScheduledFor.isEmpty() || !persistDrops.isEmpty()) {
         QSettings s;
         s.beginGroup(QLatin1String(kLastScheduledForGroup));

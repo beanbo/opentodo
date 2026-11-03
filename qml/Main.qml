@@ -23,25 +23,36 @@ ApplicationWindow {
         return qsTr("задач")
     }
 
-    function _pendingCountCompute() {
-        if (typeof dataStore === "undefined" || !dataStore) return 0
+    // One pass over the tasks refreshes both the window-title count and the
+    // completion snapshot used by the undo snackbar (_completedById).
+    function _refreshTaskSnapshot() {
+        if (typeof dataStore === "undefined" || !dataStore) {
+            root._pendingCount = 0
+            return
+        }
         // Q4.01 night iter-50: allTasks() (QList<Task*>) has no usable .length
         // in QML (the `if (!tasks)` guard never fired — the value is a truthy
         // non-array), so this loop iterated 0× and the pending-task count was
         // stuck at 0. allTasksData() is a real JS array (deleted excluded).
-        var tasks = dataStore.allTasksData()
-        if (!tasks) return 0
+        var tasks = dataStore.allTasksData() || []
         var n = 0
+        var completed = {}
         for (var i = 0; i < tasks.length; i++) {
             var t = tasks[i]
             if (!t) continue
+            if (t.id) completed[t.id] = !!t.isCompleted
             if (!t.isCompleted && !t.isDeleted) n++
         }
-        return n
+        root._pendingCount = n
+        root._completedById = completed
     }
 
+    // Deferred (and coalesced — callLater dedups by function) so that, for a
+    // completion, TaskViewModel::taskChanged is handled against the PRE-change
+    // snapshot before this refresh records the new state. It also picks up
+    // completion changes that arrive without taskChanged (sync merge, reload).
     function _recomputePending() {
-        Qt.callLater(function() { root._pendingCount = root._pendingCountCompute() })
+        Qt.callLater(root._refreshTaskSnapshot)
     }
 
     title: _pendingCount > 0
@@ -159,8 +170,40 @@ ApplicationWindow {
         // flag so any code that checks `telemetry.prompted` sees it as
         // already handled (the nag dialog has been removed).
         telemetry.markPrompted()
-        // Initial pending-tasks count for the window title.
-        _recomputePending()
+        // Initial pending-tasks count for the window title + completion
+        // snapshot for the undo snackbar (synchronous, before any edits).
+        _refreshTaskSnapshot()
+        _requestNotificationPermissionOnAndroid()
+    }
+
+    // Android 13+ needs a runtime POST_NOTIFICATIONS grant. The only other
+    // trigger (SyncIndicator.qml) is loaded by DesktopLayout alone, so since
+    // the mobile redesign Android never asked and reminders were silently
+    // dropped. Same once-per-install gate as SyncIndicator; desktop keeps
+    // relying on SyncIndicator so it is never prompted twice.
+    function _requestNotificationPermissionOnAndroid() {
+        if (Qt.platform.os !== "android")
+            return
+        if (typeof settingsViewModel === "undefined" || !settingsViewModel
+                || settingsViewModel.notificationPermissionAsked)
+            return
+        if (typeof notificationService === "undefined" || !notificationService)
+            return
+        if (notificationService.hasPermission()) {
+            settingsViewModel.notificationPermissionAsked = true
+            return
+        }
+        // The flag flips in onPermissionRequestCompleted below, once the OS
+        // dialog has actually been answered (Q-Android-Audit #2.1).
+        notificationService.requestPermission()
+    }
+    Connections {
+        target: (Qt.platform.os === "android" && typeof notificationService !== "undefined")
+                ? notificationService : null
+        function onPermissionRequestCompleted(granted) {
+            if (typeof settingsViewModel !== "undefined" && settingsViewModel)
+                settingsViewModel.notificationPermissionAsked = true
+        }
     }
     Connections {
         target: settingsViewModel
@@ -376,6 +419,8 @@ ApplicationWindow {
     // Re-schedule a reminder N minutes from now via NotificationService.
     // Called when the user taps «Отложить» on a banner.
     function snoozeBanner(taskId, minutes) {
+        // Defensive: never build "snooze-snooze-<id>" from an unresolved id.
+        taskId = root._taskIdForNotification(taskId)
         if (!taskId) return
         if (typeof notificationService === "undefined" || !notificationService) return
         const t = dataStore.taskById(taskId)
@@ -387,10 +432,22 @@ ApplicationWindow {
             qsTr("Отложенное напоминание"), body, due, "snooze-" + taskId)
     }
 
+    // The id a banner arrives with is the id its notification was scheduled
+    // under — a reminder id, "snooze-<taskId>" (see snoozeBanner) or
+    // "reminder-<taskId>" — not necessarily a task id. InAppBanner feeds
+    // bannerTaskId straight into openTaskById / completeTask / snooze, so map it
+    // to the live task here ("" when nothing matches, which hides the actions).
+    function _taskIdForNotification(id) {
+        if (!id || typeof dataStore === "undefined" || !dataStore)
+            return ""
+        return dataStore.taskIdForNotification(id)
+    }
+
     function pushBanner(title, body, taskId) {
         // Cap queue at 5 so the screen doesn't overflow
         let q = root.bannerQueue.slice(-4)
-        q.push({ id: root._bannerIdCounter++, title: title, body: body || "", taskId: taskId || "" })
+        q.push({ id: root._bannerIdCounter++, title: title, body: body || "",
+                 taskId: root._taskIdForNotification(taskId) })
         root.bannerQueue = q
     }
 
@@ -466,12 +523,29 @@ ApplicationWindow {
             undoSnackbar.showFor(undoStack.lastDescription
                                  || qsTr("Удалено задач: %1").arg(n))
         }
+        // Only on the open → completed transition: taskChanged fires for every
+        // edit, so renaming/re-dating an already-completed task used to show
+        // "Задача завершена" with an ОТМЕНИТЬ that undid whatever was on top.
         function onTaskChanged(id) {
             const t = dataStore.taskById(id)
-            if (t && t.isCompleted)
+            if (!t) return
+            const wasCompleted = root._completedById[id] === true
+            root._completedById[id] = t.isCompleted
+            if (t.isCompleted && !wasCompleted)
                 undoSnackbar.showFor(undoStack.lastDescription || qsTr("Задача завершена"))
         }
+        function onTaskAdded(id) {
+            const t = dataStore.taskById(id)
+            if (t) root._completedById[id] = t.isCompleted
+        }
     }
+
+    // Last seen completion state per task id, for the snackbar transition
+    // check above (plain JS object; mutated in place, never bound to).
+    // Refreshed by _refreshTaskSnapshot() at startup and after data changes,
+    // so editing a task that was already completed is not mistaken for a
+    // completion. Unknown ids count as open.
+    property var _completedById: ({})
 
     // Show brief "Действие отменено" toast when undo fires.
     Connections {

@@ -23,6 +23,15 @@ DriveApi::DriveApi(OAuthClient *auth, QObject *parent)
     : QObject(parent)
     , m_auth(auth)
 {
+    // S7: the cached root-folder id belongs to ONE account. Sign-out or an
+    // account switch must drop it, or every later call targets a folder the
+    // new account can't see until the app restarts.
+    if (m_auth) {
+        connect(m_auth, &OAuthClient::authenticatedChanged, this,
+                [this]() { m_rootFolderId.clear(); });
+        connect(m_auth, &OAuthClient::accountEmailChanged, this,
+                [this]() { m_rootFolderId.clear(); });
+    }
 }
 
 // Q2.19-E: All HTTP requests funnel through nam() so the test suite can
@@ -40,7 +49,7 @@ void DriveApi::setNetworkManagerForTesting(QNetworkAccessManager *nam)
 bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
 {
     if (!m_auth->isAuthenticated()) return false;
-    ensureRootFolder();
+    if (!ensureRootFolder()) return false;
 
     const int slashIdx = remotePath.lastIndexOf(QLatin1Char('/'));
     QString parentId = m_rootFolderId;
@@ -53,7 +62,12 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
         if (parentId.isEmpty()) return false;
     }
 
-    const QString existingId = findFileId(fileName, parentId);
+    QString existingId;
+    // S7: a failed lookup used to read as "not found" and fall through to the
+    // create branch, leaving two `state.json` files that later reads pick
+    // between at random. Abort instead; the next sync retries.
+    if (lookupFileId(fileName, parentId, &existingId) == Lookup::Error)
+        return false;
 
     if (!existingId.isEmpty()) {
         // Update existing file via PATCH
@@ -69,6 +83,8 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
         reply->setProperty("_method", QByteArray("PATCH"));
         reply->setProperty("_body", data);
         const auto result = waitForReply(reply);
+        if (result.isEmpty() && m_lastHttpStatus == 404)
+            m_rootFolderId.clear();   // S7: folder/file gone — re-resolve next time
         return !result.isEmpty();
     }
 
@@ -100,6 +116,8 @@ bool DriveApi::uploadFile(const QString &remotePath, const QByteArray &data)
     reply->setProperty("_method", QByteArray("POST"));
     reply->setProperty("_body", body);
     const auto result = waitForReply(reply);
+    if (result.isEmpty() && m_lastHttpStatus == 404)
+        m_rootFolderId.clear();   // S7: parent folder no longer exists
     return !result.isEmpty();
 }
 
@@ -240,26 +258,33 @@ bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
                              bool notFoundIsOk, qint64 maxBytes)
 {
     if (!m_auth->isAuthenticated()) return false;
-    ensureRootFolder();
+    if (!ensureRootFolder()) return false;
 
     const int slashIdx = remotePath.lastIndexOf(QLatin1Char('/'));
     QString parentId = m_rootFolderId;
     QString fileName = remotePath;
 
+    // S7: only a SUCCESSFUL lookup that found nothing may be reported as
+    // "not found" (true + empty data under notFoundIsOk). A failed lookup is a
+    // real error — reporting it as "no remote file" let push() upload over
+    // peers' data and pull() treat the remote as empty.
     if (slashIdx >= 0) {
         const QString folderName = remotePath.left(slashIdx);
         fileName = remotePath.mid(slashIdx + 1);
         // B-2.13: if the containing folder doesn't exist yet, treat it as
         // "not found" rather than a hard error.
-        parentId = findFileId(folderName, m_rootFolderId);
-        if (parentId.isEmpty()) {
+        const Lookup folder = lookupFileId(folderName, m_rootFolderId, &parentId);
+        if (folder == Lookup::Error) return false;
+        if (folder == Lookup::NotFound) {
             if (notFoundIsOk) { data.clear(); return true; }
             return false;
         }
     }
 
-    const QString fileId = findFileId(fileName, parentId);
-    if (fileId.isEmpty()) {
+    QString fileId;
+    const Lookup file = lookupFileId(fileName, parentId, &fileId);
+    if (file == Lookup::Error) return false;
+    if (file == Lookup::NotFound) {
         // B-2.13: 404 — distinguish from true network error.
         if (notFoundIsOk) { data.clear(); return true; }
         return false;
@@ -346,7 +371,7 @@ bool DriveApi::downloadFile(const QString &remotePath, QByteArray &data,
 bool DriveApi::deleteFile(const QString &remotePath)
 {
     if (!m_auth->isAuthenticated()) return false;
-    ensureRootFolder();
+    if (!ensureRootFolder()) return false;
 
     const int slashIdx = remotePath.lastIndexOf(QLatin1Char('/'));
     QString parentId = m_rootFolderId;
@@ -355,12 +380,13 @@ bool DriveApi::deleteFile(const QString &remotePath)
     if (slashIdx >= 0) {
         const QString folderName = remotePath.left(slashIdx);
         fileName = remotePath.mid(slashIdx + 1);
-        parentId = findFileId(folderName, m_rootFolderId);
-        if (parentId.isEmpty()) return false;
+        if (lookupFileId(folderName, m_rootFolderId, &parentId) != Lookup::Found)
+            return false;
     }
 
-    const QString fileId = findFileId(fileName, parentId);
-    if (fileId.isEmpty()) return false;
+    QString fileId;
+    if (lookupFileId(fileName, parentId, &fileId) != Lookup::Found)
+        return false;
 
     QUrl url(DriveEndpoints::API_BASE + QStringLiteral("/files/%1").arg(fileId));
     QNetworkRequest req(url);
@@ -421,7 +447,7 @@ QStringList DriveApi::listFiles(const QString &folderPath)
 {
     QStringList result;
     if (!m_auth->isAuthenticated()) return result;
-    ensureRootFolder();
+    if (!ensureRootFolder()) return result;
 
     QString folderId = m_rootFolderId;
     if (!folderPath.isEmpty()) {
@@ -472,10 +498,19 @@ bool DriveApi::ensureRootFolder()
 bool DriveApi::acquireLock()
 {
     if (!m_auth->isAuthenticated()) return false;
-    ensureRootFolder();
+    // S7: acquireLock opens every sync session — re-resolve the root folder
+    // here (one cheap query) instead of trusting an id cached at startup that
+    // may since have been trashed / deleted on drive.google.com (writes would
+    // land in the trash, or fail until restart).
+    m_rootFolderId.clear();
+    if (!ensureRootFolder()) return false;
 
-    const QString lockId = findFileId(QLatin1String(LOCK_FILE_NAME), m_rootFolderId);
-    if (!lockId.isEmpty()) {
+    QString lockId;
+    const Lookup lock = lookupFileId(QLatin1String(LOCK_FILE_NAME), m_rootFolderId, &lockId);
+    // S9: a failed lookup says nothing about whether a peer holds the lock —
+    // treating it as "no lock" let two devices sync at once.
+    if (lock == Lookup::Error) return false;
+    if (lock == Lookup::Found) {
         // Lock exists — check if stale (older than 5 minutes)
         QUrl url(DriveEndpoints::API_BASE +
                  QStringLiteral("/files/%1?fields=modifiedTime").arg(lockId));
@@ -484,16 +519,22 @@ bool DriveApi::acquireLock()
                          QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
         auto *reply = nam()->get(req);
-        const auto json = waitForReply(reply);
+        bool metaOk = false;
+        const auto json = waitForReply(reply, &metaOk);
         const auto modifiedTime = QDateTime::fromString(
             json[QStringLiteral("modifiedTime")].toString(), Qt::ISODate);
 
-        if (modifiedTime.isValid() &&
-            modifiedTime.secsTo(QDateTime::currentDateTimeUtc()) < 300) {
+        // S9: if the lock's age can't be read (request failed / no
+        // modifiedTime) we must NOT assume it is stale and delete a peer's
+        // live lock — report "cannot acquire" and retry on the next sync.
+        if (!metaOk || !modifiedTime.isValid())
+            return false;
+        if (modifiedTime.secsTo(QDateTime::currentDateTimeUtc()) < 300) {
             return false; // Lock is fresh, someone else is syncing
         }
-        // Stale lock — delete it
-        deleteFile(QLatin1String(LOCK_FILE_NAME));
+        // Stale lock — delete it. If that fails, don't race the stale holder.
+        if (!deleteFile(QLatin1String(LOCK_FILE_NAME)))
+            return false;
     }
 
     QJsonObject lockData;
@@ -517,6 +558,7 @@ bool DriveApi::isLocked() const
     // network ops (all network state is in m_nam which is logically a cache).
     DriveApi *self = const_cast<DriveApi *>(this);
 
+    if (m_rootFolderId.isEmpty()) return false;   // never resolved — nothing to query
     const QString lockId = self->findFileId(QLatin1String(LOCK_FILE_NAME), m_rootFolderId);
     if (lockId.isEmpty()) return false;
 
@@ -536,16 +578,28 @@ bool DriveApi::isLocked() const
     return modifiedTime.secsTo(QDateTime::currentDateTimeUtc()) < 300;
 }
 
-QString DriveApi::findFileId(const QString &name, const QString &parentId)
+DriveApi::Lookup DriveApi::lookupFileId(const QString &name, const QString &parentId,
+                                        QString *outId)
 {
+    if (outId) outId->clear();
+
     QUrl url(DriveEndpoints::API_BASE + QStringLiteral("/files"));
     QUrlQuery query;
 
     // S-2.40: escape single quotes in name to avoid Drive query injection.
     const QString escapedName = QString(name).replace(QLatin1Char('\''), QStringLiteral("\\'"));
     QString q = QStringLiteral("name = '%1' and trashed = false").arg(escapedName);
-    if (!parentId.isEmpty())
+    if (!parentId.isEmpty()) {
         q += QStringLiteral(" and '%1' in parents").arg(parentId);
+    } else {
+        // S8: a parent-less lookup is only ever the app's root folder. With the
+        // full `drive` scope a bare name match also sees folders OTHER users
+        // shared with us — an attacker could share an "opentodo_data" folder
+        // and have the app sync the user's tasks into it. Pin it to a folder
+        // that the user owns, at the top of their own My Drive.
+        q += QStringLiteral(" and mimeType = 'application/vnd.google-apps.folder'"
+                            " and 'root' in parents and 'me' in owners");
+    }
     query.addQueryItem(QStringLiteral("q"),      q);
     query.addQueryItem(QStringLiteral("fields"), QStringLiteral("files(id)"));
     url.setQuery(query);
@@ -555,17 +609,38 @@ QString DriveApi::findFileId(const QString &name, const QString &parentId)
                      QStringLiteral("Bearer %1").arg(m_auth->accessToken()).toUtf8());
 
     auto *reply = nam()->get(req);
-    const auto json = waitForReply(reply);
+    bool ok = false;
+    const auto json = waitForReply(reply, &ok);
+    if (!ok) {
+        // A 404 on a query naming a parent means the parent itself is gone.
+        if (!parentId.isEmpty() && parentId == m_rootFolderId && m_lastHttpStatus == 404)
+            m_rootFolderId.clear();
+        return Lookup::Error;
+    }
 
     const auto files = json[QStringLiteral("files")].toArray();
-    if (files.isEmpty()) return {};
-    return files[0].toObject()[QStringLiteral("id")].toString();
+    if (files.isEmpty()) return Lookup::NotFound;
+    const QString id = files[0].toObject()[QStringLiteral("id")].toString();
+    if (id.isEmpty()) return Lookup::NotFound;
+    if (outId) *outId = id;
+    return Lookup::Found;
+}
+
+QString DriveApi::findFileId(const QString &name, const QString &parentId)
+{
+    QString id;
+    lookupFileId(name, parentId, &id);
+    return id;
 }
 
 QString DriveApi::findOrCreateFolder(const QString &name, const QString &parentId)
 {
-    const QString existingId = findFileId(name, parentId);
-    if (!existingId.isEmpty()) return existingId;
+    QString existingId;
+    const Lookup found = lookupFileId(name, parentId, &existingId);
+    // S7: never create when the lookup FAILED — that is how a transient 5xx
+    // produced a second `opentodo_data` / `log` folder.
+    if (found == Lookup::Error) return {};
+    if (found == Lookup::Found) return existingId;
 
     QJsonObject metadata;
     metadata[QStringLiteral("name")]     = name;
@@ -602,19 +677,23 @@ QNetworkReply *DriveApi::makeRequest(const QString &url, const QByteArray &metho
     return nam()->sendCustomRequest(req, method, data);
 }
 
-QJsonObject DriveApi::waitForReply(QNetworkReply *reply)
+QJsonObject DriveApi::waitForReply(QNetworkReply *reply, bool *ok)
 {
-    return waitForReplyWithRetry(reply, /*allowRetry=*/true);
+    return waitForReplyWithRetry(reply, /*allowRetry=*/true, ok);
 }
 
-QJsonObject DriveApi::waitForReplyWithRetry(QNetworkReply *reply, bool allowRetry)
+QJsonObject DriveApi::waitForReplyWithRetry(QNetworkReply *reply, bool allowRetry, bool *ok)
 {
+    if (ok) *ok = false;
     QEventLoop loop;
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
 
+    m_lastHttpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
     QJsonObject result;
     if (reply->error() == QNetworkReply::NoError) {
+        if (ok) *ok = true;
         const auto data = reply->readAll();
         const auto doc  = QJsonDocument::fromJson(data);
         if (doc.isObject()) result = doc.object();
@@ -654,7 +733,7 @@ QJsonObject DriveApi::waitForReplyWithRetry(QNetworkReply *reply, bool allowRetr
         }
 
         // Retry once more without further retry to avoid infinite loops.
-        return waitForReplyWithRetry(retryReply, /*allowRetry=*/false);
+        return waitForReplyWithRetry(retryReply, /*allowRetry=*/false, ok);
     } else {
         qCInfo(lcDriveApi) << "network error:" << reply->error() << reply->errorString();
     }

@@ -15,7 +15,17 @@ public:
     Q_INVOKABLE virtual void showNotification(const QString &title, const QString &body, const QString &taskId = {}) = 0;
     Q_INVOKABLE virtual void scheduleNotification(const QString &title, const QString &body,
                                                     const QDateTime &when, const QString &id) = 0;
+    // Cancels the pending schedule for `id` AND dismisses it if it is already
+    // displayed (Android). Use for reminders that are gone for good (deleted
+    // reminder, completed / deleted task).
     virtual void cancelNotification(const QString &id) = 0;
+    // Cancels only the PENDING (not yet fired) schedule for `id` and leaves an
+    // already-displayed notification alone. ReminderScheduler calls this on
+    // every reschedule pass before re-arming: using cancelNotification() there
+    // made every edit / sync / app start dismiss reminders the user had not
+    // acted on yet (Android NotificationManager.cancel). Timer-based backends
+    // have nothing displayed to keep, so the default is a plain cancel.
+    virtual void cancelScheduled(const QString &id) { cancelNotification(id); }
     virtual void cancelAll() = 0;
     Q_INVOKABLE virtual bool hasPermission() const { return true; }
     Q_INVOKABLE virtual void requestPermission() {}
@@ -58,11 +68,19 @@ signals:
     void inAppBannerRequested(const QString &title, const QString &body,
                               const QString &taskId);
 
-    // Fired when a Reminder entity is dispatched to the platform (i.e. a real
-    // task reminder fires). Distinct from inAppBannerRequested: this is a
+    // Emitted by the platform backend when a notification handed to
+    // scheduleNotification() actually fires (timer / alarm expiry, or the
+    // immediate grace-window path), carrying the id it was scheduled under.
+    // The backend only knows that id; ReminderScheduler maps it back to the
+    // task (DataStore::taskIdForNotification) and emits reminderFired.
+    void scheduledNotificationFired(const QString &id, const QString &title,
+                                    const QString &body);
+
+    // Fired when a task reminder really goes off (i.e. at trigger time, not
+    // when it is scheduled). Distinct from inAppBannerRequested: this is a
     // semantic "a reminder happened" event used by NotificationsViewModel to
-    // log it in the in-app notification centre. Currently emitted by
-    // ReminderScheduler when it hands a reminder to scheduleNotification().
+    // log it in the in-app notification centre. Emitted by ReminderScheduler
+    // in response to scheduledNotificationFired.
     void reminderFired(const QString &taskId, const QString &title,
                        const QString &body);
 };

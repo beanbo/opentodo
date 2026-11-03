@@ -329,10 +329,12 @@ private slots:
         QVERIFY(r2->isDeleted());
     }
 
-    // When a parent task is hard-purged (purgeTask), the cascade ERASES the
-    // comment objects from the store (not just tombstones them) — see
-    // DataStore::purgeTask. Document the behaviour difference vs soft delete.
-    void task_hard_purge_cascades_erasure_to_comments()
+    // When a parent task is purged ("delete permanently"), its comments are
+    // TOMBSTONED, not erased: purgeTask used to erase them, and the next sync's
+    // union merge brought erased entities back from the remote copy. The
+    // tombstone keeps the deletion winning; the comment is invisible to every
+    // query.
+    void task_purge_cascades_tombstone_to_comments()
     {
         QScopedPointer<DataStore> ds(makeStore());
         Task *t = ds->addTask(QStringLiteral("X"), QString());
@@ -342,8 +344,8 @@ private slots:
 
         QVERIFY(ds->purgeTask(tid));
         QVERIFY(ds->taskById(tid) == nullptr);
-        // Hard-erasure: commentById no longer resolves.
-        QVERIFY(ds->commentById(cid) == nullptr);
+        QVERIFY(ds->commentById(cid) != nullptr);
+        QVERIFY(ds->commentById(cid)->isDeleted());
         QCOMPARE(ds->commentsForTask(tid).size(), 0);
     }
 

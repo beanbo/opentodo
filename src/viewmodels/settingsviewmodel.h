@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QJsonObject>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -275,9 +276,12 @@ private:
     void set(const QString &key, const QVariant &value);
 
     DataStore *m_store;
+    // V9: last seen settings object; onSettingsChanged diffs against it and
+    // emits NOTIFYs only for keys whose value changed.
+    QJsonObject m_settingsSnapshot;
     QPointer<SecretStore> m_secretStore;   // Sec-1: nullable; QSettings path when unset
     // Tracks the canonical key being written by the current setter call so that
-    // onSettingsChanged (fired by DataStore::settingsChanged) can distinguish a
-    // single-key update (setter handles the NOTIFY) from a bulk replace (sync).
+    // onSettingsChanged (fired by DataStore::settingsChanged) leaves that key's
+    // NOTIFY to the setter (which emits it unconditionally).
     QString m_pendingNotifyKey;
 };

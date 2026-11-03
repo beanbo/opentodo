@@ -393,15 +393,10 @@ ColumnLayout {
                 mdToolbar._track("italic")
             }
         }
-        Shortcut {
-            sequence: "Ctrl+K"
-            context:  Qt.WindowShortcut
-            enabled:  descriptionField.activeFocus
-            onActivated: {
-                mdToolbar.openLinkPopup()
-                mdToolbar._track("link_open")
-            }
-        }
+        // Ctrl+K (insert link) is NOT a Shortcut here: DesktopLayout's
+        // window-wide Ctrl+K (command palette) made the pair ambiguous and
+        // neither fired. descriptionField claims it via Keys.onShortcutOverride
+        // and handles it in Keys.onPressed instead.
     }
 
     // ── Link insertion popup ──────────────────────────────────────────────
@@ -615,6 +610,24 @@ ColumnLayout {
 
         onLinkActivated: function(link) {
             _openUrlSafely(link)
+        }
+
+        // Ctrl+K → link popup while editing (see the note by the Ctrl+B/I
+        // Shortcuts). Overriding wins the key over the window Ctrl+K.
+        function _isLinkChord(event) {
+            return event.key === Qt.Key_K
+                && (event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier
+                                       | Qt.AltModifier | Qt.MetaModifier)) === Qt.ControlModifier
+        }
+        Keys.onShortcutOverride: (event) => {
+            if (_isLinkChord(event)) event.accepted = true
+        }
+        Keys.onPressed: (event) => {
+            if (_isLinkChord(event)) {
+                mdToolbar.openLinkPopup()
+                mdToolbar._track("link_open")
+                event.accepted = true
+            }
         }
 
         // Pointing-hand cursor when hovering a link; default I-beam

@@ -28,6 +28,8 @@ opentodo_add_unit_test(test_aiassistant       Infra)
 opentodo_add_unit_test(test_aiassistant_tooluse Infra)
 # AI proxy selection + Anthropic request/response shape (offline).
 opentodo_add_unit_test(test_aiproxy           Infra)
+# Claude Code launcher: prompt sanitising + wt/cmd argument lists (offline).
+opentodo_add_unit_test(test_claudecodelauncher Infra)
 # Real API round-trip through the proxy; skipped unless OPENTODO_LIVE_AI=1.
 opentodo_add_unit_test(test_aiassistant_live  Infra)
 opentodo_add_unit_test(test_subtask_generator Infra)
@@ -37,6 +39,7 @@ opentodo_add_unit_test(test_telemetry         Infra)
 opentodo_add_unit_test(test_crdt              Infra)
 opentodo_add_unit_test(test_syncengine        Infra)
 opentodo_add_unit_test(test_synchttpserver    Infra)
+opentodo_add_unit_test(test_sync_review_fixes  Infra)
 
 # Quality round (May 2026): coverage for actions added in I18-I27.
 opentodo_add_unit_test(test_taskviewmodel_actions     App)
@@ -286,6 +289,15 @@ set_tests_properties(test_inapp_banner_smoke PROPERTIES
 opentodo_add_unit_test(test_task_lifecycle                App)
 opentodo_add_unit_test(test_settings_export_import        App)
 
+# QML component behaviour regressions (reminder save, DatePicker ISO quick
+# buttons, QuickAdd picker override + NLP, EditorMetaRow label bindings).
+opentodo_add_unit_test(test_qml_component_regressions     App)
+target_link_libraries(test_qml_component_regressions PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_qml_component_regressions PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_qml_component_regressions>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Quality round 2.14: ProjectView/TrashView/AIView smoke (3 in one) +
 # recurrence engine advance() chain & extreme edges.
 opentodo_add_unit_test(test_views_smoke                   App)
@@ -343,6 +355,14 @@ set_tests_properties(test_taskitem_drag_handler PROPERTIES
 opentodo_add_unit_test(test_selectedtask_uaf              App)
 opentodo_add_unit_test(test_reminder_cascade_cancel       Infra)
 opentodo_add_unit_test(test_recurrence_advance_chain      Domain)
+# F4 bug-fix pass: QuickAdd/DateParser phrase boundaries (title kept, time
+# tails, BYDAY first date, bare numbers, BYMONTHDAY=-1, en→ru fallback);
+# reminder firing semantics (cancel on completion, pending-only cancel,
+# reminderFired at fire time, mobile push gate, stub timers, geofence state);
+# CLI id-prefix / Trash resolution.
+opentodo_add_unit_test(test_nlp_title_preservation        Domain)
+opentodo_add_unit_test(test_reminder_fire_semantics       Infra)
+opentodo_add_unit_test(test_cli_core                      Infra)
 
 # Quality round 2.15: AchievementUnlocked wiring (in main.cpp + VM) +
 # Pomodoro full N-cycle session integration. (Q2.15-B/C/E hit rate limit.)
@@ -579,6 +599,11 @@ opentodo_add_unit_test(test_syncengine_lifecycle          Infra)
 #   2. karmaScore double-counts on toggle (uncomplete → recomplete adds
 #      +2) while completedToday only counts +1 — karma is farmable.
 opentodo_add_unit_test(test_karma_rollover                App)
+# Fix pass (ViewModels): navigation/project scope, saved filters, karma goal
+# crossing via completeTask, Upcoming/priority sort, reorder autosave, subtask
+# rows in flat views, settings NOTIFY diffing, purge signals, snooze, bulk-move
+# undo, undo re-entrancy, selection survival across a store reload.
+opentodo_add_unit_test(test_viewmodel_fixpass             App)
 
 # Quality round 2.17-D: SnapshotManager compaction equivalence property
 # test. Replay-A == Replay-B-then-compact == Load-snapshot-then-tail. SURFACED
@@ -757,6 +782,17 @@ set_tests_properties(test_desktop_narrow_layout PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# Behavioural pins for the desktop shell: TaskEditor follows selectedTask,
+# full-page views get an editor host, Ctrl+1..6 / Shift+T handlers work, and
+# NotificationsView's kind → icon mapping follows Notification::Kind.
+# Same environment shape as test_desktop_narrow_layout.
+opentodo_add_unit_test(test_desktop_shell_behaviour       App)
+target_link_libraries(test_desktop_shell_behaviour PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_desktop_shell_behaviour PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_desktop_shell_behaviour>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Pins the QVariantMap shape of ProjectViewModel::childProjects() — the
 # QML side iterates this list as a JS array (`.length`, `[i].id`,
 # `[i].isArchived`). Returning QVariant::fromValue(Project*) entries
@@ -819,6 +855,16 @@ opentodo_add_unit_test(test_todoist_importer_robustness   Infra)
 # branch. Surfaces 3 gaps (section-id, dueRecurrenceRule, in-csv dedup) via
 # qInfo + pinned assertions, no production-code edits.
 opentodo_add_unit_test(test_todoist_importer_pro          Infra)
+
+# Storage / import data-integrity fixes (F2): purge keeps tombstones, no
+# load-time tombstone pruning, single Inbox after merge, restore re-homing,
+# label index without tombstones; FileManager import/unreadable-file/no-op-save
+# guards; Todoist ZIP hardening, cross-CSV section ids, local due dates.
+# test_filemanager_retention existed but was never registered.
+opentodo_add_unit_test(test_datastore_tombstones          Infra)
+opentodo_add_unit_test(test_filemanager_load_guards       Infra)
+opentodo_add_unit_test(test_todoist_import_hardening      Infra)
+opentodo_add_unit_test(test_filemanager_retention         Infra)
 
 # Q2.26-B: Unicode NFC/NFD normalization for search. Covers the pure
 # TextSearch helper (NFKC + Mn-strip + case fold) plus SearchViewModel and

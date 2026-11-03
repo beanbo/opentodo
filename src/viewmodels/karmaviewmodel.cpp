@@ -47,11 +47,37 @@ KarmaViewModel::KarmaViewModel(DataStore *store, QObject *parent)
             // test in test_karma_streak_persistence.cpp.
             m_lastStreakIncrementDate = QDate::fromString(stored, Qt::ISODate);
         }
+        // V3: same persistence for the weekly-streak dedup / gap detection.
+        const QString storedWeek = s.value(
+            QStringLiteral("karma/lastWeeklyStreakWeekStart")).toString();
+        if (!storedWeek.isEmpty())
+            m_lastWeeklyStreakWeekStart = QDate::fromString(storedWeek, Qt::ISODate);
     }
 
     connect(m_store, &DataStore::tasksChanged, this, &KarmaViewModel::onTasksChanged);
     connect(m_store, &DataStore::settingsChanged, this, &KarmaViewModel::karmaChanged);
     updateCompletionCounts();
+    m_prevCompletedToday    = m_completedToday;
+    m_prevCompletedThisWeek = m_completedThisWeek;
+    m_goalBaselineDate      = QDate::currentDate();
+    m_goalBaselineWeekStart = m_weekStartDate;
+}
+
+void KarmaViewModel::rollGoalBaselineToCalendar()
+{
+    // V3: the goal-crossing baseline is "the counts as of the previous
+    // completion EVENT". On a new day (or a new week) nothing has been
+    // completed in the new window by an event yet, so the baseline restarts
+    // at 0 — otherwise yesterday's tally would mask today's first crossing.
+    const QDate today = QDate::currentDate();
+    if (m_goalBaselineDate != today) {
+        m_goalBaselineDate = today;
+        m_prevCompletedToday = 0;
+    }
+    if (m_goalBaselineWeekStart != m_weekStartDate) {
+        m_goalBaselineWeekStart = m_weekStartDate;
+        m_prevCompletedThisWeek = 0;
+    }
 }
 
 int KarmaViewModel::karmaScore() const
@@ -217,9 +243,20 @@ void KarmaViewModel::onTaskCompleted()
     int score = oldScore + 1;
     m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore), score);
 
-    const int prevToday  = m_completedToday;
-    const int prevWeekly = m_completedThisWeek;
+    // V3: compare against the counts as of the PREVIOUS completion event,
+    // not against m_completedToday. In the real app completeTask() →
+    // markTaskFieldsModified() emits tasksChanged synchronously, so
+    // onTasksChanged() has already recounted (including this completion)
+    // before taskChanged reaches us — "prev = m_completedToday" was then
+    // already incremented and the crossing check could never pass: goal
+    // bonuses and streaks never fired outside the unit tests (which set the
+    // flag directly, without a store signal).
     updateCompletionCounts();
+    rollGoalBaselineToCalendar();
+    const int prevToday  = m_prevCompletedToday;
+    const int prevWeekly = m_prevCompletedThisWeek;
+    m_prevCompletedToday    = m_completedToday;
+    m_prevCompletedThisWeek = m_completedThisWeek;
 
     const int dGoal = dailyGoal();
     const int wGoal = weeklyGoal();
@@ -271,8 +308,33 @@ void KarmaViewModel::onTaskCompleted()
         score += 10;
         m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore), score);
 
-        int streak = weeklyStreak() + 1;
-        m_store->setSetting(QLatin1String(SettingsKeys::WeeklyStreak), streak);
+        // V3: the weekly streak used to be weeklyStreak()+1 unconditionally,
+        // so it never reset after a missed week. Mirror the daily logic with
+        // a persisted "week of the last bump": same week → no bump, previous
+        // week → extend, a longer gap → restart at 1 (vacation mode keeps it).
+        const QDate thisWeek = m_weekStartDate;
+        if (m_lastWeeklyStreakWeekStart != thisWeek) {
+            int streak;
+            if (!m_lastWeeklyStreakWeekStart.isValid()) {
+                // No recorded bump (fresh install, or an install that predates
+                // this field): extend whatever is stored (0 → 1) rather than
+                // wiping an upgraded user's existing streak.
+                streak = weeklyStreak() + 1;
+            } else if (m_lastWeeklyStreakWeekStart.daysTo(thisWeek) < 14) {
+                // The previous week (< 14 rather than == 7 tolerates the user
+                // changing the week-start day in between).
+                streak = weeklyStreak() + 1;
+            } else {
+                const bool onVacation = m_store->setting(
+                    QLatin1String(SettingsKeys::VacationMode)).toBool();
+                streak = onVacation ? (weeklyStreak() + 1) : 1;
+            }
+            m_store->setSetting(QLatin1String(SettingsKeys::WeeklyStreak), streak);
+            m_lastWeeklyStreakWeekStart = thisWeek;
+            QSettings s;
+            s.setValue(QStringLiteral("karma/lastWeeklyStreakWeekStart"),
+                       thisWeek.toString(Qt::ISODate));
+        }
     }
 
     updateKarmaLevel();
@@ -300,9 +362,11 @@ void KarmaViewModel::resetAllKarma()
     // would re-load the stale date and the post-reset behaviour would
     // diverge from "as if installed fresh".
     m_lastStreakIncrementDate = QDate();
+    m_lastWeeklyStreakWeekStart = QDate();
     {
         QSettings s;
         s.remove(QStringLiteral("karma/lastStreakIncrementDate"));
+        s.remove(QStringLiteral("karma/lastWeeklyStreakWeekStart"));
     }
 
     // Reset DataStore-backed karma fields
@@ -333,9 +397,18 @@ void KarmaViewModel::onTaskUncompleted()
     // restarts. Now mirror onTaskCompleted's threshold-cross arithmetic
     // in reverse, snapshotting prev counts before the refresh so we
     // can detect the un-crossing.
-    const int prevToday  = m_completedToday;
-    const int prevWeekly = m_completedThisWeek;
+    //
+    // V3: "prev" is the baseline from the previous completion event (see
+    // onTaskCompleted) — the store's tasksChanged has usually recounted
+    // already by the time we run. This also makes un-completing a task that
+    // was completed on an EARLIER day a no-op for the goal (the baseline and
+    // the recount agree), instead of a phantom un-cross.
     updateCompletionCounts();
+    rollGoalBaselineToCalendar();
+    const int prevToday  = m_prevCompletedToday;
+    const int prevWeekly = m_prevCompletedThisWeek;
+    m_prevCompletedToday    = m_completedToday;
+    m_prevCompletedThisWeek = m_completedThisWeek;
 
     const int dGoal = dailyGoal();
     const int wGoal = weeklyGoal();
@@ -346,21 +419,25 @@ void KarmaViewModel::onTaskUncompleted()
     if (dGoal > 0 && prevToday >= dGoal && m_completedToday < dGoal) {
         score -= 5;
         // Decrement the streak counter (floor 0). Symmetric with the
-        // +1 increment in onTaskCompleted, though we can't perfectly
-        // restore the prior streak value because the "before this
-        // crossing" state isn't snapshotted anywhere — but un-crossing
-        // means today's goal isn't met any more, so the streak should
-        // reflect that.
+        // +1 increment in onTaskCompleted — un-crossing means today's goal
+        // isn't met any more, so the streak should reflect that.
         const int newStreak = qMax(0, dailyStreak() - 1);
         m_store->setSetting(QLatin1String(SettingsKeys::DailyStreak), newStreak);
 
-        // Wipe the dedup date so a subsequent re-cross today can fire
-        // the streak logic again. Without this, m_lastStreakIncrementDate
-        // would still equal today and the re-cross would silently NOT
-        // bump the streak, permanently losing the increment.
-        m_lastStreakIncrementDate = QDate();
+        // Roll the dedup date back so a re-cross today fires the streak logic
+        // again AND extends the restored streak. Wiping it to invalid (the old
+        // behaviour) sent the re-cross down the "first ever" branch, which
+        // reset a 30-day streak to 1. A remaining streak > 0 means the bump we
+        // are undoing continued from yesterday.
         QSettings s;
-        s.remove(QStringLiteral("karma/lastStreakIncrementDate"));
+        if (newStreak > 0) {
+            m_lastStreakIncrementDate = QDate::currentDate().addDays(-1);
+            s.setValue(QStringLiteral("karma/lastStreakIncrementDate"),
+                       m_lastStreakIncrementDate.toString(Qt::ISODate));
+        } else {
+            m_lastStreakIncrementDate = QDate();
+            s.remove(QStringLiteral("karma/lastStreakIncrementDate"));
+        }
     }
 
     // Weekly threshold un-cross.
@@ -368,6 +445,16 @@ void KarmaViewModel::onTaskUncompleted()
         score -= 10;
         const int newStreak = qMax(0, weeklyStreak() - 1);
         m_store->setSetting(QLatin1String(SettingsKeys::WeeklyStreak), newStreak);
+        // Same roll-back as the daily dedup date above.
+        QSettings s;
+        if (newStreak > 0) {
+            m_lastWeeklyStreakWeekStart = m_weekStartDate.addDays(-7);
+            s.setValue(QStringLiteral("karma/lastWeeklyStreakWeekStart"),
+                       m_lastWeeklyStreakWeekStart.toString(Qt::ISODate));
+        } else {
+            m_lastWeeklyStreakWeekStart = QDate();
+            s.remove(QStringLiteral("karma/lastWeeklyStreakWeekStart"));
+        }
     }
 
     m_store->setSetting(QLatin1String(SettingsKeys::KarmaScore), qMax(0, score));
@@ -384,8 +471,10 @@ void KarmaViewModel::updateCompletionCounts()
 {
     const QDate today = QDate::currentDate();
 
-    // B-3.18: read week-start day from settings (1 = Monday … 7 = Sunday,
-    // matching Qt's dayOfWeek() convention).  Default to Monday (1) if unset.
+    // B-3.18 / V10: week-start day is canonical ISO 1..7 (1 = Monday …
+    // 7 = Sunday, matching Qt's dayOfWeek()). A legacy 0 (older UI builds
+    // wrote 0 for Monday), an unset key, or any other out-of-range value
+    // means Monday.
     const int configuredWeekStart = m_store->setting(
         QLatin1String(SettingsKeys::WeekStart)).toInt();
     const int weekStartDay = (configuredWeekStart >= 1 && configuredWeekStart <= 7)
@@ -395,6 +484,7 @@ void KarmaViewModel::updateCompletionCounts()
     // Compute days since the configured week start.
     int daysSinceWeekStart = (dow - weekStartDay + 7) % 7;
     const QDate weekStart = today.addDays(-daysSinceWeekStart);
+    m_weekStartDate = weekStart;
 
     m_completedToday = 0;
     m_completedThisWeek = 0;
@@ -411,9 +501,10 @@ void KarmaViewModel::updateCompletionCounts()
             ++m_completedThisWeek;
     }
 
-    // Keep previous counts in sync for goal-crossing detection (B-3.15).
-    m_prevCompletedToday    = m_completedToday;
-    m_prevCompletedThisWeek = m_completedThisWeek;
+    // V3: the goal-crossing baseline (m_prevCompleted*) is deliberately NOT
+    // updated here — this runs on every store tasksChanged, which in the real
+    // app precedes onTaskCompleted() and would erase the "before" value.
+    // Only the completion-event handlers advance it.
 }
 
 void KarmaViewModel::updateKarmaLevel()

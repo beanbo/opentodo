@@ -57,6 +57,7 @@ void WasmNotificationService::scheduleNotification(const QString &title, const Q
         }
         // Within the 1-hour grace window — fire immediately.
         showNotification(title, body, id);
+        emit scheduledNotificationFired(id, title, body);
         return;
     }
 
@@ -72,11 +73,22 @@ void WasmNotificationService::scheduleNotification(const QString &title, const Q
     connect(entry.timer, &QTimer::timeout, this, [this, id]() {
         auto it = m_scheduled.find(id);
         if (it != m_scheduled.end()) {
-            showNotification(it->title, it->body, it->id);
+            // The interval was clamped to INT_MAX ms (~24.8 days): re-arm with
+            // the remaining time instead of firing a far-future reminder early.
+            const qint64 remaining = QDateTime::currentDateTime().msecsTo(it->when);
+            if (remaining > 0) {
+                it->timer->start(static_cast<int>(qMin(remaining, qint64(INT_MAX))));
+                return;
+            }
+            const QString title = it->title;
+            const QString body  = it->body;
             if (it->timer) {
                 it->timer->deleteLater();
             }
             m_scheduled.erase(it);
+            showNotification(title, body, id);
+            // The real "it fired" event — ReminderScheduler logs it.
+            emit scheduledNotificationFired(id, title, body);
         }
     });
 

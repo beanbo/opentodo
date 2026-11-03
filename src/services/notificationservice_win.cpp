@@ -417,6 +417,7 @@ void WindowsNotificationService::scheduleNotification(const QString &title, cons
         }
         // Within the 1-hour grace window — fire immediately.
         showNotification(title, body, id);
+        emit scheduledNotificationFired(id, title, body);
         return;
     }
 
@@ -571,10 +572,14 @@ void WindowsNotificationService::onScheduledNotificationDue(const QString &id)
         return;
     }
 
-    showNotification(it->title, it->body, it->id);
+    const QString title = it->title;
+    const QString body  = it->body;
     if (it->timer)
         it->timer->deleteLater();
     m_scheduled.erase(it);
+    showNotification(title, body, id);
+    // The real "it fired" event — ReminderScheduler logs it as a reminder.
+    emit scheduledNotificationFired(id, title, body);
 }
 
 #endif // Q_OS_WIN

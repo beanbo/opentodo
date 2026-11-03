@@ -97,7 +97,9 @@ MSheet {
         Loader { sourceComponent: actionRow; width: parent.width - 20
             onLoaded: { item.actIcon = "note"; item.actLabel = qsTr("Открыть"); item.onTrigger = function(){ root.openRequested(root.taskId); root.open = false } } }
         Loader { sourceComponent: actionRow; width: parent.width - 20
-            onLoaded: { item.actIcon = "check-circle"; item.actColor = ThemeManager.successColor; item.actLabel = root.taskCompleted ? qsTr("Снять отметку") : qsTr("Выполнить"); item.onTrigger = function(){ root.toggleCompleteRequested(root.taskId); root.open = false } } }
+            // actLabel via Qt.binding: a plain assignment froze the label at the
+            // first-loaded task's state, so a completed task still said "Выполнить".
+            onLoaded: { item.actIcon = "check-circle"; item.actColor = ThemeManager.successColor; item.actLabel = Qt.binding(function() { return root.taskCompleted ? qsTr("Снять отметку") : qsTr("Выполнить") }); item.onTrigger = function(){ root.toggleCompleteRequested(root.taskId); root.open = false } } }
         Loader { sourceComponent: actionRow; width: parent.width - 20
             onLoaded: { item.actIcon = "list"; item.actLabel = qsTr("Выделить несколько"); item.onTrigger = function(){ root.selectMultipleRequested(root.taskId); root.open = false } } }
         Loader { sourceComponent: actionRow; width: parent.width - 20

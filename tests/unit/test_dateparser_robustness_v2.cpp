@@ -32,10 +32,9 @@
 //       actually returns invalid). Pinned.
 //   B7  FIXED ru "завтра в 25:00" — explicit out-of-range time now rejects
 //       the whole expression (valid=false).
-//   B9  ru "послезавтра в 9 утра" — datetime is parsed but the "утра"
-//       suffix is ignored; current behaviour is "9:00" (which happens to
-//       be correct for утра, but documenting the quirk: "9 вечера" would
-//       also produce 9:00, not 21:00).
+//   B9  FIXED ru "послезавтра в 9 утра" — 09:00. The day-part markers are
+//       understood now ("в 9 вечера" = 21:00, "в 3 дня" = 15:00; see
+//       test_nlp_title_preservation).
 //   B10 FIXED ru "в субботу через 3 недели" — weekday-first + "через N <unit>"
 //       tail is parsed; date snaps to the next Saturday then advances by the
 //       offset.
@@ -203,10 +202,8 @@ private slots:
     }
 
     // B9: "послезавтра в 9 утра" — should be REF + 2 days at 09:00. The
-    // simple-day handler matches "послезавтра", then tryParseTime parses
-    // "в 9". The "утра" word is not understood — but since 9 < 12, the
-    // result happens to be correct (09:00). Pin this AND document the
-    // quirk that "9 вечера" would also produce 09:00, not 21:00.
+    // " в 9 утра" time tail is split off, the simple-day handler matches
+    // "послезавтра", and tryParseTime maps the "утра" day-part to am.
     void ru_poslezavtra_v_9_utra()
     {
         const auto r = DateParser::parseRussian(
@@ -214,8 +211,7 @@ private slots:
         qInfo() << "ru 'послезавтра в 9 утра'"
                 << "valid=" << r.valid
                 << "date=" << r.date
-                << "datetime=" << r.datetime
-                << "(NOTE: parser ignores 'утра'; '9 вечера' would also be 09:00)";
+                << "datetime=" << r.datetime;
         QVERIFY(r.valid);
         QCOMPARE(r.date, QStringLiteral("2026-05-17"));
         QVERIFY2(r.datetime.startsWith(QStringLiteral("2026-05-17T09:00")),

@@ -28,8 +28,8 @@
 //      fast-return; state.json is uploaded unconditionally on every call.
 //      That is the intentional B-2.X (commented "main payload for the user"
 //      in syncengine.cpp:112-116).
-//   6. Empty pull — pull() when remoteHead == localHead. Pinned: does NOT
-//      re-download state.json (early-return at syncengine.cpp:183-189).
+//   6. Empty pull — pull() when remoteHead == localHead. Pinned (S5): still
+//      downloads + merges state.json (no commits ≠ no snapshot changes).
 //   7. Device-id stability — m_deviceId is loaded from QSettings under
 //      "sync/device_id". If QSettings is wiped, the next engine generates
 //      a NEW deviceId. Pinned via direct settings manipulation.
@@ -480,14 +480,16 @@ private slots:
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // SLOT 2 — Empty pull: remoteHead == localHead → no state.json download
+    // SLOT 2 — Pull with remoteHead == localHead still merges state.json
     //
-    // Contract: pull() at syncengine.cpp:183-189 returns Synced + sets
-    // lastSyncTime + releases the lock WITHOUT downloading state.json when
-    // remote HEAD equals local HEAD. Pin this so a regression that drops
-    // the equality check (and unconditionally re-downloads) is caught.
+    // Contract (S5, replaces the old "no state.json download" pin): equal
+    // HEADs only mean there are no new COMMITS to replay. Production pushes
+    // whole-state snapshots without creating commits, so the old early-return
+    // made pull() (and "reload from Drive") a no-op that never picked up peers'
+    // changes. pull() now downloads state.json, merges it, sets lastSyncTime,
+    // releases the lock and emits syncCompleted.
     // ════════════════════════════════════════════════════════════════════════
-    void empty_pull_when_heads_match_does_not_redownload_state()
+    void empty_pull_when_heads_match_still_merges_state()
     {
         useUniqueSettings(QStringLiteral("emptyPullSameHead"));
         DataStore store;
@@ -542,9 +544,18 @@ private slots:
         mock.registerJsonResponse(QStringLiteral("HEAD-id?alt=media"),
                                   200, headObj);
 
-        // Sanity: do NOT register state.json — if pull() asks for it the test
-        // shows a mock-default empty body and the assertion below catches the
-        // regression.
+        // A peer pushed a snapshot (no commit) containing a task we lack.
+        QJsonObject remoteState;
+        remoteState[QStringLiteral("tasks")] =
+            QJsonArray{makeTaskJson(QStringLiteral("peer-1"), QStringLiteral("From peer"))};
+        for (const char *k : {"projects", "sections", "labels", "filters",
+                              "reminders", "comments"})
+            remoteState[QLatin1String(k)] = QJsonArray();
+        remoteState[QStringLiteral("settings")] = QJsonObject();
+        mock.registerJsonResponse(QStringLiteral("name = 'state.json'"),
+                                  200, driveFindResponse(QStringLiteral("STATE-id")));
+        mock.registerJsonResponse(QStringLiteral("STATE-id?alt=media"),
+                                  200, remoteState);
 
         QSignalSpy syncCompletedSpy(&engine, &SyncEngine::syncCompleted);
         QSignalSpy lastSyncTimeSpy(&engine, &SyncEngine::lastSyncTimeChanged);
@@ -552,47 +563,21 @@ private slots:
 
         QCOMPARE(engine.status(), SyncEngine::Synced);
 
-        // CONTRACT: on the equal-HEAD branch (syncengine.cpp:183-189) the
-        // engine MUST NOT request log/ or state.json. The branch returns
-        // immediately after updating lastSyncTime.
-        const int stateAltMediaCalls = mock.countCallsContaining(
-            QStringLiteral("state.json"));
-        const int logListCalls = mock.countCallsContaining(
-            QStringLiteral("/files?q="));
-
-        // The current MockNAM doesn't see /files?q=... for the state.json
-        // download (because pull bails BEFORE listFiles + downloadFile).
-        // We assert no alt=media call for state.json was issued.
         bool sawStateMediaCall = false;
         for (const auto &c : mock.calls) {
-            const QString s = c.url.toString();
-            if (s.contains(QLatin1String("alt=media"))
-                && !s.contains(QLatin1String("HEAD-id"))) {
+            if (c.url.toString().contains(QLatin1String("STATE-id?alt=media"))) {
                 sawStateMediaCall = true;
                 break;
             }
         }
-        QVERIFY2(!sawStateMediaCall,
-                 "pull() on equal-HEAD branch must NOT re-download state.json. "
-                 "Regression of the syncengine.cpp:183-189 guard.");
+        QVERIFY2(sawStateMediaCall,
+                 "pull() with an unchanged HEAD must still download state.json (S5).");
+        QVERIFY2(store.taskById(QStringLiteral("peer-1")) != nullptr,
+                 "the peer's snapshot-only change must be merged into the local store");
 
-        // lastSyncTime MUST have been updated on the equal-HEAD branch.
         QVERIFY(engine.lastSyncTime().isValid());
         QVERIFY(lastSyncTimeSpy.count() >= 1);
-
-        // syncCompleted is NOT emitted on the equal-HEAD branch — see
-        // syncengine.cpp:188 which transitions to Synced + returns without
-        // emitting syncCompleted. Document this asymmetry.
-        qInfo() << "pull() equal-HEAD branch: syncCompleted fired"
-                << syncCompletedSpy.count()
-                << "time(s) (currently NOT emitted on the early-return branch — "
-                   "syncengine.cpp:188 only calls setStatus + lastSyncTimeChanged. "
-                   "If a future change makes pull always emit syncCompleted, expect 1.)";
-
-        // Bookkeeping: silence the unused-variable warnings on the two
-        // observation counts above.
-        Q_UNUSED(stateAltMediaCalls);
-        Q_UNUSED(logListCalls);
+        QCOMPARE(syncCompletedSpy.count(), 1);
     }
 
     // ════════════════════════════════════════════════════════════════════════

@@ -16,8 +16,12 @@ class Telemetry;
  *  - Per-field LWW register: the field with the greater HLC wins (deviceId
  *    is the tiebreak when HLC timestamps are equal).
  *  - OR-Set semantics for "labels" (add-wins with per-element addedAt/removedAt).
- *  - Tombstones always win: is_deleted=true on either side → deleted entity.
- *  - Settings: whole-object LWW (remote wins), unchanged.
+ *  - Tombstones win: is_deleted=true on either side → deleted entity, unless
+ *    the live side carries a strictly newer `_meta.is_deleted` stamp (an
+ *    explicit restore from Trash / undo-delete).
+ *  - "labels" without OR-Set elements: scalar per-field LWW on its stamp.
+ *  - Settings: per-key LWW on the top-level `settings_meta` stamps; keys
+ *    stamped on neither side keep the legacy rule (remote wins if present).
  *  - Legacy entities without "_meta": fall back to whole-object LWW on
  *    updated_at, same as before.
  */
@@ -48,7 +52,17 @@ public:
     QJsonObject mergeEntity(const QJsonObject &local, const QJsonObject &remote,
                             const QString &entityType = {});
 
+    // Highest acceptable HLC stamp in a state snapshot (entity `_meta` incl.
+    // OR-Set elements, plus `settings_meta`); empty when none. SyncEngine
+    // advances the local HLC past it after every merge (S4).
+    static QString maxHlc(const QJsonObject &state);
+
 private:
+    // Per-key LWW merge of the `settings` blob using the top-level
+    // `settings_meta` stamps written by DataStore (S1).
+    void mergeSettings(const QJsonObject &local, const QJsonObject &remote,
+                       QJsonObject &mergedSettings, QJsonObject &mergedMeta);
+
     // CRDT per-field merge (used when either entity has "_meta").
     QJsonObject resolveWithCrdt(const QJsonObject &local, const QJsonObject &remote);
 

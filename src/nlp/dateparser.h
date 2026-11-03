@@ -46,6 +46,9 @@ public:
 
 private:
     static DateParseResult tryParseTime(const QString &input, DateParseResult result);
+    // First date >= reference whose weekday is listed in the rule's BYDAY
+    // part; `reference` itself when the rule has no (parseable) BYDAY.
+    static QDate firstBydayOnOrAfter(const QString &recurrenceRule, const QDate &reference);
     static QString formatDate(const QDate &date);
     static QString formatDateTime(const QDateTime &dt);
 };

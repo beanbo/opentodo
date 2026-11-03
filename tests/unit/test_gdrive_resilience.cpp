@@ -1070,6 +1070,194 @@ private slots:
                      "Sent body (%1 B) must be at least as large as input (%2 B)")
                      .arg(sent.size()).arg(bigData.size())));
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // S7 — a FAILED lookup is not "not found"
+    //
+    // waitForReply used to return {} on 5xx / 429 / 403 and findFileId mapped
+    // that to "no such file": uploadFile then created a duplicate state.json,
+    // findOrCreateFolder a second folder, and downloadFile(notFoundIsOk)
+    // reported "no remote file" (which let push() overwrite peers' data).
+    // ════════════════════════════════════════════════════════════════════════
+    void s7_lookup_error_is_not_treated_as_not_found()
+    {
+        useUniqueSettings(QStringLiteral("s7LookupError"));
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-s7"));
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-id")));
+        mock.registerJsonResponse(QStringLiteral("name = 'state.json'"), 503, QJsonObject());
+        mock.registerJsonResponse(QStringLiteral("name = 'log'"), 500, QJsonObject());
+        QJsonObject created;
+        created.insert(QStringLiteral("id"), QStringLiteral("dup-id"));
+        mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"), 200, created);
+        mock.registerJsonResponse(QStringLiteral("/drive/v3/files"), 200, created);
+
+        auto creates = [&mock]() {
+            int n = 0;
+            for (const auto &c : mock.calls)
+                if (c.op == QNetworkAccessManager::PostOperation) ++n;
+            return n;
+        };
+
+        QVERIFY(!client.uploadFile(QStringLiteral("state.json"), QByteArrayLiteral("{}")));
+        QByteArray data;
+        QVERIFY2(!client.downloadFile(QStringLiteral("state.json"), data, /*notFoundIsOk=*/true),
+                 "a failed lookup must be an error even under notFoundIsOk");
+        QVERIFY(!client.uploadFile(QStringLiteral("log/c.json"), QByteArrayLiteral("{}")));
+        QVERIFY(!client.downloadFile(QStringLiteral("log/c.json"), data, /*notFoundIsOk=*/true));
+        QCOMPARE(creates(), 0);   // no duplicate file, no second folder
+    }
+
+    void s7_root_lookup_error_does_not_create_second_root()
+    {
+        useUniqueSettings(QStringLiteral("s7RootError"));
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-s7root"));
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"), 500, QJsonObject());
+        QJsonObject created;
+        created.insert(QStringLiteral("id"), QStringLiteral("second-root"));
+        mock.registerJsonResponse(QStringLiteral("/drive/v3/files"), 200, created);
+
+        QVERIFY(!client.ensureRootFolder());
+        QVERIFY(!client.acquireLock());
+        for (const auto &c : mock.calls)
+            QVERIFY2(c.op != QNetworkAccessManager::PostOperation,
+                     "a failed root lookup must not create another opentodo_data folder");
+    }
+
+    // S7 — the cached root id is re-resolved per sync session and dropped on
+    // sign-out, so an account switch / trashed folder doesn't stick forever.
+    void s7_root_folder_cache_is_invalidated()
+    {
+        useUniqueSettings(QStringLiteral("s7RootCache"));
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-s7cache"));
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+        mock.defaultResponse.body =
+            QJsonDocument(driveEmptyFindResponse()).toJson(QJsonDocument::Compact);
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-A")));
+        QVERIFY(client.ensureRootFolder());
+
+        auto lastLockLookupHas = [&mock](const QString &needle) {
+            for (int i = mock.calls.size() - 1; i >= 0; --i) {
+                const QString d = QString::fromUtf8(QByteArray::fromPercentEncoding(
+                    mock.calls.at(i).url.toString().toUtf8()));
+                if (d.contains(QStringLiteral("name = '.lock'")))
+                    return d.contains(needle);
+            }
+            return false;
+        };
+
+        // Folder replaced on Drive (e.g. old one trashed): next session sees it.
+        mock.responses.clear();
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-B")));
+        QJsonObject created;
+        created.insert(QStringLiteral("id"), QStringLiteral("lock-id"));
+        mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"), 200, created);
+        QVERIFY(client.acquireLock());
+        QVERIFY(lastLockLookupHas(QStringLiteral("'root-B' in parents")));
+
+        // Sign-out + new account: the cached id is dropped.
+        client.signOut();
+        client.setAccessToken(QStringLiteral("valid-token-other-account"));
+        mock.responses.clear();
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-C")));
+        const int before = mock.calls.size();
+        QVERIFY(client.ensureRootFolder());
+        QVERIFY2(mock.calls.size() > before, "ensureRootFolder must re-query after sign-out");
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // S8 — the root folder lookup only adopts the user's own My Drive folder
+    // ════════════════════════════════════════════════════════════════════════
+    void s8_root_lookup_is_pinned_to_owned_my_drive_folder()
+    {
+        useUniqueSettings(QStringLiteral("s8RootQuery"));
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-s8"));
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-id")));
+        QVERIFY(client.ensureRootFolder());
+
+        QString rootQuery;
+        for (const auto &c : mock.calls) {
+            const QString d = QString::fromUtf8(QByteArray::fromPercentEncoding(
+                c.url.toString().toUtf8()));
+            if (d.contains(QStringLiteral("name = 'opentodo_data'"))) { rootQuery = d; break; }
+        }
+        QVERIFY(!rootQuery.isEmpty());
+        QVERIFY(rootQuery.contains(QStringLiteral("'me' in owners")));
+        QVERIFY(rootQuery.contains(QStringLiteral("'root' in parents")));
+        QVERIFY(rootQuery.contains(QStringLiteral("mimeType = 'application/vnd.google-apps.folder'")));
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // S9 — lock lookup / metadata failure ⇒ "cannot acquire", never "stale"
+    // ════════════════════════════════════════════════════════════════════════
+    void s9_lock_metadata_or_lookup_failure_does_not_steal_lock()
+    {
+        useUniqueSettings(QStringLiteral("s9Lock"));
+        GDriveClient client;
+        client.setAccessToken(QStringLiteral("valid-token-s9"));
+        MockNAM mock;
+        client.driveApiForTesting()->setNetworkManagerForTesting(&mock);
+        QJsonObject created;
+        created.insert(QStringLiteral("id"), QStringLiteral("our-lock"));
+
+        // (a) .lock exists but its modifiedTime GET fails.
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-id")));
+        mock.registerJsonResponse(QStringLiteral("name = '.lock'"),
+                                  200, driveFindResponse(QStringLiteral("peer-lock-id")));
+        mock.registerJsonResponse(QStringLiteral("/drive/v3/files/peer-lock-id"), 500, QJsonObject());
+        mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"), 200, created);
+        QVERIFY(!client.acquireLock());
+
+        // (b) the .lock lookup itself fails.
+        mock.responses.clear();
+        mock.registerJsonResponse(QStringLiteral("name = 'opentodo_data'"),
+                                  200, driveFindResponse(QStringLiteral("root-id")));
+        mock.registerJsonResponse(QStringLiteral("name = '.lock'"), 503, QJsonObject());
+        mock.registerJsonResponse(QStringLiteral("/upload/drive/v3/files"), 200, created);
+        QVERIFY(!client.acquireLock());
+
+        for (const auto &c : mock.calls) {
+            QVERIFY2(c.op != QNetworkAccessManager::DeleteOperation,
+                     "an unreadable lock must never be deleted as stale");
+            QVERIFY2(!c.url.toString().contains(QLatin1String("/upload/drive/v3/files")),
+                     "no lock may be written when the existing one can't be checked");
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // S10 — an OAuth redirect with no flow in progress is rejected outright
+    // (previously the state check was skipped when m_authState was empty and
+    // the code was exchanged with a stale redirect URI and no PKCE verifier).
+    // ════════════════════════════════════════════════════════════════════════
+    void s10_redirect_without_flow_is_rejected()
+    {
+        useUniqueSettings(QStringLiteral("s10NoFlow"));
+        OAuthClient auth;
+        QSignalSpy failed(&auth, &OAuthClient::authenticationFailed);
+        auth.handleAndroidRedirect(QStringLiteral(
+            "com.googleusercontent.apps.test:/oauth2redirect?code=attacker-code&state="));
+        QCOMPARE(failed.count(), 1);
+        QVERIFY2(failed.first().first().toString().contains(QStringLiteral("state")),
+                 "must be rejected by the state check, not attempt a token exchange");
+        QVERIFY(!auth.isAuthenticated());
+    }
 };
 
 QTEST_GUILESS_MAIN(TestGDriveResilience)

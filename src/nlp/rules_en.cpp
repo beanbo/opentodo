@@ -7,15 +7,28 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     DateParseResult result;
     const QString lower = input.toLower().trimmed();
 
-    // --- Simple day references (exact match or "today/tomorrow/yesterday at HH:MM") ---
+    // A trailing time clause ("… at 9am", "… at 14:30", "… at noon") is
+    // stripped into `core`, and every anchored date / recurrence rule below
+    // matches `core`, so "every day at 9am", "next monday at 3pm" and
+    // "in 3 days at 5pm" parse like their time-less forms. tryParseTime()
+    // still reads the time off the full `input`.
+    // Only a REAL time is accepted after "at": the old rules allowed any
+    // trailing words ("tomorrow at 5pm call mom"), so QuickAdd's
+    // longest-match probe swallowed the whole title into the due phrase.
+    static const QRegularExpression timeTailRe(
+        QStringLiteral("\\s+at\\s+(?:\\d{1,2}(?:[:.]\\d{2})?\\s*(?:am|pm)?|noon|midnight|midday)$"));
+    QString core = lower;
+    core.remove(timeTailRe);
+
+    // --- Simple day references (exact match, optional time tail via `core`) ---
     // "day before yesterday" is listed before "yesterday" in the alternation so that
     // the longer phrase is tried first — defensive ordering even though the anchors
     // ^...$ already prevent "yesterday" from spuriously matching "day before yesterday".
     {
         static const QRegularExpression todayAtRe(
-            QStringLiteral("^(day before yesterday|today|tomorrow|tom|yesterday)(?:\\s+at\\s+.+)?$"),
+            QStringLiteral("^(day before yesterday|today|tomorrow|tom|yesterday)$"),
             QRegularExpression::CaseInsensitiveOption);
-        const auto m = todayAtRe.match(lower);
+        const auto m = todayAtRe.match(core);
         if (m.hasMatch()) {
             const QString keyword = m.captured(1).toLower();
             if (keyword == QStringLiteral("today")) {
@@ -46,7 +59,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             QStringLiteral("^in\\s+(\\d+)\\s+(day|days|week|weeks|month|months)"
                            "(?:\\s+on\\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday"
                            "|mon|tue|wed|thu|fri|sat|sun))?$"));
-        const auto m = inNRe.match(lower);
+        const auto m = inNRe.match(core);
         if (m.hasMatch()) {
             int n = m.captured(1).toInt();
             const QString unit = m.captured(2);
@@ -89,7 +102,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
         static const QRegularExpression nextDayRe(
             QStringLiteral("^next\\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday"
                            "|mon|tue|wed|thu|fri|sat|sun)$"));
-        const auto m = nextDayRe.match(lower);
+        const auto m = nextDayRe.match(core);
         if (m.hasMatch()) {
             QString dayName = m.captured(1);
             static const QMap<QString, int> dayMap = {
@@ -125,14 +138,14 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     // The old (weekStart - currentDow + 7) % 7 formula was correct only for Monday;
     // for a mid-week target on an earlier weekday it could land in the *current*
     // week. nextWeekDay defaults to 1 (Monday) ⇒ identical to the historic behaviour.
-    if (lower == QStringLiteral("next week")) {
+    if (core == QStringLiteral("next week")) {
         const int currentDow = reference.dayOfWeek();                  // 1=Mon..7=Sun
         const int clamped = (nextWeekDay >= 1 && nextWeekDay <= 7) ? nextWeekDay : 1;
         const int daysToTarget = (8 - currentDow) + (clamped - 1);
         result.date = formatDate(reference.addDays(daysToTarget));
         result.humanString = QStringLiteral("Next week");
         result.valid = true;
-        return result;
+        return tryParseTime(input, result);
     }
 
     // --- Q3.02-D Bug 3 fix: bare nouns "weekdays" / "weekends" ---
@@ -146,7 +159,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             return reference.addDays(daysAhead);
         };
 
-        if (lower == QStringLiteral("weekdays")) {
+        if (core == QStringLiteral("weekdays")) {
             const int dow = reference.dayOfWeek();
             QDate firstDate = (dow >= 1 && dow <= 5) ? reference : firstDayOnOrAfter(1);
             result.isRecurring = true;
@@ -156,7 +169,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             result.valid = true;
             return tryParseTime(input, result);
         }
-        if (lower == QStringLiteral("weekends")) {
+        if (core == QStringLiteral("weekends")) {
             const int dow = reference.dayOfWeek();
             QDate firstDate = (dow == 6 || dow == 7) ? reference : firstDayOnOrAfter(6);
             result.isRecurring = true;
@@ -196,7 +209,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                 {QStringLiteral("fifteenth"), 15},
                 {QStringLiteral("twentieth"), 20},
                 {QStringLiteral("thirtieth"), 30},
-                {QStringLiteral("last"),     31}, // last day → BYMONTHDAY=31, engine clamps via skip-on-missing
+                // "last" is handled separately below (BYMONTHDAY=-1).
             };
             return ordinals.value(w.toLower(), 0);
         };
@@ -208,9 +221,23 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
             QStringLiteral("^(\\d{1,2}(?:st|nd|rd|th)?|first|second|third|fourth|fifth|sixth|seventh"
                            "|eighth|ninth|tenth|eleventh|twelfth|fifteenth|twentieth|thirtieth|last)"
                            "(?:\\s+day)?\\s+of\\s+(?:each|every)\\s+month$"));
-        const auto m = monthlyAnchorRe.match(lower);
+        const auto m = monthlyAnchorRe.match(core);
         if (m.hasMatch()) {
             QString token = m.captured(1);
+            if (token == QStringLiteral("last")) {
+                // "last day of every month" → RFC 5545 negative month-day
+                // BYMONTHDAY=-1 (counted back from the month end). The old
+                // BYMONTHDAY=31 made the engine SKIP every month without a
+                // 31st (Feb, Apr, Jun, Sep, Nov). First occurrence: this
+                // month's last day, which is never before `reference`.
+                const QDate first(reference.year(), reference.month(), reference.daysInMonth());
+                result.isRecurring = true;
+                result.date = formatDate(first);
+                result.recurrenceRule = QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=-1");
+                result.humanString = QStringLiteral("Last day of every month");
+                result.valid = true;
+                return tryParseTime(input, result);
+            }
             int day = 0;
             // Numeric form: "1st", "15th", "31" → strip suffix and parse.
             static const QRegularExpression numericRe(QStringLiteral("^(\\d{1,2})(?:st|nd|rd|th)?$"));
@@ -248,9 +275,9 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     {
         static const QRegularExpression everyRe(
             QStringLiteral("^every!?\\s+(.+)$"));
-        const auto m = everyRe.match(lower);
+        const auto m = everyRe.match(core);
         if (m.hasMatch()) {
-            bool fromCompletion = lower.contains(QLatin1Char('!'));
+            bool fromCompletion = core.contains(QLatin1Char('!'));
             QString what = m.captured(1).trimmed();
             result.isRecurring = true;
             result.date = formatDate(reference);
@@ -317,11 +344,22 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                         remainder = remainder.mid(6).trimmed();
                     }
 
-                    QStringList parts = remainder.split(QRegularExpression(QStringLiteral("[/,\\s]+")));
+                    // Every part must be a weekday (or an "and"/"&" joiner).
+                    // Unknown words used to be skipped, so "every monday buy
+                    // milk" parsed as a valid weekly rule and QuickAdd ate the
+                    // whole title into the due phrase.
+                    static const QRegularExpression partSepRe(QStringLiteral("[/,\\s]+"));
+                    const QStringList parts = remainder.split(partSepRe, Qt::SkipEmptyParts);
                     QStringList days;
                     for (const auto &p : parts) {
-                        if (dayAbbrev.contains(p))
-                            days.append(dayAbbrev.value(p));
+                        if (dayAbbrev.contains(p)) {
+                            const QString code = dayAbbrev.value(p);
+                            if (!days.contains(code))
+                                days.append(code);
+                        } else if (p != QStringLiteral("and") && p != QStringLiteral("&")) {
+                            days.clear();
+                            break;
+                        }
                     }
                     if (!days.isEmpty()) {
                         if (everyOther) {
@@ -347,12 +385,19 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                 }
             }
 
-            if (fromCompletion) {
+            if (fromCompletion && !result.recurrenceRule.isEmpty()) {
                 result.recurrenceRule += QStringLiteral(";FROM=COMPLETION");
                 result.humanString += QStringLiteral(" (from completion)");
             }
 
             result.valid = !result.recurrenceRule.isEmpty();
+            if (!result.valid) {
+                // Unrecognised "every …" phrase: report a clean invalid result.
+                return DateParseResult{};
+            }
+            // BYDAY rules start on the first matching weekday, not today
+            // ("every monday" typed on a Wednesday is due next Monday).
+            result.date = formatDate(firstBydayOnOrAfter(result.recurrenceRule, reference));
             return tryParseTime(input, result);
         }
     }
@@ -361,7 +406,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     {
         // ISO date
         static const QRegularExpression isoRe(QStringLiteral("^(\\d{4})-(\\d{2})-(\\d{2})$"));
-        auto m = isoRe.match(lower);
+        auto m = isoRe.match(core);
         if (m.hasMatch()) {
             QDate date(m.captured(1).toInt(), m.captured(2).toInt(), m.captured(3).toInt());
             if (date.isValid()) {
@@ -375,7 +420,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     {
         // US-style: M/D or M/D/YYYY
         static const QRegularExpression slashRe(QStringLiteral("^(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?$"));
-        auto m = slashRe.match(lower);
+        auto m = slashRe.match(core);
         if (m.hasMatch()) {
             int month = m.captured(1).toInt();
             int day = m.captured(2).toInt();
@@ -449,7 +494,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                                "|january|february|march|april|may|june|july|august"
                                "|september|october|november|december)"
                                "\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?$"));
-            const auto m = monthDayRe.match(lower);
+            const auto m = monthDayRe.match(core);
             if (m.hasMatch()) {
                 int month = monthMap.value(m.captured(1));
                 int day   = m.captured(2).toInt();
@@ -467,7 +512,7 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
                                "|january|february|march|april|may|june|july|august"
                                "|september|october|november|december)"
                                "(?:,?\\s+(\\d{4}))?$"));
-            const auto m = ordinalOfMonthRe.match(lower);
+            const auto m = ordinalOfMonthRe.match(core);
             if (m.hasMatch()) {
                 int day   = m.captured(1).toInt();
                 int month = monthMap.value(m.captured(2));
@@ -479,14 +524,22 @@ DateParseResult DateParser::parseEnglish(const QString &input, const QDate &refe
     }
 
     // --- Standalone time (implies today) ---
+    // A bare 1–2 digit number is NOT a time: "Read chapter 5" must keep its
+    // number instead of becoming "Read chapter" due 05:00. Require an "at"
+    // marker, a ":mm" part, or am/pm. "." as minutes separator only after
+    // "at" ("at 9.30") — a bare "2.10" reads as a number.
     {
         static const QRegularExpression timeOnlyRe(
-            QStringLiteral("^(?:at\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|AM|PM)?$"));
+            QStringLiteral("^(at\\s+)?(\\d{1,2})(?:([:.])(\\d{2}))?\\s*(am|pm)?$"));
         const auto m = timeOnlyRe.match(lower);
-        if (m.hasMatch()) {
-            int hour = m.captured(1).toInt();
-            int minute = m.captured(2).isEmpty() ? 0 : m.captured(2).toInt();
-            const QString ampm = m.captured(3).toLower();
+        const bool explicitTime = m.hasMatch()
+            && (!m.captured(1).isEmpty()
+                || m.captured(3) == QStringLiteral(":")
+                || !m.captured(5).isEmpty());
+        if (explicitTime) {
+            int hour = m.captured(2).toInt();
+            int minute = m.captured(4).isEmpty() ? 0 : m.captured(4).toInt();
+            const QString ampm = m.captured(5);
 
             if (ampm == QStringLiteral("pm") && hour < 12) hour += 12;
             else if (ampm == QStringLiteral("am") && hour == 12) hour = 0;

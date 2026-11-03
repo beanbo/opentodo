@@ -575,7 +575,8 @@ Rectangle {
                     Rectangle {
                         anchors.fill: parent
                         color:        ThemeManager.textColor
-                        opacity:      cellHover.containsMouse ? 0.04 : 0
+                        // HoverHandler: `hovered` (containsMouse is MouseArea-only).
+                        opacity:      cellHover.hovered ? 0.04 : 0
                         Behavior on opacity { NumberAnimation { duration: 80 } }
                     }
 
@@ -742,7 +743,7 @@ Rectangle {
                     anchors.fill: parent
                     // Q4.01 (night iter-11): theme-aware hover overlay
                     color:        ThemeManager.textColor
-                    opacity:      weekCellHover.containsMouse ? 0.04 : 0
+                    opacity:      weekCellHover.hovered ? 0.04 : 0
                     Behavior on opacity { NumberAnimation { duration: 80 } }
                 }
 
@@ -890,7 +891,7 @@ Rectangle {
                                     Rectangle {
                                         anchors.fill: parent
                                         color:        ThemeManager.textColor
-                                        opacity:      agendaTaskHover.containsMouse ? 0.04 : 0
+                                        opacity:      agendaTaskHover.hovered ? 0.04 : 0
                                         Behavior on opacity { NumberAnimation { duration: 80 } }
                                     }
 

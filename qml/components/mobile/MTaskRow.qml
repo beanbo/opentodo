@@ -144,8 +144,11 @@ Item {
             anchors.leftMargin: 22
             anchors.verticalCenter: parent.verticalCenter
             spacing: 12
-            IconSvg { anchors.verticalCenter: parent.verticalCenter; name: "check-circle"; size: 24; color: "#ffffff" }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Выполнить"); color: "#ffffff"; font.pixelSize: 14; font.weight: Font.DemiBold }
+            // Foreground on the semantic swipe backgrounds: the theme's "on
+            // colour" token (white in most themes, black in high-contrast)
+            // instead of a hardcoded #ffffff.
+            IconSvg { anchors.verticalCenter: parent.verticalCenter; name: "check-circle"; size: 24; color: ThemeManager.accentForeground }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("Выполнить"); color: ThemeManager.accentForeground; font.pixelSize: 14; font.weight: Font.DemiBold }
         }
     }
 
@@ -162,8 +165,8 @@ Item {
             Column {
                 anchors.centerIn: parent
                 spacing: 3
-                IconSvg { anchors.horizontalCenter: parent.horizontalCenter; name: "alarm"; size: 20; color: "#ffffff" }
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Отложить"); color: "#ffffff"; font.pixelSize: 11; font.weight: Font.DemiBold }
+                IconSvg { anchors.horizontalCenter: parent.horizontalCenter; name: "alarm"; size: 20; color: ThemeManager.accentForeground }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Отложить"); color: ThemeManager.accentForeground; font.pixelSize: 11; font.weight: Font.DemiBold }
             }
             MouseArea { anchors.fill: parent; onClicked: { root._close(); root.snooze() } }
         }
@@ -173,8 +176,8 @@ Item {
             Column {
                 anchors.centerIn: parent
                 spacing: 3
-                IconSvg { anchors.horizontalCenter: parent.horizontalCenter; name: "trash"; size: 20; color: "#ffffff" }
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Удалить"); color: "#ffffff"; font.pixelSize: 11; font.weight: Font.DemiBold }
+                IconSvg { anchors.horizontalCenter: parent.horizontalCenter; name: "trash"; size: 20; color: ThemeManager.accentForeground }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("Удалить"); color: ThemeManager.accentForeground; font.pixelSize: 11; font.weight: Font.DemiBold }
             }
             MouseArea { anchors.fill: parent; onClicked: { haptics.heavy(); root._close(); root.deleteTask() } }
         }

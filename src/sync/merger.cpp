@@ -113,26 +113,74 @@ void Merger::recordTombstoneAbsorbed(const QString &entityType,
 
 // ── Top-level state merge ────────────────────────────────────────────────────
 
+void Merger::mergeSettings(const QJsonObject &local, const QJsonObject &remote,
+                           QJsonObject &mergedSettings, QJsonObject &mergedMeta)
+{
+    // S1: per-key LWW. DataStore stamps every settings key it changes into the
+    // top-level `settings_meta` object ({key: {ts, dev}}, same HLC as entity
+    // _meta). Previously the remote `settings` blob replaced the local one
+    // whole whenever it was non-empty, so every push reverted this device's
+    // fresh settings (theme, karma score/streaks, collaborator profiles…) to
+    // the stale remote copy and re-uploaded it.
+    //
+    // Per key:
+    //   * both sides stamped   → newer stamp wins (value OR absence — a stamp
+    //                            on a side lacking the key records a removal);
+    //   * one side stamped     → the stamped side wins (an explicit edit made
+    //                            since stamping was introduced);
+    //   * neither side stamped → legacy behaviour: remote wins when it has the
+    //                            key, otherwise the local value is kept
+    //                            (iter-night-30: an empty / missing remote
+    //                            settings payload must never wipe local keys).
+    const QJsonObject lSet  = local.value(QStringLiteral("settings")).toObject();
+    const QJsonObject rSet  = remote.value(QStringLiteral("settings")).toObject();
+    const QJsonObject lMeta = local.value(QStringLiteral("settings_meta")).toObject();
+    const QJsonObject rMeta = remote.value(QStringLiteral("settings_meta")).toObject();
+
+    QSet<QString> keys;
+    for (const QJsonObject *o : {&lSet, &rSet, &lMeta, &rMeta})
+        for (auto it = o->constBegin(); it != o->constEnd(); ++it)
+            keys.insert(it.key());
+
+    mergedSettings = QJsonObject();
+    mergedMeta     = QJsonObject();
+    for (const QString &key : std::as_const(keys)) {
+        const QJsonObject lFm = lMeta.value(key).toObject();
+        const QJsonObject rFm = rMeta.value(key).toObject();
+
+        bool remoteWins;
+        if (lFm.isEmpty() && rFm.isEmpty()) {
+            remoteWins = rSet.contains(key);
+        } else if (lFm.isEmpty() || rFm.isEmpty()) {
+            remoteWins = !rFm.isEmpty();
+        } else {
+            // Same far-future demotion as the entity per-field path.
+            bool lClamped = false, rClamped = false;
+            remoteWins = CrdtMeta::compareFieldMeta(
+                             clampedForComparison(rFm, rClamped),
+                             clampedForComparison(lFm, lClamped)) > 0;
+        }
+
+        const QJsonObject &winSet = remoteWins ? rSet : lSet;
+        const QJsonObject &winFm  = remoteWins ? rFm  : lFm;
+        if (winSet.contains(key))
+            mergedSettings[key] = winSet.value(key);
+        if (!winFm.isEmpty())
+            mergedMeta[key] = winFm;
+    }
+}
+
 QJsonObject Merger::mergeStates(const QJsonObject &local, const QJsonObject &remote)
 {
     QJsonObject merged;
 
-    // Settings: remote wins for whole-object (per CLAUDE.md design — settings
-    // are rare and don't carry per-field _meta). iter-night-30: only adopt
-    // remote if it actually carries a settings payload. A missing or empty
-    // `settings` key on remote means the peer hasn't pushed any user settings
-    // yet (e.g. brand-new device whose state.json was bootstrapped) — taking
-    // its empty object would silently nuke the local user's entire
-    // configuration (theme, language, karma score/level/streak, AI-provider
-    // wiring, hotkeys, default project). The follow-up loadFromJson(merged)
-    // overwrites `m_settings` directly, so the loss is total — autosave then
-    // commits the cleared state to disk on the 1-second debounce.
-    const QJsonObject remoteSettings = remote.value(QStringLiteral("settings")).toObject();
-    if (!remoteSettings.isEmpty()) {
-        merged[QStringLiteral("settings")] = remoteSettings;
-    } else {
-        merged[QStringLiteral("settings")] = local.value(QStringLiteral("settings")).toObject();
-    }
+    // Settings: per-key LWW (see mergeSettings). `settings_meta` is only
+    // emitted when non-empty, mirroring DataStore::toJson.
+    QJsonObject mergedSettings, mergedSettingsMeta;
+    mergeSettings(local, remote, mergedSettings, mergedSettingsMeta);
+    merged[QStringLiteral("settings")] = mergedSettings;
+    if (!mergedSettingsMeta.isEmpty())
+        merged[QStringLiteral("settings_meta")] = mergedSettingsMeta;
 
     static const QStringList collections = {
         QStringLiteral("tasks"),
@@ -254,6 +302,55 @@ QJsonObject Merger::mergeEntity(const QJsonObject &local, const QJsonObject &rem
     const bool remoteDeleted = remote.value(QStringLiteral("is_deleted")).toBool();
     const bool localDeleted  = local.value(QStringLiteral("is_deleted")).toBool();
 
+    // S11: an explicit restore (DataStore::restoreTask / undo-delete stamp
+    // `_meta.is_deleted` when flipping it back to false) must beat the older
+    // tombstone it undoes — otherwise the next push re-deletes a task the user
+    // just restored from Trash. The live side wins ONLY when both sides carry
+    // an is_deleted stamp and the live one is strictly newer; ordinary edits
+    // never stamp is_deleted (only add / delete / restore do), so a concurrent
+    // edit on a peer that never saw the delete still loses to the tombstone.
+    if (remoteDeleted != localDeleted) {
+        const QJsonObject &live = remoteDeleted ? local  : remote;
+        const QJsonObject &dead = remoteDeleted ? remote : local;
+        const QJsonObject liveFm = CrdtMeta::getFieldMeta(live, QStringLiteral("is_deleted"));
+        const QJsonObject deadFm = CrdtMeta::getFieldMeta(dead, QStringLiteral("is_deleted"));
+        bool lc = false, dc = false;
+        if (!liveFm.isEmpty() && !deadFm.isEmpty()
+            && CrdtMeta::compareFieldMeta(clampedForComparison(liveFm, lc),
+                                          clampedForComparison(deadFm, dc)) > 0) {
+            // Per-field merge for everything else (the restore also stamped
+            // updated_at, so it wins that too), then pin the restore.
+            QJsonObject merged = resolveWithCrdt(local, remote);
+            merged[QStringLiteral("is_deleted")] = false;
+            CrdtMeta::setFieldMeta(merged, QStringLiteral("is_deleted"),
+                                   liveFm.value(QStringLiteral("ts")).toString(),
+                                   liveFm.value(QStringLiteral("dev")).toString());
+            // A purge marker only makes sense on a tombstone; never let the
+            // dead side's flag hide the restored entity.
+            merged.remove(QStringLiteral("is_purged"));
+            return merged;
+        }
+    }
+
+    if (remoteDeleted && localDeleted) {
+        // Both tombstones: keep the remote copy as before, but a permanent
+        // delete ("purged" — hidden from Trash) on EITHER side must survive.
+        // Returning remote whole used to drop a local is_purged flag, so a
+        // task deleted permanently on this device reappeared in its Trash
+        // after the next sync.
+        QJsonObject merged = remote;
+        if (local.value(QStringLiteral("is_purged")).toBool()
+            && !remote.value(QStringLiteral("is_purged")).toBool()) {
+            merged[QStringLiteral("is_purged")] = true;
+            const QJsonObject fm = CrdtMeta::getFieldMeta(local, QStringLiteral("is_purged"));
+            if (!fm.isEmpty())
+                CrdtMeta::setFieldMeta(merged, QStringLiteral("is_purged"),
+                                       fm.value(QStringLiteral("ts")).toString(),
+                                       fm.value(QStringLiteral("dev")).toString());
+        }
+        return merged;
+    }
+
     if (remoteDeleted) {
         if (!localDeleted) {
             const QString id = remote.value(QStringLiteral("id")).toString();
@@ -341,15 +438,23 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
         }
 
         // Field exists in both — resolve.
+        //
+        // S3: OR-Set merge only when at least one side carries per-element
+        // `elements` metadata. Production writes (addTask / updateTask) stamp
+        // `labels` like a scalar — `_meta.labels = {ts, dev}` with no elements
+        // — and the old no-elements fallback compared whole-entity updated_at,
+        // ignoring that field stamp: a concurrent edit of ANOTHER field on a
+        // peer (newer updated_at) wiped labels added here. Without elements the
+        // array is resolved by the scalar per-field LWW branch below, which
+        // honours the `labels` stamp and still falls back to updated_at when
+        // neither side stamped it.
+        QList<CrdtMeta::OrsElement> lElems, rElems;
         if (orSetFlds.contains(field)) {
-            // OR-Set merge.
-            const QList<CrdtMeta::OrsElement> lElems =
-                CrdtMeta::getOrSetElements(local, field);
-            const QList<CrdtMeta::OrsElement> rElems =
-                CrdtMeta::getOrSetElements(remote, field);
-
-            if (!lElems.isEmpty() || !rElems.isEmpty()) {
-                // Both (or one) have OR-Set metadata.
+            lElems = CrdtMeta::getOrSetElements(local, field);
+            rElems = CrdtMeta::getOrSetElements(remote, field);
+        }
+        if (!lElems.isEmpty() || !rElems.isEmpty()) {
+            {   // OR-Set merge — both (or one) side carries element metadata.
                 const QList<CrdtMeta::OrsElement> merged_elems =
                     CrdtMeta::mergeOrSets(lElems, rElems);
 
@@ -373,13 +478,6 @@ QJsonObject Merger::resolveWithCrdt(const QJsonObject &local, const QJsonObject 
                 merged[field] = arr;
 
                 CrdtMeta::setOrSetElements(merged, field, merged_elems, winTs, winDev);
-            } else {
-                // No OR-Set metadata on either side — fall back to LWW for this field.
-                if (localIsNewer) {
-                    // keep local value (already in merged)
-                } else {
-                    merged[field] = remote.value(field);
-                }
             }
         } else {
             // Scalar field.
@@ -528,6 +626,52 @@ QDateTime Merger::parseTimestamp(const QJsonObject &obj) const
     if (ts.isEmpty()) ts = obj[QStringLiteral("created_at")].toString();
     if (ts.isEmpty()) ts = obj[QStringLiteral("posted_at")].toString();
     return QDateTime::fromString(ts, Qt::ISODateWithMs);
+}
+
+// static
+QString Merger::maxHlc(const QJsonObject &state)
+{
+    // S4: highest HLC stamp anywhere in a state snapshot — every entity's
+    // per-field `_meta` ts (plus OR-Set element added_at/removed_at) and the
+    // per-key `settings_meta`. SyncEngine feeds it to HybridLogicalClock::update
+    // after a merge so later local edits out-rank what was just received even
+    // when this device's wall clock lags the peer's. Far-future stamps are
+    // skipped (update() would reject them and they must not poison the clock).
+    QString best;
+    auto consider = [&best](const QString &ts) {
+        if (ts.isEmpty() || !HybridLogicalClock::parse(ts).valid)
+            return;
+        if (!HybridLogicalClock::isWithinAcceptableSkew(ts, kMergerMaxSkewMs))
+            return;
+        if (best.isEmpty() || HybridLogicalClock::compare(ts, best) > 0)
+            best = ts;
+    };
+    auto scanMeta = [&consider](const QJsonObject &meta) {
+        for (auto it = meta.constBegin(); it != meta.constEnd(); ++it) {
+            const QJsonObject fm = it.value().toObject();
+            consider(fm.value(QStringLiteral("ts")).toString());
+            const QJsonArray elems = fm.value(QStringLiteral("elements")).toArray();
+            for (const auto &e : elems) {
+                const QJsonObject eo = e.toObject();
+                consider(eo.value(QStringLiteral("added_at")).toString());
+                consider(eo.value(QStringLiteral("removed_at")).toString());
+            }
+        }
+    };
+
+    static const QStringList collections = {
+        QStringLiteral("tasks"),   QStringLiteral("projects"),
+        QStringLiteral("sections"), QStringLiteral("labels"),
+        QStringLiteral("filters"), QStringLiteral("reminders"),
+        QStringLiteral("comments"),
+    };
+    for (const QString &key : collections) {
+        const QJsonArray arr = state.value(key).toArray();
+        for (const auto &v : arr)
+            scanMeta(v.toObject().value(QStringLiteral("_meta")).toObject());
+    }
+    scanMeta(state.value(QStringLiteral("settings_meta")).toObject());
+    return best;
 }
 
 bool Merger::isInternalField(const QString &key)

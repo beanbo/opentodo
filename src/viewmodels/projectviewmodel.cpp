@@ -3,9 +3,11 @@
 #include "model/project.h"
 #include "model/task.h"
 #include "services/telemetry.h"
+#include "utils/settingskeys.h"
 
 #include <QDate>
 #include <QDateTime>
+#include <QSet>
 #include <QSettings>
 #include <QTimer>
 #include <algorithm>
@@ -337,7 +339,8 @@ bool ProjectViewModel::reorderProjectById(const QString &draggedId,
     // returned false and the drag silently no-op'd. We now reuse the local
     // updateProject guards (Inbox-as-parent, cycle walk MAX_DEPTH=1000) to
     // validate the move before renumbering.
-    if (dragged->parentId() != destParent) {
+    const bool reparent = (dragged->parentId() != destParent);
+    if (reparent) {
         // Block: dragging UNDER Inbox.
         if (target->isInbox()) {
             qWarning("reorderProjectById: refused — Inbox cannot be a parent");
@@ -357,15 +360,14 @@ bool ProjectViewModel::reorderProjectById(const QString &draggedId,
             if (next == cur) break;
             cur = next;
         }
-        // OK — set the new parent. The renumber below ignores dragged's old
-        // siblings (their order stays valid as a gap-free sequence), so we
-        // only touch the destination level.
-        dragged->setParentId(destParent);
+        // OK — the new parent is applied below, only once the indices have
+        // been validated (V14).
     }
 
     // Collect every visible sibling under the destination parent, in current
     // order. Including `dragged` is fine — we sort, remove it, then re-insert
-    // at the requested slot.
+    // at the requested slot. (Membership is decided by destParent / identity,
+    // so this works before dragged's parent_id is switched.)
     QList<Project *> siblings;
     for (Project *p : std::as_const(m_projects)) {
         if (!p || p->isInbox() || p->isDeleted() || p->isArchived())
@@ -386,6 +388,15 @@ bool ProjectViewModel::reorderProjectById(const QString &draggedId,
     if (insertAt < 0) return false;
     if (!above) ++insertAt;
     siblings.insert(insertAt, dragged);
+
+    // V14: switch the parent only now that the move is known to succeed.
+    // Setting it before the index checks above left an archived/hidden
+    // target's early `return false` with a changed parent_id that was neither
+    // stamped nor notified (it then leaked out with the next unrelated save).
+    // The renumber below ignores dragged's old siblings (their order stays a
+    // valid sequence), so only the destination level is touched.
+    if (reparent)
+        dragged->setParentId(destParent);
 
     // Renumber siblings 1..N (preserving the 1-based convention used by
     // reorderProject above). Other projects' order values keep their gaps —
@@ -425,15 +436,50 @@ int ProjectViewModel::removeCompletedTasksInProject(const QString &projectId)
     Project *p = m_store->projectById(projectId);
     if (!p) return 0;
 
+    // V8: walk EVERY live task of the project, not tasksForProject() — that
+    // returns top-level tasks only, so completed subtasks of still-open
+    // parents were never removed. And removeTask() tombstones the whole
+    // descendant subtree, ACTIVE subtasks included — so a completed task that
+    // still has an active descendant is kept (removing it would silently
+    // delete open work).
+    //
+    // Active-descendant walk: depth-bounded BFS with a visited set so a
+    // pre-existing parent_id cycle can't spin forever. subtasks() already
+    // excludes tombstones.
+    auto hasActiveDescendant = [this](const Task *root) {
+        constexpr int MAX_DEPTH = 100;
+        QSet<QString> visited{root->id()};
+        QList<Task *> frontier = m_store->subtasks(root->id());
+        for (int depth = 0; !frontier.isEmpty() && depth < MAX_DEPTH; ++depth) {
+            QList<Task *> next;
+            for (Task *child : std::as_const(frontier)) {
+                if (!child || visited.contains(child->id())) continue;
+                visited.insert(child->id());
+                if (!child->isCompleted()) return true;
+                next.append(m_store->subtasks(child->id()));
+            }
+            frontier = next;
+        }
+        return false;
+    };
+
     // Collect ids first — do not mutate while iterating the live list.
     QStringList toRemove;
-    for (const Task *t : m_store->tasksForProject(projectId)) {
-        if (t && !t->isDeleted() && t->isCompleted())
-            toRemove.append(t->id());
+    for (const Task *t : m_store->allTasks()) {
+        if (!t || t->isDeleted() || !t->isCompleted()) continue;
+        if (t->projectId() != projectId) continue;
+        if (hasActiveDescendant(t)) continue;
+        toRemove.append(t->id());
     }
 
     int n = 0;
-    for (const QString &id : toRemove) {
+    for (const QString &id : std::as_const(toRemove)) {
+        const Task *t = m_store->taskById(id);
+        if (!t) continue;
+        // Already tombstoned by an ancestor's cascade earlier in this loop
+        // (every descendant of a removed task is completed, see above) —
+        // still one of the tasks this call removed.
+        if (t->isDeleted()) { ++n; continue; }
         if (m_store->removeTask(id)) ++n;
     }
 
@@ -529,10 +575,16 @@ int ProjectViewModel::weeklyCompletedForProject(const QString &projectId) const
 {
     if (projectId.isEmpty()) return 0;
 
+    // Honour the user's week start (ISO 1..7; a legacy 0 or anything out of
+    // range means Monday) like KarmaViewModel and the ProjectView goal pill
+    // do — a fixed ISO (Monday) week made the weekly-goal celebration
+    // disagree with the pill for users whose week starts on Sunday.
+    int weekStart = m_store->setting(QLatin1String(SettingsKeys::WeekStart)).toInt();
+    if (weekStart < 1 || weekStart > 7)
+        weekStart = 1;
     const QDate today = QDate::currentDate();
-    int isoYear = 0;
-    const int currentWeek = today.weekNumber(&isoYear);
-    if (currentWeek <= 0) return 0;
+    const QDate weekBegin = today.addDays(-((today.dayOfWeek() - weekStart + 7) % 7));
+    const QDate weekEnd   = weekBegin.addDays(7);
 
     int count = 0;
     const auto tasks = m_store->tasksForProject(projectId);
@@ -542,9 +594,7 @@ int ProjectViewModel::weeklyCompletedForProject(const QString &projectId) const
         const QDateTime ca = t->completedAt();
         if (!ca.isValid()) continue;
         const QDate completedDate = ca.toLocalTime().date();
-        int compYear = 0;
-        const int compWeek = completedDate.weekNumber(&compYear);
-        if (compYear == isoYear && compWeek == currentWeek)
+        if (completedDate >= weekBegin && completedDate < weekEnd)
             ++count;
     }
     return count;

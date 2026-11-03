@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkProxyQuery>
+#include <QRegularExpression>
 #include <QSettings>
 
 #include "services/aiassistant.h"
@@ -358,6 +359,105 @@ private slots:
         p.parseResponse(R"({"error":{"type":"forbidden","message":"Request not allowed"}})", 403, &err);
         QVERIFY(err.startsWith(QStringLiteral("Request not allowed")));
         QVERIFY(err.contains(QStringLiteral("прокси")));
+    }
+
+    // ── OpenAI-compatible base URL: fails closed ──────────────────────────
+    //
+    // A malformed / scheme-less / public-cleartext base URL must never be
+    // "corrected" to api.openai.com (that would ship an OpenRouter / Groq /
+    // self-hosted key to a third party) nor send the key in the clear.
+
+    void openaiCompat_emptyBaseUrlUsesOpenAi()
+    {
+        OpenAICompatibleProvider p;
+        QCOMPARE(p.effectiveBaseUrl(), QStringLiteral("https://api.openai.com"));
+        const auto rd = p.buildRequest(QStringLiteral("sk-x"), QStringLiteral("gpt-4o-mini"),
+                                       QStringLiteral("sys"),
+                                       { { QStringLiteral("user"), QStringLiteral("hi") } }, 16);
+        QCOMPARE(rd.request.url(),
+                 QUrl(QStringLiteral("https://api.openai.com/v1/chat/completions")));
+        QCOMPARE(rd.request.rawHeader("Authorization"), QByteArray("Bearer sk-x"));
+    }
+
+    void openaiCompat_validHttpsBaseUrlIsUsed()
+    {
+        OpenAICompatibleProvider p;
+        p.setBaseUrl(QStringLiteral(" https://openrouter.ai/api/ "));
+        QCOMPARE(p.effectiveBaseUrl(), QStringLiteral("https://openrouter.ai/api"));
+        const auto rd = p.buildRequest(QStringLiteral("sk-or"), QStringLiteral("m"), QString(),
+                                       { { QStringLiteral("user"), QStringLiteral("hi") } }, 16);
+        QCOMPARE(rd.request.url(),
+                 QUrl(QStringLiteral("https://openrouter.ai/api/v1/chat/completions")));
+        QCOMPARE(rd.request.rawHeader("Authorization"), QByteArray("Bearer sk-or"));
+    }
+
+    void openaiCompat_rejectedBaseUrlFailsClosed_data()
+    {
+        QTest::addColumn<QString>("baseUrl");
+        QTest::newRow("scheme-less")  << QStringLiteral("api.example.com");
+        QTest::newRow("host:port")    << QStringLiteral("localhost:11434");
+        QTest::newRow("ftp")          << QStringLiteral("ftp://api.example.com");
+        QTest::newRow("file")         << QStringLiteral("file:///etc/passwd");
+        QTest::newRow("public http")  << QStringLiteral("http://api.example.com");
+        QTest::newRow("public http ip") << QStringLiteral("http://8.8.8.8:8080");
+        QTest::newRow("no host")      << QStringLiteral("https://");
+    }
+
+    void openaiCompat_rejectedBaseUrlFailsClosed()
+    {
+        QFETCH(QString, baseUrl);
+        OpenAICompatibleProvider p;
+        p.setBaseUrl(baseUrl);
+
+        // effectiveBaseUrl() warns once per call (here, buildRequest and
+        // parseResponse) — expected, keep the log clean.
+        const QRegularExpression rejectMsg(QStringLiteral("OpenAICompatibleProvider: rejecting"));
+        for (int i = 0; i < 3; ++i)
+            QTest::ignoreMessage(QtWarningMsg, rejectMsg);
+
+        QCOMPARE(p.effectiveBaseUrl(), QString());
+
+        const auto rd = p.buildRequest(QStringLiteral("sk-secret"), QStringLiteral("m"),
+                                       QStringLiteral("sys"),
+                                       { { QStringLiteral("user"), QStringLiteral("hi") } }, 16);
+        QVERIFY(rd.request.url().isEmpty());
+        QVERIFY(!rd.request.hasRawHeader("Authorization"));
+        for (const QByteArray &h : rd.request.rawHeaderList())
+            QVERIFY(!rd.request.rawHeader(h).contains("sk-secret"));
+
+        // Even a well-formed body is reported as the base-URL error, so the
+        // user sees why nothing was sent.
+        QString err;
+        QVERIFY(p.parseResponse(R"({"choices":[{"message":{"content":"hi"}}]})", 200, &err)
+                    .isEmpty());
+        QVERIFY2(err.contains(QStringLiteral("Base URL")), qPrintable(err));
+    }
+
+    void openaiCompat_localCleartextAllowed_data()
+    {
+        QTest::addColumn<QString>("baseUrl");
+        QTest::newRow("localhost")  << QStringLiteral("http://localhost:11434");
+        QTest::newRow("loopback")   << QStringLiteral("http://127.0.0.1:1234");
+        QTest::newRow("lan 192")    << QStringLiteral("http://192.168.1.10:8080");
+        QTest::newRow("lan 10")     << QStringLiteral("http://10.0.0.2");
+        QTest::newRow("mdns")       << QStringLiteral("http://studio.local:1234");
+    }
+
+    void openaiCompat_localCleartextAllowed()
+    {
+        QFETCH(QString, baseUrl);
+        OpenAICompatibleProvider p;
+        p.setBaseUrl(baseUrl + QLatin1Char('/'));
+        QCOMPARE(p.effectiveBaseUrl(), baseUrl);
+        const auto rd = p.buildRequest(QStringLiteral("sk-local"), QStringLiteral("m"), QString(),
+                                       { { QStringLiteral("user"), QStringLiteral("hi") } }, 16);
+        QCOMPARE(rd.request.url(), QUrl(baseUrl + QStringLiteral("/v1/chat/completions")));
+        QCOMPARE(rd.request.rawHeader("Authorization"), QByteArray("Bearer sk-local"));
+
+        QString err;
+        QCOMPARE(p.parseResponse(R"({"choices":[{"message":{"content":"hi"}}]})", 200, &err),
+                 QStringLiteral("hi"));
+        QVERIFY(err.isEmpty());
     }
 };
 

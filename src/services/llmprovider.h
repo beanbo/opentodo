@@ -168,10 +168,12 @@ class OpenAICompatibleProvider : public LlmProvider
 public:
     // The base URL (e.g. "https://api.openai.com") is set externally by
     // AIAssistant from QSettings so it persists across runs. Setting an
-    // empty URL falls back to OpenAI's host.
+    // empty URL falls back to OpenAI's host; a malformed / scheme-less /
+    // public-cleartext URL is rejected (effectiveBaseUrl() returns "")
+    // rather than redirected, so the key never reaches an unintended host.
     void setBaseUrl(const QString &url) { m_baseUrl = url; }
     QString baseUrl() const             { return m_baseUrl; }
-    QString effectiveBaseUrl() const;  // m_baseUrl or OpenAI default
+    QString effectiveBaseUrl() const;  // m_baseUrl, OpenAI default if unset, "" if rejected
 
     RequestData buildRequest(const QString &apiKey,
                              const QString &model,

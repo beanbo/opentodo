@@ -280,12 +280,38 @@ Rectangle {
         var item = searchViewModel.results[idx]
         if (!item) return
         switch (item.type) {
-            case "task":    sidebarViewModel.navigateToInbox(); break
+            // A task result used to just jump to the Inbox (wrong for tasks in
+            // other projects, and the task itself was never opened); comment
+            // results did nothing at all.
+            case "task":    root._openTask(item.id, item.projectId); break
             case "project": sidebarViewModel.navigateToProject(item.id); break
             case "label":   sidebarViewModel.navigateToLabel(item.title); break
             case "filter":  sidebarViewModel.navigateToFilter(item.id); break
+            case "comment":
+                if (item.taskId)         root._openTask(item.taskId, "")
+                else if (item.projectId) sidebarViewModel.navigateToProject(item.projectId)
+                break
         }
         root._closeAndClear()
+    }
+
+    // Navigate to the task's project (or Inbox) and open it in the editor.
+    // Navigation runs first: switching views is synchronous and must not
+    // clobber the editor selection we set right after.
+    function _openTask(taskId, projectId) {
+        if (!taskId) return
+        var pid = projectId
+        if (!pid && typeof dataStore !== "undefined") {
+            var t = dataStore.taskById(taskId)
+            pid = t ? t.projectId : ""
+        }
+        var proj = (pid && typeof projectViewModel !== "undefined")
+                   ? projectViewModel.projectById(pid) : null
+        if (proj && !proj.isInbox)
+            sidebarViewModel.navigateToProject(pid)
+        else
+            sidebarViewModel.navigateToInbox()
+        taskViewModel.openTaskById(taskId)
     }
 
     // ── Manage dropdown open/close with expanded state ────────────────────────

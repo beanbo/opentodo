@@ -31,6 +31,10 @@ Item {
         function onTaskChanged()  { Qt.callLater(root.refresh) }
         function onTaskRemoved()  { Qt.callLater(root.refresh) }
         function onTasksRemoved() { Qt.callLater(root.refresh) }
+        // Permanent delete / empty trash emit the purge signals (not
+        // taskRemoved), so the list must refresh on these too.
+        function onTaskPurged()   { Qt.callLater(root.refresh) }
+        function onTasksPurged()  { Qt.callLater(root.refresh) }
     }
 
     // ── Russian relative-deleted-time helper ─────────────────────────────────

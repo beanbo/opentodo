@@ -15,6 +15,8 @@ public:
     void showNotification(const QString &title, const QString &body, const QString &taskId = {}) override;
     void scheduleNotification(const QString &title, const QString &body, const QDateTime &when, const QString &id) override;
     void cancelNotification(const QString &id) override;
+    // AlarmManager-only cancel: keeps an already-posted notification on screen.
+    void cancelScheduled(const QString &id) override;
     void cancelAll() override;
     bool hasPermission() const override;
     void requestPermission() override;

@@ -118,6 +118,34 @@ Item {
         || taskViewModel.filterMode === TaskViewModel.Calendar
         || taskViewModel.filterMode === TaskViewModel.Trash
 
+    // Full-page views that open tasks (openTaskById / openTaskRequested /
+    // taskClicked) without hosting an editor themselves — the layout shows
+    // the right-pane editor next to them (fullPageEditorPanel). ProjectView
+    // has its own editor; Settings / AI / Trash never open tasks.
+    readonly property bool _fullPageHostsEditor:
+        taskViewModel.filterMode === TaskViewModel.Notifications
+        || taskViewModel.filterMode === TaskViewModel.Productivity
+        || taskViewModel.filterMode === TaskViewModel.Board
+        || taskViewModel.filterMode === TaskViewModel.Calendar
+
+    // A task opened while Settings / AI / Trash is showing (OS notification
+    // click, banner «Открыть», Ctrl+P) has nowhere to appear — jump to the
+    // task's project (or Inbox), whose view hosts the editor.
+    Connections {
+        target: taskViewModel
+        function onSelectedTaskChanged() {
+            const t = taskViewModel.selectedTask
+            if (!t || !root.isFullPageView || root._fullPageHostsEditor
+                    || taskViewModel.filterMode === TaskViewModel.Project)
+                return
+            const inbox = dataStore.inboxProject()
+            if (!t.projectId || (inbox && t.projectId === inbox.id))
+                sidebarViewModel.navigateToInbox()
+            else
+                sidebarViewModel.navigateToProject(t.projectId)
+        }
+    }
+
     // ── Quick filter chip state ───────────────────────────────────────────────
     // Tracks which chip is currently active ("today" | "overdue" | "no_date" | "").
     property string _quickChip: ""
@@ -269,23 +297,6 @@ Item {
             telemetry.trackEvent("inbox_zero_celebrated",
                                  { "mode": isInbox ? "inbox" : "today" })
         }
-    }
-
-    // ── Today-goal refresh kick ───────────────────────────────────────────────
-    // Q3.24: debounced via a 50 ms Timer so that rapid task edits (e.g. bulk
-    // complete, drag-reorder) coalesce into a single _completedToday recompute.
-    // Previously this fired on every tasksChanged, causing an O(N) dataStore
-    // scan on each individual keystroke / checkbox tap.
-    property int todayGoalKick: 0
-    Timer {
-        id: todayGoalDebounce
-        interval: 50
-        repeat:   false
-        onTriggered: root.todayGoalKick = (root.todayGoalKick + 1) % 10000
-    }
-    Connections {
-        target: dataStore
-        function onTasksChanged() { todayGoalDebounce.restart() }
     }
 
     // ── Keyboard navigation state ─────────────────────────────────────────────
@@ -592,19 +603,12 @@ Item {
                                            ThemeManager.textColor.g,
                                            ThemeManager.textColor.b, 0.06)
 
-                            readonly property int _completedToday: {
-                                // Read kick to register dependency on tasksChanged
-                                const _ = root.todayGoalKick
-                                if (typeof dataStore === "undefined" || !dataStore) return 0
-                                // Q4.01 night iter-50: tasksForToday() (QList<Task*>) has no
-                                // usable .length in QML — this loop iterated 0× so the daily
-                                // goal "done" was stuck at 0. tasksForTodayData() is a real JS array.
-                                const tasks = dataStore.tasksForTodayData()
-                                let done = 0
-                                for (let i = 0; i < tasks.length; i++)
-                                    if (tasks[i] && tasks[i].isCompleted) done++
-                                return done
-                            }
+                            // Counting isCompleted over tasksForTodayData() was always 0:
+                            // that list excludes completed tasks by construction. Karma
+                            // already tracks "completed today" (re-notified via karmaChanged).
+                            readonly property int _completedToday:
+                                (typeof karmaViewModel !== "undefined" && karmaViewModel)
+                                    ? karmaViewModel.completedToday : 0
                             readonly property int  _goal:     settingsViewModel.dailyGoal
                             readonly property bool _achieved: _completedToday >= _goal
 
@@ -648,9 +652,12 @@ Item {
                             HoverHandler { id: tdgHover }
                             ToolTip.visible: tdgHover.hovered
                             ToolTip.delay: 500
-                            ToolTip.text: parent._achieved
+                            // The attached ToolTip sits on the pill itself — `parent`
+                            // here is the RowLayout, which has none of these properties.
+                            ToolTip.text: todayGoalIndicator._achieved
                                 ? qsTr("Дневная цель выполнена! 🎉")
-                                : qsTr("До дневной цели осталось: %1").arg(parent._goal - parent._completedToday)
+                                : qsTr("До дневной цели осталось: %1")
+                                      .arg(todayGoalIndicator._goal - todayGoalIndicator._completedToday)
                         }
 
                         // Search bar — shrinks at narrow widths, hidden in ultra-compact.
@@ -703,9 +710,10 @@ Item {
                             }
                         }
 
-                        // Bulk expand/collapse subtasks — bumps tokens on the
-                        // shared "TaskItemExpansion" Settings category. Each
-                        // TaskItem listens via Connections and reacts.
+                        // Bulk expand/collapse subtasks — bumps tokens on this ONE
+                        // object, which every TaskItem receives as `expansionHost`
+                        // (list delegates directly, ProjectView via the page
+                        // loader) and listens to via Connections.
                         Settings {
                             id: bulkExpandSettings
                             category: "TaskItemExpansion"
@@ -716,7 +724,10 @@ Item {
                         // already-migrated 📁 collapse-all button below).
                         ToolButton {
                             id: expandAllBtn
-                            visible: !root.isFullPageView && !root.isNarrow
+                            // Also in Project view: its TaskItems share this host.
+                            visible: !root.isNarrow
+                                     && (!root.isFullPageView
+                                         || taskViewModel.filterMode === TaskViewModel.Project)
                             flat: true
                             implicitWidth: 28
                             implicitHeight: 28
@@ -738,7 +749,7 @@ Item {
                         }
                         ToolButton {
                             id: collapseAllBtn
-                            visible: !root.isFullPageView && !root.isNarrow
+                            visible: expandAllBtn.visible
                             flat: true
                             implicitWidth: 28
                             implicitHeight: 28
@@ -781,42 +792,115 @@ Item {
                 }
 
                 // ── Main content: either task area, or a full-page view ─────
-                Loader {
-                    id: fullPageLoader
+                RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    active: isFullPageView
-                    visible: active
-                    source: {
-                        switch (taskViewModel.filterMode) {
-                        case TaskViewModel.Settings:      return "../views/SettingsView.qml"
-                        case TaskViewModel.Productivity:  return "../views/ProductivityView.qml"
-                        case TaskViewModel.Notifications: return "../views/NotificationsView.qml"
-                        case TaskViewModel.AI:            return "../views/AIView.qml"
-                        case TaskViewModel.Project:       return "../views/ProjectView.qml"
-                        // ITER2 #24: Board and Calendar were unreachable — they
-                        // need the same full-page treatment as ProjectView.
-                        case TaskViewModel.Board:         return "../views/BoardView.qml"
-                        case TaskViewModel.Calendar:      return "../views/CalendarView.qml"
-                        case TaskViewModel.Trash:         return "../views/TrashView.qml"
+                    spacing: 0
+                    visible: isFullPageView
+
+                    Loader {
+                        id: fullPageLoader
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        active: isFullPageView
+                        visible: active
+                        source: {
+                            switch (taskViewModel.filterMode) {
+                            case TaskViewModel.Settings:      return "../views/SettingsView.qml"
+                            case TaskViewModel.Productivity:  return "../views/ProductivityView.qml"
+                            case TaskViewModel.Notifications: return "../views/NotificationsView.qml"
+                            case TaskViewModel.AI:            return "../views/AIView.qml"
+                            case TaskViewModel.Project:       return "../views/ProjectView.qml"
+                            // ITER2 #24: Board and Calendar were unreachable — they
+                            // need the same full-page treatment as ProjectView.
+                            case TaskViewModel.Board:         return "../views/BoardView.qml"
+                            case TaskViewModel.Calendar:      return "../views/CalendarView.qml"
+                            case TaskViewModel.Trash:         return "../views/TrashView.qml"
+                            }
+                            return ""
                         }
-                        return ""
+
+                        // ProjectView's TaskItems listen to the top-bar expand-all /
+                        // collapse-all tokens through its `expansionHost`.
+                        onLoaded: {
+                            if (item && item.expansionHost !== undefined)
+                                item.expansionHost = bulkExpandSettings
+                        }
+
+                        // Bug 1 fix: forward openTaskRequested from NotificationsView
+                        // to taskViewModel so clicking a notification navigates to its task.
+                        // Q3.27: also forward taskClicked from BoardView so a click on a
+                        // card opens the right-pane editor (matches list-mode behaviour).
+                        // The id may be a notification id (reminder / "snooze-<taskId>"),
+                        // so map it back to the live task first.
+                        Connections {
+                            target: fullPageLoader.item
+                            ignoreUnknownSignals: true
+                            function onOpenTaskRequested(taskId) {
+                                const id = (taskId && taskId.length > 0)
+                                           ? dataStore.taskIdForNotification(taskId) : ""
+                                if (id.length > 0)
+                                    taskViewModel.openTaskById(id)
+                            }
+                            function onTaskClicked(taskId) {
+                                if (taskId && taskId.length > 0)
+                                    taskViewModel.openTaskById(taskId)
+                            }
+                        }
                     }
 
-                    // Bug 1 fix: forward openTaskRequested from NotificationsView
-                    // to taskViewModel so clicking a notification navigates to its task.
-                    // Q3.27: also forward taskClicked from BoardView so a click on a
-                    // card opens the right-pane editor (matches list-mode behaviour).
-                    Connections {
-                        target: fullPageLoader.item
-                        ignoreUnknownSignals: true
-                        function onOpenTaskRequested(taskId) {
-                            if (taskId && taskId.length > 0)
-                                taskViewModel.openTaskById(taskId)
+                    // ── Editor host for full-page views ─────────────────────
+                    // Notifications / Productivity / Board / Calendar open tasks via
+                    // taskViewModel.openTaskById() but have no editor of their own,
+                    // and the list-mode editor panel lives inside the task area that
+                    // is hidden for full-page views — so opening a task there showed
+                    // nothing. ProjectView hosts its own editor and is excluded.
+                    Item {
+                        id: fullPageEditorPanel
+                        readonly property bool open: root._fullPageHostsEditor
+                                                     && !!taskViewModel.selectedTask
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: open ? taskEditorWidth : 0
+                        clip: true
+
+                        Behavior on Layout.preferredWidth {
+                            NumberAnimation {
+                                duration: animationDuration
+                                easing.type: Easing.InOutQuad
+                            }
                         }
-                        function onTaskClicked(taskId) {
-                            if (taskId && taskId.length > 0)
-                                taskViewModel.openTaskById(taskId)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: contentColor
+
+                            Loader {
+                                id: fullPageEditorLoader
+                                objectName: "fullPageTaskEditorLoader"
+                                anchors.fill: parent
+                                active: fullPageEditorPanel.open
+                                source: "../components/TaskEditor.qml"
+
+                                onLoaded: {
+                                    if (item && taskViewModel.selectedTask)
+                                        item.task = taskViewModel.selectedTask
+                                }
+
+                                Connections {
+                                    target: fullPageEditorLoader.item
+                                    ignoreUnknownSignals: true
+                                    function onCloseRequested() {
+                                        taskViewModel.selectedTask = null
+                                    }
+                                }
+                                Connections {
+                                    target: taskViewModel
+                                    function onSelectedTaskChanged() {
+                                        if (fullPageEditorLoader.item && taskViewModel.selectedTask)
+                                            fullPageEditorLoader.item.task = taskViewModel.selectedTask
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1242,6 +1326,9 @@ Item {
                                             durationUnit:   delegateRoot.durationUnit
                                             dayOrder:       delegateRoot.dayOrder
                                             color:          delegateRoot.color
+                                            // Shared token bus bumped by the top-bar
+                                            // expand-all / collapse-all buttons.
+                                            expansionHost:  bulkExpandSettings
 
                                             onTaskClicked: function(taskId) {
                                                 const t = dataStore.taskById(taskId)
@@ -1476,7 +1563,9 @@ Item {
                                         model: []
                                         Connections {
                                             target: bulkLabelPopup
-                                            function onOpened() { bulkLabelList.model = dataStore.allLabels() }
+                                            // allLabels() is a QList<Label*> (not a JS array in
+                                            // QML); allLabelsData() is the JS-friendly variant.
+                                            function onOpened() { bulkLabelList.model = dataStore.allLabelsData() }
                                         }
 
                                         delegate: Rectangle {
@@ -1610,7 +1699,9 @@ Item {
                                             property var allProjects: []
                                             Connections {
                                                 target: bulkProjectPopup
-                                                function onOpened() { bulkProjectList.allProjects = dataStore.allProjects() }
+                                                // allProjects() (QList<Project*>) has no .filter in
+                                                // QML → TypeError; allProjectsData() is a JS array.
+                                                function onOpened() { bulkProjectList.allProjects = dataStore.allProjectsData() }
                                             }
 
                                             // Filter: exclude deleted/archived, apply search term
@@ -1755,14 +1846,19 @@ Item {
                                     contentItem: Column {
                                         spacing: 0
 
+                                        // Phrases are English keywords on purpose: DateParser runs
+                                        // the Russian rules only when the language setting is "ru"
+                                        // (default "en"), while the "ru" path falls back to the
+                                        // English rules and localises the human string — so these
+                                        // parse under either language setting.
                                         Repeater {
                                             model: [
-                                                { label: qsTr("Сегодня"),             phrase: "сегодня" },
-                                                { label: qsTr("Завтра"),              phrase: "завтра" },
-                                                { label: qsTr("Через 3 дня"),         phrase: "через 3 дня" },
-                                                { label: qsTr("На следующей неделе"), phrase: "следующая неделя" },
-                                                { label: qsTr("В понедельник"),       phrase: "понедельник" },
-                                                { label: qsTr("В выходные"),          phrase: "суббота" },
+                                                { label: qsTr("Сегодня"),             phrase: "today" },
+                                                { label: qsTr("Завтра"),              phrase: "tomorrow" },
+                                                { label: qsTr("Через 3 дня"),         phrase: "in 3 days" },
+                                                { label: qsTr("На следующей неделе"), phrase: "next week" },
+                                                { label: qsTr("В понедельник"),       phrase: "next monday" },
+                                                { label: qsTr("В выходные"),          phrase: "next saturday" },
                                                 { label: "──",                        phrase: "__sep__" },
                                                 { label: qsTr("Убрать срок"),         phrase: "" }
                                             ]
@@ -2553,8 +2649,13 @@ Item {
 
                             Loader {
                                 id: taskEditorLoader
+                                objectName: "listTaskEditorLoader"
                                 anchors.fill: parent
-                                active: taskViewModel.selectedTask !== null
+                                // Not while a full-page view is shown: this panel is
+                                // hidden then, and the full-page views have their own
+                                // editor host (ProjectView's, or fullPageEditorLoader).
+                                active: !root.isFullPageView
+                                        && taskViewModel.selectedTask !== null
                                         && taskViewModel.selectedTask !== undefined
                                 source: "../components/TaskEditor.qml"
 
@@ -2569,6 +2670,15 @@ Item {
                                     ignoreUnknownSignals: true
                                     function onCloseRequested() {
                                         taskViewModel.selectedTask = null
+                                    }
+                                }
+                                // onLoaded runs only once: without this, clicking task B
+                                // while the editor shows task A kept editing A.
+                                Connections {
+                                    target: taskViewModel
+                                    function onSelectedTaskChanged() {
+                                        if (taskEditorLoader.item && taskViewModel.selectedTask)
+                                            taskEditorLoader.item.task = taskViewModel.selectedTask
                                     }
                                 }
                             }
@@ -2709,19 +2819,25 @@ Item {
     // that visibly accepts text input). Used to suppress the G-prefix start
     // so the user can still type the letter "g" inside QuickAdd, search,
     // editor description, etc.
+    //
+    // Reads the window's activeFocusItem (Qt.application has no focusObject —
+    // the old lookup was always undefined, so this always returned false).
+    // Being a property read, it also makes the `enabled:` bindings that call
+    // this re-evaluate whenever focus moves.
+    //
+    // Why it matters beyond "G": a focused TextInput claims printable keys via
+    // ShortcutOverride, but NOT Return / Up / Down / Escape — window-level
+    // Shortcuts for those keys fire while the user types in SearchBar etc.
     function _textInputFocused() {
-        const obj = Qt.application.focusObject
+        const obj = root.Window.activeFocusItem
         if (!obj)
             return false
-        // Heuristic: TextField/TextArea expose `inputMethodHints`,
-        // `cursorPosition` and `selectedText` properties; checking a couple
-        // of them is enough to distinguish them from list items / buttons.
-        if (obj.hasOwnProperty("cursorPosition") && obj.hasOwnProperty("selectedText"))
-            return true
-        if (obj.hasOwnProperty("inputMethodHints") && obj.hasOwnProperty("text")
-                && obj.hasOwnProperty("cursorVisible"))
-            return true
-        return false
+        // TextInput / TextEdit (and TextField / TextArea built on them) all
+        // expose a numeric cursorPosition and a string selectedText; list
+        // items and buttons don't. Read-only text doesn't consume keys.
+        return typeof obj.cursorPosition === "number"
+               && typeof obj.selectedText === "string"
+               && obj.readOnly !== true
     }
 
     Shortcut {
@@ -2814,9 +2930,11 @@ Item {
     }
 
     // Enter → Open editor for hovered task
+    // Not while typing: Return belongs to the focused input (SearchBar submit…).
     Shortcut {
         sequence: "Return"
         enabled: root._taskListActive && taskViewModel.hoveredTaskId !== ""
+                 && !root._textInputFocused()
         onActivated: {
             const task = dataStore.taskById(taskViewModel.hoveredTaskId)
             if (task) taskViewModel.selectedTask = task
@@ -2988,7 +3106,9 @@ Item {
                  && !(commandMenuLoader.item && commandMenuLoader.item.active)
                  && !(quickAddLoader.item && quickAddLoader.item.expanded)
         onActivated: {
-            taskViewModel.setTaskDue(taskViewModel.hoveredTaskId, "завтра")
+            // English keyword: parses under both language settings (see the
+            // bulk due-date presets above).
+            taskViewModel.setTaskDue(taskViewModel.hoveredTaskId, "tomorrow")
             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                 telemetry.trackEvent("task_defer_tomorrow", {})
         }
@@ -3002,7 +3122,7 @@ Item {
                  && !(commandMenuLoader.item && commandMenuLoader.item.active)
                  && !(quickAddLoader.item && quickAddLoader.item.expanded)
         onActivated: {
-            taskViewModel.setTaskDue(taskViewModel.hoveredTaskId, "следующая неделя")
+            taskViewModel.setTaskDue(taskViewModel.hoveredTaskId, "next week")
             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                 telemetry.trackEvent("task_defer_next_week", {})
         }
@@ -3043,14 +3163,17 @@ Item {
     }
 
     // ↑ ↓ → Keyboard navigation through the task list
+    // Not while typing: Up/Down drive e.g. the SearchBar result list.
     Shortcut {
         sequence: "Down"
         enabled: root._taskListActive && !(commandMenuLoader.item && commandMenuLoader.item.active)
+                 && !root._textInputFocused()
         onActivated: root.navigateSelection(+1)
     }
     Shortcut {
         sequence: "Up"
         enabled: root._taskListActive && !(commandMenuLoader.item && commandMenuLoader.item.active)
+                 && !root._textInputFocused()
         onActivated: root.navigateSelection(-1)
     }
 
@@ -3119,9 +3242,16 @@ Item {
     // context: Qt.ApplicationShortcut ensures the shortcut fires even when a
     // TextArea inside TaskEditor has keyboard focus (TextArea normally consumes
     // the Escape key event before it can bubble up to a Window-level handler).
+    // While a text input outside the editor has focus (SearchBar, inline
+    // rename fields…) and nothing else is open, stand down so the input's own
+    // Keys.onEscapePressed runs (close/clear) instead of this shortcut
+    // swallowing the key to clear the selection/hover.
     Shortcut {
         sequence: "Escape"
         context: Qt.ApplicationShortcut
+        enabled: !root._textInputFocused()
+                 || !!taskViewModel.selectedTask
+                 || !!(commandMenuLoader.item && commandMenuLoader.item.active)
         onActivated: {
             if (commandMenuLoader.item && commandMenuLoader.item.active) {
                 commandMenuLoader.item.active = false
@@ -3151,14 +3281,18 @@ Item {
     }
 
     // I16-A: Ctrl+1..6 numeric navigation hotkeys
+    // Views go through the invokable sidebarViewModel.navigateTo(): the plain
+    // setCurrentView()/setFilterMode() setters are not Q_INVOKABLE, so calling
+    // them threw a TypeError. main.cpp maps navigationRequested(view) onto
+    // taskViewModel's filterMode (the view strings match the FilterMode keys).
     Repeater {
         model: [
-            { key: "Ctrl+1", view: "inbox",         filterMode: TaskViewModel.Inbox },
-            { key: "Ctrl+2", view: "today",         filterMode: TaskViewModel.Today },
-            { key: "Ctrl+3", view: "upcoming",      filterMode: TaskViewModel.Upcoming },
-            { key: "Ctrl+4", view: "settings",      filterMode: TaskViewModel.Settings },
-            { key: "Ctrl+5", view: "productivity",  filterMode: TaskViewModel.Productivity },
-            { key: "Ctrl+6", view: "notifications", filterMode: TaskViewModel.Notifications }
+            { key: "Ctrl+1", view: "inbox" },
+            { key: "Ctrl+2", view: "today" },
+            { key: "Ctrl+3", view: "upcoming" },
+            { key: "Ctrl+4", view: "settings" },
+            { key: "Ctrl+5", view: "productivity" },
+            { key: "Ctrl+6", view: "notifications" }
         ]
         delegate: Item {
             // Wrapper Item satisfies Qt 6's "Delegate must be of Item type"
@@ -3168,8 +3302,11 @@ Item {
                 enabled: !(commandMenuLoader.item && commandMenuLoader.item.active)
                          && !(quickAddLoader.item && quickAddLoader.item.expanded)
                 onActivated: {
-                    sidebarViewModel.setCurrentView(modelData.view)
-                    taskViewModel.setFilterMode(modelData.filterMode)
+                    // Inbox carries the inbox project id as its item id.
+                    if (modelData.view === "inbox")
+                        sidebarViewModel.navigateToInbox()
+                    else
+                        sidebarViewModel.navigateTo(modelData.view)
                     if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled)
                         telemetry.trackEvent("nav_hotkey", { "view": modelData.view })
                 }

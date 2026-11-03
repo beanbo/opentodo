@@ -99,6 +99,45 @@ Project *clicore::resolveProject(const DataStore *store, const QString &repoPath
     return nullptr;
 }
 
+Task *clicore::resolveTask(const DataStore *store, const QString &idOrPrefix,
+                           QString *outError)
+{
+    auto notFound = [outError]() -> Task * {
+        if (outError) *outError = QStringLiteral("task not found");
+        return nullptr;
+    };
+    const QString ref = idOrPrefix.trimmed();
+    if (!store || ref.isEmpty())
+        return notFound();
+
+    // Exact id first. A tombstoned task is "not found" for every command —
+    // completing / commenting on / re-deleting a task in the Trash is never
+    // what the caller meant.
+    if (Task *t = store->taskById(ref))
+        return t->isDeleted() ? notFound() : t;
+
+    if (ref.size() < kMinIdPrefix)
+        return notFound();
+
+    Task *match = nullptr;
+    int count = 0;
+    for (Task *t : store->allTasks()) { // live tasks only
+        if (!t || t->isDeleted() || !t->id().startsWith(ref, Qt::CaseInsensitive))
+            continue;
+        match = t;
+        ++count;
+    }
+    if (count == 1)
+        return match;
+    if (count > 1) {
+        if (outError)
+            *outError = QStringLiteral("ambiguous task id '%1' matches %2 tasks — "
+                                       "give more characters").arg(ref).arg(count);
+        return nullptr;
+    }
+    return notFound();
+}
+
 QList<Task *> clicore::scopedTasks(const DataStore *store, const Project *project,
                                    bool includeCompleted)
 {
@@ -124,7 +163,7 @@ QList<Task *> clicore::scopedTasks(const DataStore *store, const Project *projec
 bool clicore::completeTaskOffline(DataStore *store, const QString &id, QString *outError)
 {
     Task *t = store->taskById(id);
-    if (!t) {
+    if (!t || t->isDeleted()) {
         if (outError) *outError = QStringLiteral("task not found");
         return false;
     }
@@ -194,7 +233,7 @@ QString clicore::addCommentOffline(DataStore *store, const QString &taskId,
                                    const QString &text, const QString &author)
 {
     Task *t = store->taskById(taskId);
-    if (!t || text.trimmed().isEmpty())
+    if (!t || t->isDeleted() || text.trimmed().isEmpty())
         return {};
     Comment *c = store->addComment(text, taskId, t->projectId(), author);
     return c ? c->id() : QString();
@@ -249,10 +288,14 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
         return okData(data);
     }
 
+    // show / done / comment / delete take an id OR a unique id prefix (the
+    // human `list` output prints 8 characters), and never act on a task that
+    // is already in the Trash.
     if (cmd == QLatin1String("show")) {
-        Task *t = store->taskById(req.value(QStringLiteral("id")).toString());
+        QString error;
+        Task *t = resolveTask(store, req.value(QStringLiteral("id")).toString(), &error);
         if (!t)
-            return fail(QStringLiteral("task not found"));
+            return fail(error);
         QJsonObject o = taskToJson(t, store);
         QJsonArray comments;
         for (Comment *c : store->commentsForTask(t->id())) {
@@ -276,8 +319,11 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
     }
 
     if (cmd == QLatin1String("done")) {
-        const QString id = req.value(QStringLiteral("id")).toString();
         QString error;
+        Task *t = resolveTask(store, req.value(QStringLiteral("id")).toString(), &error);
+        if (!t)
+            return fail(error);
+        const QString id = t->id();
         if (!completeTaskOffline(store, id, &error))
             return fail(error);
         const QString note = req.value(QStringLiteral("note")).toString();
@@ -305,21 +351,26 @@ QJsonObject clicore::handleRequest(DataStore *store, const QJsonObject &req)
     }
 
     if (cmd == QLatin1String("comment")) {
-        const QString id = addCommentOffline(store,
-                                             req.value(QStringLiteral("id")).toString(),
+        QString error;
+        Task *t = resolveTask(store, req.value(QStringLiteral("id")).toString(), &error);
+        if (!t)
+            return fail(error);
+        const QString id = addCommentOffline(store, t->id(),
                                              req.value(QStringLiteral("text")).toString(),
                                              QStringLiteral("claude"));
         if (id.isEmpty())
-            return fail(QStringLiteral("failed to add comment (task not found?)"));
+            return fail(QStringLiteral("failed to add comment (empty text?)"));
         QJsonObject d;
         d[QStringLiteral("id")] = id;
         return okData(d);
     }
 
     if (cmd == QLatin1String("delete")) {
-        const QString id = req.value(QStringLiteral("id")).toString();
-        if (!store->taskById(id))
-            return fail(QStringLiteral("task not found"));
+        QString error;
+        Task *t = resolveTask(store, req.value(QStringLiteral("id")).toString(), &error);
+        if (!t)
+            return fail(error);
+        const QString id = t->id();
         if (!store->removeTask(id)) // soft-delete: tombstone, recoverable in Trash
             return fail(QStringLiteral("failed to delete task"));
         QJsonObject d;

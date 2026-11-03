@@ -541,6 +541,42 @@ private slots:
         // No RELATED-TO anywhere — pure sibling list.
         QVERIFY(!out.contains(QStringLiteral("RELATED-TO")));
     }
+
+    // F4/P13: OpenTodo's internal FROM=COMPLETION extension is not RFC 5545
+    // and must not leak into the exported RRULE.
+    void recurrence_internalParts_stripped()
+    {
+        DataStore ds;
+        Project *p = ds.addProject(QStringLiteral("Recur"));
+        Task *t = ds.addTask(QStringLiteral("Water plants"), p->id());
+        DueObject d;
+        d.string = QStringLiteral("every! 3 days");
+        d.isRecurring = true;
+        d.recurrenceRule = QStringLiteral("FREQ=DAILY;INTERVAL=3;FROM=COMPLETION");
+        d.date = QStringLiteral("2026-05-17");
+        t->setDue(d);
+
+        const QString out = render(ds.allTasks());
+        QVERIFY2(out.contains(QStringLiteral("RRULE:FREQ=DAILY;INTERVAL=3\r\n")), qPrintable(out));
+        QVERIFY2(!out.contains(QStringLiteral("FROM=")), qPrintable(out));
+    }
+
+    // F4/P13: a datetime carrying an offset is an absolute instant → UTC
+    // form with 'Z'; an offset-less one stays floating local time.
+    void due_datetime_withOffset_exportedAsUtc()
+    {
+        DataStore ds;
+        Project *p = ds.addProject(QStringLiteral("Times"));
+        Task *t = ds.addTask(QStringLiteral("Call"), p->id());
+        t->setDueDatetime(QStringLiteral("2026-05-17T12:30:00+03:00"));
+        Task *z = ds.addTask(QStringLiteral("Zulu"), p->id());
+        z->setDueDatetime(QStringLiteral("2026-05-17T08:00:00Z"));
+
+        const QString out = render(ds.allTasks());
+        QVERIFY2(out.contains(QStringLiteral("DUE:20260517T093000Z\r\n")), qPrintable(out));
+        QVERIFY2(out.contains(QStringLiteral("DUE:20260517T080000Z\r\n")), qPrintable(out));
+        QVERIFY2(!out.contains(QStringLiteral("DUE:20260517T123000\r\n")), qPrintable(out));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestIcsExporter)

@@ -7,7 +7,15 @@ Popup {
     id: root
 
     // ─── Public API ────────────────────────────────────────────────────────────
+    // Owned by the caller (usually a binding): the picker never writes it, so
+    // a caller's `selectedDate: …` binding survives a pick and the checkmark
+    // follows later resets of the bound value.
     property string selectedDate: ""
+    // When true, the quick buttons emit local "yyyy-MM-dd" dates instead of
+    // the NLP phrases "today"/"tomorrow"/"next week". Needed by callers that
+    // store the string as-is (deadline, reminder datetime) rather than
+    // feeding it to the date parser.
+    property bool emitIsoDates: false
     signal dateSelected(string dateString)
 
     // ─── Internals ─────────────────────────────────────────────────────────────
@@ -26,21 +34,21 @@ Popup {
 
     readonly property var today: new Date()
 
-    // Currently selected date as a JS Date (or null)
-    property var pickedDate: selectedDate !== "" ? parseDate(selectedDate) : null
+    // Currently selected date as a JS Date (or null). Derived only — never
+    // assigned, so it keeps tracking selectedDate.
+    readonly property var pickedDate: selectedDate !== "" ? parseDate(selectedDate) : null
 
-    // B-7.22: weekStart from settings (0=Mon..6=Sun per SettingsViewModel).
-    // Falls back to 0 (Monday) when settingsViewModel is not available.
+    // B-7.22: weekStart from settings — ISO 1=Mon..7=Sun (a legacy stored 0
+    // also means Monday). Falls back to 1 when settingsViewModel is absent.
     property int weekStartIdx: (typeof settingsViewModel !== "undefined" && settingsViewModel)
-                               ? settingsViewModel.weekStart : 0
+                               ? settingsViewModel.weekStart : 1
 
     // Day-of-week header labels rotated to start on weekStartIdx.
-    // JS getDay() is 0=Sun; SettingsViewModel weekStart is 0=Mon..6=Sun,
-    // so we map: settings 0→JS 1(Mon), settings 6→JS 0(Sun).
     // Labels are in JS weekday order (0=Sun): ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"]
     readonly property var _allLabels: [qsTr("Вс"), qsTr("Пн"), qsTr("Вт"), qsTr("Ср"), qsTr("Чт"), qsTr("Пт"), qsTr("Сб")]
-    // Convert SettingsViewModel 0=Mon..6=Sun to JS 0=Sun index:
-    property int _jsWeekStart: (weekStartIdx + 1) % 7  // 0(Mon)->1, 6(Sun)->0
+    // ISO 1..7 → JS getDay() index (0=Sun): 1(Mon)→1 … 6(Sat)→6, 7(Sun)→0.
+    // Out-of-range (incl. legacy 0) → Monday.
+    property int _jsWeekStart: (weekStartIdx >= 1 && weekStartIdx <= 7) ? weekStartIdx % 7 : 1
     property var weekdayLabels: {
         var arr = []
         for (var i = 0; i < 7; i++) arr.push(_allLabels[(_jsWeekStart + i) % 7])
@@ -84,10 +92,10 @@ Popup {
 
             Repeater {
                 model: [
-                    { label: qsTr("Сегодня"),       value: "today"     },
-                    { label: qsTr("Завтра"),        value: "tomorrow"  },
-                    { label: qsTr("След. неделя"),  value: "next week" },
-                    { label: qsTr("Без даты"),      value: ""          }
+                    { label: qsTr("Сегодня"),       value: "today",     days: 0 },
+                    { label: qsTr("Завтра"),        value: "tomorrow",  days: 1 },
+                    { label: qsTr("След. неделя"),  value: "next week", days: 7 },
+                    { label: qsTr("Без даты"),      value: "",          days: -1 }
                 ]
 
                 delegate: Button {
@@ -111,8 +119,15 @@ Popup {
                     }
 
                     onClicked: {
-                        root.selectedDate = modelData.value
-                        root.dateSelected(modelData.value)
+                        let v = modelData.value
+                        if (root.emitIsoDates && modelData.days >= 0) {
+                            // Calendar-day arithmetic (not +N*86400000 ms) so
+                            // DST transitions can't shift the date.
+                            let t = new Date()
+                            v = root.formatDate(new Date(t.getFullYear(), t.getMonth(),
+                                                         t.getDate() + modelData.days))
+                        }
+                        root.dateSelected(v)
                         root.close()
                     }
                 }
@@ -280,8 +295,9 @@ Popup {
                         onClicked: {
                             let d = new Date(root.viewYear, root.viewMonth, dayInfo.day)
                             let str = root.formatDate(d)
-                            root.selectedDate = str
-                            root.pickedDate   = d
+                            // Don't write selectedDate/pickedDate here: that
+                            // broke the caller's binding (stale checkmark after
+                            // a reset). The caller updates its bound value.
                             root.dateSelected(str)
                             root.close()
                         }

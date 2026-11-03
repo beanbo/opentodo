@@ -13,12 +13,11 @@ import QtCore
 //       model: taskViewModel
 //   }
 //
-// The bulk-action mechanism uses a Settings-backed token shared with every
-// TaskItem instance via the "TaskItemExpansion" category. Bumping
-// expandedSettings.expandAllToken (or collapseAllToken) fans out to every
-// alive TaskItem delegate through a Connections block defined in TaskItem.qml.
-// This keeps cross-delegate signalling decoupled from any specific host —
-// DesktopLayout, ProjectView, BoardView, etc. all share the same wiring.
+// Bulk actions go through ONE shared bus object (bulkBus below) handed to
+// every TaskItem delegate as `expansionHost`; bumping its expandAllToken /
+// collapseAllToken fans out through the Connections block in TaskItem.qml.
+// (A Settings-backed token per instance never worked: separate Settings
+// objects on the same category don't notify each other.)
 Item {
     id: root
 
@@ -31,25 +30,22 @@ Item {
     // the editor by setting taskViewModel.selectedTask.
     signal taskClicked(string taskId)
 
-    // ── Shared bulk-trigger Settings ──────────────────────────────────────
-    // Same category as TaskItem.qml's expandedSettings — when we increment
-    // the token here, every TaskItem delegate gets the change-notification
-    // through its own Settings binding.
-    Settings {
-        id: bulkSettings
-        category: "TaskItemExpansion"
+    // ── Shared bulk-trigger bus ───────────────────────────────────────────
+    // Passed to every delegate as TaskItem.expansionHost.
+    QtObject {
+        id: bulkBus
         property int expandAllToken: 0
         property int collapseAllToken: 0
     }
 
     function _expandAll() {
-        bulkSettings.expandAllToken = bulkSettings.expandAllToken + 1
+        bulkBus.expandAllToken = bulkBus.expandAllToken + 1
         if (typeof telemetry !== "undefined" && telemetry)
             telemetry.trackEvent("subtasks_bulk_expand", {})
     }
 
     function _collapseAll() {
-        bulkSettings.collapseAllToken = bulkSettings.collapseAllToken + 1
+        bulkBus.collapseAllToken = bulkBus.collapseAllToken + 1
         if (typeof telemetry !== "undefined" && telemetry)
             telemetry.trackEvent("subtasks_bulk_collapse", {})
     }
@@ -105,7 +101,7 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: ThemeManager.isDark ? "#363636" : "#f0f0f0"
+            color: ThemeManager.borderColor
         }
 
         // Task list. The delegate mirrors the role wiring used by
@@ -166,6 +162,7 @@ Item {
                     durationUnit:   delegateRoot.durationUnit
                     dayOrder:       delegateRoot.dayOrder
                     color:          delegateRoot.color
+                    expansionHost:  bulkBus
 
                     onTaskClicked: function(taskId) {
                         root.taskClicked(taskId)

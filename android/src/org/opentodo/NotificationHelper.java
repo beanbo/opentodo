@@ -6,10 +6,14 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import java.util.Map;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * Helper class for Android notifications.
@@ -22,11 +26,20 @@ import androidx.core.content.ContextCompat;
  *   showNotification             (Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
  *   scheduleNotification         (Landroid/content/Context;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
  *   cancelNotification           (Landroid/content/Context;I)V
+ *   cancelScheduledNotification  (Landroid/content/Context;I)V
  *   cancelAllNotifications       (Landroid/content/Context;)V
  *   requestNotificationPermission(Landroid/content/Context;)V
  *
- * The native callback called from Java after a permission result:
+ * The native callbacks called from Java:
  *   Java_org_opentodo_NotificationHelper_onPermissionResult(JNIEnv*, jclass, jboolean)
+ *   Java_org_opentodo_NotificationHelper_nativeOnNotificationAction(JNIEnv*, jclass, jstring, jstring)
+ *   Java_org_opentodo_NotificationHelper_nativeOnScheduledNotificationFired(JNIEnv*, jclass, jstring, jstring, jstring)
+ *
+ * Every alarm armed by scheduleNotification() is also persisted in the
+ * "opentodo_alarms" SharedPreferences (key = notification id, value = JSON
+ * {channelId, title, body, taskId, trigger}) and removed when it fires or is
+ * cancelled, so BootReceiver can re-arm reminders after a reboot — AlarmManager
+ * forgets every alarm on reboot.
  */
 public class NotificationHelper {
 
@@ -36,6 +49,13 @@ public class NotificationHelper {
 
     // Request code used for POST_NOTIFICATIONS permission dialog.
     private static final int PERM_REQUEST_CODE = 42;
+
+    // SharedPreferences file holding the persisted alarms (see class doc).
+    private static final String ALARM_PREFS = "opentodo_alarms";
+    // A reminder that came due while the device was off is still posted on
+    // boot if it is at most this late — same 1-hour grace window the C++
+    // backends use for past-due schedules (B-5.8/9).
+    private static final long MISSED_GRACE_MS = 60L * 60L * 1000L;
 
     // -----------------------------------------------------------------------
     // createChannel — called from C++ createNotificationChannel().
@@ -194,23 +214,37 @@ public class NotificationHelper {
             // when canScheduleExactAlarms() reported true. Never crash a reminder.
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi);
         }
+
+        // Persist so BootReceiver can re-arm it after a reboot.
+        rememberAlarm(context, id, channelId, title, body, taskId, triggerAtMillis);
     }
 
-    // -----------------------------------------------------------------------
-    // cancelNotification — cancels both the AlarmManager alarm and any
-    // already-shown notification.
-    // C++ JNI signature: (Landroid/content/Context;I)V
-    // -----------------------------------------------------------------------
-    public static void cancelNotification(Context context, int id) {
-        // Cancel pending alarm
+    // Cancel the pending AlarmManager alarm for `id` (if any).
+    private static void cancelAlarm(Context context, int id) {
         AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
+            // Matches the scheduled PendingIntent: same component, no action,
+            // same request code (extras are not part of PendingIntent identity).
             Intent intent = new Intent(context, NotificationReceiver.class);
             PendingIntent pi = PendingIntent.getBroadcast(
                 context, id, intent,
                 PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
-            if (pi != null) am.cancel(pi);
+            if (pi != null) {
+                am.cancel(pi);
+                pi.cancel();
+            }
         }
+        forgetAlarm(context, id);
+    }
+
+    // -----------------------------------------------------------------------
+    // cancelNotification — cancels both the AlarmManager alarm and any
+    // already-shown notification. Used when a reminder is gone for good
+    // (deleted reminder, completed / deleted task).
+    // C++ JNI signature: (Landroid/content/Context;I)V
+    // -----------------------------------------------------------------------
+    public static void cancelNotification(Context context, int id) {
+        cancelAlarm(context, id);
         // Cancel already-shown notification
         NotificationManager nm =
             (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -218,16 +252,123 @@ public class NotificationHelper {
     }
 
     // -----------------------------------------------------------------------
+    // cancelScheduledNotification — cancels ONLY the pending alarm and leaves
+    // an already-posted notification in the shade. The C++ ReminderScheduler
+    // calls this on every reschedule pass (each edit, sync apply, app start);
+    // using cancelNotification() there dismissed reminders the user had not
+    // acted on yet.
+    // C++ JNI signature: (Landroid/content/Context;I)V
+    // -----------------------------------------------------------------------
+    public static void cancelScheduledNotification(Context context, int id) {
+        cancelAlarm(context, id);
+    }
+
+    // -----------------------------------------------------------------------
     // cancelAllNotifications — matches C++ call site (renamed from cancelAll).
+    // Dismisses every posted notification and cancels every persisted alarm.
     // C++ JNI signature: (Landroid/content/Context;)V
     // -----------------------------------------------------------------------
     public static void cancelAllNotifications(Context context) {
         NotificationManager nm =
             (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancelAll();
-        // Note: individual AlarmManager intents are keyed by notification id,
-        // which we cannot enumerate here. Apps that need full alarm cancellation
-        // should call cancelNotification() per-id before calling cancelAllNotifications().
+        // The persisted alarm list is the only way to enumerate armed alarms.
+        Map<String, ?> all = alarmPrefs(context).getAll();
+        for (String key : all.keySet()) {
+            try {
+                cancelAlarm(context, Integer.parseInt(key));
+            } catch (NumberFormatException nfe) {
+                alarmPrefs(context).edit().remove(key).apply();
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Alarm persistence (reboot survival).
+    // -----------------------------------------------------------------------
+    private static SharedPreferences alarmPrefs(Context context) {
+        return context.getSharedPreferences(ALARM_PREFS, Context.MODE_PRIVATE);
+    }
+
+    private static void rememberAlarm(Context context, int id, String channelId,
+                                      String title, String body, String taskId,
+                                      long triggerAtMillis) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("channelId", channelId != null ? channelId : "");
+            o.put("title", title != null ? title : "");
+            o.put("body", body != null ? body : "");
+            o.put("taskId", taskId != null ? taskId : "");
+            o.put("trigger", triggerAtMillis);
+            alarmPrefs(context).edit().putString(String.valueOf(id), o.toString()).apply();
+        } catch (JSONException je) {
+            // Not persisted → only reboot survival is lost; the alarm is armed.
+        }
+    }
+
+    private static void forgetAlarm(Context context, int id) {
+        alarmPrefs(context).edit().remove(String.valueOf(id)).apply();
+    }
+
+    // Called by NotificationReceiver when an alarm fires: drop it from the
+    // persisted list and, when the app process is alive, tell C++ so the
+    // reminder is logged in the in-app notification centre at the time it
+    // really fires. `schedId` is the id C++ scheduled the alarm under.
+    public static void onScheduledAlarmFired(Context context, int id, String schedId,
+                                             String title, String body) {
+        forgetAlarm(context, id);
+        if (schedId == null || schedId.isEmpty()) return;
+        try {
+            nativeOnScheduledNotificationFired(schedId, title, body);
+        } catch (Throwable t) {
+            // Native library not loaded (the alarm started a bare process for
+            // this broadcast) — nothing in-app to log into; the OS
+            // notification itself has been posted.
+        }
+    }
+
+    // Called by BootReceiver: re-arm every persisted alarm that is still in
+    // the future, post the ones that came due while the device was off (within
+    // MISSED_GRACE_MS), and drop older / unreadable entries.
+    public static void rearmPersistedAlarms(Context context) {
+        final long now = System.currentTimeMillis();
+        Map<String, ?> all = alarmPrefs(context).getAll(); // a copy — safe to edit prefs below
+        for (Map.Entry<String, ?> e : all.entrySet()) {
+            final String key = e.getKey();
+            int id;
+            try {
+                id = Integer.parseInt(key);
+            } catch (NumberFormatException nfe) {
+                alarmPrefs(context).edit().remove(key).apply();
+                continue;
+            }
+            Object value = e.getValue();
+            if (!(value instanceof String)) {
+                forgetAlarm(context, id);
+                continue;
+            }
+            try {
+                JSONObject o = new JSONObject((String) value);
+                String channelId = o.optString("channelId", "");
+                if (channelId.isEmpty()) channelId = CHANNEL_REMINDERS;
+                String title  = o.optString("title", "");
+                String body   = o.optString("body", "");
+                String taskId = o.optString("taskId", "");
+                long trigger  = o.optLong("trigger", 0L);
+                if (trigger > now) {
+                    scheduleNotification(context, channelId, id, title, body, taskId, trigger);
+                } else {
+                    forgetAlarm(context, id);
+                    if (trigger > 0 && now - trigger <= MISSED_GRACE_MS) {
+                        createChannel(context, channelId, "OpenTodo Reminders",
+                                      NotificationManager.IMPORTANCE_HIGH);
+                        showNotification(context, channelId, id, title, body, taskId);
+                    }
+                }
+            } catch (JSONException je) {
+                forgetAlarm(context, id);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -281,4 +422,10 @@ public class NotificationHelper {
     // notificationservice_android.cpp
     // (Java_org_opentodo_NotificationHelper_nativeOnNotificationAction).
     private static native void nativeOnNotificationAction(String taskId, String action);
+
+    // Native callback for a scheduled alarm that fired — implemented in
+    // notificationservice_android.cpp
+    // (Java_org_opentodo_NotificationHelper_nativeOnScheduledNotificationFired).
+    private static native void nativeOnScheduledNotificationFired(String id, String title,
+                                                                  String body);
 }

@@ -26,9 +26,30 @@ QtObject {
     id: dateFormatter
 
     // Active format. Default = European DD.MM.YYYY. SettingsSectionGeneral
-    // pushes the persisted user choice into this property at startup and on
-    // every change.
+    // pushes the user's choice into this property on every change.
     property string currentFormat: "dd.MM.yyyy"
+
+    // Apply the persisted choice ("general/dateFormat") at startup. Before,
+    // only SettingsSectionGeneral's Component.onCompleted did this, so the
+    // saved format was ignored until the desktop Settings page was opened
+    // (and never on mobile). The Settings object is created at RUNTIME, when
+    // the singleton is first used — a static `import QtCore` here is what
+    // broke engine startup (see the header note) — and any failure leaves
+    // the default in place.
+    property QtObject _store: null
+    Component.onCompleted: {
+        try {
+            _store = Qt.createQmlObject(
+                'import QtCore\nSettings { category: "general" }',
+                dateFormatter, "DateFormatterSettings")
+            if (_store) {
+                var saved = _store.value("dateFormat", "")
+                if (saved) setFormat(String(saved))
+            }
+        } catch (e) {
+            // Settings unavailable (e.g. stripped QtCore QML module): keep default.
+        }
+    }
 
     // Returns the active QML/JS-compatible pattern string.
     // Falls back to the European format if currentFormat is invalid.

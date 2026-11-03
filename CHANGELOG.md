@@ -56,6 +56,31 @@ once it reaches a tagged release.
 - Logging hygiene (noise reduction, redaction of sensitive paths).
 - Windows `NotificationService` and `HotkeyService` edge cases (toast lifetime, hotkey re-registration).
 - Drive sync resilience under transient network failure.
+- Global review pass:
+  - Sync: local settings no longer reverted on push (per-key merge via
+    `settings_meta`); no full store reload (and closed editor) after a no-op
+    merge; Pull actually merges `state.json`; push never overwrites the remote
+    after a failed download; Drive lookup errors no longer create duplicate
+    folders/files or delete a live lock; restored tasks stay restored;
+    stricter OAuth state/PKCE checks; sync HTTP server timeouts.
+  - Data: permanent deletes keep their tombstone (no resurrection by sync);
+    unreadable `state.json` is never overwritten with defaults; a settings
+    export can't be loaded as a backup; single Inbox after the first sync;
+    hardened Todoist ZIP import; WASM data now persists in IndexedDB.
+  - Reminders: Complete/Snooze/open from notifications work again; reminders
+    of completed tasks are cancelled; Android keeps shown reminders and
+    re-arms alarms after reboot; Linux fires scheduled reminders; the
+    notification centre logs reminders when they fire.
+  - Quick Add / dates: titles are no longer swallowed by date phrases;
+    "every day at 9am"-style phrases, weekday rules, "last day of month" and
+    "every!" (from completion) work.
+  - UI: saved filters show their tasks; the editor follows the selected task;
+    Ctrl+1..6, command palette and several settings switches no longer throw;
+    karma goals, priority/Upcoming sorting, weekStart, undo of completions and
+    bulk moves fixed; numerous binding/shortcut fixes.
+  - Security: no third-party API key sent to api.openai.com on a bad base URL;
+    hardened Claude Code launcher command line; project names kept out of the
+    AI instruction area; telemetry never sent after opt-out.
 
 ### Removed
 

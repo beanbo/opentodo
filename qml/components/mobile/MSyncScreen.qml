@@ -353,7 +353,9 @@ Item {
                 width: parent.width - 24; x: 12; radius: 10
                 height: syncViewModel.pendingCommits > 0 ? 40 : 0
                 clip: true
-                color: ThemeManager.isDark ? "#2d2800" : "#fffce6"
+                // Tinted from the theme's warning token (was hardcoded hex).
+                color: Qt.rgba(ThemeManager.warningColor.r, ThemeManager.warningColor.g,
+                               ThemeManager.warningColor.b, 0.12)
                 Behavior on height { NumberAnimation { duration: 160 } }
                 Text { anchors.left: parent.left; anchors.leftMargin: 14; anchors.verticalCenter: parent.verticalCenter; text: qsTr("Несохранённых изменений: %1").arg(syncViewModel.pendingCommits); font.pixelSize: 12; color: ThemeManager.warningColor }
             }
@@ -362,7 +364,8 @@ Item {
                 width: parent.width - 24; x: 12; radius: 10
                 height: syncViewModel.lastError !== "" ? errTxt.implicitHeight + 20 : 0
                 clip: true
-                color: ThemeManager.isDark ? "#2d1010" : "#fff0ef"
+                color: Qt.rgba(ThemeManager.errorColor.r, ThemeManager.errorColor.g,
+                               ThemeManager.errorColor.b, 0.12)
                 Behavior on height { NumberAnimation { duration: 160 } }
                 Text { id: errTxt; anchors.left: parent.left; anchors.leftMargin: 14; anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter; text: syncViewModel.lastError; wrapMode: Text.WordWrap; font.pixelSize: 12; color: ThemeManager.errorColor }
             }

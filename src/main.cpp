@@ -262,16 +262,6 @@ int main(int argc, char *argv[])
     // Load data from disk
     fileManager->load();
 
-    // Flush any pending in-memory changes when the app is quitting.
-    // Without this the 1 s autosave debounce gets killed on shutdown and
-    // every edit made in the last second before quit is silently lost —
-    // this was the root cause of "data doesn't reach the disk" complaints
-    // when users toggled a setting and closed the window quickly.
-    QObject::connect(&app, &QCoreApplication::aboutToQuit,
-                     fileManager, [fileManager] {
-        fileManager->saveImmediate();
-    });
-
     // Platform services — notifications
     NotificationService *notificationService = nullptr;
 #if defined(Q_OS_WASM)
@@ -400,11 +390,24 @@ int main(int argc, char *argv[])
 
     // Wire cross-VM signals
     QObject::connect(sidebarVM, &SidebarViewModel::navigationRequested,
-                     taskVM, [taskVM](const QString &view, const QString &itemId) {
+                     taskVM, [taskVM, dataStore](const QString &view, const QString &itemId) {
         taskVM->setFilterMode(TaskViewModel::filterModeFromString(view));
-        if (view == QStringLiteral("project"))
+        // V1: set currentProjectId on EVERY navigation. navigateTo() updates
+        // sidebar.currentItemId before emitting this signal, so a still-loaded
+        // ProjectView (projectId: sidebarViewModel.currentItemId) first writes
+        // the label name / filter UUID into currentProjectId; and a project id
+        // left over from an earlier visit made the Inbox/Today quick-add file
+        // tasks into that project. Overwrite it with the right scope here.
+        if (view == QStringLiteral("project") || view == QStringLiteral("board")) {
             taskVM->setCurrentProjectId(itemId);
-        else if (view == QStringLiteral("label") || view == QStringLiteral("filter"))
+        } else if (view == QStringLiteral("inbox")) {
+            const Project *inbox = dataStore->inboxProject();
+            taskVM->setCurrentProjectId(!itemId.isEmpty() ? itemId
+                                        : (inbox ? inbox->id() : QString()));
+        } else {
+            taskVM->setCurrentProjectId(QString());
+        }
+        if (view == QStringLiteral("label") || view == QStringLiteral("filter"))
             taskVM->setCurrentFilter(itemId);
     });
 
@@ -533,17 +536,33 @@ int main(int argc, char *argv[])
     driveSyncTimer->setSingleShot(true);
     driveSyncTimer->setInterval(5000);
 
-    // B-9.13: don't re-arm the drive-sync debounce while syncEngine is
-    // actively pulling/applying a remote state — that would create a
-    // feedback loop where an inbound sync triggers an immediate push
-    // of the just-applied state.
+    // B-9.13: don't re-arm the drive-sync debounce for the engine's OWN load of
+    // a merged remote state — that would create a feedback loop where an
+    // inbound sync triggers an immediate push of the just-applied state.
+    // S12: but a genuine user edit made while a sync is in flight (remote I/O
+    // runs nested event loops, so the UI stays live) used to be dropped here
+    // too and never synced. Remember it and re-arm the debounce once the
+    // engine leaves the Syncing state.
+    auto dirtyDuringSync = std::make_shared<bool>(false);
     QObject::connect(dataStore, &DataStore::dataChanged, driveSyncTimer,
-                     [driveSyncTimer, syncEngine, settingsVM]() {
+                     [driveSyncTimer, syncEngine, settingsVM, dirtyDuringSync]() {
         if (settingsVM->syncMode() != QStringLiteral("after_action"))
             return;
-        if (syncEngine->status() == SyncEngine::Syncing)
+        if (syncEngine->isApplyingRemoteState())
             return;
+        if (syncEngine->status() == SyncEngine::Syncing || syncEngine->isBusy()) {
+            *dirtyDuringSync = true;
+            return;
+        }
         driveSyncTimer->start();
+    });
+    QObject::connect(syncEngine, &SyncEngine::statusChanged, driveSyncTimer,
+                     [driveSyncTimer, syncEngine, settingsVM, dirtyDuringSync]() {
+        if (syncEngine->status() == SyncEngine::Syncing || !*dirtyDuringSync)
+            return;
+        *dirtyDuringSync = false;
+        if (settingsVM->syncMode() == QStringLiteral("after_action"))
+            driveSyncTimer->start();
     });
     QObject::connect(driveSyncTimer, &QTimer::timeout, syncVM, [syncVM] {
         // No-op when the user hasn't connected Drive — push() exits
@@ -575,12 +594,6 @@ int main(int argc, char *argv[])
     // existing user requires the Settings screen to be opened first.
     applyIntervalTimer();
 
-    // Force a flush to Drive on quit too, so changes made just before
-    // closing aren't lost in the 5-second debounce.
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, syncVM, [syncVM]() {
-        syncVM->push();
-    });
-
     // Persist current view state so the next launch can restore exactly where
     // the user left off. We save even when no task is open (empty string clears
     // the restored selection gracefully on next startup).
@@ -604,6 +617,10 @@ int main(int argc, char *argv[])
                               taskVM->currentProjectId());
         dataStore->setSetting(QLatin1String(SettingsKeys::LastFilter),
                               taskVM->currentFilter());
+        // No save here: setSetting() only restarts the 1 s autosave debounce,
+        // which never fires once the event loop is exiting. The final
+        // saveImmediate() hook is connected last (just before app.exec()) so
+        // it runs after this handler and flushes the view state too.
     });
 
     // Sec-1: secretStore was constructed above (before the sync backend block).
@@ -691,25 +708,40 @@ int main(int argc, char *argv[])
     // QML handles raising the window in its Connections block; the C++ side
     // only needs to bridge the signal to TaskViewModel.
     if (notificationService) {
+        // The id a platform service hands back is the id the notification was
+        // scheduled under, which is not always a task id (reminder id,
+        // "snooze-<taskId>", "reminder-<taskId>"). Map it back to the task
+        // before acting — a raw taskById(reminderId) finds nothing, which left
+        // the Complete/Snooze buttons and click-to-open silently dead.
+        auto resolveNotificationTaskId = [dataStore](const QString &rawId) {
+            return dataStore->taskIdForNotification(rawId);
+        };
         QObject::connect(notificationService, &NotificationService::notificationClicked,
-                         taskVM, [taskVM](const QString &taskId) {
-            taskVM->openTaskById(taskId);
+                         taskVM, [taskVM, resolveNotificationTaskId](const QString &id) {
+            const QString taskId = resolveNotificationTaskId(id);
+            if (!taskId.isEmpty())
+                taskVM->openTaskById(taskId);
         });
-        // Reminder action buttons (Android): "complete" finishes the task,
-        // "snooze" re-fires the reminder in 10 minutes — without opening the app.
+        // Reminder action buttons (Android / Windows toasts): "complete"
+        // finishes the task, "snooze" re-fires the reminder in 10 minutes —
+        // without opening the app.
         QObject::connect(notificationService, &NotificationService::notificationActionInvoked,
-                         taskVM, [taskVM, dataStore, notificationService](const QString &taskId,
-                                                                          const QString &action) {
+                         taskVM, [taskVM, dataStore, notificationService, resolveNotificationTaskId](
+                                     const QString &id, const QString &action) {
+            const QString taskId = resolveNotificationTaskId(id);
             if (taskId.isEmpty())
                 return;
             if (action == QStringLiteral("complete")) {
                 taskVM->completeTask(taskId);
             } else if (action == QStringLiteral("snooze")) {
+                // Same id scheme as Main.qml's banner snooze, so a repeated
+                // snooze replaces the pending one instead of stacking.
                 if (Task *t = dataStore->taskById(taskId))
                     notificationService->scheduleNotification(
                         t->content(),
                         QObject::tr("Отложенное напоминание"),
-                        QDateTime::currentDateTime().addSecs(600), taskId);
+                        QDateTime::currentDateTime().addSecs(600),
+                        QStringLiteral("snooze-") + taskId);
             }
         });
         // Record that the user has responded to the notification permission prompt,
@@ -729,17 +761,27 @@ int main(int argc, char *argv[])
     // DataStore has no allReminders(); walk every task's reminders instead.
     locationService->start();
 
+    // Runs on every remindersChanged. Fences are synced in place instead of
+    // clear + re-add: addGeofence() keeps the inside/outside state of an
+    // unchanged fence, so an unrelated reminder edit no longer re-fires
+    // "entered" for a place the user is already at. Only fences whose reminder
+    // is gone (deleted / no longer a location reminder) are removed.
     auto reloadGeofences = [locationService, dataStore]() {
-        locationService->clearGeofences();
+        QStringList live; // location reminders are few — a list is plenty
         for (const auto *task : dataStore->allTasks()) {
             for (auto *r : dataStore->remindersForTask(task->id())) {
                 if (r->isDeleted()) continue;
                 if (r->type() != QStringLiteral("location")) continue;
                 const auto loc = r->location();
                 if (loc.isNull()) continue;
+                live.append(r->id());
                 locationService->addGeofence(r->id(), loc.latitude, loc.longitude,
                                               static_cast<double>(loc.radius));
             }
+        }
+        for (const QString &id : locationService->geofenceIds()) {
+            if (!live.contains(id))
+                locationService->removeGeofence(id);
         }
     };
     reloadGeofences();
@@ -749,8 +791,13 @@ int main(int argc, char *argv[])
     QObject::connect(locationService, &LocationService::enteredGeofence,
                      locationService, [dataStore, notificationService](const QString &reminderId) {
         auto *reminder = dataStore->reminderById(reminderId);
-        if (!reminder) return;
+        if (!reminder || reminder->isDeleted()) return;
+        if (reminder->type() != QStringLiteral("location")) return;
+        // An "on_leave" reminder must not fire "Вы рядом!" on arrival — it is
+        // handled by the leftGeofence handler below.
+        if (reminder->location().trigger == QStringLiteral("on_leave")) return;
         auto *task = dataStore->taskById(reminder->taskId());
+        if (task && (task->isCompleted() || task->isDeleted())) return;
         const QString title = task ? task->content() : QStringLiteral("Напоминание");
         if (notificationService)
             notificationService->showNotification(title, QStringLiteral("Вы рядом!"), reminder->taskId());
@@ -761,11 +808,12 @@ int main(int argc, char *argv[])
     QObject::connect(locationService, &LocationService::leftGeofence,
                      locationService, [dataStore, notificationService](const QString &reminderId) {
         auto *reminder = dataStore->reminderById(reminderId);
-        if (!reminder) return;
+        if (!reminder || reminder->isDeleted()) return;
         if (reminder->type() != QStringLiteral("location")) return;
         // Only trigger on-leave reminders when explicitly configured via LocationObject::trigger.
         if (reminder->location().trigger != QStringLiteral("on_leave")) return;
         auto *task = dataStore->taskById(reminder->taskId());
+        if (task && (task->isCompleted() || task->isDeleted())) return;
         const QString title = task ? task->content() : QStringLiteral("Напоминание");
         if (notificationService)
             notificationService->showNotification(title, QStringLiteral("Вы покинули место!"), reminder->taskId());
@@ -981,6 +1029,29 @@ int main(int argc, char *argv[])
     // .available and bind the visibility switch.
     ctx->setContextProperty(QStringLiteral("trayIcon"), trayIcon);
 #endif
+
+    // Flush any pending in-memory changes when the app is quitting.
+    // Without this the 1 s autosave debounce gets killed on shutdown and
+    // every edit made in the last second before quit is silently lost —
+    // this was the root cause of "data doesn't reach the disk" complaints
+    // when users toggled a setting and closed the window quickly.
+    //
+    // Slots run in connection order, so this hook is connected after every
+    // handler that still mutates DataStore on quit (e.g. the last-view-state
+    // persistence above) — otherwise their writes only restart the autosave
+    // debounce, which never fires once the event loop is exiting.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit,
+                     fileManager, [fileManager] {
+        fileManager->saveImmediate();
+    });
+
+    // Force a flush to Drive on quit too, so changes made just before
+    // closing aren't lost in the 5-second debounce. Connected AFTER the local
+    // save: the push blocks on network I/O, and if the OS kills the process
+    // during that wait the last edits must already be on disk.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, syncVM, [syncVM]() {
+        syncVM->push();
+    });
 
     return app.exec();
 }

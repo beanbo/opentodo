@@ -17,6 +17,7 @@
 #include <QSettings>
 #include <QTimeZone>
 #include <algorithm>
+#include <utility>
 
 TaskViewModel::TaskViewModel(DataStore *store, QObject *parent)
     : QAbstractListModel(parent)
@@ -42,6 +43,12 @@ TaskViewModel::TaskViewModel(DataStore *store, QObject *parent)
     // resets only when the task order actually differs (reorder) — collapse /
     // rename leave the order unchanged → cheap dataChanged, no reset/churn.
     connect(m_store, &DataStore::sectionsChanged, this, &TaskViewModel::onTasksChanged);
+    // V2: a saved filter's query can be edited (or the filter synced in /
+    // deleted) while it is the active view — re-evaluate so the list follows.
+    connect(m_store, &DataStore::filtersChanged, this, [this]() {
+        if (m_filterMode == FilterMode::Filter)
+            onTasksChanged();
+    });
     connect(m_store, &DataStore::aboutToReset, this, [this]() {
         // Bug #1 (May 2026): clear m_selectedTask BEFORE the DataStore
         // qDeleteAll's every Task. The QML editor binding to the
@@ -50,6 +57,11 @@ TaskViewModel::TaskViewModel(DataStore *store, QObject *parent)
         // selectedTaskChanged() here so QML re-evaluates the binding and
         // tears down the editor view before its Task is freed.
         if (m_selectedTask) {
+            // S2-VM: remember WHICH task was open so it can be re-selected
+            // once the store has reloaded (sync merge / restore reload the
+            // whole store; the task usually survives under the same id).
+            if (const auto *t = qobject_cast<const Task *>(m_selectedTask.data()))
+                m_reselectAfterResetId = t->id();
             m_selectedTask = nullptr;
             emit selectedTaskChanged();
         }
@@ -57,6 +69,28 @@ TaskViewModel::TaskViewModel(DataStore *store, QObject *parent)
         m_tasks.clear();
         endResetModel();
     });
+    // S2-VM: DataStore::loadFromJson emits tasksChanged once the reload is
+    // complete — re-open the editor on the same task if it still exists.
+    // Synchronous (not via the refresh debounce) so the editor reappears in
+    // the same event-loop turn.
+    connect(m_store, &DataStore::tasksChanged, this, [this]() {
+        if (m_reselectAfterResetId.isEmpty())
+            return;
+        const QString id = std::exchange(m_reselectAfterResetId, QString());
+        Task *t = m_store->taskById(id);
+        if (t && !t->isDeleted() && !m_selectedTask)
+            setSelectedTask(t);
+    });
+
+    // V12: Today/Upcoming are computed against QDate::currentDate(). If the
+    // app stays open across midnight with no task mutation nothing refreshes
+    // the list, so yesterday's "Today" lingers. Same 60 s date check as
+    // SidebarViewModel's counter guard.
+    m_lastSeenDate = QDate::currentDate();
+    m_dateRolloverTimer.setInterval(60'000);
+    m_dateRolloverTimer.setSingleShot(false);
+    connect(&m_dateRolloverTimer, &QTimer::timeout, this, &TaskViewModel::checkDateRollover);
+    m_dateRolloverTimer.start();
 
     // Restore the persisted "reverse sort order" toggle. Stored under
     // ui/sortReversed in QSettings so it survives restarts independently of
@@ -294,10 +328,21 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
                                 const QStringList &labels)
 {
     QString pid = projectId;
+    if (pid.isEmpty())
+        pid = m_currentProjectId;
+
+    // V1: only file the task under a LIVE project. m_currentProjectId can be
+    // stale (a project deleted elsewhere / by sync) or, historically, not a
+    // project id at all (a label name or filter UUID written by a still-loaded
+    // ProjectView during navigation) — that produced orphan tasks with e.g.
+    // project_id = "work" that no view ever shows. Fall back to the Inbox.
+    if (!pid.isEmpty()) {
+        const Project *p = m_store->projectById(pid);
+        if (!p || p->isDeleted())
+            pid.clear();
+    }
     if (pid.isEmpty()) {
-        if (!m_currentProjectId.isEmpty())
-            pid = m_currentProjectId;
-        else if (auto *inbox = m_store->inboxProject())
+        if (auto *inbox = m_store->inboxProject())
             pid = inbox->id();
     }
 
@@ -348,9 +393,16 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
     task->setLabels(labels);
     mutatedFields << QStringLiteral("labels");
 
+    // Only inherit the current section when it belongs to the project the
+    // task is actually filed into: Quick Add with "#OtherProject" (or an
+    // explicit projectId) would otherwise attach a section of a different
+    // project, and the task would vanish from that project's board columns.
     if (!m_currentSectionId.isEmpty()) {
-        task->setSectionId(m_currentSectionId);
-        mutatedFields << QStringLiteral("section_id");
+        const Section *sec = m_store->sectionById(m_currentSectionId);
+        if (sec && !sec->isDeleted() && sec->projectId() == task->projectId()) {
+            task->setSectionId(m_currentSectionId);
+            mutatedFields << QStringLiteral("section_id");
+        }
     }
 
     if (!dueString.isEmpty()) {
@@ -480,7 +532,11 @@ bool TaskViewModel::completeTask(const QString &id)
         const QString recurInput = task->dueRecurrenceRule().isEmpty()
             ? task->dueString()
             : task->dueRecurrenceRule();
-        const QDate nextDate = RecurrenceEngine::advance(recurInput, base);
+        // P5: pass the completion date so "every!" rules (RRULE ;FROM=COMPLETION)
+        // advance from TODAY rather than from the old due date. The engine only
+        // consults it when the rule carries FROM=COMPLETION.
+        const QDate nextDate = RecurrenceEngine::advance(recurInput, base,
+                                                         QDate::currentDate());
         if (nextDate.isValid()) {
             task->setDueDate(nextDate.toString(QStringLiteral("yyyy-MM-dd")));
 
@@ -674,9 +730,9 @@ bool TaskViewModel::moveTask(const QString &id, const QString &projectId, const 
     // lambda first replays moveTask in reverse (which restores the root and
     // re-runs the BFS clearing the descendants), then restores each
     // descendant's original section_id from the snapshot. The recursive
-    // moveTask call inside the lambda will push its own undo entry (the
-    // "redo"), which captures its own descendant snapshot — so subsequent
-    // undo/redo cycles also thread the per-child section_ids correctly.
+    // moveTask call inside the lambda does NOT register a "redo" entry:
+    // UndoStack drops pushes while an undo fn runs (P10), so Ctrl+Z moves on
+    // to the previous action instead of ping-ponging this move.
     if (m_undoStack) {
         m_undoStack->push(QStringLiteral("Задача перемещена"),
             [this, id, oldProject, oldSection, descendantSectionSnapshot]() {
@@ -755,6 +811,75 @@ bool TaskViewModel::setTaskDue(const QString &id, const QString &dueString)
     if (idx >= 0)
         emit dataChanged(index(idx), index(idx));
 
+    return true;
+}
+
+bool TaskViewModel::snoozeTask(const QString &taskId, int days)
+{
+    // M3: the mobile "snooze" used setTaskDue(id, "завтра"), which re-parses
+    // a one-shot phrase and so wiped dueString / isRecurring / RRULE — a
+    // snoozed "every Monday" task silently stopped recurring. Shift the dates
+    // instead and leave the recurrence description untouched.
+    Task *task = m_store->taskById(taskId);
+    if (!task || task->isDeleted() || days == 0)
+        return false;
+
+    const DueObject oldDue = task->due();
+    const QDate today = QDate::currentDate();
+
+    // Effective current date: dueDate, else the date part of dueDatetime.
+    QDate current;
+    if (!task->dueDate().isEmpty())
+        current = QDate::fromString(task->dueDate(), QStringLiteral("yyyy-MM-dd"));
+    QDateTime oldDt;
+    if (!task->dueDatetime().isEmpty()) {
+        oldDt = QDateTime::fromString(task->dueDatetime(), Qt::ISODate);
+        if (!current.isValid() && oldDt.isValid())
+            current = oldDt.date();
+    }
+    // Snoozing an overdue (or undated) task moves it relative to TODAY —
+    // shifting a week-old due by one day would leave it overdue.
+    const QDate base = (current.isValid() && current > today) ? current : today;
+    const QDate next = base.addDays(days);
+    const QString nextStr = next.toString(QStringLiteral("yyyy-MM-dd"));
+
+    // Keep the shape of the due: a datetime-only due stays datetime-only.
+    if (!task->dueDate().isEmpty() || !oldDt.isValid())
+        task->setDueDate(nextStr);
+    if (oldDt.isValid()) {
+        QDateTime newDt = oldDt;   // keeps time of day and zone/offset
+        newDt.setDate(next);
+        task->setDueDatetime(newDt.toString(Qt::ISODate));
+    }
+    task->setUpdatedAt(QDateTime::currentDateTimeUtc());
+
+    if (m_undoStack) {
+        m_undoStack->push(QStringLiteral("Задача отложена"), [this, taskId, oldDue]() {
+            Task *t = m_store->taskById(taskId);
+            if (!t || t->isDeleted()) return;
+            t->setDue(oldDue);
+            t->setUpdatedAt(QDateTime::currentDateTimeUtc());
+            if (!m_store->remindersForTask(taskId).isEmpty())
+                emit m_store->remindersChanged();
+            m_store->markTaskFieldsModified(taskId, {QStringLiteral("due")});
+            emit taskChanged(taskId);
+        });
+    }
+
+    // Reminders are scheduled off the due date; let the scheduler re-plan
+    // (same as the recurring advance in completeTask).
+    if (!m_store->remindersForTask(taskId).isEmpty())
+        emit m_store->remindersChanged();
+    m_store->markTaskFieldsModified(taskId, {QStringLiteral("due")});
+    emit taskChanged(taskId);
+
+    const int idx = m_tasks.indexOf(task);
+    if (idx >= 0)
+        emit dataChanged(index(idx), index(idx));
+
+    if (m_telemetry)
+        m_telemetry->trackEvent(QStringLiteral("task_snooze"),
+                                {{QStringLiteral("days"), days}});
     return true;
 }
 
@@ -875,9 +1000,12 @@ bool TaskViewModel::moveTaskOrder(const QString &id, int newIndex)
         }
     }
 
-    // Unblock: all store signals are restored.  Now do a single model reset
-    // so QML ListView sees the new order, and emit dataChanged once so
-    // FileManager's autosave debounce fires.
+    // V6: unblock BEFORE notifying. The blocker lives until return, so the
+    // dataChanged emit below used to be swallowed too — a drag reorder was
+    // never autosaved / synced until some unrelated mutation came along.
+    blocker.unblock();
+
+    // Do a single model reset so QML ListView sees the new order.
     beginResetModel();
     endResetModel();
     emit countChanged();
@@ -1333,7 +1461,9 @@ QString TaskViewModel::duplicateProjectAsTemplate(const QString &projectId)
         }
     }
 
-    emit dataChanged(QModelIndex(), QModelIndex());
+    // V15: no model signal here — dataChanged(QModelIndex(), QModelIndex())
+    // used invalid indexes. The store's addProject/addTask signals already
+    // drive refresh() for any view that shows the new template.
     return tpl->id();
 }
 
@@ -1401,7 +1531,9 @@ void TaskViewModel::permanentlyDelete(const QString &taskId)
     if (m_telemetry)
         m_telemetry->trackEvent(QStringLiteral("task_permanent_delete"), {});
 
-    emit taskRemoved(taskId);
+    // V11: NOT taskRemoved — a purge pushes no undo entry, and taskRemoved
+    // drives the undo snackbar whose button would pop an unrelated entry.
+    emit taskPurged(taskId);
 }
 
 void TaskViewModel::emptyTrash()
@@ -1424,7 +1556,7 @@ void TaskViewModel::emptyTrash()
         m_telemetry->trackEvent(QStringLiteral("trash_emptied"),
                                 {{QStringLiteral("count"), count}});
     if (!ids.isEmpty())
-        emit tasksRemoved(ids);
+        emit tasksPurged(ids);   // V11: see permanentlyDelete
 }
 
 int TaskViewModel::trashCount() const
@@ -1779,6 +1911,23 @@ void TaskViewModel::onTasksChanged()
     m_refreshDebounce.start();
 }
 
+void TaskViewModel::checkDateRollover()
+{
+    // V12: cheap once-a-minute date diff; refresh only on an actual rollover.
+    // refresh() itself is a no-op for the non-task modes.
+    const QDate today = QDate::currentDate();
+    if (today != m_lastSeenDate) {
+        m_lastSeenDate = today;
+        refresh();
+    }
+}
+
+void TaskViewModel::simulateDateRolloverForTesting()
+{
+    m_lastSeenDate = QDate::currentDate().addDays(-1);
+    checkDateRollover();
+}
+
 void TaskViewModel::refresh()
 {
     // Full reset whenever the filter mode itself changed (the structure of the
@@ -2050,8 +2199,17 @@ QList<Task *> TaskViewModel::fetchTasks() const
         }
     } else if (m_filterMode == FilterMode::Filter) {
         if (!m_currentFilter.isEmpty()) {
+            // V2: the sidebar navigates to a SAVED filter by its UUID
+            // (navigateToFilter(filterId) → setCurrentFilter(itemId)), which
+            // evaluated as a DSL query matched nothing. Resolve a filter id to
+            // its query; anything else is a raw DSL string (filter chips).
+            QString query = m_currentFilter;
+            if (const Filter *saved = m_store->filterById(query)) {
+                if (!saved->isDeleted())
+                    query = saved->query();
+            }
             FilterEvaluator eval(m_store);
-            result = eval.evaluate(m_currentFilter);
+            result = eval.evaluate(query);
         }
     } else if (m_filterMode == FilterMode::Completed) {
         result = m_store->completedTasks();
@@ -2090,10 +2248,34 @@ QList<Task *> TaskViewModel::fetchTasks() const
                      }), result.end());
     }
 
-    // Filter to top-level tasks only (no subtasks in main list)
-    if (m_filterMode != FilterMode::Filter) {
+    // Subtask rows. The project-hierarchy views (Inbox, Project, Board and a
+    // project's Calendar) list top-level tasks only — each row renders its
+    // subtasks nested beneath it. Filter mode is a flat list and keeps
+    // everything.
+    //
+    // V7: the date/label views (Today, Upcoming, Label, Completed and the
+    // project-less Calendar) are built from ALL matching tasks, so a subtask
+    // due today whose parent is NOT due today used to be stripped here and
+    // shown nowhere — while the sidebar "Today" badge still counted it. In
+    // those views drop a subtask only when its parent is in the result too
+    // (it already renders nested under that row).
+    const bool hierarchyView = m_filterMode == FilterMode::Inbox
+                               || m_filterMode == FilterMode::Project
+                               || m_filterMode == FilterMode::Board
+                               || (m_filterMode == FilterMode::Calendar
+                                   && !m_currentProjectId.isEmpty());
+    if (hierarchyView) {
         result.erase(std::remove_if(result.begin(), result.end(),
                      [](Task *t) { return !t->parentId().isEmpty(); }), result.end());
+    } else if (m_filterMode != FilterMode::Filter) {
+        QSet<QString> inResult;
+        inResult.reserve(result.size());
+        for (const Task *t : std::as_const(result))
+            inResult.insert(t->id());
+        result.erase(std::remove_if(result.begin(), result.end(),
+                     [&inResult](Task *t) {
+                         return !t->parentId().isEmpty() && inResult.contains(t->parentId());
+                     }), result.end());
     }
 
     return result;
@@ -2328,8 +2510,63 @@ void TaskViewModel::bulkDelete()
 void TaskViewModel::bulkMoveToProject(const QString &projectId)
 {
     const QStringList ids = selectedIds();
-    for (const QString &id : ids)
+    if (ids.isEmpty()) return;
+
+    // M11: one undo entry for the whole bulk move (like bulkComplete /
+    // bulkDelete). Looping moveTask pushed one entry per task, so the
+    // snackbar's "Отменить" restored a single task. Snapshot project/section
+    // of every selected task AND its descendants (a cross-project move
+    // cascades the project and clears the subtasks' sections), move with the
+    // per-task undo suppressed, then restore the snapshot on undo.
+    struct Placement { QString projectId; QString sectionId; };
+    QHash<QString, Placement> snapshot;
+    QStringList moved;
+    for (const QString &id : ids) {
+        Task *t = m_store->taskById(id);
+        if (!t || t->isDeleted()) continue;
+        moved.append(id);
+        constexpr int MAX_DEPTH = 100;   // same bound + cycle guard as moveTask
+        QStringList frontier{id};
+        for (int depth = 0; !frontier.isEmpty() && depth <= MAX_DEPTH; ++depth) {
+            QStringList next;
+            for (const QString &cur : std::as_const(frontier)) {
+                if (snapshot.contains(cur)) continue;
+                const Task *ct = m_store->taskById(cur);
+                if (!ct) continue;
+                snapshot.insert(cur, {ct->projectId(), ct->sectionId()});
+                for (const Task *child : m_store->subtasks(cur))
+                    if (child) next.append(child->id());
+            }
+            frontier = next;
+        }
+    }
+    if (moved.isEmpty()) { clearSelection(); return; }
+
+    UndoStack *const undo = m_undoStack;
+    m_undoStack = nullptr;            // suppress moveTask's per-task entries
+    for (const QString &id : std::as_const(moved))
         moveTask(id, projectId, {});
+    m_undoStack = undo;
+
+    if (m_undoStack) {
+        const int n = moved.size();
+        const QString label = QStringLiteral("Перемещено %1 %2").arg(n).arg(pluralTasks(n));
+        m_undoStack->push(label, [this, snapshot]() {
+            const QDateTime now = QDateTime::currentDateTimeUtc();
+            for (auto it = snapshot.constBegin(); it != snapshot.constEnd(); ++it) {
+                Task *t = m_store->taskById(it.key());
+                if (!t || t->isDeleted()) continue;
+                if (t->projectId() == it->projectId && t->sectionId() == it->sectionId)
+                    continue;
+                t->setProjectId(it->projectId);
+                t->setSectionId(it->sectionId);
+                t->setUpdatedAt(now);
+                m_store->markTaskFieldsModified(it.key(), {QStringLiteral("project_id"),
+                                                           QStringLiteral("section_id")});
+                emit taskChanged(it.key());
+            }
+        });
+    }
     clearSelection();
 }
 
@@ -2617,6 +2854,69 @@ void TaskViewModel::sortTasks()
         return;
     }
 
+    // V4: Upcoming renders day headers keyed on EffectiveDueDateRole, so the
+    // list must ALWAYS be ordered by that effective date. Previously only
+    // sortBy == "date" did so (the default is "order"), and the final pinned
+    // partition below lifted pinned tasks out of their day — producing split
+    // and out-of-order day headers. Here the day is the primary key; pinned
+    // tasks float to the top of THEIR day; the user's sortBy orders the rest
+    // within the day; "reverse" flips each within-day run, never the days.
+    if (m_filterMode == FilterMode::Upcoming) {
+        auto effDate = [](const Task *t) -> QString {
+            if (!t->dueDate().isEmpty()) return t->dueDate();
+            const QString dt = t->dueDatetime();
+            return dt.isEmpty() ? QString() : dt.left(10);
+        };
+        const QString sortBy = m_sortBy;
+        auto withinDayLess = [&sortBy](const Task *a, const Task *b) -> bool {
+            if (sortBy == QStringLiteral("priority")) {
+                if (a->priority() != b->priority()) return a->priority() < b->priority();
+            } else if (sortBy == QStringLiteral("name")) {
+                const int c = a->content().compare(b->content(), Qt::CaseInsensitive);
+                if (c != 0) return c < 0;
+            } else if (sortBy == QStringLiteral("created") || sortBy == QStringLiteral("createdAtDesc")) {
+                if (a->createdAt() != b->createdAt()) return a->createdAt() > b->createdAt();
+            } else if (sortBy == QStringLiteral("createdAt")) {
+                if (a->createdAt() != b->createdAt()) return a->createdAt() < b->createdAt();
+            } else if (sortBy == QStringLiteral("date")) {
+                // Same day: timed tasks by time of day, untimed after them.
+                const QString ta = a->dueDatetime(), tb = b->dueDatetime();
+                if (ta != tb) {
+                    if (ta.isEmpty()) return false;
+                    if (tb.isEmpty()) return true;
+                    return ta < tb;
+                }
+            }
+            return a->order() < b->order();
+        };
+        std::stable_sort(m_tasks.begin(), m_tasks.end(),
+                         [&effDate, &withinDayLess](const Task *a, const Task *b) {
+            const QString da = effDate(a), db = effDate(b);
+            if (da != db) {
+                if (da.isEmpty()) return false;
+                if (db.isEmpty()) return true;
+                return da < db;
+            }
+            if (a->isPinned() != b->isPinned()) return a->isPinned();
+            return withinDayLess(a, b);
+        });
+
+        if (m_sortReversed) {
+            auto runStart = m_tasks.begin();
+            while (runStart != m_tasks.end()) {
+                const QString day = effDate(*runStart);
+                const bool pinned = (*runStart)->isPinned();
+                auto runEnd = runStart;
+                while (runEnd != m_tasks.end() && effDate(*runEnd) == day
+                       && (*runEnd)->isPinned() == pinned)
+                    ++runEnd;
+                std::reverse(runStart, runEnd);
+                runStart = runEnd;
+            }
+        }
+        return;
+    }
+
     // For project view, group by sectionId first so that ListView's
     // section.delegate doesn't fragment when sections are interleaved by order.
     // The empty section ("(Без раздела)") sorts before any named section.
@@ -2674,7 +2974,9 @@ void TaskViewModel::sortTasks()
         std::sort(m_tasks.begin(), m_tasks.end(), [groupBySection, &secGroupLess](const Task *a, const Task *b) {
             if (groupBySection && a->sectionId() != b->sectionId())
                 return secGroupLess(a, b);
-            if (a->priority() != b->priority()) return a->priority() > b->priority();
+            // V5: canonical priority is 1 = p1 (urgent) … 4 = p4 (normal), so
+            // ascending puts the most important first.
+            if (a->priority() != b->priority()) return a->priority() < b->priority();
             return a->order() < b->order();
         });
     } else if (m_sortBy == QStringLiteral("name")) {
@@ -2743,6 +3045,19 @@ void TaskViewModel::sortTasks()
 
 // --- Quick Add ---
 
+// P12: "#Work #urgent" — the parser takes the first '#' token as the project
+// and returns further '#' tokens in extraLabels (already stripped from the
+// content). Merge them with the '@' labels so they are not silently dropped.
+static QStringList mergedQuickAddLabels(const QuickAddResult &parsed)
+{
+    QStringList labels = parsed.labels;
+    for (const QString &l : parsed.extraLabels) {
+        if (!l.isEmpty() && !labels.contains(l, Qt::CaseInsensitive))
+            labels.append(l);
+    }
+    return labels;
+}
+
 QString TaskViewModel::addTaskFromQuickAdd(const QString &input)
 {
     const auto parsed = QuickAddParser::parse(input);
@@ -2759,7 +3074,8 @@ QString TaskViewModel::addTaskFromQuickAdd(const QString &input)
         }
     }
 
-    return addTask(parsed.content, projectId, parsed.priority, parsed.dueString, parsed.labels);
+    return addTask(parsed.content, projectId, parsed.priority, parsed.dueString,
+                   mergedQuickAddLabels(parsed));
 }
 
 QVariantMap TaskViewModel::previewQuickAdd(const QString &input)
@@ -2769,7 +3085,7 @@ QVariantMap TaskViewModel::previewQuickAdd(const QString &input)
     map[QStringLiteral("content")]     = parsed.content;
     map[QStringLiteral("dueString")]   = parsed.dueString;
     map[QStringLiteral("priority")]    = parsed.priority;
-    map[QStringLiteral("labels")]      = parsed.labels;
+    map[QStringLiteral("labels")]      = mergedQuickAddLabels(parsed);
     map[QStringLiteral("projectName")] = parsed.projectName;
     return map;
 }

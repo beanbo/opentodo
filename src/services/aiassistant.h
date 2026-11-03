@@ -318,6 +318,11 @@ private:
     // for each flow. Used to reconstruct the request on a single 429/5xx
     // retry without re-running the prompt-building logic.
     struct PendingArgs {
+        // Provider that built the request. The reply is parsed, and the
+        // single retry rebuilt, with THIS provider — not currentProvider() —
+        // so switching provider mid-request can't feed an Anthropic body to
+        // the Gemini parser or resend a claude-* model to Gemini.
+        QString providerId;
         QString model;
         QString systemPrompt;
         QList<QPair<QString, QString>> messages;
@@ -327,6 +332,10 @@ private:
     PendingArgs m_pendingSubtask;
     PendingArgs m_pendingDescription;
     PendingArgs m_pendingPriority;
+
+    // The provider that issued a pending request (PendingArgs::providerId).
+    LlmProvider *pendingProvider(const PendingArgs &args) const
+    { return providerById(args.providerId); }
 
     // Helper to fire a chat POST and wire its reply to onChatReplyFinished.
     void postChatRequest(const QNetworkRequest &req, const QByteArray &body, bool isRetry);

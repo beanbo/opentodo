@@ -64,10 +64,11 @@ static TodoistDue parseDueObject(const QJsonValue &dueVal)
     due.isRecurring = jBool(d, QStringLiteral("is_recurring"));
     due.timezone    = jStr(d, QStringLiteral("timezone"));
 
-    // "date" in the API can be a date-only (YYYY-MM-DD) or datetime (ISO 8601)
+    // "date" in the API can be a date-only (YYYY-MM-DD) or datetime (ISO 8601).
+    // D9: a fixed-timezone due is a UTC instant — its date is the LOCAL date.
     if (due.date.length() > 10) {
         due.datetime = due.date;
-        due.date     = due.date.left(10);
+        due.date     = todoistLocalDueDate(due.datetime);
     }
     if (due.lang.isEmpty()) due.lang = QStringLiteral("en");
     return due;

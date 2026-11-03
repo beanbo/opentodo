@@ -252,8 +252,13 @@ void OAuthClient::startAuthFlow()
     m_authPort = m_authServer->serverPort();
 
     connect(m_authServer, &QTcpServer::newConnection, this, [this]() {
-        while (auto *socket = m_authServer->nextPendingConnection())
-            handleAuthCallback(socket);
+        // handleAuthCallback() nulls m_authServer once a flow completes or
+        // aborts, so re-check it before every dequeue (was a null deref when a
+        // second connection was already queued).
+        while (m_authServer && m_authServer->hasPendingConnections()) {
+            if (auto *socket = m_authServer->nextPendingConnection())
+                handleAuthCallback(socket);
+        }
     });
 
     // Auto-cancel after 5 minutes if user never completes the flow.
@@ -311,10 +316,11 @@ void OAuthClient::handleAuthCallback(QTcpSocket *socket)
 
     // Iter-15: validate state nonce. Mismatch ⇒ this callback isn't from
     // the flow we started; treat as a CSRF attempt and refuse to exchange
-    // the code. Compares only when we actually have a non-empty
-    // m_authState (legacy callbacks from earlier sessions where m_authState
-    // was never populated should still error out cleanly).
-    if (!m_authState.isEmpty() && state != m_authState) {
+    // the code. S10: an EMPTY m_authState means no flow is in progress (it is
+    // cleared on success / abort / timeout), so any callback is unsolicited and
+    // must be rejected too — the old `!m_authState.isEmpty() &&` guard skipped
+    // the check exactly then.
+    if (m_authState.isEmpty() || state != m_authState) {
         qCWarning(lcOAuth) << "OAuth: state mismatch in callback — rejecting "
                            << "(expected nonce did not match)";
         code.clear();
@@ -399,8 +405,13 @@ void OAuthClient::handleAndroidRedirect(const QString &redirectUri)
     const QString error = q.queryItemValue(QStringLiteral("error"));
     const QString state = q.queryItemValue(QStringLiteral("state"));
 
-    if (!m_authState.isEmpty() && state != m_authState) {
-        qCWarning(lcOAuth) << "handleAndroidRedirect: state mismatch — rejecting";
+    // S10: reject unless a flow we started is in progress (non-empty nonce +
+    // PKCE verifier) and the nonce matches. With no flow in progress the old
+    // `!m_authState.isEmpty() &&` guard skipped the check, and the code was
+    // exchanged with a stale redirect URI and no code_verifier — an injected
+    // redirect Intent could bind the app to an attacker's Drive account.
+    if (m_authState.isEmpty() || m_codeVerifier.isEmpty() || state != m_authState) {
+        qCWarning(lcOAuth) << "handleAndroidRedirect: no matching flow / state mismatch — rejecting";
         emit authenticationFailed(QStringLiteral("Несовпадение state — авторизация отклонена."));
         return;
     }
@@ -419,6 +430,7 @@ void OAuthClient::handleAndroidRedirect(const QString &redirectUri)
     saveTokens();
     m_authState.clear();
     m_codeVerifier.clear();
+    m_androidRedirectUri.clear();
 
     m_authenticated = true;
     emit authenticatedChanged();
@@ -491,8 +503,11 @@ void OAuthClient::abortAuthFlow(const QString &reason)
         m_authServer = nullptr;
     }
     // Iter-15: clear the CSRF nonce so a stale callback that arrives after
-    // abort can't sneak through.
+    // abort can't sneak through. S10: the PKCE verifier and redirect URI
+    // belong to the same flow and go with it.
     m_authState.clear();
+    m_codeVerifier.clear();
+    m_androidRedirectUri.clear();
     if (!reason.isEmpty())
         emit authenticationFailed(reason);
 }
