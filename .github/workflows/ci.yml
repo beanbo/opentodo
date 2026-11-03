@@ -15,7 +15,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -53,7 +53,7 @@ jobs:
           ctest --test-dir build --output-on-failure -C Release --timeout 300
 
       - name: Upload Windows binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opentodo-windows-x64
           path: build/OpenTodo.exe
@@ -61,7 +61,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -93,7 +93,7 @@ jobs:
   build-wasm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Install the Qt WASM kit.  jurplel/install-qt-action supports the
       # all_os host + wasm target for the wasm_singlethread architecture.
@@ -119,7 +119,7 @@ jobs:
 
       # Qt 6.11.0 requires Emscripten 4.0.7 exactly.
       - name: Setup Emscripten 4.0.7
-        uses: mymindstorm/setup-emsdk@v14
+        uses: mymindstorm/setup-emsdk@v16
         with:
           version: '4.0.7'
 
@@ -140,7 +140,7 @@ jobs:
         run: cmake --build build-wasm --parallel
 
       - name: Upload WASM bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opentodo-wasm
           path: |

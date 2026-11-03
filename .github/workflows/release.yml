@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -48,7 +48,7 @@ jobs:
           Compress-Archive -Path dist/OpenTodo/* -DestinationPath OpenTodo-${{ github.ref_name }}-windows-x64.zip
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: OpenTodo-*.zip
           generate_release_notes: true
