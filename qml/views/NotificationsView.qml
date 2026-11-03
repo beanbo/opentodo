@@ -3,10 +3,9 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import OpenTodoUI
 
-// TODO TaskViewModel: add `Q_INVOKABLE void openTaskById(const QString &id)`
-//   so clicking a notification with a relatedTaskId can navigate to that task.
-//   Currently TaskViewModel only exposes setSelectedTask(QObject*); a string-id
-//   variant is needed for cross-VM navigation from here.
+// Clicking a notification with a relatedTaskId emits openTaskRequested;
+// DesktopLayout routes it to taskViewModel.openTaskById() and shows the
+// editor next to this view.
 
 Item {
     id: root
@@ -250,14 +249,21 @@ Item {
         // тултипы / экспорт), но рендер делегата теперь использует kindIcon
         // (см. ниже) с IconSvg из stroke-пака — единый визуальный вес для
         // всех типов уведомлений.
+        //
+        // Numbering MUST follow Notification::Kind in
+        // src/viewmodels/notificationsviewmodel.h (as MNotificationsScreen does):
+        //   0 TaskCompleted, 1 TaskOverdue, 2 SyncSuccess, 3 SyncFailure,
+        //   4 AchievementUnlocked, 5 ReminderFired.
+        // These switches used to treat 2 as ReminderFired, shifting every
+        // later kind (sync failures rendered as successes, reminders as trophies).
         readonly property string kindEmoji: {
             switch (delegateRoot.kind) {
-                case 0: return "✅"   // TaskCompleted    ✅
-                case 1: return "⚠"   // TaskOverdue      ⚠
-                case 2: return "🔔" // ReminderFired 🔔
-                case 3: return "✔"   // SyncSuccess      ✔
-                case 4: return "❌"   // SyncFailure      ❌
-                case 5: return "🏆" // AchievementUnlocked 🏆
+                case 0: return "✅"   // TaskCompleted
+                case 1: return "⚠"   // TaskOverdue
+                case 2: return "✔"   // SyncSuccess
+                case 3: return "❌"   // SyncFailure
+                case 4: return "🏆" // AchievementUnlocked
+                case 5: return "🔔" // ReminderFired
                 default: return "📋"
             }
         }
@@ -269,25 +275,25 @@ Item {
             switch (delegateRoot.kind) {
                 case 0: return "check-circle"   // TaskCompleted
                 case 1: return "warning"        // TaskOverdue
-                case 2: return "bell"           // ReminderFired
-                case 3: return "sync"           // SyncSuccess
-                case 4: return "close"          // SyncFailure
-                case 5: return "star"           // AchievementUnlocked
+                case 2: return "sync"           // SyncSuccess
+                case 3: return "close"          // SyncFailure
+                case 4: return "star"           // AchievementUnlocked
+                case 5: return "bell"           // ReminderFired
                 default: return "list"
             }
         }
 
         // Q4.01 night iter-30: kind icon colors — use semantic tokens so
-        // they track theme palette. Achievement (5) keeps a gold-tone
+        // they track theme palette. Achievement (4) keeps a gold-tone
         // literal because none of the semantic tokens carry "trophy" meaning.
         readonly property color kindIconColor: {
             switch (delegateRoot.kind) {
                 case 0: return ThemeManager.successColor   // TaskCompleted
                 case 1: return ThemeManager.warningColor   // TaskOverdue
-                case 2: return ThemeManager.infoColor      // ReminderFired
-                case 3: return ThemeManager.successColor   // SyncSuccess
-                case 4: return ThemeManager.errorColor     // SyncFailure
-                case 5: return "#ffc107"                   // Achievement — gold trophy
+                case 2: return ThemeManager.successColor   // SyncSuccess
+                case 3: return ThemeManager.errorColor     // SyncFailure
+                case 4: return "#ffc107"                   // Achievement — gold trophy
+                case 5: return ThemeManager.infoColor      // ReminderFired
                 default: return textSecondary
             }
         }
@@ -300,13 +306,15 @@ Item {
             switch (delegateRoot.kind) {
                 case 0: c = ThemeManager.successColor; break  // TaskCompleted
                 case 1: c = ThemeManager.warningColor; break  // TaskOverdue
-                case 2: c = ThemeManager.infoColor;    break  // ReminderFired
-                case 3: c = ThemeManager.successColor; break  // SyncSuccess
-                case 4: c = ThemeManager.errorColor;   break  // SyncFailure
-                case 5: c = "#ffc107";                 break  // Achievement gold
+                case 2: c = ThemeManager.successColor; break  // SyncSuccess
+                case 3: c = ThemeManager.errorColor;   break  // SyncFailure
+                case 4: c = "#ffc107";                 break  // Achievement gold
+                case 5: c = ThemeManager.infoColor;    break  // ReminderFired
                 default: c = ThemeManager.secondaryTextColor
             }
-            return Qt.rgba(c.r, c.g, c.b, delegateRoot.kind === 3 ? 0.12 : 0.15)
+            // SyncSuccess (2) gets a lighter tint than TaskCompleted, which
+            // shares its colour.
+            return Qt.rgba(c.r, c.g, c.b, delegateRoot.kind === 2 ? 0.12 : 0.15)
         }
 
         // R-6.91 — consumes refreshTick as a binding dependency so Qt re-evaluates

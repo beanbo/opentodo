@@ -16,6 +16,12 @@ Item {
     property color textPrimary: ThemeManager.textColor
     property color textSecondary: ThemeManager.secondaryTextColor
 
+    // PomodoroService.phase is "work" | "shortBreak" | "longBreak" | "idle" —
+    // there is no "break" phase, so comparing against "break" never matched
+    // and breaks rendered as work (accent colour, "Готов к старту" label).
+    readonly property bool _pomodoroOnBreak:
+        pomodoroService.phase === "shortBreak" || pomodoroService.phase === "longBreak"
+
     // ── Briefing helpers ──────────────────────────────────────────────────────
 
     // Russian plural: задача / задачи / задач
@@ -63,13 +69,15 @@ Item {
         // counts are real arrays.
         var todayTasks   = dataStore.tasksForTodayData()
         var overdueTasks = dataStore.overdueTasksData()
-        var total        = todayTasks.length
         var overdueCount = overdueTasks.length
-        var done         = 0
-        for (var i = 0; i < todayTasks.length; i++) {
-            if (todayTasks[i].isCompleted) done++
-        }
-        var remaining = total - done
+        // tasksForTodayData() holds only OPEN tasks (completed ones are
+        // excluded), so counting isCompleted over it was always 0 and the
+        // "все задачи выполнены" branch was unreachable. Done-today comes from
+        // karma (also re-evaluates this binding via karmaChanged).
+        var remaining    = todayTasks.length
+        var done         = (typeof karmaViewModel !== "undefined" && karmaViewModel)
+                           ? karmaViewModel.completedToday : 0
+        var total        = remaining + done
         var greet = _greetingByTime()
 
         // Q4.01 (redesign): поле emoji → iconName (имя файла в
@@ -171,7 +179,7 @@ Item {
                         font.pixelSize: 56
                         font.weight: Font.Light
                         font.letterSpacing: -2
-                        color: pomodoroService.phase === "break" ? ThemeManager.successColor : ThemeManager.accentColor
+                        color: root._pomodoroOnBreak ? ThemeManager.successColor : ThemeManager.accentColor
                         text: {
                             var sec = pomodoroService.remainingSeconds
                             var m = Math.floor(sec / 60)
@@ -189,7 +197,7 @@ Item {
                         color: textSecondary
                         text: {
                             if (pomodoroService.phase === "work")  return qsTr("Работа")
-                            if (pomodoroService.phase === "break") return qsTr("Перерыв")
+                            if (root._pomodoroOnBreak)             return qsTr("Перерыв")
                             return qsTr("Готов к старту")
                         }
                     }
@@ -213,7 +221,7 @@ Item {
                             }
                             height: parent.height
                             radius: Radius.xs
-                            color: pomodoroService.phase === "break" ? ThemeManager.successColor : ThemeManager.accentColor
+                            color: root._pomodoroOnBreak ? ThemeManager.successColor : ThemeManager.accentColor
                             Behavior on width { NumberAnimation { duration: 800 } }
                         }
                     }

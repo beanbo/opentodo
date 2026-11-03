@@ -30,7 +30,9 @@ Rectangle {
     property var _sections: []
 
     function _refreshSections() {
-        var raw = dataStore.sectionsForProject(projectId)
+        // QList<Section*>: copied by index below (no Array methods relied on);
+        // `|| []` keeps a null return from throwing on `.length`.
+        var raw = dataStore.sectionsForProject(projectId) || []
         // Iter-110: sort columns by `order` so the board follows the user's
         // section arrangement. dataStore.sectionsForProject() returns
         // m_sections INSERTION order (datastore.cpp), not `order`, while the
@@ -50,7 +52,7 @@ Rectangle {
         // (archived) sections as columns after the visible ones, flagged so the
         // header + menu can mark them and offer "Показать раздел" (un-hide).
         if (typeof taskViewModel !== "undefined" && taskViewModel.showHiddenSections) {
-            var hraw = dataStore.archivedSectionsForProject(projectId)
+            var hraw = dataStore.archivedSectionsForProject(projectId) || []
             var harr = []
             for (var h = 0; h < hraw.length; h++) harr.push(hraw[h])
             harr.sort(function(a, b) { return a.order - b.order })
@@ -101,12 +103,11 @@ Rectangle {
         }
     }
 
+    // String compare on "yyyy-MM-dd": new Date("yyyy-MM-dd") is UTC midnight,
+    // which west of UTC is the previous local day → due-today cards turned red.
     function _isOverdue(dateStr) {
         if (!dateStr || dateStr === "") return false
-        var due   = new Date(dateStr)
-        var today = new Date()
-        today.setHours(0, 0, 0, 0)
-        return due < today
+        return String(dateStr).substring(0, 10) < Qt.formatDate(new Date(), "yyyy-MM-dd")
     }
 
     Component.onCompleted: _refreshSections()
@@ -501,7 +502,8 @@ Rectangle {
                             Layout.preferredHeight: addCardRow.implicitHeight + 16  // padding 8 top + 8 bottom
                             radius: Radius.xs
                             // Q4.01 (night iter-8): theme-aware add-card hover
-                            color:  addCardHover.containsMouse
+                            // HoverHandler exposes `hovered` (containsMouse is MouseArea API).
+                            color:  addCardHover.hovered
                                     ? ThemeManager.hoverColor
                                     : "transparent"
 

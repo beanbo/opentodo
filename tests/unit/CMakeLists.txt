@@ -782,6 +782,17 @@ set_tests_properties(test_desktop_narrow_layout PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# Behavioural pins for the desktop shell: TaskEditor follows selectedTask,
+# full-page views get an editor host, Ctrl+1..6 / Shift+T handlers work, and
+# NotificationsView's kind → icon mapping follows Notification::Kind.
+# Same environment shape as test_desktop_narrow_layout.
+opentodo_add_unit_test(test_desktop_shell_behaviour       App)
+target_link_libraries(test_desktop_shell_behaviour PRIVATE OpenTodoAppplugin)
+set_tests_properties(test_desktop_shell_behaviour PROPERTIES
+    WORKING_DIRECTORY "$<TARGET_FILE_DIR:test_desktop_shell_behaviour>"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Pins the QVariantMap shape of ProjectViewModel::childProjects() — the
 # QML side iterates this list as a JS array (`.length`, `[i].id`,
 # `[i].isArchived`). Returning QVariant::fromValue(Project*) entries
