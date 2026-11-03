@@ -110,7 +110,7 @@ jobs:
 
       # Qt 6.11.0 requires Emscripten 4.0.7 exactly.
       - name: Setup Emscripten 4.0.7
-        uses: mymindstorm/setup-emsdk@v14
+        uses: mymindstorm/setup-emsdk@v16
         with:
           version: '4.0.7'
 
