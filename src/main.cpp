@@ -536,17 +536,33 @@ int main(int argc, char *argv[])
     driveSyncTimer->setSingleShot(true);
     driveSyncTimer->setInterval(5000);
 
-    // B-9.13: don't re-arm the drive-sync debounce while syncEngine is
-    // actively pulling/applying a remote state — that would create a
-    // feedback loop where an inbound sync triggers an immediate push
-    // of the just-applied state.
+    // B-9.13: don't re-arm the drive-sync debounce for the engine's OWN load of
+    // a merged remote state — that would create a feedback loop where an
+    // inbound sync triggers an immediate push of the just-applied state.
+    // S12: but a genuine user edit made while a sync is in flight (remote I/O
+    // runs nested event loops, so the UI stays live) used to be dropped here
+    // too and never synced. Remember it and re-arm the debounce once the
+    // engine leaves the Syncing state.
+    auto dirtyDuringSync = std::make_shared<bool>(false);
     QObject::connect(dataStore, &DataStore::dataChanged, driveSyncTimer,
-                     [driveSyncTimer, syncEngine, settingsVM]() {
+                     [driveSyncTimer, syncEngine, settingsVM, dirtyDuringSync]() {
         if (settingsVM->syncMode() != QStringLiteral("after_action"))
             return;
-        if (syncEngine->status() == SyncEngine::Syncing)
+        if (syncEngine->isApplyingRemoteState())
             return;
+        if (syncEngine->status() == SyncEngine::Syncing || syncEngine->isBusy()) {
+            *dirtyDuringSync = true;
+            return;
+        }
         driveSyncTimer->start();
+    });
+    QObject::connect(syncEngine, &SyncEngine::statusChanged, driveSyncTimer,
+                     [driveSyncTimer, syncEngine, settingsVM, dirtyDuringSync]() {
+        if (syncEngine->status() == SyncEngine::Syncing || !*dirtyDuringSync)
+            return;
+        *dirtyDuringSync = false;
+        if (settingsVM->syncMode() == QStringLiteral("after_action"))
+            driveSyncTimer->start();
     });
     QObject::connect(driveSyncTimer, &QTimer::timeout, syncVM, [syncVM] {
         // No-op when the user hasn't connected Drive — push() exits

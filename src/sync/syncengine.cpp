@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QList>
@@ -91,7 +92,127 @@ Commit *SyncEngine::createCommit(const QList<SyncOperation> &operations)
     return commit;
 }
 
+// ── S12: re-entrancy guard ───────────────────────────────────────────────────
+// Every remote call spins a nested QEventLoop, so the sync timer, the
+// after-action debounce, the sync icon or pull-to-refresh can call back into
+// push()/pull() mid-sync. The nested run used to try to take the remote lock we
+// already hold (→ false "another device is syncing" error, or two .lock files
+// on Drive). Now a re-entrant request only marks a follow-up, and one sync()
+// (pull + push, which covers either request) runs after the current op ends.
+bool SyncEngine::beginSyncOp()
+{
+    if (m_busy) {
+        m_resyncPending = true;
+        return false;
+    }
+    m_busy = true;
+    return true;
+}
+
+void SyncEngine::endSyncOp()
+{
+    m_busy = false;
+    if (m_resyncPending) {
+        m_resyncPending = false;
+        // Deferred so the caller's stack unwinds first (no recursion).
+        QTimer::singleShot(0, this, &SyncEngine::sync);
+    }
+}
+
 void SyncEngine::push()
+{
+    if (!beginSyncOp()) return;
+    doPush();
+    endSyncOp();
+}
+
+void SyncEngine::pull()
+{
+    if (!beginSyncOp()) return;
+    doPull();
+    endSyncOp();
+}
+
+void SyncEngine::sync()
+{
+    if (!beginSyncOp()) return;
+    doPull();
+    if (m_status != Error) {
+        doPush();
+    }
+    endSyncOp();
+}
+
+// Order-insensitive comparison of two entity arrays keyed by "id".
+static bool sameEntityArrays(const QJsonArray &a, const QJsonArray &b)
+{
+    if (a.size() != b.size()) return false;
+    QHash<QString, QJsonObject> byId;
+    byId.reserve(a.size());
+    for (const auto &v : a) {
+        const QJsonObject o = v.toObject();
+        byId.insert(o.value(QStringLiteral("id")).toString(), o);
+    }
+    if (byId.size() != a.size()) return false;   // duplicate ids
+    QSet<QString> seen;
+    for (const auto &v : b) {
+        const QJsonObject o = v.toObject();
+        const QString id = o.value(QStringLiteral("id")).toString();
+        if (seen.contains(id)) return false;
+        seen.insert(id);
+        const auto it = byId.constFind(id);
+        if (it == byId.constEnd() || it.value() != o) return false;
+    }
+    return true;
+}
+
+// S2: true when loading `merged` would not change the store's content. The
+// merger emits entities in id order (not the store's list order), so compare
+// collections as id-keyed sets; also compare settings + their stamps.
+static bool mergedEqualsLocal(const QJsonObject &local, const QJsonObject &merged)
+{
+    for (const QString &key : {QStringLiteral("settings"), QStringLiteral("settings_meta")}) {
+        if (local.value(key).toObject() != merged.value(key).toObject())
+            return false;
+    }
+    static const QStringList collections = {
+        QStringLiteral("tasks"),   QStringLiteral("projects"),
+        QStringLiteral("sections"), QStringLiteral("labels"),
+        QStringLiteral("filters"), QStringLiteral("reminders"),
+        QStringLiteral("comments"),
+    };
+    for (const QString &key : collections) {
+        if (!sameEntityArrays(local.value(key).toArray(), merged.value(key).toArray()))
+            return false;
+    }
+    return true;
+}
+
+void SyncEngine::applyMergedState(const QJsonObject &local, const QJsonObject &merged)
+{
+    // S4: receiving remote state must advance the local HLC (the HLC receive
+    // rule), otherwise a device whose wall clock lags a peer's keeps stamping
+    // edits BELOW the stamps it just merged and its next edits silently lose.
+    // HybridLogicalClock::update was only reached from the commit-log path,
+    // which production never exercises.
+    const QString maxTs = Merger::maxHlc(merged);
+    const QString lastTs = HybridLogicalClock::loadLast();
+    if (!maxTs.isEmpty() && HybridLogicalClock::compare(maxTs, lastTs) > 0)
+        HybridLogicalClock::update(lastTs, maxTs, m_deviceId);
+
+    // S2: loadFromJson() runs DataStore::clear() → aboutToReset, which resets
+    // every list model (closing the editor, dropping typed text, resetting
+    // scroll). Doing that on every ~5 s after-action push when nothing changed
+    // made the app unusable; skip it when the merge is a no-op.
+    if (mergedEqualsLocal(local, merged))
+        return;
+
+    m_applyingRemote = true;
+    m_store->loadFromJson(merged);
+    m_applyingRemote = false;
+}
+
+void SyncEngine::doPush()
 {
     if (!m_remote->isAuthenticated()) {
         setStatus(Offline);
@@ -194,14 +315,28 @@ void SyncEngine::push()
         const bool gotRemote = m_remote->downloadFile(
             QStringLiteral("state.json"), remoteStateData,
             /*notFoundIsOk=*/true, /*maxBytes=*/MAX_STATE_SIZE);
-        if (gotRemote && !remoteStateData.isEmpty()) {
+        if (!gotRemote) {
+            // S6: the download FAILED (network error, 5xx/429, lookup error,
+            // oversize body) — this is NOT "no remote state yet" (that returns
+            // true with an empty body). Uploading our unmerged local state now
+            // would overwrite every peer change in remote state.json, so abort
+            // and let the next sync retry.
+            setLastError(QStringLiteral(
+                "Не удалось загрузить удалённый state.json перед отправкой — "
+                "отправка отменена, чтобы не перезаписать изменения других "
+                "устройств."));
+            purgeUploaded();
+            m_remote->releaseLock();
+            setStatus(Error);
+            return;
+        }
+        if (!remoteStateData.isEmpty()) {
             const QJsonObject remoteState =
                 QJsonDocument::fromJson(remoteStateData).object();
             if (!remoteState.isEmpty()
                 && remoteState.contains(QStringLiteral("tasks"))) {
-                const QJsonObject merged =
-                    m_merger->mergeStates(m_store->toJson(), remoteState);
-                m_store->loadFromJson(merged);
+                const QJsonObject local = m_store->toJson();
+                applyMergedState(local, m_merger->mergeStates(local, remoteState));
             }
         }
     }
@@ -270,7 +405,7 @@ void SyncEngine::push()
     emit syncCompleted();
 }
 
-void SyncEngine::pull()
+void SyncEngine::doPull()
 {
     if (!m_remote->isAuthenticated()) {
         setStatus(Offline);
@@ -305,22 +440,47 @@ void SyncEngine::pull()
         return;
     }
 
-    if (headData.isEmpty()) {
-        // No remote data yet — first sync, nothing to pull.
-        m_remote->releaseLock();
-        setStatus(Synced);
-        return;
-    }
+    const QString remoteHead = headData.isEmpty()
+        ? QString()
+        : QJsonDocument::fromJson(headData).object()[QStringLiteral("commit")].toString();
 
-    const QJsonDocument headDoc = QJsonDocument::fromJson(headData);
-    const QString remoteHead = headDoc.object()[QStringLiteral("commit")].toString();
-
-    if (remoteHead == m_headCommitId) {
-        // Already up to date
+    if (headData.isEmpty() || remoteHead == m_headCommitId) {
+        // S5: no commits to replay — but that says nothing about state.json.
+        // Production pushes whole-state snapshots without creating commits, so
+        // remote HEAD is always absent and this branch is the NORMAL pull: it
+        // previously returned Synced without reading state.json, which made
+        // "Pull" / "reload from Drive" and the first half of sync() no-ops.
+        // Download the snapshot (a missing one is fine — first sync) and merge.
+        QByteArray snapData;
+        if (!m_remote->downloadFile(QStringLiteral("state.json"), snapData,
+                                    /*notFoundIsOk=*/true,
+                                    /*maxBytes=*/MAX_STATE_SIZE)) {
+            setLastError(QStringLiteral(
+                "Не удалось загрузить удалённое состояние (ошибка сети или "
+                "размер тела ответа превысил MAX_STATE_SIZE = %1 байт)").arg(MAX_STATE_SIZE));
+            m_remote->releaseLock();
+            setStatus(Error);
+            return;
+        }
+        if (!snapData.isEmpty()) {
+            const QJsonObject snapState = QJsonDocument::fromJson(snapData).object();
+            // B-2.42: never let an empty / structurally invalid snapshot touch
+            // local data.
+            if (snapState.isEmpty() || !snapState.contains(QStringLiteral("tasks"))) {
+                qCWarning(lcSync) << "pull(): remote state.json is invalid or empty — aborting pull";
+                m_remote->releaseLock();
+                setLastError(QStringLiteral("Удалённый state.json повреждён (отсутствует «tasks»). Загрузка прервана."));
+                setStatus(Error);
+                return;
+            }
+            const QJsonObject local = m_store->toJson();
+            applyMergedState(local, m_merger->mergeStates(local, snapState));
+        }
         m_remote->releaseLock();
         m_lastSyncTime = QDateTime::currentDateTimeUtc();
         emit lastSyncTimeChanged();
         setStatus(Synced);
+        emit syncCompleted();
         return;
     }
 
@@ -560,12 +720,15 @@ void SyncEngine::pull()
     // already-superseded state. The snapshot below carries the merged truth.
     if (!danglingHead) {
         QString lastApplied = m_headCommitId;
+        // Commit application mutates the store directly — not a user edit.
+        m_applyingRemote = true;
         for (auto *c : remoteCommits) {
             // Skip commits already applied locally.
             if (c->uuid() == m_headCommitId) continue;
             applyCommit(c);
             lastApplied = c->uuid();
         }
+        m_applyingRemote = false;
     }
 
     // Merge remote snapshot with local state. ALWAYS merge — never blindly
@@ -584,8 +747,8 @@ void SyncEngine::pull()
     // while genuine remote deletes and newer remote fields still apply. Merging
     // is safe even when there are no pending commits (it is a no-op when local
     // already equals the last-synced remote).
-    const QJsonObject merged = m_merger->mergeStates(m_store->toJson(), remoteState);
-    m_store->loadFromJson(merged);
+    const QJsonObject localState = m_store->toJson();
+    applyMergedState(localState, m_merger->mergeStates(localState, remoteState));
 
     qDeleteAll(remoteCommits);
     m_headCommitId = remoteHead;
@@ -598,14 +761,6 @@ void SyncEngine::pull()
     emit lastSyncTimeChanged();
     setStatus(Synced);
     emit syncCompleted();
-}
-
-void SyncEngine::sync()
-{
-    pull();
-    if (m_status != Error) {
-        push();
-    }
 }
 
 void SyncEngine::setSyncInterval(int seconds)

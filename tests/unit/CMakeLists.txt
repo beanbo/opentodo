@@ -39,6 +39,7 @@ opentodo_add_unit_test(test_telemetry         Infra)
 opentodo_add_unit_test(test_crdt              Infra)
 opentodo_add_unit_test(test_syncengine        Infra)
 opentodo_add_unit_test(test_synchttpserver    Infra)
+opentodo_add_unit_test(test_sync_review_fixes  Infra)
 
 # Quality round (May 2026): coverage for actions added in I18-I27.
 opentodo_add_unit_test(test_taskviewmodel_actions     App)

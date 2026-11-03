@@ -53,6 +53,20 @@ public:
     static constexpr qint64 MAX_HEADER_BYTES = 16 * 1024;
     static constexpr qint64 MAX_BODY_BYTES   = 64LL * 1024 * 1024;
 
+    // S14: slow-client / connection-flood guards. A connection must finish its
+    // header block within HEADER_TIMEOUT_MS and be completely served within
+    // TOTAL_TIMEOUT_MS (a 50 MB state over a slow phone link fits comfortably),
+    // and at most MAX_CONNECTIONS may be open at once — new ones beyond that
+    // are dropped before any parsing. All of this applies BEFORE the bearer
+    // token check, which is the point: unauthenticated peers behind the public
+    // Funnel could otherwise hold sockets open forever (slowloris).
+    static constexpr int DEFAULT_HEADER_TIMEOUT_MS = 10 * 1000;
+    static constexpr int DEFAULT_TOTAL_TIMEOUT_MS  = 60 * 1000;
+    static constexpr int DEFAULT_MAX_CONNECTIONS   = 32;
+    // Override the guards (tests use short values). Applies to new connections.
+    void setConnectionLimits(int headerTimeoutMs, int totalTimeoutMs, int maxConnections);
+    int activeConnections() const { return m_activeConnections; }
+
 signals:
     void started(quint16 port);
     void stopped();
@@ -73,4 +87,8 @@ private:
     LocalDirRemote *m_store;
     QString m_token;
     quint16 m_port = 0;
+    int m_headerTimeoutMs = DEFAULT_HEADER_TIMEOUT_MS;
+    int m_totalTimeoutMs  = DEFAULT_TOTAL_TIMEOUT_MS;
+    int m_maxConnections  = DEFAULT_MAX_CONNECTIONS;
+    int m_activeConnections = 0;
 };

@@ -14,6 +14,7 @@ Q_LOGGING_CATEGORY(lcSyncServer, "opentodo.syncserver")
 #include <QJsonDocument>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 #include <memory>
 
@@ -119,14 +120,53 @@ bool SyncHttpServer::isRunning() const
     return m_server && m_server->isListening();
 }
 
+void SyncHttpServer::setConnectionLimits(int headerTimeoutMs, int totalTimeoutMs,
+                                         int maxConnections)
+{
+    m_headerTimeoutMs = qMax(1, headerTimeoutMs);
+    m_totalTimeoutMs  = qMax(1, totalTimeoutMs);
+    m_maxConnections  = qMax(1, maxConnections);
+}
+
 void SyncHttpServer::onNewConnection()
 {
     while (m_server && m_server->hasPendingConnections()) {
         QTcpSocket *sock = m_server->nextPendingConnection();
+        if (!sock)
+            break;
+
+        // S14: connection cap, enforced before reading a single byte.
+        if (m_activeConnections >= m_maxConnections) {
+            qCWarning(lcSyncServer) << "connection cap" << m_maxConnections
+                                    << "reached — dropping new connection";
+            sock->abort();
+            sock->deleteLater();
+            continue;
+        }
+        ++m_activeConnections;
+        connect(sock, &QObject::destroyed, this, [this]() { --m_activeConnections; });
         connect(sock, &QTcpSocket::disconnected, sock, &QTcpSocket::deleteLater);
 
+        // S14: idle / slowloris timeouts. Both timers are children of the
+        // socket, so they die with it. The header timer is stopped once the
+        // header block is parsed; the total timer bounds the whole exchange
+        // (including a client that never reads our response).
+        auto dropSlow = [sock]() {
+            qCInfo(lcSyncServer) << "closing slow / idle connection";
+            sock->abort();
+            sock->deleteLater();
+        };
+        auto *headerTimer = new QTimer(sock);
+        headerTimer->setSingleShot(true);
+        connect(headerTimer, &QTimer::timeout, sock, dropSlow);
+        headerTimer->start(m_headerTimeoutMs);
+        auto *totalTimer = new QTimer(sock);
+        totalTimer->setSingleShot(true);
+        connect(totalTimer, &QTimer::timeout, sock, dropSlow);
+        totalTimer->start(m_totalTimeoutMs);
+
         auto st = std::make_shared<Conn>();
-        connect(sock, &QTcpSocket::readyRead, this, [this, sock, st]() {
+        connect(sock, &QTcpSocket::readyRead, this, [this, sock, st, headerTimer]() {
             if (st->dispatched)
                 return;
             st->buf += sock->readAll();
@@ -182,6 +222,7 @@ void SyncHttpServer::onNewConnection()
                     }
                 }
                 st->headersParsed = true;
+                headerTimer->stop();   // S14: headers arrived in time
 
                 if (st->contentLength < 0 || st->contentLength > MAX_BODY_BYTES) {
                     st->dispatched = true;
@@ -336,6 +377,7 @@ bool SyncHttpServer::start(quint16, const QString &, bool) {
     return false;
 }
 void SyncHttpServer::stop() {}
+void SyncHttpServer::setConnectionLimits(int, int, int) {}
 bool SyncHttpServer::isRunning() const { return false; }
 void SyncHttpServer::onNewConnection() {}
 void SyncHttpServer::route(QTcpSocket *, const QString &, const QString &, const QByteArray &) {}

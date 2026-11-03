@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QJsonObject>
 #include <QList>
 #include <QString>
 #include <QTimer>
@@ -88,6 +89,17 @@ public:
     // successful pull() that resolves a consistent HEAD.
     bool isDanglingHead() const { return m_danglingHead; }
 
+    // S12: true only while the engine itself is loading a merged remote state
+    // into the DataStore. main.cpp's after-action scheduler ignores the
+    // dataChanged emitted during that window (it is not a user edit) while
+    // still remembering genuine edits made during a sync's network waits.
+    bool isApplyingRemoteState() const { return m_applyingRemote; }
+
+    // S12: true while a push/pull/sync is running (remote I/O spins nested
+    // event loops, so a timer or UI tap can re-enter). A re-entrant request is
+    // coalesced into one follow-up sync() after the current one finishes.
+    bool isBusy() const { return m_busy; }
+
 signals:
     void statusChanged();
     void lastErrorChanged();
@@ -121,6 +133,18 @@ private:
     void applyCommit(Commit *commit);
     QString pendingCommitsPath() const;
 
+    // Bodies of push()/pull(); the public entry points add the S12
+    // re-entrancy guard around them.
+    void doPush();
+    void doPull();
+    bool beginSyncOp();
+    void endSyncOp();
+
+    // S2 + S4: advance the local HLC past the merged state's stamps, then load
+    // `merged` into the store only if it differs from `local` (an unchanged
+    // merge must not reset every ViewModel through DataStore::clear()).
+    void applyMergedState(const QJsonObject &local, const QJsonObject &merged);
+
     DataStore *m_store;
     GDriveClient *m_gdrive;
     RemoteStore *m_remote = nullptr;   // active backend; defaults to m_gdrive
@@ -135,5 +159,8 @@ private:
     QList<Commit *> m_pendingCommits;
     QString m_headCommitId;
     bool m_danglingHead = false;
+    bool m_busy = false;            // S12
+    bool m_resyncPending = false;   // S12
+    bool m_applyingRemote = false;  // S12
     QTimer m_syncTimer;
 };

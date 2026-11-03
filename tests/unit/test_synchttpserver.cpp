@@ -17,7 +17,9 @@
 
 #include <QtTest>
 #include <QDir>
+#include <QHostAddress>
 #include <QStandardPaths>
+#include <QTcpSocket>
 
 #include "sync/synchttpserver.h"
 #include "sync/httpremote.h"
@@ -161,6 +163,53 @@ private slots:
         // The file must NOT exist outside the store root.
         const QString parentEscape = QDir(m_dir).filePath(QStringLiteral("../escape.json"));
         QVERIFY(!QFileInfo::exists(parentEscape));
+    }
+
+    // ── S14: a client that never finishes its headers is dropped ────────────
+    void slowHeadersConnectionIsClosed()
+    {
+        SyncHttpServer srv(m_store);
+        srv.setConnectionLimits(/*header*/ 200, /*total*/ 2000, /*max*/ 8);
+        QVERIFY(srv.start(0, TOKEN));
+
+        QTcpSocket sock;
+        sock.connectToHost(QHostAddress::LocalHost, srv.port());
+        QVERIFY(sock.waitForConnected(2000));
+        sock.write("GET /ping HTTP/1.1\r\nHost: x\r\n");   // header block never ends
+        sock.flush();
+        QTRY_COMPARE_WITH_TIMEOUT(sock.state(), QAbstractSocket::UnconnectedState, 3000);
+        QTRY_COMPARE(srv.activeConnections(), 0);
+
+        // A normal authenticated request is unaffected by the timers.
+        HttpRemote c;
+        c.configure(QStringLiteral("http://127.0.0.1:%1").arg(srv.port()), TOKEN);
+        QVERIFY(c.uploadFile(QStringLiteral("s14.json"), QByteArrayLiteral("{}")));
+    }
+
+    // ── S14: concurrent connections beyond the cap are refused ──────────────
+    void connectionCapDropsExtraConnections()
+    {
+        SyncHttpServer srv(m_store);
+        srv.setConnectionLimits(/*header*/ 5000, /*total*/ 5000, /*max*/ 2);
+        QVERIFY(srv.start(0, TOKEN));
+
+        QTcpSocket a, b, extra;
+        for (QTcpSocket *s : {&a, &b}) {
+            s->connectToHost(QHostAddress::LocalHost, srv.port());
+            QVERIFY(s->waitForConnected(2000));
+        }
+        QTRY_COMPARE(srv.activeConnections(), 2);
+
+        extra.connectToHost(QHostAddress::LocalHost, srv.port());
+        QVERIFY(extra.waitForConnected(2000));
+        QTRY_COMPARE_WITH_TIMEOUT(extra.state(), QAbstractSocket::UnconnectedState, 3000);
+        QCOMPARE(srv.activeConnections(), 2);
+        QCOMPARE(a.state(), QAbstractSocket::ConnectedState);
+
+        // Closing the held connections frees the slots again.
+        a.abort();
+        b.abort();
+        QTRY_COMPARE(srv.activeConnections(), 0);
     }
 };
 
