@@ -39,9 +39,16 @@ def test_quickadd_submit_passes_picker_overrides(app, recorder):
     assert "userOverrode" in qml, (
         "submitTask should detect when the user picked priority/date/labels"
     )
-    # And must call addTask with explicit args in that branch.
-    assert "taskViewModel.addTask(rawText" in qml, (
-        "submitTask should call addTask(rawText, projectId, priority, ...) "
+    # And must call addTask with explicit args in that branch — on the
+    # NLP-parsed content, not the raw text (addTask takes the content
+    # verbatim, so rawText kept "завтра @дом #Работа" in the title and lost
+    # the date, label and project as soon as any picker was used).
+    override_branch = qml.split("if (userOverrode)")[1].split("} else")[0]
+    assert "taskViewModel.previewQuickAdd(rawText)" in override_branch, (
+        "the override branch should still run the Quick Add parser on the text"
+    )
+    assert "taskViewModel.addTask(" in override_branch, (
+        "submitTask should call addTask(content, projectId, priority, ...) "
         "when the user explicitly picked options — not addTaskFromQuickAdd"
     )
     # The override branch must include selectedPriority.

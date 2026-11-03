@@ -3,6 +3,7 @@
 #include "model/project.h"
 #include "model/task.h"
 #include "services/telemetry.h"
+#include "utils/settingskeys.h"
 
 #include <QDate>
 #include <QDateTime>
@@ -574,10 +575,16 @@ int ProjectViewModel::weeklyCompletedForProject(const QString &projectId) const
 {
     if (projectId.isEmpty()) return 0;
 
+    // Honour the user's week start (ISO 1..7; a legacy 0 or anything out of
+    // range means Monday) like KarmaViewModel and the ProjectView goal pill
+    // do — a fixed ISO (Monday) week made the weekly-goal celebration
+    // disagree with the pill for users whose week starts on Sunday.
+    int weekStart = m_store->setting(QLatin1String(SettingsKeys::WeekStart)).toInt();
+    if (weekStart < 1 || weekStart > 7)
+        weekStart = 1;
     const QDate today = QDate::currentDate();
-    int isoYear = 0;
-    const int currentWeek = today.weekNumber(&isoYear);
-    if (currentWeek <= 0) return 0;
+    const QDate weekBegin = today.addDays(-((today.dayOfWeek() - weekStart + 7) % 7));
+    const QDate weekEnd   = weekBegin.addDays(7);
 
     int count = 0;
     const auto tasks = m_store->tasksForProject(projectId);
@@ -587,9 +594,7 @@ int ProjectViewModel::weeklyCompletedForProject(const QString &projectId) const
         const QDateTime ca = t->completedAt();
         if (!ca.isValid()) continue;
         const QDate completedDate = ca.toLocalTime().date();
-        int compYear = 0;
-        const int compWeek = completedDate.weekNumber(&compYear);
-        if (compYear == isoYear && compWeek == currentWeek)
+        if (completedDate >= weekBegin && completedDate < weekEnd)
             ++count;
     }
     return count;

@@ -93,6 +93,10 @@ Rectangle {
 
     function _loadTask() {
         if (!taskId || taskId === "") return
+        // taskId is derived from `task`, so normally `task` already is this
+        // task: re-assigning it re-evaluates the taskId binding from inside its
+        // own change handler ("Binding loop detected for property taskId").
+        if (root.task && root.task.id === taskId) return
         // ITER1 #5: taskViewModel.getTask() doesn't exist; use DataStore directly.
         if (typeof dataStore !== "undefined" && dataStore) {
             const t = dataStore.taskById(taskId)

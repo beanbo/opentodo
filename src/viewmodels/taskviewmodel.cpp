@@ -393,9 +393,16 @@ QString TaskViewModel::addTask(const QString &content, const QString &projectId,
     task->setLabels(labels);
     mutatedFields << QStringLiteral("labels");
 
+    // Only inherit the current section when it belongs to the project the
+    // task is actually filed into: Quick Add with "#OtherProject" (or an
+    // explicit projectId) would otherwise attach a section of a different
+    // project, and the task would vanish from that project's board columns.
     if (!m_currentSectionId.isEmpty()) {
-        task->setSectionId(m_currentSectionId);
-        mutatedFields << QStringLiteral("section_id");
+        const Section *sec = m_store->sectionById(m_currentSectionId);
+        if (sec && !sec->isDeleted() && sec->projectId() == task->projectId()) {
+            task->setSectionId(m_currentSectionId);
+            mutatedFields << QStringLiteral("section_id");
+        }
     }
 
     if (!dueString.isEmpty()) {
