@@ -132,9 +132,17 @@ QuickAddResult QuickAddParser::parse(const QString &input)
         int suffixSplitAt = -1;
         int prefixSplitAt = -1;
 
-        for (int splitAt = 0; splitAt < words.size(); ++splitAt) {
+        // A date phrase is a handful of words ("every 2 weeks at 9am",
+        // "через 3 дня в 10:00"). Probing every split of a long paste re-parsed
+        // O(N²) words (a 10 KB input took ~0.3-0.7 s), so only candidates of
+        // up to kMaxDateWords words are tried. Inputs no longer than that
+        // behave exactly as before.
+        constexpr int kMaxDateWords = 32;
+        const int wordCount = words.size();
+
+        for (int splitAt = 0; splitAt < wordCount; ++splitAt) {
             // Suffix probe: dueCandidate = words[splitAt..]
-            if (suffixSplitAt < 0) {
+            if (suffixSplitAt < 0 && wordCount - splitAt <= kMaxDateWords) {
                 QString dueCandidate = QStringList(words.mid(splitAt)).join(QLatin1Char(' '));
                 if (tryCandidate(dueCandidate))
                     suffixSplitAt = splitAt;
@@ -142,7 +150,7 @@ QuickAddResult QuickAddParser::parse(const QString &input)
 
             // Prefix probe (B-4.21): dueCandidate = words[0..splitAt]
             // (splitAt is inclusive for prefix, i.e. the prefix length is splitAt+1)
-            if (prefixSplitAt < 0) {
+            if (prefixSplitAt < 0 && splitAt < kMaxDateWords) {
                 QString prefixCandidate = QStringList(words.mid(0, splitAt + 1)).join(QLatin1Char(' '));
                 if (tryCandidate(prefixCandidate))
                     prefixSplitAt = splitAt;
