@@ -57,7 +57,23 @@ void LocationService::addGeofence(const QString &reminderId, double lat, double 
     fence.center = QGeoCoordinate(lat, lon);
     fence.radiusMeters = radius;
     fence.triggered = false;
+    // Re-registering an UNCHANGED fence keeps its inside/outside state: the
+    // fences are reloaded on every remindersChanged, and resetting
+    // `triggered` made the next position update fire "entered" again for a
+    // place the user never left (duplicate alerts). A moved / resized fence
+    // starts fresh.
+    const auto existing = m_geofences.constFind(reminderId);
+    if (existing != m_geofences.constEnd()
+        && existing->center == fence.center
+        && qFuzzyCompare(existing->radiusMeters + 1.0, radius + 1.0)) {
+        fence.triggered = existing->triggered;
+    }
     m_geofences.insert(reminderId, fence);
+}
+
+QStringList LocationService::geofenceIds() const
+{
+    return m_geofences.keys();
 }
 
 void LocationService::removeGeofence(const QString &reminderId)

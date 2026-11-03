@@ -35,6 +35,15 @@ Project *resolveProject(const DataStore *store,
                         const QString &projectName,
                         bool *matchedByRepo = nullptr);
 
+// Resolve a task reference given on the command line: an exact task id, or a
+// unique prefix of one (at least kMinIdPrefix characters) — the human-readable
+// `list` output shows only the first 8 characters of each id. Soft-deleted
+// tasks never match. Returns nullptr and sets *outError ("task not found" /
+// "ambiguous task id …") when nothing (or more than one task) matches.
+constexpr int kMinIdPrefix = 4;
+Task *resolveTask(const DataStore *store, const QString &idOrPrefix,
+                  QString *outError = nullptr);
+
 // Active (or, with includeCompleted, all) non-deleted tasks for the scope,
 // sorted priority ascending (p1 first) then by order.
 QList<Task *> scopedTasks(const DataStore *store, const Project *project,

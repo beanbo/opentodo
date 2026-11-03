@@ -106,9 +106,13 @@ static void appendPropRaw(QByteArray &out, const QString &lhs, const QString &va
 //
 // OpenTodo stores due either as an ISO date (`YYYY-MM-DD`) or as an ISO
 // datetime (`YYYY-MM-DDTHH:MM:SS[+TZ]`). We translate both to the
-// corresponding iCalendar TEXT forms.  We treat datetimes as floating local
-// time (no TZID parameter, no Z suffix) — that's the most predictable round-
-// trip across Apple/Google/Outlook when we don't ship a VTIMEZONE block.
+// corresponding iCalendar TEXT forms.  A datetime WITHOUT an offset is local
+// wall-clock and is written as floating local time (no TZID parameter, no Z
+// suffix) — the most predictable round-trip across Apple/Google/Outlook when
+// we don't ship a VTIMEZONE block. A datetime WITH an offset / Z names an
+// absolute instant, so it is written in UTC form (RFC 5545 §3.3.5 FORM #2);
+// dropping the offset and printing its wall-clock as floating time moved the
+// task by the offset difference for anyone in another zone.
 //
 // Both helpers return empty when the task has neither a date nor a datetime.
 static QString icsDateOnly(const QString &isoDate)
@@ -123,10 +127,42 @@ static QString icsDateOnly(const QString &isoDate)
 
 static QString icsDateTimeFloating(const QString &isoDt)
 {
-    // "YYYY-MM-DDTHH:MM:SS[+TZ]" -> "YYYYMMDDTHHMMSS" (drop offset).
+    // "YYYY-MM-DDTHH:MM:SS"      -> "YYYYMMDDTHHMMSS"  (floating local)
+    // "YYYY-MM-DDTHH:MM:SS+TZ|Z" -> "YYYYMMDDTHHMMSSZ" (UTC instant)
     QDateTime dt = QDateTime::fromString(isoDt, Qt::ISODate);
     if (!dt.isValid()) return {};
+    if (dt.timeSpec() != Qt::LocalTime)
+        return dt.toUTC().toString(QStringLiteral("yyyyMMdd'T'HHmmss'Z'"));
     return dt.toString(QStringLiteral("yyyyMMdd'T'HHmmss"));
+}
+
+// Keep only RFC 5545 §3.3.10 RRULE parts. OpenTodo's recurrence rules carry
+// internal extensions (FROM=COMPLETION — "schedule from completion") that are
+// not valid iCalendar and make strict consumers reject the whole VTODO.
+static QString rfcRrule(const QString &rule)
+{
+    static const QStringList kRfcKeys = {
+        QStringLiteral("FREQ"),     QStringLiteral("UNTIL"),     QStringLiteral("COUNT"),
+        QStringLiteral("INTERVAL"), QStringLiteral("BYSECOND"),  QStringLiteral("BYMINUTE"),
+        QStringLiteral("BYHOUR"),   QStringLiteral("BYDAY"),     QStringLiteral("BYMONTHDAY"),
+        QStringLiteral("BYYEARDAY"), QStringLiteral("BYWEEKNO"), QStringLiteral("BYMONTH"),
+        QStringLiteral("BYSETPOS"), QStringLiteral("WKST"),
+    };
+    QStringList kept;
+    bool hasFreq = false;
+    for (const QString &part : rule.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString p = part.trimmed();
+        const int eq = p.indexOf(QLatin1Char('='));
+        if (eq <= 0)
+            continue;
+        const QString key = p.left(eq).trimmed().toUpper();
+        if (!kRfcKeys.contains(key))
+            continue;
+        hasFreq = hasFreq || key == QStringLiteral("FREQ");
+        kept.append(p);
+    }
+    // FREQ is mandatory; without it there is no valid RRULE to emit.
+    return hasFreq ? kept.join(QLatin1Char(';')) : QString();
 }
 
 // ── PRIORITY mapping ─────────────────────────────────────────────────────────
@@ -163,7 +199,11 @@ static QString mapRecurrenceToRrule(const QString &rruleField,
         QString r = rruleField.trimmed();
         if (r.startsWith(QStringLiteral("RRULE:"), Qt::CaseInsensitive))
             r = r.mid(6);
-        return r;
+        const QString rfc = rfcRrule(r);
+        if (!rfc.isEmpty())
+            return rfc;
+        // Not a usable RRULE (e.g. a legacy human string stored in the rule
+        // field) — fall through to the human-string mapping below.
     }
 
     // 2. Parse the human string. Russian or English; lower-cased, trimmed.

@@ -157,7 +157,40 @@ DateParseResult DateParser::parse(const QString &input, const QString &lang, int
         return en;
     }
 
-    return parseEnglish(trimmed, today, nextWeekDay);
+    DateParseResult en = parseEnglish(trimmed, today, nextWeekDay);
+    if (en.valid)
+        return en;
+    // Mirror of the ru→en fallback: QuickAddParser accepts a due phrase when
+    // EITHER language matches, so "Buy milk завтра" typed with the UI in
+    // English hands us "завтра" — without this the date was silently dropped.
+    DateParseResult ru = parseRussian(trimmed, today, nextWeekDay);
+    return ru.valid ? ru : en;
+}
+
+QDate DateParser::firstBydayOnOrAfter(const QString &recurrenceRule, const QDate &reference)
+{
+    static const QRegularExpression bydayRe(QStringLiteral("(?:^|;)BYDAY=([A-Z,]+)"));
+    const auto m = bydayRe.match(recurrenceRule);
+    if (!m.hasMatch() || !reference.isValid())
+        return reference;
+    static const QMap<QString, int> codes = {
+        {QStringLiteral("MO"), 1}, {QStringLiteral("TU"), 2}, {QStringLiteral("WE"), 3},
+        {QStringLiteral("TH"), 4}, {QStringLiteral("FR"), 5}, {QStringLiteral("SA"), 6},
+        {QStringLiteral("SU"), 7},
+    };
+    QList<int> dows;
+    for (const QString &c : m.captured(1).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        if (codes.contains(c))
+            dows.append(codes.value(c));
+    }
+    if (dows.isEmpty())
+        return reference;
+    for (int i = 0; i < 7; ++i) {
+        const QDate d = reference.addDays(i);
+        if (dows.contains(d.dayOfWeek()))
+            return d;
+    }
+    return reference;
 }
 
 DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult result)
@@ -168,8 +201,11 @@ DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult r
     // string handling continues to work. Tried BEFORE the numeric regex
     // so "yesterday at noon" doesn't fall through to the digit matcher.
     {
+        // NB: a trailing \b would never match after "полдень"/"полночь":
+        // without UCP, Cyrillic letters are non-word characters, so there is
+        // no word boundary between "ь" and the end of the string.
         static const QRegularExpression wordTimeRe(
-            QStringLiteral("(?:at|в)\\s+(noon|midnight|midday|полдень|полночь)\\b"),
+            QStringLiteral("(?:at|в)\\s+(noon|midnight|midday|полдень|полночь)(?=\\s|$)"),
             QRegularExpression::CaseInsensitiveOption);
         const auto wm = wordTimeRe.match(input);
         if (wm.hasMatch()) {
@@ -196,23 +232,31 @@ DateParseResult DateParser::tryParseTime(const QString &input, DateParseResult r
     // marker also lets us detect when the user clearly *intended* a time
     // and that time happened to be out-of-range: in that case the whole
     // expression is rejected (Q3.02-D B7/E7 fix).
+    // "." is accepted as the minutes separator too ("в 18.30" is common in
+    // Russian); the rules' time-tail strippers accept the same shapes.
+    // Russian day-part markers work like am/pm: "в 9 утра" = 09:00,
+    // "в 9 вечера" = 21:00, "в 3 дня" = 15:00, "в 2 ночи" = 02:00.
     static const QRegularExpression timeRe(
-        QStringLiteral("(?:at|в)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|AM|PM)?"),
+        QStringLiteral("(?:at|в)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(am|pm|утра|дня|вечера|ночи)?"),
         QRegularExpression::CaseInsensitiveOption);
 
     const auto match = timeRe.match(input);
     if (match.hasMatch()) {
         int hour = match.captured(1).toInt();
         int minute = match.captured(2).isEmpty() ? 0 : match.captured(2).toInt();
-        const QString ampm = match.captured(3).toLower();
+        const QString marker = match.captured(3).toLower();
+        const bool pm = marker == QStringLiteral("pm")
+            || marker == QString::fromUtf8("дня") || marker == QString::fromUtf8("вечера");
+        const bool am = marker == QStringLiteral("am")
+            || marker == QString::fromUtf8("утра") || marker == QString::fromUtf8("ночи");
 
         // Validate raw HH:MM BEFORE AM/PM adjustment — "25:00" should be
         // rejected regardless of any am/pm suffix.
         const bool rawHourValid   = (hour >= 0 && hour <= 23);
         const bool rawMinuteValid = (minute >= 0 && minute <= 59);
 
-        if (ampm == QStringLiteral("pm") && hour < 12) hour += 12;
-        else if (ampm == QStringLiteral("am") && hour == 12) hour = 0;
+        if (pm && hour < 12) hour += 12;
+        else if (am && hour == 12) hour = 0;
 
         if (rawHourValid && rawMinuteValid
             && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {

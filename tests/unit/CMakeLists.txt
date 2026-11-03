@@ -345,6 +345,14 @@ set_tests_properties(test_taskitem_drag_handler PROPERTIES
 opentodo_add_unit_test(test_selectedtask_uaf              App)
 opentodo_add_unit_test(test_reminder_cascade_cancel       Infra)
 opentodo_add_unit_test(test_recurrence_advance_chain      Domain)
+# F4 bug-fix pass: QuickAdd/DateParser phrase boundaries (title kept, time
+# tails, BYDAY first date, bare numbers, BYMONTHDAY=-1, en→ru fallback);
+# reminder firing semantics (cancel on completion, pending-only cancel,
+# reminderFired at fire time, mobile push gate, stub timers, geofence state);
+# CLI id-prefix / Trash resolution.
+opentodo_add_unit_test(test_nlp_title_preservation        Domain)
+opentodo_add_unit_test(test_reminder_fire_semantics       Infra)
+opentodo_add_unit_test(test_cli_core                      Infra)
 
 # Quality round 2.15: AchievementUnlocked wiring (in main.cpp + VM) +
 # Pomodoro full N-cycle session integration. (Q2.15-B/C/E hit rate limit.)

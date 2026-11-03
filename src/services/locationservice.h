@@ -3,6 +3,7 @@
 #include <QString>
 #include <QGeoCoordinate>
 #include <QMap>
+#include <QStringList>
 
 class QGeoPositionInfoSource;
 
@@ -23,9 +24,12 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
+    // Adds or replaces the fence for `reminderId`. Re-adding an unchanged
+    // fence (same center + radius) preserves its inside/outside state.
     Q_INVOKABLE void addGeofence(const QString &reminderId, double lat, double lon, double radius = 200.0);
     Q_INVOKABLE void removeGeofence(const QString &reminderId);
     Q_INVOKABLE void clearGeofences();
+    QStringList geofenceIds() const;
 
     // QML helper: returns the most recent valid position from the OS, or an
     // invalid coordinate if the source has not produced one yet. Used by the

@@ -40,11 +40,34 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     }
     const QString lower = normalised.toLower();
 
+    // A trailing time clause ("… в 18:00", "… в 9", "… в 18.30", "… в 9 утра",
+    // "… в 7 вечера", "… в полдень") is stripped into `core`; the anchored
+    // rules below match `core`, so "каждый день в 9:00" / "через 3 дня в 10:00"
+    // parse like their time-less forms. tryParseTime() still reads the time
+    // off the original input. "в <weekday>" is NOT a time tail (no digits)
+    // and stays in `core`.
+    static const QRegularExpression ruTimeTailRe(
+        QString::fromUtf8("\\s+в\\s+(?:\\d{1,2}(?:[:.]\\d{2})?(?:\\s*(?:утра|дня|вечера|ночи))?"
+                          "|полдень|полночь)$"));
+    QString core = lower;
+    core.remove(ruTimeTailRe);
+
+    // Part-of-day words carry no clock time but are a natural tail of a day
+    // reference ("завтра вечером", "в пятницу утром"); the date is kept.
+    static const QRegularExpression partOfDayRe(
+        QString::fromUtf8("^(?:утром|днём|днем|вечером|ночью)$"));
+
     // --- Simple day references ---
-    // Allow trailing time clauses like "завтра в 18:00" — tryParseTime() will
-    // pick the "в HH:MM" tail out of the original input.
+    // Exact day word, optionally followed by a part-of-day word; the time
+    // clause was already split off into `core`. Arbitrary trailing words are
+    // rejected: "Завтра позвонить маме" used to match as a whole, so QuickAdd
+    // turned the entire title into the due phrase and left the content empty.
     auto matchDay = [&](const QString &word) {
-        return lower == word || lower.startsWith(word + QStringLiteral(" "));
+        if (core == word)
+            return true;
+        if (!core.startsWith(word + QStringLiteral(" ")))
+            return false;
+        return partOfDayRe.match(core.mid(word.size() + 1)).hasMatch();
     };
 
     if (matchDay(QString::fromUtf8("сегодня"))) {
@@ -94,7 +117,7 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
         static const QRegularExpression cherezRe(
             QString::fromUtf8("^через\\s+(\\d+)\\s+(день|дня|дней|неделю|недели|недель|месяц|месяца|месяцев)"
                               "(?:\\s+в(?:о)?\\s+(понедельник|вторник|среду|четверг|пятницу|субботу|воскресенье))?$"));
-        const auto m = cherezRe.match(lower);
+        const auto m = cherezRe.match(core);
         if (m.hasMatch()) {
             int n = m.captured(1).toInt();
             const QString unit = m.captured(2);
@@ -138,14 +161,14 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     // selects which weekday "следующая неделя" resolves to. Always lands in the NEXT
     // calendar week: target = (next Monday) + (nextWeekDay - 1). Default 1 (Monday)
     // ⇒ identical to the historic next-Monday behaviour. Mirrors rules_en.cpp.
-    if (lower == QString::fromUtf8("на следующей неделе") || lower == QString::fromUtf8("следующая неделя")) {
+    if (core == QString::fromUtf8("на следующей неделе") || core == QString::fromUtf8("следующая неделя")) {
         const int currentDow = reference.dayOfWeek();                  // 1=Mon..7=Sun
         const int clamped = (nextWeekDay >= 1 && nextWeekDay <= 7) ? nextWeekDay : 1;
         const int daysToTarget = (8 - currentDow) + (clamped - 1);
         result.date = formatDate(reference.addDays(daysToTarget));
         result.humanString = QString::fromUtf8("Следующая неделя");
         result.valid = true;
-        return result;
+        return tryParseTime(input, result);
     }
 
     // --- "в понедельник", "в среду", etc. ---
@@ -163,8 +186,11 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
         };
 
         for (auto it = ruDays.begin(); it != ruDays.end(); ++it) {
-            // B-4.14: accept exact match OR startsWith(key + " ") to allow time tails.
-            if (lower == it.key() || lower.startsWith(it.key() + QStringLiteral(" "))) {
+            // B-4.14: accept exact match OR startsWith(key + " ") — the tail
+            // (after the time clause was split off into `core`) may only be a
+            // "через N <unit>" offset or a part-of-day word; anything else
+            // ("в понедельник позвонить врачу") is title text, not a date.
+            if (core == it.key() || core.startsWith(it.key() + QStringLiteral(" "))) {
                 int targetDow = it.value();
                 int currentDow = reference.dayOfWeek();
                 int daysAhead = targetDow - currentDow;
@@ -177,9 +203,9 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                 // дней/недель/месяцев" tail and add the corresponding offset.
                 // We do this BEFORE writing date/humanString so the offset
                 // applies to the snapped date.
-                const QString tail = (lower == it.key())
+                const QString tail = (core == it.key())
                     ? QString()
-                    : lower.mid(it.key().size()).trimmed();
+                    : core.mid(it.key().size()).trimmed();
                 if (!tail.isEmpty()) {
                     static const QRegularExpression cherezTailRe(
                         QString::fromUtf8("^через\\s+(\\d+)\\s+"
@@ -195,6 +221,8 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                             date = date.addDays(n * 7);
                         else if (unit.startsWith(QString::fromUtf8("м")))
                             date = date.addMonths(n);
+                    } else if (!partOfDayRe.match(tail).hasMatch()) {
+                        continue;
                     }
                 }
 
@@ -226,13 +254,13 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     };
     {
         const bool weekdaysForm =
-            lower == QString::fromUtf8("по будням")
-         || lower == QString::fromUtf8("в будни")
-         || lower == QString::fromUtf8("будни");
+            core == QString::fromUtf8("по будням")
+         || core == QString::fromUtf8("в будни")
+         || core == QString::fromUtf8("будни");
         const bool weekendsForm =
-            lower == QString::fromUtf8("в выходные")
-         || lower == QString::fromUtf8("по выходным")
-         || lower == QString::fromUtf8("выходные");
+            core == QString::fromUtf8("в выходные")
+         || core == QString::fromUtf8("по выходным")
+         || core == QString::fromUtf8("выходные");
 
         if (weekdaysForm) {
             // First date: today if today is Mon-Fri, else next Monday.
@@ -311,7 +339,25 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
                               "|первое|второе|третье|четвёртое|четвертое"
                               "|пятое|пятнадцатое|двадцатое|тридцатое)"
                               "\\s+числ[ао]\\s+кажд(?:ого|ое)\\s+месяца$"));
-        const auto m = monthlyAnchorRe.match(lower);
+
+        // "последнего числа каждого месяца" / "(в) последний день каждого
+        // месяца" → RFC 5545 BYMONTHDAY=-1 (counted from the month end), so
+        // short months keep their occurrence. Mirrors rules_en "last day of
+        // every month".
+        static const QRegularExpression lastDayRe(
+            QString::fromUtf8("^(?:в\\s+)?последн(?:ий|его|ее)\\s+(?:день|числа|число)"
+                              "\\s+кажд(?:ого|ое)\\s+месяца$"));
+        if (lastDayRe.match(core).hasMatch()) {
+            const QDate first(reference.year(), reference.month(), reference.daysInMonth());
+            result.isRecurring = true;
+            result.date = formatDate(first);
+            result.recurrenceRule = QStringLiteral("FREQ=MONTHLY;BYMONTHDAY=-1");
+            result.humanString = QString::fromUtf8("Последний день каждого месяца");
+            result.valid = true;
+            return tryParseTime(input, result);
+        }
+
+        const auto m = monthlyAnchorRe.match(core);
         if (m.hasMatch()) {
             const QString token = m.captured(1);
             int day = 0;
@@ -347,7 +393,7 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     {
         static const QRegularExpression poDativRe(
             QString::fromUtf8("^по\\s+(\\S+)$"));
-        const auto m = poDativRe.match(lower);
+        const auto m = poDativRe.match(core);
         if (m.hasMatch()) {
             const QString form = m.captured(1);
             static const QMap<QString, QString> dativeToByday = {
@@ -361,8 +407,9 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             };
             if (dativeToByday.contains(form)) {
                 result.isRecurring = true;
-                result.date = formatDate(reference);
                 result.recurrenceRule = QStringLiteral("FREQ=WEEKLY;BYDAY=%1").arg(dativeToByday.value(form));
+                // First occurrence is the first matching weekday, not today.
+                result.date = formatDate(firstBydayOnOrAfter(result.recurrenceRule, reference));
                 result.humanString = QString::fromUtf8("Каждый %1").arg(form);
                 result.valid = true;
                 return tryParseTime(input, result);
@@ -385,14 +432,10 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             {QString::fromUtf8("ноябр"), 11}, {QString::fromUtf8("декабр"), 12},
         };
 
-        // Strip optional time tail " в HH[:MM]" so that "ежегодно 9 мая в 10:00"
-        // still matches; tryParseTime() will read the time off the original input.
-        QString annualPart = lower;
-        {
-            static const QRegularExpression timeTailRe(
-                QString::fromUtf8("\\s+в\\s+\\d{1,2}(?::\\d{2})?\\s*$"));
-            annualPart.remove(timeTailRe);
-        }
+        // `core` has the optional time tail " в HH[:MM]" stripped, so that
+        // "ежегодно 9 мая в 10:00" still matches; tryParseTime() will read the
+        // time off the original input.
+        const QString annualPart = core;
 
         // Prefix forms accepted (case-insensitive thanks to toLower above):
         //   "каждый год ..." | "ежегодно ..." | "каждое ..."
@@ -475,7 +518,7 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     {
         static const QRegularExpression kazhdyRe(
             QString::fromUtf8("^кажд(ый|ую|ое|ые)!?\\s+(.+)$"));
-        const auto m = kazhdyRe.match(lower);
+        const auto m = kazhdyRe.match(core);
         if (m.hasMatch()) {
             // "каждые! 3 дня" / "каждый! понедельник" — a trailing "!" on кажд…
             // anchors the next occurrence to the COMPLETION date instead of the
@@ -601,6 +644,11 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
             }
 
             result.valid = !result.recurrenceRule.isEmpty();
+            if (!result.valid)
+                return DateParseResult{};
+            // BYDAY rules ("каждый понедельник", "каждый будний день") start on
+            // the first matching weekday, not today.
+            result.date = formatDate(firstBydayOnOrAfter(result.recurrenceRule, reference));
             return tryParseTime(input, result);
         }
     }
@@ -609,13 +657,8 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
     // B-4.15 FIX: strip optional time tail " в HH:MM" before the regex, then
     // pass the original input to tryParseTime for time extraction.
     {
-        // Try to strip a trailing time clause of the form " в H:MM" or " в HH"
-        QString datePart = lower;
-        {
-            static const QRegularExpression timeTailRe(
-                QString::fromUtf8("\\s+в\\s+\\d{1,2}(?::\\d{2})?\\s*$"));
-            datePart.remove(timeTailRe); // mutates only if matched
-        }
+        // `core` already has a trailing " в H:MM" / " в HH" clause stripped.
+        const QString datePart = core;
 
         static const QRegularExpression ruDateRe(
             QString::fromUtf8("^(\\d{1,2})\\s+(январ[яь]|феврал[яь]|март[а]?|апрел[яь]|ма[яй]|июн[яь]"
@@ -674,14 +717,30 @@ DateParseResult DateParser::parseRussian(const QString &input, const QDate &refe
         }
     }
 
-    // --- Time only: "в 9:00", "в 14:30" ---
+    // --- Time only: "в 9:00", "в 14:30", "в 9", "14:30" ---
+    // A bare 1–2 digit number is NOT a time ("Прочитать главу 5" must keep
+    // its number): require the "в" marker or a ":mm" part. "." as minutes
+    // separator only after "в" — a bare "15.03" reads as a date, not 15:03.
     {
+        // Optional day-part marker: "в 9 утра", "в 7 вечера", "в 3 дня".
+        // (Without "в", "3 дня" means "3 days" — hence the marker alone does
+        // not make it a time.)
         static const QRegularExpression ruTimeRe(
-            QString::fromUtf8("^(?:в\\s+)?(\\d{1,2})(?::(\\d{2}))?$"));
+            QString::fromUtf8("^(в\\s+)?(\\d{1,2})(?:([:.])(\\d{2}))?"
+                              "(?:\\s*(утра|дня|вечера|ночи))?$"));
         const auto m = ruTimeRe.match(lower);
-        if (m.hasMatch()) {
-            int hour = m.captured(1).toInt();
-            int minute = m.captured(2).isEmpty() ? 0 : m.captured(2).toInt();
+        const bool explicitTime = m.hasMatch()
+            && (!m.captured(1).isEmpty() || m.captured(3) == QStringLiteral(":"));
+        if (explicitTime) {
+            int hour = m.captured(2).toInt();
+            int minute = m.captured(4).isEmpty() ? 0 : m.captured(4).toInt();
+            const QString dayPart = m.captured(5);
+            if ((dayPart == QString::fromUtf8("дня") || dayPart == QString::fromUtf8("вечера"))
+                && hour < 12)
+                hour += 12;
+            else if ((dayPart == QString::fromUtf8("утра") || dayPart == QString::fromUtf8("ночи"))
+                     && hour == 12)
+                hour = 0;
             if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
                 result.date = formatDate(reference);
                 QDateTime dt(reference, QTime(hour, minute), QTimeZone::LocalTime);

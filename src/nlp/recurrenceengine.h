@@ -22,7 +22,8 @@ public:
      *   FREQ        = DAILY | WEEKLY | MONTHLY | YEARLY
      *   INTERVAL    = <positive integer>  (default 1)
      *   BYDAY       = comma-separated two-letter day codes (MO TU WE TH FR SA SU)
-     *   BYMONTHDAY  = <day-of-month 1-31>
+     *   BYMONTHDAY  = <day-of-month 1-31>, or -1..-31 counted back from the month
+ *                 end (MONTHLY only; -1 = last day of every month)
      *   COUNT       = <positive integer>  (RFC 5545 termination — see notes)
      *   UNTIL       = YYYYMMDD or YYYYMMDDTHHMMSSZ  (RFC 5545 termination)
      *   FROM        = COMPLETION  (schedule from completionDate rather than fromDate)

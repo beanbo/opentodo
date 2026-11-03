@@ -223,18 +223,34 @@ QDate RecurrenceEngine::advance(const QString &recurrenceRule,
         //     silently ignored and behaves like the no-BYMONTHDAY case.
         int anchorDay = base.day();
         bool explicitAnchor = false;  // gates skip-on-missing
+        int fromEndAnchor = 0;        // RFC 5545 negative BYMONTHDAY (-1 = last day)
         if (kv.contains(QStringLiteral("BYMONTHDAY"))) {
             bool ok = false;
             const int d = kv.value(QStringLiteral("BYMONTHDAY")).toInt(&ok);
             if (ok && d >= 1 && d <= 31) {
                 anchorDay = d;
                 explicitAnchor = true;
+            } else if (ok && d <= -1 && d >= -31) {
+                fromEndAnchor = d;
             }
             // Otherwise: fall back to base.day() with legacy clamping.
         }
 
         QDate advanced = base.addMonths(interval);
-        if (explicitAnchor) {
+        if (fromEndAnchor < 0) {
+            // Negative BYMONTHDAY counts back from the end of each month:
+            // day = daysInMonth + d + 1 ("last day of every month" is -1 and
+            // therefore exists in every month). A month too short for the
+            // offset (e.g. -31 in February) is skipped, like a positive anchor.
+            int safety = 0;
+            int day = advanced.daysInMonth() + fromEndAnchor + 1;
+            while (day < 1 && safety < 24) {
+                advanced = advanced.addMonths(1);
+                day = advanced.daysInMonth() + fromEndAnchor + 1;
+                ++safety;
+            }
+            candidate = QDate(advanced.year(), advanced.month(), day);
+        } else if (explicitAnchor) {
             // Walk forward one month at a time until a month that contains the
             // anchor day is reached. Bound the loop generously to guarantee
             // termination in pathological inputs (anchorDay ≤ 31, so at most

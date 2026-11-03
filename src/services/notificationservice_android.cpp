@@ -75,6 +75,40 @@ Java_org_opentodo_NotificationHelper_nativeOnNotificationAction(
     }, Qt::QueuedConnection);
 }
 
+// ── Scheduled-notification fired callback ───────────────────────────────────
+// Called by NotificationHelper.onScheduledAlarmFired() (from NotificationReceiver,
+// on the Android main thread) when an AlarmManager reminder goes off while the
+// app process is alive. Re-emitted as scheduledNotificationFired on the Qt thread so
+// ReminderScheduler logs the reminder at the time it really fires.
+extern "C" JNIEXPORT void JNICALL
+Java_org_opentodo_NotificationHelper_nativeOnScheduledNotificationFired(
+    JNIEnv *env, jclass, jstring jId, jstring jTitle, jstring jBody)
+{
+    AndroidNotificationService *svc = s_actionService;
+    if (!svc || jId == nullptr)
+        return;
+    auto toQString = [env](jstring s) -> QString {
+        if (s == nullptr)
+            return {};
+        const char *c = env->GetStringUTFChars(s, nullptr);
+        if (!c) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            return {};
+        }
+        const QString out = QString::fromUtf8(c);
+        env->ReleaseStringUTFChars(s, c);
+        return out;
+    };
+    const QString id    = toQString(jId);
+    const QString title = toQString(jTitle);
+    const QString body  = toQString(jBody);
+    if (id.isEmpty())
+        return;
+    QMetaObject::invokeMethod(svc, [svc, id, title, body]() {
+        emit svc->scheduledNotificationFired(id, title, body);
+    }, Qt::QueuedConnection);
+}
+
 // ── B-5.6: persistent notification-id allocator using QSettings ─────────────
 // Replaces qHash(taskId) which collides for different taskIds.
 static int allocateId(const QString &taskId)
@@ -234,6 +268,7 @@ void AndroidNotificationService::scheduleNotification(const QString &title, cons
         }
         // Within the 1-hour grace window — show immediately.
         showNotification(title, body, id);
+        emit scheduledNotificationFired(id, title, body);
         return;
     }
 
@@ -271,6 +306,23 @@ void AndroidNotificationService::cancelNotification(const QString &id)
     QJniObject::callStaticMethod<void>(
         k_helperClass,
         "cancelNotification",
+        "(Landroid/content/Context;I)V",
+        context.object<jobject>(),
+        notifId
+    );
+}
+
+void AndroidNotificationService::cancelScheduled(const QString &id)
+{
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    int notifId = allocateId(id);
+
+    // Cancels the AlarmManager PendingIntent only — NOT NotificationManager:
+    // ReminderScheduler calls this on every reschedule pass, and a reminder
+    // that already fired must stay in the shade until the user acts on it.
+    QJniObject::callStaticMethod<void>(
+        k_helperClass,
+        "cancelScheduledNotification",
         "(Landroid/content/Context;I)V",
         context.object<jobject>(),
         notifId

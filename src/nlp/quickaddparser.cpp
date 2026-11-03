@@ -125,9 +125,16 @@ QuickAddResult QuickAddParser::parse(const QString &input)
             return ruRes.valid;
         };
 
-        // We scan split positions 0..N-1 and record the first suffix hit and
-        // the first prefix hit, then pick whichever has a smaller splitAt
-        // (i.e. covers more words as the date phrase).  Ties go to suffix.
+        // We scan split positions 0..N-1 and record the LONGEST matching
+        // suffix (first hit, smallest splitAt) and the LONGEST matching prefix
+        // (last hit, largest splitAt), then pick whichever covers more words
+        // as the date phrase.  Ties go to suffix.
+        //
+        // The prefix must be the longest one: the date rules only accept a
+        // real date/time phrase (arbitrary trailing words are rejected), so
+        // for "Tomorrow at 5pm call mom" both "Tomorrow" and "Tomorrow at 5pm"
+        // match — stopping at the first (shortest) hit would leave "at 5pm"
+        // in the title and drop the time.
 
         int suffixSplitAt = -1;
         int prefixSplitAt = -1;
@@ -150,14 +157,15 @@ QuickAddResult QuickAddParser::parse(const QString &input)
 
             // Prefix probe (B-4.21): dueCandidate = words[0..splitAt]
             // (splitAt is inclusive for prefix, i.e. the prefix length is splitAt+1)
-            if (prefixSplitAt < 0 && splitAt < kMaxDateWords) {
+            if (splitAt < kMaxDateWords) {
                 QString prefixCandidate = QStringList(words.mid(0, splitAt + 1)).join(QLatin1Char(' '));
                 if (tryCandidate(prefixCandidate))
-                    prefixSplitAt = splitAt;
+                    prefixSplitAt = splitAt; // keep scanning: longest prefix wins
             }
 
-            if (suffixSplitAt >= 0 && prefixSplitAt >= 0)
-                break; // found both, no need to continue
+            // Suffix found and every prefix length already probed → done.
+            if (suffixSplitAt >= 0 && splitAt + 1 >= kMaxDateWords)
+                break;
         }
 
         if (suffixSplitAt >= 0 || prefixSplitAt >= 0) {

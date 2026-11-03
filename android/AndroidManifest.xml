@@ -8,13 +8,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!--
         FOREGROUND_SERVICE_DATA_SYNC is required on targetSdk 34+ when a foreground
-        service uses foregroundServiceType="dataSync". The SyncService and BootReceiver
-        entries that previously referenced org.opentodo.SyncService and
-        org.opentodo.BootReceiver have been REMOVED (B-9.3) because those classes do
-        not exist — sync runs in-process via Qt's SyncEngine, and AlarmManager-based
-        reminders do not require a custom foreground service.  If a foreground sync
-        service is added in the future, restore the <service> entry and ensure the
-        corresponding Java class exists before re-enabling this permission.
+        service uses foregroundServiceType="dataSync". The SyncService entry that
+        previously referenced org.opentodo.SyncService has been REMOVED (B-9.3)
+        because that class does not exist — sync runs in-process via Qt's
+        SyncEngine, and AlarmManager-based reminders do not require a custom
+        foreground service.  If a foreground sync service is added in the future,
+        restore the <service> entry and ensure the corresponding Java class exists
+        before re-enabling this permission. (org.opentodo.BootReceiver now exists
+        and is registered below — it re-arms reminder alarms after a reboot.)
     -->
     <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/> -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -82,6 +83,21 @@
         <receiver
             android:name="org.opentodo.NotificationReceiver"
             android:exported="false">
+        </receiver>
+
+        <!--
+            Re-arms persisted reminder alarms after a reboot / app update
+            (AlarmManager forgets alarms on reboot). Uses RECEIVE_BOOT_COMPLETED,
+            declared above. exported="true" is required to receive these system
+            broadcasts; both actions are protected, and onReceive ignores others.
+        -->
+        <receiver
+            android:name="org.opentodo.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
         </receiver>
 
         <!-- Widget provider -->

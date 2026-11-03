@@ -78,11 +78,15 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
     const QString cmd = req.value(QStringLiteral("cmd")).toString();
 
     // ── Writes: route through the ViewModel so the real mutation path runs ──
+    // done / comment / delete accept an id or a unique id prefix (as printed
+    // by `opentodo list`) and refuse tasks already in the Trash — same
+    // resolution as the offline path.
     if (cmd == QLatin1String("done")) {
-        const QString id = req.value(QStringLiteral("id")).toString();
-        Task *t = m_store->taskById(id);
+        QString error;
+        Task *t = clicore::resolveTask(m_store, req.value(QStringLiteral("id")).toString(), &error);
         if (!t)
-            return fail(QStringLiteral("task not found"));
+            return fail(error);
+        const QString id = t->id();
         const bool wasRecurring = t->dueIsRecurring() && !t->dueString().isEmpty();
         if (!m_taskVM->completeTask(id))
             return fail(QStringLiteral("could not complete task"));
@@ -105,6 +109,11 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
                                              req.value(QStringLiteral("repo")).toString(),
                                              req.value(QStringLiteral("project")).toString(),
                                              nullptr);
+        // No project resolved → Inbox, explicitly. Passing an empty id let
+        // TaskViewModel fall back to m_currentProjectId — whatever project the
+        // user last had open in the UI — unlike the offline path.
+        if (!p)
+            p = m_store->inboxProject();
         const QString id = m_taskVM->addTask(req.value(QStringLiteral("content")).toString(),
                                              p ? p->id() : QString(),
                                              req.value(QStringLiteral("priority")).toInt(4),
@@ -121,10 +130,11 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
     }
 
     if (cmd == QLatin1String("comment")) {
-        const QString id = req.value(QStringLiteral("id")).toString();
-        Task *t = m_store->taskById(id);
+        QString error;
+        Task *t = clicore::resolveTask(m_store, req.value(QStringLiteral("id")).toString(), &error);
         if (!t)
-            return fail(QStringLiteral("task not found"));
+            return fail(error);
+        const QString id = t->id();
         Comment *c = m_store->addComment(req.value(QStringLiteral("text")).toString(),
                                          id, t->projectId(), QStringLiteral("claude"));
         if (!c)
@@ -138,9 +148,11 @@ QByteArray CliBridge::handleLine(const QByteArray &line) const
     }
 
     if (cmd == QLatin1String("delete")) {
-        const QString id = req.value(QStringLiteral("id")).toString();
-        if (!m_store->taskById(id))
-            return fail(QStringLiteral("task not found"));
+        QString error;
+        Task *t = clicore::resolveTask(m_store, req.value(QStringLiteral("id")).toString(), &error);
+        if (!t)
+            return fail(error);
+        const QString id = t->id();
         if (!m_taskVM->deleteTask(id)) // routes through VM → undo entry + signals
             return fail(QStringLiteral("failed to delete task"));
         QJsonObject d;

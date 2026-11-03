@@ -119,11 +119,17 @@ void PomodoroService::resume()
         return;
     }
     m_running = true;
-    // Re-anchor the wall-clock start so on-disk planned_duration_ms still
-    // matches (now - started_at) = remainingSeconds. Without this, a paused
-    // session that resumes after N minutes would think it had been running
-    // for N minutes when the load path computed elapsed time on the next crash.
-    m_phaseStartedAt = QDateTime::currentDateTimeUtc();
+    // Re-anchor the wall-clock start so the on-disk pair still satisfies
+    // planned_duration_ms - (now - started_at) = remainingSeconds — the
+    // equation loadStateFromDisk() uses to restore the countdown. The anchor
+    // is therefore "now minus the part of the phase already run", NOT "now":
+    // anchoring at now made a restart after pause/resume restore nearly a
+    // full phase. (Not anchoring at all would count the paused time as run.)
+    // Clamped at 0: durations changed while paused can make the remaining
+    // time exceed the new phase length.
+    const qint64 alreadyRunSecs =
+        qMax<qint64>(0, qint64(cycleSeconds()) - m_remainingSeconds);
+    m_phaseStartedAt = QDateTime::currentDateTimeUtc().addSecs(-alreadyRunSecs);
     emit runningChanged();
     m_timer.start();
     saveStateToDisk();

@@ -745,17 +745,27 @@ int main(int argc, char *argv[])
     // DataStore has no allReminders(); walk every task's reminders instead.
     locationService->start();
 
+    // Runs on every remindersChanged. Fences are synced in place instead of
+    // clear + re-add: addGeofence() keeps the inside/outside state of an
+    // unchanged fence, so an unrelated reminder edit no longer re-fires
+    // "entered" for a place the user is already at. Only fences whose reminder
+    // is gone (deleted / no longer a location reminder) are removed.
     auto reloadGeofences = [locationService, dataStore]() {
-        locationService->clearGeofences();
+        QStringList live; // location reminders are few — a list is plenty
         for (const auto *task : dataStore->allTasks()) {
             for (auto *r : dataStore->remindersForTask(task->id())) {
                 if (r->isDeleted()) continue;
                 if (r->type() != QStringLiteral("location")) continue;
                 const auto loc = r->location();
                 if (loc.isNull()) continue;
+                live.append(r->id());
                 locationService->addGeofence(r->id(), loc.latitude, loc.longitude,
                                               static_cast<double>(loc.radius));
             }
+        }
+        for (const QString &id : locationService->geofenceIds()) {
+            if (!live.contains(id))
+                locationService->removeGeofence(id);
         }
     };
     reloadGeofences();
@@ -765,8 +775,13 @@ int main(int argc, char *argv[])
     QObject::connect(locationService, &LocationService::enteredGeofence,
                      locationService, [dataStore, notificationService](const QString &reminderId) {
         auto *reminder = dataStore->reminderById(reminderId);
-        if (!reminder) return;
+        if (!reminder || reminder->isDeleted()) return;
+        if (reminder->type() != QStringLiteral("location")) return;
+        // An "on_leave" reminder must not fire "Вы рядом!" on arrival — it is
+        // handled by the leftGeofence handler below.
+        if (reminder->location().trigger == QStringLiteral("on_leave")) return;
         auto *task = dataStore->taskById(reminder->taskId());
+        if (task && (task->isCompleted() || task->isDeleted())) return;
         const QString title = task ? task->content() : QStringLiteral("Напоминание");
         if (notificationService)
             notificationService->showNotification(title, QStringLiteral("Вы рядом!"), reminder->taskId());
@@ -777,11 +792,12 @@ int main(int argc, char *argv[])
     QObject::connect(locationService, &LocationService::leftGeofence,
                      locationService, [dataStore, notificationService](const QString &reminderId) {
         auto *reminder = dataStore->reminderById(reminderId);
-        if (!reminder) return;
+        if (!reminder || reminder->isDeleted()) return;
         if (reminder->type() != QStringLiteral("location")) return;
         // Only trigger on-leave reminders when explicitly configured via LocationObject::trigger.
         if (reminder->location().trigger != QStringLiteral("on_leave")) return;
         auto *task = dataStore->taskById(reminder->taskId());
+        if (task && (task->isCompleted() || task->isDeleted())) return;
         const QString title = task ? task->content() : QStringLiteral("Напоминание");
         if (notificationService)
             notificationService->showNotification(title, QStringLiteral("Вы покинули место!"), reminder->taskId());
