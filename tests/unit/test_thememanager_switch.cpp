@@ -238,12 +238,6 @@ private slots:
     void cleanupTestCase()
     {
         qInstallMessageHandler(g_previousHandler);
-        // Bypass destructor chain: same MinGW-on-Windows wedge sidestep used
-        // by the calendar / views / settings-sections smoke tests. All
-        // assertions have completed by this point.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 
     // -------------------------------------------------------------------------
@@ -668,5 +662,6 @@ private slots:
 // style resolution. The QPA platform is selected by ctest's ENVIRONMENT
 // property (offscreen on POSIX; the same value works under Windows when set
 // via tests/unit/CMakeLists.txt).
-QTEST_MAIN(TestThemeManagerSwitch)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestThemeManagerSwitch)
 #include "test_thememanager_switch.moc"

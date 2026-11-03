@@ -27,7 +27,7 @@
 // arrives. We instantiate it directly so the lifecycle is observable.
 //
 // Mirrors test_calendar_view_smoke.cpp: outer Item wrapper, captured-message
-// handler, _Exit(0) at the end of the last slot.
+// handler, OPENTODO_QTEST_MAIN_NO_TEARDOWN (no teardown after qExec()).
 //
 // TEST SLOTS
 // ----------
@@ -285,7 +285,7 @@ private slots:
     void cleanupTestCase()
     {
         qInstallMessageHandler(g_previousHandler);
-        // Skip cleanup of m_scope; std::_Exit(0) in the last slot bypasses
+        // Skip cleanup of m_scope; OPENTODO_QTEST_MAIN_NO_TEARDOWN skips the
         // destructors entirely. Mirrors the smoke test's pattern — the QML
         // engine's queued deleteLaters and the QSettings flush can wedge
         // under QtTest's lifecycle.
@@ -624,18 +624,11 @@ private slots:
                  qPrintable(QStringLiteral("Banner lifecycle produced %1 fatal warning(s); first: %2")
                                 .arg(fatal.size())
                                 .arg(fatal.value(0))));
-
-        // Bypass destructor: this is the last slot. Mirrors the calendar
-        // smoke test — the QML engine's queued deleteLaters can wedge under
-        // QtTest's lifecycle. Everything has been validated; exit cleanly so
-        // ctest sees a pass.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
 // QTEST_MAIN: requires QGuiApplication because we instantiate a
 // QQmlApplicationEngine and load Material-themed QML.
-QTEST_MAIN(TestInAppBannerSmoke)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestInAppBannerSmoke)
 #include "test_inapp_banner_smoke.moc"

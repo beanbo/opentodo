@@ -430,8 +430,8 @@ private slots:
     {
         // Bypass the destructor chain. QQuickView + QQmlEngine teardown on
         // QtTest's lifecycle has been observed to wedge on Windows (queued
-        // deleteLaters + QSettings flush). Mirror the smoke tests' _Exit(0)
-        // pattern in the LAST slot below.
+        // deleteLaters + QSettings flush); OPENTODO_QTEST_MAIN_NO_TEARDOWN exits
+        // right after qExec() instead.
     }
 
     // -------------------------------------------------------------------------
@@ -599,13 +599,6 @@ private slots:
                  "If this fails the DragHandler or one of the MouseAreas is "
                  "leaking its grab and the cursor / glyph fade will stay in "
                  "the dragging-state visually.");
-
-        // Exit cleanly — last slot. Mirrors the smoke tests' _Exit(0) pattern
-        // because QQuickView + QQmlEngine destructors have been observed to
-        // wedge on Windows under QtTest's lifecycle.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
@@ -613,5 +606,6 @@ private slots:
 // run a QML engine with Material theming. QPA platform is selected by the
 // ctest ENVIRONMENT property (offscreen on POSIX, windows on Windows — see
 // tests/unit/CMakeLists.txt).
-QTEST_MAIN(TestTaskItemDragHandler)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestTaskItemDragHandler)
 #include "test_taskitem_drag_handler.moc"

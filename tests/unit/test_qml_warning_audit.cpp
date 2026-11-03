@@ -30,7 +30,8 @@
 //
 // The setup mirrors test_qml_load_smoke.cpp byte-for-byte: same boot order,
 // same context properties, same handler-installation pattern, same
-// std::_Exit(0) bypass for the SyncEngine network-thread teardown bug.
+// OPENTODO_QTEST_MAIN_NO_TEARDOWN bypass for the SyncEngine network-thread
+// teardown bug.
 //
 // REPORT MECHANISM
 // ----------------
@@ -418,18 +419,9 @@ private slots:
                                            "warning(s); first: %2")
                                 .arg(fatal.size())
                                 .arg(fatal.value(0))));
-
-        // Bypass destructor chain. SyncEngine owns network threads that
-        // do not shut down cleanly inside QtTest's lifecycle — the
-        // QGuiApplication destructor blocks waiting on them and the
-        // process eventually trips STATUS_FAIL_FAST_EXCEPTION (0xC0000602)
-        // after several minutes. Same workaround as smoke test.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
-#include <cstdlib>
-QTEST_MAIN(TestQmlWarningAudit)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestQmlWarningAudit)
 #include "test_qml_warning_audit.moc"

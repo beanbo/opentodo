@@ -270,9 +270,8 @@ private slots:
     void cleanupTestCase()
     {
         qInstallMessageHandler(g_previousHandler);
-        // Skip cleanup of m_scope; std::_Exit(0) at the end of the last
-        // slot bypasses destructors entirely (mirrors the smoke test's
-        // SyncEngine workaround pattern).
+        // Skip cleanup of m_scope; OPENTODO_QTEST_MAIN_NO_TEARDOWN exits after qExec()
+        // without running destructors (see test_no_teardown_main.h).
     }
 
     // -------------------------------------------------------------------------
@@ -443,14 +442,6 @@ private slots:
         QCOMPARE(rows.toInt(), 6);
 
         delete wrapper;
-
-        // Bypass destructor: this is the last slot. Mirrors the smoke test —
-        // the QML engine's queued deleteLaters and the QSettings flush can
-        // wedge under QtTest's lifecycle. We've validated everything; exit
-        // cleanly so ctest sees a pass.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
@@ -458,6 +449,6 @@ private slots:
 // QQmlApplicationEngine and load Material-themed QML. The QPA platform is
 // chosen by the ctest ENVIRONMENT property (offscreen on POSIX, windows on
 // Windows — see tests/unit/CMakeLists.txt).
-#include <cstdlib>
-QTEST_MAIN(TestCalendarViewSmoke)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestCalendarViewSmoke)
 #include "test_calendar_view_smoke.moc"

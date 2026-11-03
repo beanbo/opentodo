@@ -477,16 +477,6 @@ private slots:
                                            "first: %2")
                                 .arg(fatal.size())
                                 .arg(fatal.value(0))));
-
-        // Bypass destructor chain. SyncEngine spins up network threads that
-        // don't shut down cleanly inside QtTest's guiless-ish lifecycle —
-        // the QGuiApplication destructor blocks waiting on them and the
-        // process eventually trips STATUS_FAIL_FAST_EXCEPTION (0xC0000602)
-        // after several minutes. We've verified all of our assertions; skip
-        // the cleanup and exit cleanly.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
@@ -494,8 +484,6 @@ private slots:
 // requires a QGuiApplication. The QPA platform is selected by the ctest
 // ENVIRONMENT property (offscreen on Linux/macOS, windows on Windows — see
 // tests/qml/CMakeLists.txt for the rationale on the Windows side).
-// _Exit() is in <cstdlib> on POSIX and MinGW; std::_Exit pulls it in via the
-// std namespace. Some MinGW headers also need <stdlib.h>.
-#include <cstdlib>
-QTEST_MAIN(TestQmlLoadSmoke)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestQmlLoadSmoke)
 #include "test_qml_load_smoke.moc"

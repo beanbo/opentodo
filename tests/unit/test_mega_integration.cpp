@@ -1130,19 +1130,15 @@ private slots:
         // FileManager
         QVERIFY(!m_fileManager->dataPath().isEmpty());
 
-        // Final cleanup. The bypass: since SyncEngine constructed a
-        // QNetworkAccessManager-backed GDriveClient that may have stray
-        // network threads, _Exit out skipping global destructors.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        // Done — tear down the parent scope to cover destructor paths in case
-        // _Exit is removed by the maintainer later. delete is safe regardless.
+        // Tear down the parent scope to cover the destructor paths. Global
+        // teardown is still skipped (SyncEngine's QNetworkAccessManager-backed
+        // GDriveClient may leave stray network threads) — see
+        // test_no_teardown_main.h.
         delete m_scope;
         m_scope = nullptr;
-
-        std::_Exit(0);
     }
 };
 
-QTEST_GUILESS_MAIN(TestMegaIntegration)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_GUILESS_MAIN_NO_TEARDOWN(TestMegaIntegration)
 #include "test_mega_integration.moc"

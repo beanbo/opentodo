@@ -198,50 +198,11 @@ private:
     QObject *findFullPageLoader(QObject *layout) const
     {
         if (!layout) return nullptr;
-        // First try findChild — the Loader has an explicit id, and modern Qt
-        // versions also expose ids as object names. If that fails, descend
-        // manually looking for any QML Loader whose `source` property is one
-        // of the seven mobile-view URLs OR which has the empty source.
-        for (QObject *child : layout->findChildren<QObject*>()) {
-            if (child->metaObject()->className()
-                && QString::fromLatin1(child->metaObject()->className())
-                       .contains(QStringLiteral("Loader"))) {
-                // Filter by source: the wrapper's outer Loader points at
-                // MobileLayout.qml, NOT at one of the inner views.
-                const QString src = child->property("source").toUrl().toString();
-                if (src.contains(QStringLiteral("MobileLayout.qml")))
-                    continue;
-                // Inner Loaders we care about: the fullPageLoader. The
-                // QuickAdd loader and SidebarContent loader have other
-                // sources, but the fullPageLoader is the only Loader whose
-                // source binding switches off taskViewModel.filterMode.
-                // We'll identify it via the `active` property — fullPageLoader
-                // has `active: root.isFullPageView`, which the QuickAdd /
-                // SidebarContent Loaders do not.
-                //
-                // Cheaper heuristic: inspect property names. fullPageLoader is
-                // the only Loader inside MobileLayout that has an `active`
-                // binding that flips with filterMode. Reading `active` is
-                // safe on any Loader — it returns the cached bool.
-                //
-                // To disambiguate when multiple Loaders match the empty-source
-                // shape (e.g. inactive fullPageLoader vs. quickAddLoader at
-                // construction time), check whether the Loader's source ends
-                // with one of the seven mobile-view filenames OR is empty
-                // (initial state for filterMode = Inbox).
-                if (src.isEmpty()
-                    || src.contains(QStringLiteral("SettingsView.qml"))
-                    || src.contains(QStringLiteral("ProductivityView.qml"))
-                    || src.contains(QStringLiteral("NotificationsView.qml"))
-                    || src.contains(QStringLiteral("AIView.qml"))
-                    || src.contains(QStringLiteral("BoardView.qml"))
-                    || src.contains(QStringLiteral("CalendarView.qml"))
-                    || src.contains(QStringLiteral("TrashView.qml"))) {
-                    return child;
-                }
-            }
-        }
-        return nullptr;
+        // MobileLayout tags the Loader with objectName "fullPageLoader" (QML
+        // ids are not exposed as object names). The old heuristic matched on
+        // the desktop *View.qml sources and silently picked another Loader
+        // once the mobile redesign switched to the M*Screen.qml screens.
+        return layout->findChild<QObject *>(QStringLiteral("fullPageLoader"));
     }
 
 private slots:
@@ -379,13 +340,13 @@ private slots:
         };
 
         const ModeExpectation table[] = {
-            { TaskViewModel::FilterMode::Settings,      QStringLiteral("SettingsView.qml") },
-            { TaskViewModel::FilterMode::Productivity,  QStringLiteral("ProductivityView.qml") },
-            { TaskViewModel::FilterMode::Notifications, QStringLiteral("NotificationsView.qml") },
-            { TaskViewModel::FilterMode::AI,            QStringLiteral("AIView.qml") },
-            { TaskViewModel::FilterMode::Board,         QStringLiteral("BoardView.qml") },
-            { TaskViewModel::FilterMode::Calendar,      QStringLiteral("CalendarView.qml") },
-            { TaskViewModel::FilterMode::Trash,         QStringLiteral("TrashView.qml") },
+            { TaskViewModel::FilterMode::Settings,      QStringLiteral("MSettingsScreen.qml") },
+            { TaskViewModel::FilterMode::Productivity,  QStringLiteral("MProductivityScreen.qml") },
+            { TaskViewModel::FilterMode::Notifications, QStringLiteral("MNotificationsScreen.qml") },
+            { TaskViewModel::FilterMode::AI,            QStringLiteral("MAIScreen.qml") },
+            { TaskViewModel::FilterMode::Board,         QStringLiteral("MBoardScreen.qml") },
+            { TaskViewModel::FilterMode::Calendar,      QStringLiteral("MCalendarScreen.qml") },
+            { TaskViewModel::FilterMode::Trash,         QStringLiteral("MTrashScreen.qml") },
         };
 
         // Per-mode fresh wrapper. Re-using a single wrapper is technically
@@ -472,14 +433,10 @@ private slots:
                                 .arg(source)));
 
         delete wrapper;
-
-        // Last slot — bypass destructor wedge (see test_views_smoke.cpp).
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
 // QTEST_MAIN: requires QGuiApplication for the Material-themed Qml engine.
-QTEST_MAIN(TestMobileLayoutViews)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestMobileLayoutViews)
 #include "test_mobile_layout_views.moc"

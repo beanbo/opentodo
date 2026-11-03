@@ -590,6 +590,7 @@ Item {
         // the inbox-task-list path zero-cost when no full-page view is selected.
         Loader {
             id: fullPageLoader
+            objectName: "fullPageLoader"   // found by tests/unit/test_mobile_layout_views
             Layout.fillWidth: true
             Layout.fillHeight: true
             active: root.isFullPageView

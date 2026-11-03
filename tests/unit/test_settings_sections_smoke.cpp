@@ -58,9 +58,9 @@
 // captures the diagnosis. With the wiring below, all ten sections SHOULD
 // load cleanly. A QSKIP would indicate a wiring change worth flagging.
 //
-// std::_Exit(0) in cleanupTestCase mirrors the same MinGW-on-Windows
-// destructor wedge sidestep used by the calendar / banner / views smoke
-// tests. Everything has been validated by then.
+// OPENTODO_QTEST_MAIN_NO_TEARDOWN sidesteps the same MinGW-on-Windows destructor
+// wedge as the calendar / banner / views smoke tests: the process exits
+// right after qExec() reports its results.
 // =============================================================================
 
 #include <QtTest>
@@ -349,7 +349,7 @@ private slots:
 
         // ---------------------------------------------------------------
         // Object graph: every context property each section reads.
-        // Ownership tree rooted at m_scope so std::_Exit at end can skip
+        // Ownership tree rooted at m_scope so the final _Exit can skip
         // the destructor chain cleanly.
         // ---------------------------------------------------------------
         m_scope             = new QObject;
@@ -437,15 +437,6 @@ private slots:
         // is module-static so it survives, but g_previousHandler may still
         // be useful to other tests in the same binary — though there are none).
         qInstallMessageHandler(g_previousHandler);
-
-        // Bypass destructor: SyncEngine spins up network threads and the
-        // QML engine has queued deleteLaters that occasionally wedge under
-        // QtTest's MinGW-on-Windows lifecycle (same pattern as
-        // test_qml_load_smoke / test_views_smoke / test_calendar_view_smoke).
-        // All assertions have been verified by the time we reach here.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 
     // -------------------------------------------------------------------------
@@ -532,5 +523,6 @@ private slots:
 // load Material-themed QML). The QPA platform is selected by ctest's
 // ENVIRONMENT property (offscreen on POSIX, windows on Windows — see
 // tests/unit/CMakeLists.txt).
-QTEST_MAIN(TestSettingsSectionsSmoke)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestSettingsSectionsSmoke)
 #include "test_settings_sections_smoke.moc"

@@ -52,8 +52,8 @@
 // Plus a few extras (undoStack, settingsViewModel, etc.) so transitive
 // signal chains in TaskViewModel never trip on a missing property.
 //
-// We use std::_Exit(0) in the last slot's tail to bypass the QML engine's
-// destructor — the QGuiApplication destructor occasionally wedges under
+// OPENTODO_QTEST_MAIN_NO_TEARDOWN exits after qExec() to bypass the QML
+// engine's destructor — the QGuiApplication destructor occasionally wedges under
 // QtTest's lifecycle (queued deleteLaters + QSettings flushes) on Windows.
 // =============================================================================
 
@@ -329,6 +329,9 @@ private slots:
         ctx->setContextProperty(QStringLiteral("aiAssistant"),       m_aiAssistant);
         ctx->setContextProperty(QStringLiteral("taskExporter"),      m_taskExporter);
         ctx->setContextProperty(QStringLiteral("telemetry"),         m_telemetry);
+        // main.cpp always sets shareManager; ProjectView null-checks it, so a
+        // null property keeps the Drive-sharing menu item disabled here.
+        ctx->setContextProperty(QStringLiteral("shareManager"),      static_cast<QObject *>(nullptr));
 
         // Seed a project so ProjectView has something to render. We also
         // point the sidebar at it — ProjectView reads the active project ID
@@ -342,7 +345,7 @@ private slots:
     void cleanupTestCase()
     {
         qInstallMessageHandler(g_previousHandler);
-        // Skip cleanup of m_scope; std::_Exit(0) in the last slot bypasses
+        // Skip cleanup of m_scope; OPENTODO_QTEST_MAIN_NO_TEARDOWN bypasses the
         // destructors entirely. Mirrors the calendar / banner smoke tests —
         // the QML engine's queued deleteLaters and the QSettings flush can
         // wedge under QtTest's lifecycle on Windows.
@@ -513,14 +516,6 @@ private slots:
                                 .arg(fatal.value(0))));
 
         delete wrapper;
-
-        // Bypass destructor: this is the last slot. Mirrors the calendar /
-        // banner smoke tests — the QML engine's queued deleteLaters and the
-        // QSettings flush can wedge under QtTest's lifecycle on Windows.
-        // Everything has been validated; exit cleanly so ctest sees a pass.
-        std::fflush(stdout);
-        std::fflush(stderr);
-        std::_Exit(0);
     }
 };
 
@@ -528,5 +523,6 @@ private slots:
 // QQmlApplicationEngine and load Material-themed QML. The QPA platform is
 // chosen by the ctest ENVIRONMENT property (offscreen on POSIX, windows on
 // Windows — see tests/unit/CMakeLists.txt).
-QTEST_MAIN(TestViewsSmoke)
+#include "test_no_teardown_main.h"
+OPENTODO_QTEST_MAIN_NO_TEARDOWN(TestViewsSmoke)
 #include "test_views_smoke.moc"
