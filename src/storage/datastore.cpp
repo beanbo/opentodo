@@ -161,6 +161,17 @@ void DataStore::stampField(QJsonObject &entity, const QString &fieldName)
     CrdtMeta::setFieldMeta(entity, fieldName, ts, devId);
 }
 
+void DataStore::stampSettingKey(const QString &key)
+{
+    // S1: same {ts, dev} shape and HLC source as the entity _meta stamps, so
+    // Merger::mergeSettings can reuse CrdtMeta::compareFieldMeta.
+    const QString devId = localDeviceId();
+    QJsonObject fm;
+    fm[QStringLiteral("ts")]  = HybridLogicalClock::now(devId);
+    fm[QStringLiteral("dev")] = devId;
+    m_settingsMeta[key] = fm;
+}
+
 // ── Modification notifications ────────────────────────────────────────────────
 
 void DataStore::markTaskModified(const QString &id)
@@ -368,7 +379,12 @@ Task *DataStore::addTask(const QString &content, const QString &projectId)
 
 Task *DataStore::taskById(const QString &id) const
 {
-    return m_taskIndex.value(id, nullptr);
+    // D2: a purged tombstone is "deleted permanently" — to every caller it is
+    // gone, exactly as when purgeTask erased it (UndoStack's undo-delete and
+    // the view-models treat a missing task as "nothing to restore"). It stays
+    // in m_tasks / state.json only so the deletion keeps winning sync merges.
+    Task *t = m_taskIndex.value(id, nullptr);
+    return (t && t->isDeleted() && t->isPurged()) ? nullptr : t;
 }
 
 bool DataStore::removeTask(const QString &id)
@@ -412,6 +428,12 @@ bool DataStore::removeTask(const QString &id)
         t->setUpdatedAt(now);
         stampEntityField(tid, m_taskMeta, QStringLiteral("is_deleted"));
         stampEntityField(tid, m_taskMeta, QStringLiteral("updated_at"));
+        // A live task can carry a stale is_purged (restored on another device
+        // after it was purged here). A fresh delete must land in the Trash.
+        if (t->isPurged()) {
+            t->setIsPurged(false);
+            stampEntityField(tid, m_taskMeta, QStringLiteral("is_purged"));
+        }
     }
 
     // Tombstone reminders + comments for every task in the cascade set.
@@ -447,6 +469,8 @@ bool DataStore::restoreTask(const QString &id)
 {
     auto *task = m_taskIndex.value(id);
     if (!task) return false;
+    // D2: a purged task is permanently deleted, not in the Trash.
+    if (task->isDeleted() && task->isPurged()) return false;
 
     // Capture the cascade-tombstone timestamp BEFORE we mutate the task.
     // removeTask() set task->updatedAt() to the cascade `now` and copied that
@@ -468,6 +492,31 @@ bool DataStore::restoreTask(const QString &id)
     task->setUpdatedAt(now);
     stampEntityField(id, m_taskMeta, QStringLiteral("is_deleted"));
     stampEntityField(id, m_taskMeta, QStringLiteral("updated_at"));
+
+    // D6: a task restored into a deleted (or missing) project/section is
+    // invisible — every view filters by a live project / section. This is the
+    // normal path after deleting a whole project (the cascade puts its tasks in
+    // the Trash) and also after a peer deleted the project. Re-home such a task
+    // into the Inbox, and drop a section that is gone or belongs to another
+    // project. Applied to the root and to every cascade-restored descendant.
+    const auto rehome = [this](Task *t) {
+        const QString tid = t->id();
+        const Project *p = m_projectIndex.value(t->projectId());
+        if (!p || p->isDeleted()) {
+            if (const Project *inbox = inboxProject()) {
+                t->setProjectId(inbox->id());
+                stampEntityField(tid, m_taskMeta, QStringLiteral("project_id"));
+            }
+        }
+        if (!t->sectionId().isEmpty()) {
+            const Section *s = m_sectionIndex.value(t->sectionId());
+            if (!s || s->isDeleted() || s->projectId() != t->projectId()) {
+                t->setSectionId(QString());
+                stampEntityField(tid, m_taskMeta, QStringLiteral("section_id"));
+            }
+        }
+    };
+    rehome(task);
 
     // night iter-137: orphan guard. A subtask renders ONLY nested under its
     // parent, so a restored child whose parent is still deleted shows nowhere —
@@ -533,6 +582,7 @@ bool DataStore::restoreTask(const QString &id)
         const QString parentId = frontier.takeFirst();
         for (auto *t : m_tasks) {
             if (!t || !t->isDeleted()) continue;
+            if (t->isPurged()) continue;   // D2: permanently deleted
             if (t->parentId() != parentId) continue;
             if (t->updatedAt() != cascadeStamp) continue;
             if (cascadeIds.contains(t->id())) continue; // cycle defence
@@ -550,6 +600,7 @@ bool DataStore::restoreTask(const QString &id)
         t->setUpdatedAt(now);
         stampEntityField(tid, m_taskMeta, QStringLiteral("is_deleted"));
         stampEntityField(tid, m_taskMeta, QStringLiteral("updated_at"));
+        rehome(t);
     }
 
     // Restore descendant reminders / comments that match the cascade stamp.
@@ -589,47 +640,67 @@ bool DataStore::purgeTask(const QString &id)
 {
     Task *task = m_taskIndex.value(id, nullptr);
     if (!task) return false;
+    if (task->isDeleted() && task->isPurged()) return false; // already purged
 
-    // Erase from list and index. Also drop the per-entity CRDT meta blob so
-    // the purge does not leak a stale _meta entry into the next state.json.
-    m_tasks.removeAll(task);
-    m_taskIndex.remove(id);
-    m_taskMeta.remove(id);
+    // D2: never hard-erase. Sync is a union merge of the local and remote
+    // state.json (Merger::mergeEntityArrays keeps every entity present on
+    // either side), so an entity erased here comes straight back from the
+    // remote copy on the next sync — as a LIVE task if the remote never saw
+    // the delete. Keep the tombstone and flag it purged instead: the Trash
+    // stops listing it (allTasksIncludingDeleted() skips purged tombstones)
+    // and vacuum() drops it once the tombstone safety window has passed.
+    //
+    // is_deleted is re-stamped even when the task is already a tombstone:
+    // "delete permanently" is a fresh delete intent and must out-rank an older
+    // restore of the same task on another device (Merger lets a live side win
+    // only with a strictly newer is_deleted stamp).
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    task->setIsDeleted(true);
+    task->setIsPurged(true);
+    task->setUpdatedAt(now);
+    stampEntityField(id, m_taskMeta, QStringLiteral("is_deleted"));
+    stampEntityField(id, m_taskMeta, QStringLiteral("is_purged"));
+    stampEntityField(id, m_taskMeta, QStringLiteral("updated_at"));
 
-    // Hard-purge dependent reminders/comments too — they reference a task id
-    // that no longer exists. Their soft-delete tombstones are already in the
-    // sync log; further references aren't useful locally.
-    for (int i = m_reminders.size() - 1; i >= 0; --i) {
-        Reminder *r = m_reminders.at(i);
-        if (r && r->taskId() == id) {
-            m_reminderIndex.remove(r->id());
-            m_reminderMeta.remove(r->id());
-            m_reminders.removeAt(i);
-            r->deleteLater();
-        }
+    // Dependent reminders/comments: tombstone whatever is still live (a purge
+    // used to erase them outright, with the same resurrection problem).
+    bool anyReminder = false;
+    for (auto *r : m_reminders) {
+        if (!r || r->isDeleted() || r->taskId() != id) continue;
+        r->setIsDeleted(true);
+        r->setUpdatedAt(now);
+        stampEntityField(r->id(), m_reminderMeta, QStringLiteral("is_deleted"));
+        stampEntityField(r->id(), m_reminderMeta, QStringLiteral("updated_at"));
+        anyReminder = true;
     }
-    for (int i = m_comments.size() - 1; i >= 0; --i) {
-        Comment *c = m_comments.at(i);
-        if (c && c->taskId() == id) {
-            m_commentIndex.remove(c->id());
-            m_commentMeta.remove(c->id());
-            m_comments.removeAt(i);
-            c->deleteLater();
-        }
+    bool anyComment = false;
+    for (auto *c : m_comments) {
+        if (!c || c->isDeleted() || c->taskId() != id) continue;
+        c->setIsDeleted(true);
+        c->setUpdatedAt(now);
+        stampEntityField(c->id(), m_commentMeta, QStringLiteral("is_deleted"));
+        stampEntityField(c->id(), m_commentMeta, QStringLiteral("updated_at"));
+        anyComment = true;
     }
-
-    task->deleteLater();
 
     emit tasksChanged();
-    emit remindersChanged();
-    emit commentsChanged();
+    if (anyReminder) emit remindersChanged();
+    if (anyComment) emit commentsChanged();
     emit dataChanged();
     return true;
 }
 
 QList<Task *> DataStore::allTasksIncludingDeleted() const
 {
-    return m_tasks;
+    // Purged tombstones ("deleted permanently") are kept only for sync and are
+    // no longer part of the Trash, so they are left out here (D2).
+    QList<Task *> result;
+    result.reserve(m_tasks.size());
+    for (auto *t : m_tasks) {
+        if (t && !(t->isDeleted() && t->isPurged()))
+            result.append(t);
+    }
+    return result;
 }
 
 QList<Task *> DataStore::allTasks() const
@@ -864,6 +935,16 @@ int DataStore::taskCount() const
 
 void DataStore::addExistingTask(Task *task)
 {
+    // D2: taskById() hides purged tombstones, so a caller doing
+    // "if (!taskById(id)) addExistingTask(...)" (SyncEngine task_add) can hand
+    // us an id that is still held by a purged tombstone. The permanent delete
+    // wins over such a stale re-add; never index two entities under one id.
+    if (Task *existing = m_taskIndex.value(task->id())) {
+        if (existing != task && existing->isDeleted() && existing->isPurged()) {
+            task->deleteLater();
+            return;
+        }
+    }
     task->setParent(this);
     m_tasks.append(task);
     m_taskIndex.insert(task->id(), task);
@@ -1036,6 +1117,77 @@ void DataStore::addExistingProject(Project *project)
 
     m_projects.append(project);
     m_projectIndex.insert(project->id(), project);
+}
+
+bool DataStore::normalizeInboxes()
+{
+    // D3: pick ONE canonical Inbox deterministically — earliest created_at,
+    // then lowest id — so every device that loads the same merged state picks
+    // the same one and the result converges without coordination.
+    const auto precedes = [](const Project *a, const Project *b) {
+        const QDateTime ca = a->createdAt(), cb = b->createdAt();
+        if (ca.isValid() != cb.isValid()) return ca.isValid(); // valid first
+        if (ca.isValid() && ca != cb) return ca < cb;
+        return a->id() < b->id();
+    };
+    Project *canonical = nullptr;
+    for (Project *p : m_projects) {
+        if (!p || !p->isInbox() || p->isDeleted()) continue;
+        if (!canonical || precedes(p, canonical)) canonical = p;
+    }
+    if (!canonical) return false;
+
+    // Every other project flagged is_inbox: live duplicates AND duplicates a
+    // previous normalisation already tombstoned. The losers are tombstoned
+    // but keep is_inbox=true as a marker, so a task that a not-yet-synced
+    // peer filed into the old duplicate Inbox is still re-homed on a later
+    // load instead of vanishing into a deleted project. (inboxProject()
+    // ignores deleted projects, so the marker has no other effect.)
+    QSet<QString> strays;
+    for (Project *p : m_projects) {
+        if (p && p != canonical && p->isInbox())
+            strays.insert(p->id());
+    }
+    if (strays.isEmpty()) return false;
+
+    const QString inboxId = canonical->id();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    bool changed = false;
+    for (Task *t : m_tasks) {
+        if (!t || t->isDeleted() || !strays.contains(t->projectId())) continue;
+        t->setProjectId(inboxId);
+        t->setUpdatedAt(now);
+        stampEntityField(t->id(), m_taskMeta, QStringLiteral("project_id"));
+        stampEntityField(t->id(), m_taskMeta, QStringLiteral("updated_at"));
+        changed = true;
+    }
+    for (Section *s : m_sections) {
+        if (!s || s->isDeleted() || !strays.contains(s->projectId())) continue;
+        s->setProjectId(inboxId);
+        s->setUpdatedAt(now);
+        stampEntityField(s->id(), m_sectionMeta, QStringLiteral("project_id"));
+        stampEntityField(s->id(), m_sectionMeta, QStringLiteral("updated_at"));
+        changed = true;
+    }
+    for (Comment *c : m_comments) {
+        if (!c || c->isDeleted() || !strays.contains(c->projectId())) continue;
+        c->setProjectId(inboxId);
+        c->setUpdatedAt(now);
+        stampEntityField(c->id(), m_commentMeta, QStringLiteral("project_id"));
+        stampEntityField(c->id(), m_commentMeta, QStringLiteral("updated_at"));
+        changed = true;
+    }
+    for (Project *p : m_projects) {
+        if (!p || p->isDeleted() || !strays.contains(p->id())) continue;
+        qInfo("DataStore: merging duplicate Inbox %s into %s",
+              qPrintable(p->id()), qPrintable(inboxId));
+        p->setIsDeleted(true);
+        p->setUpdatedAt(now);
+        stampEntityField(p->id(), m_projectMeta, QStringLiteral("is_deleted"));
+        stampEntityField(p->id(), m_projectMeta, QStringLiteral("updated_at"));
+        changed = true;
+    }
+    return changed;
 }
 
 // ===================== AUTO-ARCHIVE =====================
@@ -1408,7 +1560,36 @@ Label *DataStore::labelById(const QString &id) const
 
 Label *DataStore::labelByName(const QString &name) const
 {
-    return m_labelNameIndex.value(name.toLower(), nullptr);
+    // D12: the index holds live labels only (see indexLabelName); the
+    // isDeleted() check is defence in depth for a label tombstoned by a
+    // direct setter call that bypassed removeLabel.
+    Label *l = m_labelNameIndex.value(name.toLower(), nullptr);
+    return (l && !l->isDeleted()) ? l : nullptr;
+}
+
+void DataStore::indexLabelName(Label *label)
+{
+    // D12: tombstones are never indexed, so a deleted label can neither be
+    // returned by labelByName() nor shadow a live label with the same name
+    // (loadFromJson / addExistingLabel used to index every label, last wins).
+    if (!label || label->isDeleted())
+        return;
+    m_labelNameIndex.insert(label->name().toLower(), label);
+}
+
+void DataStore::unindexLabelName(const QString &key, const Label *label)
+{
+    if (m_labelNameIndex.value(key) != label)
+        return;
+    m_labelNameIndex.remove(key);
+    // Another live label may share the (case-folded) name — keep it findable.
+    for (Label *other : m_labels) {
+        if (other && other != label && !other->isDeleted()
+            && other->name().toLower() == key) {
+            m_labelNameIndex.insert(key, other);
+            break;
+        }
+    }
 }
 
 bool DataStore::removeLabel(const QString &id)
@@ -1463,6 +1644,9 @@ bool DataStore::removeLabel(const QString &id)
     label->setIsDeleted(true);
     stampEntityField(id, m_labelMeta, QStringLiteral("is_deleted"));
     stampEntityField(id, m_labelMeta, QStringLiteral("updated_at"));
+    // D12: drop the name-index entry so labelByName() stops resolving the
+    // tombstone (TaskItem chips, importer reuse).
+    unindexLabelName(labelName.toLower(), label);
 
     emit labelsChanged();
     emit dataChanged();
@@ -1523,12 +1707,9 @@ bool DataStore::renameLabel(const QString &id, const QString &newName)
     // same key after this one (shouldn't happen, but harmless guard).
     const QString oldKey = oldName.toLower();
     const QString newKey = newName.toLower();
-    if (oldKey != newKey) {
-        if (m_labelNameIndex.value(oldKey) == label) {
-            m_labelNameIndex.remove(oldKey);
-        }
-    }
-    m_labelNameIndex.insert(newKey, label);
+    if (oldKey != newKey)
+        unindexLabelName(oldKey, label);
+    indexLabelName(label);   // no-op for a tombstone (D12)
 
     // Step 3: cascade across tasks. Same case-insensitive match as the
     // iter-night-38 removeLabel cascade — labelByName lookups use
@@ -1575,7 +1756,7 @@ void DataStore::addExistingLabel(Label *label)
     label->setParent(this);
     m_labels.append(label);
     m_labelIndex.insert(label->id(), label);
-    m_labelNameIndex.insert(label->name().toLower(), label);
+    indexLabelName(label);
 }
 
 // ===================== FILTERS =====================
@@ -1992,10 +2173,15 @@ void DataStore::setCollaboratorProfile(const QString &id, const QString &name,
     else
         all[cid] = ov;
 
+    const QJsonValue before = m_settings.value(QStringLiteral("collaborators"));
     if (all.isEmpty())
         m_settings.remove(QStringLiteral("collaborators"));
     else
         m_settings[QStringLiteral("collaborators")] = all;
+    // S1: stamp the key (also when removed) so this edit wins the per-key
+    // settings merge instead of being reverted by the remote copy.
+    if (m_settings.value(QStringLiteral("collaborators")) != before)
+        stampSettingKey(QStringLiteral("collaborators"));
 
     emit collaboratorsChanged();
     emit settingsChanged();
@@ -2011,6 +2197,20 @@ QJsonObject DataStore::settings() const
 
 void DataStore::setSettings(const QJsonObject &settings)
 {
+    // S1: stamp only the keys whose value actually changed (or that were
+    // added/removed). Callers do read-modify-write of the whole blob (e.g.
+    // KarmaViewModel's trend), so stamping every key would make this device
+    // win keys it never touched over a peer's newer edit.
+    QSet<QString> keys;
+    for (auto it = m_settings.constBegin(); it != m_settings.constEnd(); ++it)
+        keys.insert(it.key());
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it)
+        keys.insert(it.key());
+    for (const QString &k : std::as_const(keys)) {
+        if (m_settings.contains(k) != settings.contains(k)
+            || m_settings.value(k) != settings.value(k))
+            stampSettingKey(k);
+    }
     m_settings = settings;
     emit settingsChanged();
     emit dataChanged();
@@ -2023,7 +2223,12 @@ QVariant DataStore::setting(const QString &key) const
 
 void DataStore::setSetting(const QString &key, const QVariant &value)
 {
-    m_settings[key] = QJsonValue::fromVariant(value);
+    const QJsonValue v = QJsonValue::fromVariant(value);
+    // S1: per-key LWW stamp; re-writing an unchanged value must not out-rank
+    // a peer's newer edit of the same key.
+    if (!m_settings.contains(key) || m_settings.value(key) != v)
+        stampSettingKey(key);
+    m_settings[key] = v;
     emit settingsChanged();
     emit dataChanged();
 }
@@ -2132,6 +2337,10 @@ QJsonObject DataStore::toJson() const
     // F-1.60: always persist the current schema version.
     root[QStringLiteral("schema_version")] = CURRENT_SCHEMA_VERSION;
     root[QStringLiteral("settings")] = m_settings;
+    // S1: per-key settings stamps (see m_settingsMeta). Omitted when empty so
+    // states that never stamped a setting keep their previous shape.
+    if (!m_settingsMeta.isEmpty())
+        root[QStringLiteral("settings_meta")] = m_settingsMeta;
 
     QJsonArray tasksArr;
     for (auto *t : m_tasks)
@@ -2193,24 +2402,21 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
     clear();
 
     m_settings = root[QStringLiteral("settings")].toObject();
+    m_settingsMeta = root[QStringLiteral("settings_meta")].toObject();
 
-    // B-1.18: tombstones older than 30 days are pruned from the in-memory
-    // index (they are kept in the JSON on disk until the next save, after
-    // which they disappear naturally).  Recent tombstones are kept so that
-    // sync can propagate deletions to peers that haven't yet synced.
-    const QDateTime pruneThreshold = QDateTime::currentDateTimeUtc().addDays(-30);
+    // D2: tombstones are NOT pruned at load time any more (B-1.18 used to drop
+    // every tombstone older than 30 days here). Sync union-merges the local
+    // and remote state.json, so a tombstone erased locally comes back from
+    // any copy that still holds the entity — as a LIVE entity when a device
+    // that was offline for > 30 days still has it live. Old tombstones are
+    // only dropped by the explicit vacuum() (90-day window, pending-commit
+    // guard, pre-vacuum backup).
 
     const auto tasksArr = root[QStringLiteral("tasks")].toArray();
     for (const auto &v : tasksArr) {
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_taskMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue; // drop stale tombstone
-        }
         auto *t = Task::fromJson(obj, this);
         m_tasks.append(t);
         m_taskIndex.insert(t->id(), t);
@@ -2222,12 +2428,6 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_projectMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *p = Project::fromJson(obj, this);
         m_projects.append(p);
         m_projectIndex.insert(p->id(), p);
@@ -2238,12 +2438,6 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_sectionMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *s = Section::fromJson(obj, this);
         m_sections.append(s);
         m_sectionIndex.insert(s->id(), s);
@@ -2254,16 +2448,10 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_labelMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *l = Label::fromJson(obj, this);
         m_labels.append(l);
         m_labelIndex.insert(l->id(), l);
-        m_labelNameIndex.insert(l->name().toLower(), l);
+        indexLabelName(l);
     }
 
     const auto filtersArr = root[QStringLiteral("filters")].toArray();
@@ -2271,12 +2459,6 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_filterMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *f = Filter::fromJson(obj, this);
         m_filters.append(f);
         m_filterIndex.insert(f->id(), f);
@@ -2287,12 +2469,6 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_reminderMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *r = Reminder::fromJson(obj, this);
         m_reminders.append(r);
         m_reminderIndex.insert(r->id(), r);
@@ -2303,16 +2479,18 @@ void DataStore::loadFromJson(const QJsonObject &rootIn)
         QJsonObject obj = v.toObject();
         const QString id = obj[QStringLiteral("id")].toString();
         obj = extractMeta(obj, m_commentMeta, id);
-        if (obj[QStringLiteral("is_deleted")].toBool()) {
-            const QDateTime updatedAt = QDateTime::fromString(
-                obj[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
-            if (updatedAt.isValid() && updatedAt < pruneThreshold)
-                continue;
-        }
         auto *c = Comment::fromJson(obj, this);
         m_comments.append(c);
         m_commentIndex.insert(c->id(), c);
     }
+
+    // D3: two fresh devices each create their own Inbox; the first sync
+    // union-merges both into one state, and nothing downstream enforced the
+    // single-Inbox invariant (addExistingProject's B-1.55 guard is not on
+    // this path). Collapse to one canonical Inbox. Any stamp written here
+    // means the loaded state differs from the input, so FileManager must
+    // persist it (see lastLoadModifiedState()).
+    m_lastLoadModifiedState = normalizeInboxes();
 
     emit tasksChanged();
     emit projectsChanged();
@@ -2368,4 +2546,5 @@ void DataStore::clear()
     m_commentMeta.clear();
 
     m_settings = QJsonObject();
+    m_settingsMeta = QJsonObject();
 }

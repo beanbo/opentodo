@@ -844,6 +844,16 @@ opentodo_add_unit_test(test_todoist_importer_robustness   Infra)
 # qInfo + pinned assertions, no production-code edits.
 opentodo_add_unit_test(test_todoist_importer_pro          Infra)
 
+# Storage / import data-integrity fixes (F2): purge keeps tombstones, no
+# load-time tombstone pruning, single Inbox after merge, restore re-homing,
+# label index without tombstones; FileManager import/unreadable-file/no-op-save
+# guards; Todoist ZIP hardening, cross-CSV section ids, local due dates.
+# test_filemanager_retention existed but was never registered.
+opentodo_add_unit_test(test_datastore_tombstones          Infra)
+opentodo_add_unit_test(test_filemanager_load_guards       Infra)
+opentodo_add_unit_test(test_todoist_import_hardening      Infra)
+opentodo_add_unit_test(test_filemanager_retention         Infra)
+
 # Q2.26-B: Unicode NFC/NFD normalization for search. Covers the pure
 # TextSearch helper (NFKC + Mn-strip + case fold) plus SearchViewModel and
 # FilterEvaluator `search:` integration. Acceptance contract: "café" finds

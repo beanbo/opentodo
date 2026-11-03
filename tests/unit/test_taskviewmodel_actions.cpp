@@ -707,7 +707,20 @@ private slots:
 
         QVERIFY(f->store->taskById(f->taskDId) != nullptr);
         vm.permanentlyDelete(f->taskDId);
+        // Gone for every caller and out of the Trash …
         QVERIFY(f->store->taskById(f->taskDId) == nullptr);
+        for (const QVariant &v : vm.deletedTasks())
+            QVERIFY(v.toMap().value(QStringLiteral("id")).toString() != f->taskDId);
+        // … but kept as a purged tombstone in the serialised state so the
+        // next sync cannot resurrect it from the remote copy (D2).
+        bool tombstone = false;
+        for (const QJsonValue &v : f->store->toJson()[QStringLiteral("tasks")].toArray()) {
+            const QJsonObject o = v.toObject();
+            if (o[QStringLiteral("id")].toString() == f->taskDId)
+                tombstone = o[QStringLiteral("is_deleted")].toBool()
+                         && o[QStringLiteral("is_purged")].toBool();
+        }
+        QVERIFY(tombstone);
 
         delete f;
     }

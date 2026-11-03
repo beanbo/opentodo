@@ -31,7 +31,11 @@ public:
 
     QJsonObject toJson() const;
     static DueObject fromJson(const QJsonObject &json);
-    bool isNull() const { return date.isEmpty() && datetime.isEmpty(); }
+    // A due that carries only its human string (e.g. an imported Todoist due
+    // the date parser could not resolve) is still data: Task::toJson skips
+    // null dues, so treating it as null silently dropped the string on the
+    // first save.
+    bool isNull() const { return date.isEmpty() && datetime.isEmpty() && string.isEmpty(); }
 };
 
 class DurationObject {
@@ -76,6 +80,7 @@ class Task : public QObject
     Q_PROPERTY(QDateTime createdAt READ createdAt WRITE setCreatedAt NOTIFY createdAtChanged)
     Q_PROPERTY(QDateTime updatedAt READ updatedAt WRITE setUpdatedAt NOTIFY updatedAtChanged)
     Q_PROPERTY(bool isDeleted READ isDeleted WRITE setIsDeleted NOTIFY isDeletedChanged)
+    Q_PROPERTY(bool isPurged READ isPurged WRITE setIsPurged NOTIFY isPurgedChanged)
     Q_PROPERTY(int dayOrder READ dayOrder WRITE setDayOrder NOTIFY dayOrderChanged)
     Q_PROPERTY(QString color READ color WRITE setColor NOTIFY colorChanged)
     Q_PROPERTY(bool isPinned READ isPinned WRITE setIsPinned NOTIFY isPinnedChanged)
@@ -156,6 +161,13 @@ public:
     bool isDeleted() const;
     void setIsDeleted(bool deleted);
 
+    // "Deleted permanently" from the Trash. Only meaningful on a tombstone
+    // (is_deleted == true): the entity stays in the store and in state.json so
+    // the deletion keeps winning sync merges, but the Trash no longer lists it.
+    // JSON: `is_purged`, written only when true.
+    bool isPurged() const;
+    void setIsPurged(bool purged);
+
     int dayOrder() const;
     void setDayOrder(int dayOrder);
 
@@ -196,6 +208,7 @@ signals:
     void createdAtChanged();
     void updatedAtChanged();
     void isDeletedChanged();
+    void isPurgedChanged();
     void dayOrderChanged();
     void colorChanged();
     void isPinnedChanged();
@@ -219,6 +232,7 @@ private:
     QDateTime m_createdAt;
     QDateTime m_updatedAt;
     bool m_isDeleted = false;
+    bool m_isPurged = false;
     int m_dayOrder = 0;
     QString m_color;
     bool m_isPinned = false;

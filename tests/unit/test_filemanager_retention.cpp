@@ -1,10 +1,11 @@
 // Q3.10: Tests for FileManager dated-backup retention sweep + vacuum
 // threshold signalling.
 //
-// FileManager now writes a dated backup `state.json.bak.YYYYMMDDhhmmss`
-// after every save (in addition to the legacy 3-generation rolling
-// .bak / .bak.1 / .bak.2 chain). After write completes, performSave runs
-// sweepOldBackups() which:
+// FileManager writes a dated backup `state.json.bak.YYYYMMDDhhmmss` on save
+// (in addition to the legacy 3-generation rolling .bak / .bak.1 / .bak.2
+// chain) — throttled to at most one per ~5 minutes, so most slots seed dated
+// backups on disk and call sweepOldBackups() directly. The sweep (also run by
+// performSave together with the dated backup):
 //   * caps the dated backup count at m_backupRetentionCount (default 50)
 //   * drops dated backups older than m_backupRetentionDays (default 30)
 //   * NEVER deletes the single most-recent dated backup
@@ -83,6 +84,32 @@ private:
         return out;
     }
 
+    // Write `n` dated backups (distinct second-resolution names) whose mtime
+    // is `ageDays` days in the past, newest first. performSave() writes at
+    // most one dated backup per ~5 minutes (perf throttle), so the retention
+    // sweep cannot be exercised by saving repeatedly — seed the files and
+    // call sweepOldBackups() directly instead.
+    QStringList seedDatedBackups(int n, int ageDays, int startOffsetSecs = 0) const
+    {
+        QDir().mkpath(dataDir());
+        QStringList out;
+        const QDateTime base = QDateTime::currentDateTime().addDays(-ageDays);
+        for (int i = 0; i < n; ++i) {
+            const QDateTime ts = base.addSecs(-(startOffsetSecs + i));
+            const QString path = stateFilePath() + QStringLiteral(".bak.")
+                + ts.toUTC().toString(QStringLiteral("yyyyMMddHHmmss"));
+            QFile f(path);
+            if (!f.open(QIODevice::WriteOnly))
+                continue;
+            f.write("{}");
+            f.flush();   // a later buffered write would reset the mtime
+            f.setFileTime(ts, QFileDevice::FileModificationTime);
+            f.close();
+            out << path;
+        }
+        return out;
+    }
+
     // Touch all dated backups so their mtime equals (now - daysOffset days).
     // Used to simulate the passage of time without sleeping in tests.
     void ageAllDatedBackups(int daysOffset) const
@@ -150,19 +177,15 @@ private slots:
         fm.setBackupRetentionCount(5);
         fm.setBackupRetentionDays(0);   // disable age cap so count is the only signal
 
-        // Make sure every dated backup gets a unique timestamp by sleeping
-        // ≥1 s between saves (dated backup suffix is second-resolution).
-        for (int i = 0; i < 7; ++i) {
-            ds.addProject(QStringLiteral("P%1").arg(i));
-            fm.saveImmediate();
-            QTest::qWait(1100);
-        }
+        const QStringList seeded = seedDatedBackups(7, 0);
+        QCOMPARE(datedBackups().size(), 7);
 
-        // After 7+ writes, dated count should be <= 5 (cap), and the most-
-        // recent one is still present.
+        QCOMPARE(fm.sweepOldBackups(), 2);
         const QStringList dated = datedBackups();
-        QVERIFY2(dated.size() <= 5,
-                 qPrintable(QStringLiteral("dated.size() = %1").arg(dated.size())));
+        QCOMPARE(dated.size(), 5);
+        // The newest five survive; the two oldest went.
+        QVERIFY(QFile::exists(seeded.first()));
+        QVERIFY(!QFile::exists(seeded.last()));
     }
 
     // ── Age cap ────────────────────────────────────────────────────────────
@@ -177,30 +200,18 @@ private slots:
         fm.setBackupRetentionCount(0);  // disable count cap
         fm.setBackupRetentionDays(30);
 
-        // Create 3 dated backups by saving 3 times (1s apart for distinct
-        // timestamps).
-        for (int i = 0; i < 3; ++i) {
-            ds.addProject(QStringLiteral("A%1").arg(i));
-            fm.saveImmediate();
-            QTest::qWait(1100);
-        }
-        QCOMPARE(datedBackups().size(), 3);
+        // Three backups past the 30-day cutoff plus one fresh one.
+        const QStringList aged = seedDatedBackups(3, 60);
+        const QStringList fresh = seedDatedBackups(1, 0);
+        QCOMPARE(datedBackups().size(), 4);
 
-        // Age all of them past the 30-day cutoff.
-        ageAllDatedBackups(60);
-
-        // Trigger another save → sweep runs → all aged-out backups should
-        // be removed EXCEPT the single most-recent (safety floor).
-        ds.addProject(QStringLiteral("Trigger"));
-        fm.saveImmediate();
-
-        // After sweep: at most one of the previously-aged backups survives
-        // (the most recent), plus the freshly-written current one.
-        // Since the "trigger" save itself wrote a dated backup with a
-        // current timestamp, count should be 2 minimum.
+        // Every aged-out backup goes; the fresh one is kept.
+        QCOMPARE(fm.sweepOldBackups(), 3);
         const QStringList dated = datedBackups();
-        QVERIFY2(dated.size() <= 2,
-                 qPrintable(QStringLiteral("expected <= 2, got %1").arg(dated.size())));
+        QCOMPARE(dated.size(), 1);
+        QVERIFY(QFile::exists(fresh.first()));
+        for (const QString &p : aged)
+            QVERIFY(!QFile::exists(p));
     }
 
     // ── Safety floor: never delete most-recent ─────────────────────────────
@@ -216,23 +227,17 @@ private slots:
         fm.setBackupRetentionDays(1);
 
         ds.addProject(QStringLiteral("Only"));
-        fm.saveImmediate();
-        QTest::qWait(1100);
-
+        fm.saveImmediate();             // 2nd save → the one dated backup
         QCOMPARE(datedBackups().size(), 1);
 
-        // Age the single dated backup well past the cutoff.
+        // Age it (and two older ones) well past the cutoff.
         ageAllDatedBackups(365);
+        seedDatedBackups(2, 400);
+        QCOMPARE(datedBackups().size(), 3);
 
-        // Trigger another save → sweep runs.
-        ds.addProject(QStringLiteral("Second"));
-        fm.saveImmediate();
-
-        // At minimum the freshly-written dated backup must exist. The
-        // previously-aged one might also exist (it became "most recent"
-        // by the time the sweep ran on the prior generation), but never
-        // zero — that would mean the safety floor failed.
-        QVERIFY(datedBackups().size() >= 1);
+        // All three are over the age cap, but the newest is the safety floor.
+        QCOMPARE(fm.sweepOldBackups(), 2);
+        QCOMPARE(datedBackups().size(), 1);
     }
 
     // ── Rolling chain is left alone by sweep ───────────────────────────────
@@ -248,13 +253,13 @@ private slots:
         fm.setBackupRetentionCount(1);
         fm.setBackupRetentionDays(1);
 
-        // 4 saves with pauses → full rolling chain populated AND multiple
-        // dated backups produced.
+        // 4 saves → full rolling chain populated; plus several dated backups.
         for (int i = 0; i < 4; ++i) {
             ds.addProject(QStringLiteral("R%1").arg(i));
             fm.saveImmediate();
-            QTest::qWait(1100);
         }
+        seedDatedBackups(3, 30);
+        fm.sweepOldBackups();
 
         QVERIFY(QFile::exists(stateFilePath() + QStringLiteral(".bak")));
         QVERIFY(QFile::exists(stateFilePath() + QStringLiteral(".bak.1")));
@@ -338,16 +343,22 @@ private slots:
         for (int i = 0; i < 3; ++i) {
             ds.addProject(QStringLiteral("L%1").arg(i));
             fm.saveImmediate();
-            QTest::qWait(1100);
         }
+        seedDatedBackups(2, 1);
 
         const QVariantList list = fm.listBackups();
 
-        // We should see at least the rolling chain (.bak / .bak.1 / .bak.2)
-        // and 2 dated backups (the very first save is a 1st save → no
-        // dated; subsequent ones produce dated backups subject to dedup).
-        QVERIFY2(list.size() >= 3,
+        // The rolling chain (.bak / .bak.1 / .bak.2), the dated backup the
+        // second save wrote, and the two seeded dated backups.
+        QVERIFY2(list.size() >= 6,
                  qPrintable(QStringLiteral("listBackups returned %1 entries").arg(list.size())));
+        int datedCount = 0;
+        for (const QVariant &v : list) {
+            if (QRegularExpression(QStringLiteral("^state\\.json\\.bak\\.\\d{14}$"))
+                    .match(v.toMap().value(QStringLiteral("name")).toString()).hasMatch())
+                ++datedCount;
+        }
+        QCOMPARE(datedCount, 3);
 
         // Verify newest-first ordering by mtime.
         QDateTime prev;

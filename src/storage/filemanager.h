@@ -121,10 +121,29 @@ private:
     // we hit this path from missing-file or corrupted-file.
     bool tryRecoverFromBackups(const QString &filePath, const char *reason);
 
+    // D11 (WebAssembly only — defined under Q_OS_WASM): the data directory
+    // lives on Emscripten's in-memory FS unless an IDBFS (IndexedDB) mount is
+    // put over it. startWasmPersistentFs() mounts it and starts the async
+    // FS.syncfs(true) restore; load() resumes once that finished.
+    // persistWasmFs() flushes to IndexedDB after every successful save.
+    void startWasmPersistentFs();
+    void persistWasmFs();
+
     DataStore *m_store;
     QTimer m_saveTimer;
     bool m_dirty = false;
     QString m_dataPath;
+
+    // D5: set when state.json exists but could not be read AND could not be
+    // moved aside. Saving would overwrite the user's only copy with whatever
+    // is in memory (backup or defaults), so performSave() refuses until a
+    // successful load(), restoreBackup() or importData().
+    bool m_saveBlocked = false;
+
+    // D11: WASM persistent-FS state. While the IndexedDB restore is pending
+    // the store is empty and saving would wipe the persisted data.
+    bool m_wasmFsPending = false;
+    bool m_wasmFsReady = false;
 
     // Q3.10: backup retention policy (count + age cap).
     int    m_backupRetentionCount  = 50;

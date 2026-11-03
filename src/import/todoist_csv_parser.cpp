@@ -155,8 +155,11 @@ TodoistDue TodoistCsvParser::parseDue(const QString &dateStr,
             due.date = m.captured(1);
             if (!m.captured(2).isEmpty()) {
                 const QDateTime dt = QDateTime::fromString(trimmed, Qt::ISODate);
-                if (dt.isValid())
+                if (dt.isValid()) {
                     due.datetime = dt.toString(Qt::ISODate);
+                    // D9: "…Z" / "…+03:00" is an instant; use its local date.
+                    due.date = todoistLocalDueDate(trimmed);
+                }
             }
             due.isRecurring = false;
             return due;
@@ -345,7 +348,11 @@ TodoistCsvParser::ParseResult TodoistCsvParser::parse(const QString &csv,
 
         if (type == QStringLiteral("section")) {
             TodoistSection sec;
-            sec.id        = QString::number(row); // synthesized id for CSV (no real id in export)
+            // Synthesized id (the export has no id column). D1: it must be
+            // unique across ALL CSVs of a backup ZIP — the importer keeps one
+            // section-id map for every file, so a bare row number made a task
+            // of Home.csv land in Work.csv's section at the same row.
+            sec.id        = QStringLiteral("csv-sec-%1-%2").arg(projectId).arg(row);
             sec.projectId = projectId;
             sec.name      = safeField(fields, COL_CONTENT);
             sec.order     = sectionOrder++;

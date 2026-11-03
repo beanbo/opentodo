@@ -77,9 +77,15 @@ public:
     // does not exist. Comments/reminders that were independently tombstoned
     // (different updatedAt) are intentionally left as tombstones.
     Q_INVOKABLE bool restoreTask(const QString &id);
-    // Hard-remove: actually erases the task from m_tasks and the index.
-    // Used by the Trash view's "permanently delete". Local-only; sync log not
-    // produced (the soft-delete tombstone has already propagated, if any).
+    // "Delete permanently" (Trash view). Does NOT erase anything: an erased
+    // entity would be resurrected by the next sync's union merge. The task
+    // stays a tombstone (tombstoned first if it was live, no subtree cascade)
+    // flagged is_purged. To callers it is gone — taskById() returns nullptr,
+    // restoreTask() refuses it, the Trash (allTasksIncludingDeleted()) skips
+    // it — while toJson() keeps it so the deletion keeps propagating;
+    // vacuum() removes it after the tombstone safety window. Live reminders /
+    // comments of the task are tombstoned. Returns false for an unknown or
+    // already-purged id.
     Q_INVOKABLE bool purgeTask(const QString &id);
     Q_INVOKABLE QList<Task *> allTasks() const;
     // JS-friendly counterpart of allTasks() for QML. Returns QVariantList of
@@ -98,7 +104,9 @@ public:
     // JS-friendly project list (see allTasksData rationale; QList<Project*>
     // likewise doesn't convert to a JS array in QML).
     Q_INVOKABLE QVariantList allProjectsData() const;
-    // Returns ALL tasks, including soft-deleted ones (used by the Trash view).
+    // Returns all tasks including soft-deleted ones that are still in the
+    // Trash (used by the Trash view). Purged tombstones (purgeTask) are left
+    // out — they exist only so the deletion keeps winning sync merges.
     QList<Task *> allTasksIncludingDeleted() const;
     Q_INVOKABLE QList<Task *> tasksForProject(const QString &projectId) const;
     Q_INVOKABLE QList<Task *> tasksForSection(const QString &sectionId) const;
@@ -215,8 +223,8 @@ public:
     // means the built-in "me" (all comments predate this field), so no data
     // migration is required. Profiles (display name / avatar colour / icon) are
     // persisted inside the synced `settings` blob under the "collaborators" key
-    // — { "<id>": {name, color, icon}, ... } — riding the existing whole-object
-    // -LWW settings sync with no new entity plumbing. Two built-ins always
+    // — { "<id>": {name, color, icon}, ... } — riding the existing settings sync
+    // (per-key LWW on settings_meta) with no new entity plumbing. Two built-ins always
     // resolve: "me" (the user) and "claude" (the OpenTodo→Claude bridge /
     // in-app assistant). Passing an unknown id resolves to sensible defaults so
     // extra collaborators can be introduced later without code changes.
@@ -361,6 +369,10 @@ public:
     QJsonObject toJson() const;
     void loadFromJson(const QJsonObject &root);
     void clear();
+    // True when the last loadFromJson() had to repair the loaded data (e.g.
+    // merged duplicate Inboxes, D3), i.e. the in-memory state differs from the
+    // JSON that was loaded and should be persisted.
+    bool lastLoadModifiedState() const { return m_lastLoadModifiedState; }
 
     // --- CRDT field stamping ---
     /**
@@ -397,10 +409,25 @@ private:
     static QString normCollaboratorId(const QString &id);   // "" ⇒ "me"
     QJsonObject collaboratorOverride(const QString &id) const;
 
+    // D12: m_labelNameIndex holds LIVE labels only. indexLabelName() ignores
+    // tombstones; unindexLabelName() removes `key` if it maps to `label` and
+    // re-points it at another live label with the same case-folded name.
+    void indexLabelName(Label *label);
+    void unindexLabelName(const QString &key, const Label *label);
+
+    // D3: enforce a single live Inbox after a load (duplicates appear when two
+    // fresh devices first sync). Returns true if anything was changed.
+    bool normalizeInboxes();
+    bool m_lastLoadModifiedState = false;
+
     // Stamp a single field in m_entityMeta[entityId] using the local deviceId.
     void stampEntityField(const QString &entityId,
                           QMap<QString, QJsonObject> &metaMap,
                           const QString &fieldName);
+
+    // S1: stamp m_settingsMeta[key] = {ts: HLC::now, dev} so the Merger can
+    // resolve settings per key (LWW) instead of taking the remote blob whole.
+    void stampSettingKey(const QString &key);
 
     // Inject the stored _meta blob back into a serialised entity JSON.
     static QJsonObject injectMeta(QJsonObject entityJson,
@@ -468,4 +495,9 @@ private:
     QMap<QString, QJsonObject> m_commentMeta;
 
     QJsonObject m_settings;
+    // S1: per-key LWW stamps for m_settings — { "<key>": {ts, dev} }. Serialised
+    // as the top-level "settings_meta" object (deliberately NOT inside
+    // "settings", which other code iterates). A stamp whose key is absent from
+    // m_settings records that the key was removed on this device.
+    QJsonObject m_settingsMeta;
 };

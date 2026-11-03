@@ -1672,17 +1672,16 @@ private slots:
         QScopedPointer<TodoistImporter> imp(
             new TodoistImporter(ds.data(), this));
 
-        // Create a label, then soft-delete it. This leaves the entry in
-        // m_labelNameIndex pointing at a tombstoned label.
+        // Create a label, then soft-delete it. The tombstone stays in the
+        // store (and in state.json) under the same name.
         Label *original = ds->addLabel(QStringLiteral("Work"));
         QVERIFY(original);
         const QString originalId = original->id();
         QVERIFY(ds->removeLabel(originalId));
-        // Confirm the precondition: labelByName still returns the
-        // tombstone (the very mis-design Phase 1 was tripping on).
-        Label *byName = ds->labelByName(QStringLiteral("Work"));
-        QVERIFY(byName != nullptr);
-        QVERIFY(byName->isDeleted());
+        // labelByName used to keep resolving the tombstone (the mis-design
+        // Phase 1 was tripping on); since D12 the name index holds live
+        // labels only. The importer must still create a fresh label.
+        QVERIFY(ds->labelByName(QStringLiteral("Work")) == nullptr);
 
         // Re-import a backup that contains the same label name.
         TodoistImportData data;

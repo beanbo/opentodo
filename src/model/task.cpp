@@ -148,6 +148,9 @@ void Task::setUpdatedAt(const QDateTime &updatedAt) { if (m_updatedAt != updated
 bool Task::isDeleted() const { return m_isDeleted; }
 void Task::setIsDeleted(bool deleted) { if (m_isDeleted != deleted) { m_isDeleted = deleted; emit isDeletedChanged(); } }
 
+bool Task::isPurged() const { return m_isPurged; }
+void Task::setIsPurged(bool purged) { if (m_isPurged != purged) { m_isPurged = purged; emit isPurgedChanged(); } }
+
 int Task::dayOrder() const { return m_dayOrder; }
 void Task::setDayOrder(int dayOrder) { if (m_dayOrder != dayOrder) { m_dayOrder = dayOrder; emit dayOrderChanged(); } }
 
@@ -192,6 +195,8 @@ QJsonObject Task::toJson() const
     obj[QStringLiteral("created_at")] = m_createdAt.toString(Qt::ISODateWithMs);
     obj[QStringLiteral("updated_at")] = m_updatedAt.toString(Qt::ISODateWithMs);
     obj[QStringLiteral("is_deleted")] = m_isDeleted;
+    // Written only when true (like is_pinned) — almost no task is purged.
+    if (m_isPurged) obj[QStringLiteral("is_purged")] = true;
     obj[QStringLiteral("day_order")] = m_dayOrder;
     if (!m_color.isEmpty()) obj[QStringLiteral("color")] = m_color;
     // Записываем is_pinned только когда true — не засоряем JSON для большинства задач
@@ -237,6 +242,7 @@ Task *Task::fromJson(const QJsonObject &json, QObject *parent)
         task->m_updatedAt = QDateTime::fromString(json[QStringLiteral("updated_at")].toString(), Qt::ISODateWithMs);
 
     task->m_isDeleted = json[QStringLiteral("is_deleted")].toBool();
+    task->m_isPurged = json[QStringLiteral("is_purged")].toBool();
     task->m_dayOrder = json[QStringLiteral("day_order")].toInt();
     task->m_color = json[QStringLiteral("color")].toString();
     // Отсутствующий ключ трактуется как false — незакреплённая задача по умолчанию
@@ -262,6 +268,8 @@ void Task::applyJson(const QJsonObject &json)
         setIsCompleted(json[QStringLiteral("is_completed")].toBool());
     if (json.contains(QStringLiteral("is_deleted")))
         setIsDeleted(json[QStringLiteral("is_deleted")].toBool());
+    if (json.contains(QStringLiteral("is_purged")))
+        setIsPurged(json[QStringLiteral("is_purged")].toBool());
     if (json.contains(QStringLiteral("project_id")))
         setProjectId(json[QStringLiteral("project_id")].toString());
     if (json.contains(QStringLiteral("section_id")))

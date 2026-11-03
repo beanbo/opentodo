@@ -71,24 +71,40 @@ static quint32 le32(const QByteArray &b, int off) {
          | (quint32(quint8(b[off + 3])) << 24);
 }
 
-// Inflate DEFLATE-compressed `compressed` into a buffer of size `uncompSize`.
-static QByteArray inflateRaw(const QByteArray &compressed, quint32 uncompSize) {
-    QByteArray out;
-    out.resize(int(uncompSize));
+// D7: hard limits for the hand-written reader. A Todoist backup is a few MB at
+// most; anything beyond these is malformed or a decompression bomb.
+static constexpr qint64 kMaxZipFileBytes   = 256LL * 1024 * 1024; // archive on disk
+static constexpr qint64 kMaxEntryBytes     = 256LL * 1024 * 1024; // one entry, uncompressed
+static constexpr qint64 kMaxTotalBytes     = 256LL * 1024 * 1024; // all entries, uncompressed
+
+// Inflate DEFLATE-compressed `compressed` into exactly `uncompSize` bytes.
+// Returns false unless the stream is complete (Z_STREAM_END) and produced
+// exactly the size the central directory promised — a truncated or lying
+// entry must not be imported half-way.
+static bool inflateRaw(const QByteArray &compressed, quint32 uncompSize, QByteArray *out) {
+    out->clear();
+    if (qint64(uncompSize) > kMaxEntryBytes) return false;
+    out->resize(qsizetype(uncompSize));
 
     z_stream z{};
     z.next_in   = reinterpret_cast<Bytef *>(const_cast<char *>(compressed.data()));
     z.avail_in  = uInt(compressed.size());
-    z.next_out  = reinterpret_cast<Bytef *>(out.data());
+    // An empty QByteArray has no writable buffer; zlib still needs a valid
+    // pointer even with avail_out == 0.
+    Bytef dummy = 0;
+    z.next_out  = uncompSize > 0 ? reinterpret_cast<Bytef *>(out->data()) : &dummy;
     z.avail_out = uInt(uncompSize);
 
     // -15 = raw DEFLATE (no zlib header), matches what ZIP files store.
-    if (inflateInit2(&z, -MAX_WBITS) != Z_OK) return {};
-    int r = inflate(&z, Z_FINISH);
+    if (inflateInit2(&z, -MAX_WBITS) != Z_OK) { out->clear(); return false; }
+    const int r = inflate(&z, Z_FINISH);
+    const uLong produced = z.total_out;
     inflateEnd(&z);
-    if (r != Z_STREAM_END && r != Z_OK) return {};
-    out.resize(int(z.total_out));
-    return out;
+    if (r != Z_STREAM_END || produced != uLong(uncompSize)) {
+        out->clear();
+        return false;
+    }
+    return true;
 }
 
 static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
@@ -100,6 +116,10 @@ static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
         if (err) *err = QStringLiteral("open failed: %1").arg(f.errorString());
         return result;
     }
+    if (f.size() > kMaxZipFileBytes) {
+        if (err) *err = QStringLiteral("file too large to be a Todoist backup");
+        return result;
+    }
     const QByteArray buf = f.readAll();
     f.close();
     if (buf.size() < 22) {
@@ -107,12 +127,20 @@ static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
         return result;
     }
 
+    // D7: every offset / size below comes from the (untrusted) archive. Keep
+    // all arithmetic in qint64 and bounds-check against the buffer BEFORE
+    // reading — the old int() casts let a cdOffset >= 2^31 turn negative and
+    // pass `cur + 46 > n`, reading out of bounds.
+    const qint64 n = buf.size();
+    const auto inBounds = [n](qint64 off, qint64 len) {
+        return off >= 0 && len >= 0 && off <= n && len <= n - off;
+    };
+
     // Locate the End Of Central Directory Record (EOCD) — signature
     // 0x06054b50 ("PK\005\006"). It lives somewhere in the last 64KB.
-    const int n = buf.size();
     int eocd = -1;
-    const int searchStart = qMax(0, n - 65557);
-    for (int i = n - 22; i >= searchStart; --i) {
+    const int searchStart = int(qMax<qint64>(0, n - 65557));
+    for (int i = int(n) - 22; i >= searchStart; --i) {
         if (quint8(buf[i])     == 0x50 &&
             quint8(buf[i + 1]) == 0x4B &&
             quint8(buf[i + 2]) == 0x05 &&
@@ -131,25 +159,34 @@ static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
     const quint32 cdOffset     = le32(buf, eocd + 16);
     Q_UNUSED(cdSize);
 
+    if (!inBounds(qint64(cdOffset), 0)) {
+        if (err) *err = QStringLiteral("central directory offset out of range");
+        return result;
+    }
+
     // Walk central directory entries (signature 0x02014b50)
-    int cur = int(cdOffset);
+    qint64 cur = qint64(cdOffset);
+    qint64 totalUncompressed = 0;
+    bool   corruptEntry = false;
     for (int e = 0; e < totalEntries; ++e) {
-        if (cur + 46 > n) break;
-        if (quint8(buf[cur])     != 0x50 ||
-            quint8(buf[cur + 1]) != 0x4B ||
-            quint8(buf[cur + 2]) != 0x01 ||
-            quint8(buf[cur + 3]) != 0x02) break;
+        if (!inBounds(cur, 46)) break;
+        const int c = int(cur);   // safe: 0 <= cur <= n - 46
+        if (quint8(buf[c])     != 0x50 ||
+            quint8(buf[c + 1]) != 0x4B ||
+            quint8(buf[c + 2]) != 0x01 ||
+            quint8(buf[c + 3]) != 0x02) break;
 
-        const quint16 gpFlag      = le16(buf, cur + 8);
-        const quint16 method      = le16(buf, cur + 10);
-        const quint32 compSize    = le32(buf, cur + 20);
-        const quint32 uncompSize  = le32(buf, cur + 24);
-        const quint16 nameLen     = le16(buf, cur + 28);
-        const quint16 extraLen    = le16(buf, cur + 30);
-        const quint16 commentLen  = le16(buf, cur + 32);
-        const quint32 localHdrOff = le32(buf, cur + 42);
+        const quint16 gpFlag      = le16(buf, c + 8);
+        const quint16 method      = le16(buf, c + 10);
+        const quint32 compSize    = le32(buf, c + 20);
+        const quint32 uncompSize  = le32(buf, c + 24);
+        const quint16 nameLen     = le16(buf, c + 28);
+        const quint16 extraLen    = le16(buf, c + 30);
+        const quint16 commentLen  = le16(buf, c + 32);
+        const quint32 localHdrOff = le32(buf, c + 42);
 
-        const QByteArray nameBytes = buf.mid(cur + 46, nameLen);
+        if (!inBounds(cur + 46, nameLen)) break;
+        const QByteArray nameBytes = buf.mid(c + 46, nameLen);
         QString name;
         if (gpFlag & 0x800) {
             // UTF-8 filename
@@ -160,41 +197,57 @@ static QList<ZipEntry> readZipFromFile(const QString &filePath, QString *err)
             name = QString::fromLatin1(nameBytes);
         }
 
-        cur += 46 + nameLen + extraLen + commentLen;
+        cur += 46 + qint64(nameLen) + qint64(extraLen) + qint64(commentLen);
 
         // Skip directories
         if (name.endsWith(u'/')) continue;
 
+        // Unsupported method — skip (before any size checks, so an exotic
+        // entry next to good ones does not fail the archive).
+        if (method != 0 && method != 8) continue;
+
         // Read the corresponding LOCAL file header to find the data offset
-        if (qint64(localHdrOff) + 30 > qint64(n)) continue;
-        const int localBase = int(localHdrOff);
+        if (!inBounds(qint64(localHdrOff), 30)) { corruptEntry = true; continue; }
+        const int localBase = int(localHdrOff);   // safe: <= n - 30
         if (quint8(buf[localBase])     != 0x50 ||
             quint8(buf[localBase + 1]) != 0x4B ||
             quint8(buf[localBase + 2]) != 0x03 ||
-            quint8(buf[localBase + 3]) != 0x04) continue;
+            quint8(buf[localBase + 3]) != 0x04) { corruptEntry = true; continue; }
 
         const quint16 lhNameLen  = le16(buf, localBase + 26);
         const quint16 lhExtraLen = le16(buf, localBase + 28);
-        const int dataStart      = localBase + 30 + lhNameLen + lhExtraLen;
+        const qint64 dataStart   = qint64(localBase) + 30 + lhNameLen + lhExtraLen;
 
-        if (qint64(dataStart) + qint64(compSize) > qint64(n)) continue;
+        if (!inBounds(dataStart, qint64(compSize))) { corruptEntry = true; continue; }
 
-        const QByteArray compressed = buf.mid(dataStart, int(compSize));
+        // Decompression-bomb guard: cap each entry and the archive total.
+        // (ZIP64 entries carry 0xFFFFFFFF here and are rejected the same way.)
+        if (qint64(uncompSize) > kMaxEntryBytes
+            || totalUncompressed + qint64(uncompSize) > kMaxTotalBytes) {
+            if (err) *err = QStringLiteral("archive too large when uncompressed");
+            return {};
+        }
+
+        const QByteArray compressed = buf.mid(qsizetype(dataStart), qsizetype(compSize));
 
         ZipEntry entry;
         entry.name = name;
         if (method == 0) {
-            // Stored
+            // Stored: the two sizes must agree, otherwise the entry is corrupt.
+            if (compSize != uncompSize) { corruptEntry = true; continue; }
             entry.data = compressed;
-        } else if (method == 8) {
-            entry.data = inflateRaw(compressed, uncompSize);
-        } else {
-            // Unsupported method — skip
+        } else if (!inflateRaw(compressed, uncompSize, &entry.data)) {
+            // Truncated / corrupt DEFLATE stream or wrong size — drop the
+            // entry rather than importing a partial CSV.
+            corruptEntry = true;
             continue;
         }
+        totalUncompressed += qint64(uncompSize);
         result.append(entry);
     }
 
+    if (result.isEmpty() && corruptEntry && err)
+        *err = QStringLiteral("corrupt ZIP entry data");
     return result;
 }
 
@@ -484,10 +537,9 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
     QMap<QString, QString> labelNameToId; // todoistName → openTodo UUID
 
-    // iter-night-29: DataStore::labelByName() looks up via m_labelNameIndex,
-    // which is NOT scrubbed when removeLabel() tombstones an entry — and
-    // loadFromJson() reinserts every label into the name index regardless
-    // of is_deleted. So labelByName() can return a tombstoned label. If we
+    // iter-night-29: DataStore::labelByName() used to return tombstoned
+    // labels (its name index was never scrubbed). It no longer does (D12),
+    // but keep this filter as defence in depth: if it ever did again and we
     // reuse it here, the imported "Work" label remains invisible to the
     // sidebar (it's filtered by allLabels()) AND the tombstone is_deleted=
     // true field still rides outbound on next sync, propagating the dead
@@ -665,6 +717,7 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
     QMap<QString, QString> taskIdMap; // todoistId → openTodo UUID
     int taskCount = 0;
+    int unresolvedDueCount = 0; // D14: due strings the date parser could not resolve
     const int totalTasks = data.tasks.size();
 
     // ITER3 #17 / F-Q2.24-C #2: dedup using a content + projectId fingerprint
@@ -760,6 +813,11 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
 
         // Due date
         if (!tt.due.date.isEmpty() || !tt.due.string.isEmpty()) {
+            // D14: an unparseable due string is kept (DueObject::isNull()
+            // now counts the string, so it survives the save) but the task
+            // has no date — tell the user instead of silently dropping it.
+            if (tt.due.date.isEmpty() && tt.due.datetime.isEmpty())
+                ++unresolvedDueCount;
             task->setDueDate(tt.due.date);
             task->setDueDatetime(tt.due.datetime);
             task->setDueString(tt.due.string);
@@ -930,6 +988,12 @@ void TodoistImporter::applyImport(const TodoistImportData &data, bool importComp
         m_warnings.append(QStringLiteral(
             "Пропущено комментариев (уже импортированы): %1")
             .arg(skippedNoteCount));
+    }
+    if (unresolvedDueCount > 0) {
+        m_warnings.append(QStringLiteral(
+            "У %1 задач(и) не удалось распознать срок; исходный текст срока "
+            "сохранён, но дата не установлена.")
+            .arg(unresolvedDueCount));
     }
 
     // ────────────────────────────────────────────────────────────────────────
