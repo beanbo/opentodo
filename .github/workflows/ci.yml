@@ -21,11 +21,15 @@ jobs:
           arch: win64_mingw
           modules: qt5compat
           tools: 'tools_mingw1310 tools_cmake tools_ninja'
+          # aqtinstall 3.3.0 (the latest release) predates Qt 6.11's per-compiler
+          # Windows repo folders (qt6_6110/qt6_6110_mingw); pin the upstream fix
+          # (miurahr/aqtinstall#1000) until a release ships it.
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7'
 
       - name: Configure
         shell: pwsh
         run: |
-          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          $env:PATH = "$env:IQTA_TOOLS\mingw1310_64\bin;" + $env:PATH
           cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=ON
@@ -33,7 +37,7 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          $env:PATH = "$env:IQTA_TOOLS\mingw1310_64\bin;" + $env:PATH
           cmake --build build --config Release
 
       - name: Test
@@ -65,7 +69,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libsecret-1-dev
 
       - name: Configure
         run: |
@@ -117,7 +121,7 @@ jobs:
       - name: Configure (WASM)
         run: |
           QT_WASM=${{ runner.temp }}/Qt/Qt/6.11.0/wasm_singlethread
-          QT_HOST=${{ runner.temp }}/Qt/Qt/6.11.0/linux_gcc_64
+          QT_HOST=${{ runner.temp }}/Qt/Qt/6.11.0/gcc_64
           # Qt's WASM toolchain hardcodes a default emsdk path; override it
           # with QT_CHAINLOAD_TOOLCHAIN_FILE so it finds the runner's emsdk.
           cmake -S . -B build-wasm -G Ninja \

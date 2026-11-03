@@ -14,7 +14,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.3'
+          version: '6.11.0'
           host: linux
           target: desktop
           arch: linux_gcc_64
@@ -22,4 +22,4 @@ jobs:
       - name: Run qmllint
         run: |
           find qml -name "*.qml" -print0 | \
-            xargs -0 $Qt6_DIR/bin/qmllint -I qml || true  # warn only
+            xargs -0 "$QT_ROOT_DIR/bin/qmllint" -I qml || true  # warn only

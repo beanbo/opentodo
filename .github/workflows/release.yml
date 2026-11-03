@@ -16,16 +16,21 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.3'
+          version: '6.11.0'
           host: windows
           target: desktop
           arch: win64_mingw
+          modules: qt5compat
           tools: 'tools_mingw1310 tools_cmake tools_ninja'
+          # aqtinstall 3.3.0 (the latest release) predates Qt 6.11's per-compiler
+          # Windows repo folders (qt6_6110/qt6_6110_mingw); pin the upstream fix
+          # (miurahr/aqtinstall#1000) until a release ships it.
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7'
 
       - name: Build Release
         shell: pwsh
         run: |
-          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
+          $env:PATH = "$env:IQTA_TOOLS\mingw1310_64\bin;" + $env:PATH
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           cmake --build build
 
@@ -34,8 +39,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path dist/OpenTodo
           Copy-Item build/OpenTodo.exe dist/OpenTodo/
-          $env:PATH = "$env:Qt6_DIR\..\..\..\Tools\mingw1310_64\bin;" + $env:PATH
-          & "$env:Qt6_DIR\bin\windeployqt.exe" --qmldir qml --no-translations dist/OpenTodo/OpenTodo.exe
+          $env:PATH = "$env:IQTA_TOOLS\mingw1310_64\bin;" + $env:PATH
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --qmldir qml --no-translations dist/OpenTodo/OpenTodo.exe
 
       - name: Create ZIP
         shell: pwsh
