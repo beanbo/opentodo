@@ -379,12 +379,17 @@ endif()
 # zlib is needed for the in-process ZIP reader used by the Todoist importer.
 # Qt bundles zlib internally but doesn't export all symbols, so we look for
 # a system zlib first and fall back to Qt's headers (linked via Qt6::Core).
-find_package(ZLIB QUIET)
-if(ZLIB_FOUND)
-    target_link_libraries(OpenTodoInfra PUBLIC ZLIB::ZLIB)
-else()
-    # MinGW ships zlib1 alongside Qt — link it by name.
-    target_link_libraries(OpenTodoInfra PUBLIC z)
+# Qt for WebAssembly is static and already links its bundled (z_-prefixed)
+# zlib into every Qt6::Core consumer, and Emscripten has no -lz, so link
+# nothing extra there.
+if(NOT EMSCRIPTEN)
+    find_package(ZLIB QUIET)
+    if(ZLIB_FOUND)
+        target_link_libraries(OpenTodoInfra PUBLIC ZLIB::ZLIB)
+    else()
+        # MinGW ships zlib1 alongside Qt — link it by name.
+        target_link_libraries(OpenTodoInfra PUBLIC z)
+    endif()
 endif()
 
 # Windows: dwmapi for the dark title bar (DwmSetWindowAttribute).

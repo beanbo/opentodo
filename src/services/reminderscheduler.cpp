@@ -88,12 +88,20 @@ QDateTime ReminderScheduler::resolveTriggerTime(const Reminder *reminder,
 
     // B-5.11: Determine which timezone to use.
     // Priority: reminder.due.timezone → local timezone.
+#if QT_CONFIG(timezone)
     QTimeZone tz = QTimeZone::systemTimeZone();
     if (!due.timezone.isEmpty()) {
         const QTimeZone parsed(due.timezone.toUtf8());
         if (parsed.isValid())
             tz = parsed;
     }
+    const bool foreignZone = tz != QTimeZone::systemTimeZone();
+#else
+    // Qt for WebAssembly is built without the timezone feature: there is no
+    // IANA database, so the reminder's own zone is ignored and local time used.
+    const QTimeZone tz(QTimeZone::LocalTime);
+    const bool foreignZone = false;
+#endif
 
     QDateTime triggerTime;
     if (!due.datetime.isEmpty()) {
@@ -111,7 +119,7 @@ QDateTime ReminderScheduler::resolveTriggerTime(const Reminder *reminder,
         // setTimeZone() *retags* the QDateTime without shifting the
         // wall-clock value, which is what the reminder semantics
         // actually require.
-        if (triggerTime.isValid() && tz != QTimeZone::systemTimeZone())
+        if (triggerTime.isValid() && foreignZone)
             triggerTime.setTimeZone(tz);
     } else if (!due.date.isEmpty()) {
         // Date-only on the reminder — use the default reminder time. B-5.12

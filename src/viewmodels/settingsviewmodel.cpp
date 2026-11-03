@@ -381,6 +381,11 @@ void SettingsViewModel::setSyncLanEnabled(bool enabled) {
 }
 
 QString SettingsViewModel::localSyncUrl() const {
+#if !QT_CONFIG(networkinterface)
+    // Qt for WebAssembly has no QNetworkInterface, and a browser tab cannot
+    // host the LAN sync server anyway.
+    return QString();
+#else
     QSettings s;
     const quint16 port = static_cast<quint16>(
         s.value(QStringLiteral("selfhost/port"), 8765).toUInt());
@@ -402,6 +407,7 @@ QString SettingsViewModel::localSyncUrl() const {
     if (!fallback.isNull())
         return QStringLiteral("http://%1:%2").arg(fallback.toString()).arg(port);
     return QString();
+#endif
 }
 
 // --- Permissions ---
@@ -622,6 +628,7 @@ void SettingsViewModel::restartApp()
     if (!canRestartApp())
         return;
 
+#if QT_CONFIG(process)   // Qt for WebAssembly has no QProcess
     const QString program = QCoreApplication::applicationFilePath();
     const QStringList args = QCoreApplication::arguments().mid(1);
 
@@ -653,6 +660,7 @@ void SettingsViewModel::restartApp()
             QCoreApplication::quit();
         });
     }
+#endif
 }
 
 void SettingsViewModel::onSettingsChanged()

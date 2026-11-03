@@ -22,7 +22,12 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDateTime>
+// Same header pick as src/import/todoistimporter.cpp: Linux Qt has no QtZlib.
+#if __has_include(<QtZlib/zlib.h>)
 #include <QtZlib/zlib.h>
+#else
+#include <zlib.h>
+#endif
 
 #include "import/todoist_csv_parser.h"
 #include "import/todoistimporter.h"

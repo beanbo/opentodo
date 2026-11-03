@@ -13,14 +13,17 @@
 // [B-5.60] QtCore/private/qzipreader_p.h removed — this file implements its
 // own ZIP reader (readZipFromFile) and never calls QZipReader/QZipWriter.
 //
-// Header location differs by platform: Qt's MinGW Windows build ships a
-// bundled zlib reachable via <QtZlib/zlib.h>, while Qt for Android links
-// against the NDK sysroot zlib (canonical <zlib.h>). CMake links the right
-// library on each platform; here we just pick the matching header.
+// Header location differs by platform: Qt's MinGW Windows and WASM builds
+// ship a bundled zlib reachable via <QtZlib/zlib.h>, while Qt for Android
+// links against the NDK sysroot zlib and Qt for Linux against the system
+// zlib (canonical <zlib.h>, no QtZlib headers installed). CMake links the
+// right library on each platform; here we just pick the matching header.
 #if defined(Q_OS_ANDROID) || defined(__ANDROID__)
 #include <zlib.h>
-#else
+#elif __has_include(<QtZlib/zlib.h>)
 #include <QtZlib/zlib.h>
+#else
+#include <zlib.h>
 #endif
 
 #include <QMap>
