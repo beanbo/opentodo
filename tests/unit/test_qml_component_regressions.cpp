@@ -299,6 +299,49 @@ private slots:
         delete wrapper;
     }
 
+    // An explicit P4 pick must beat an inline "p1" in the text: 4 is also the
+    // "not chosen" default, so the override branch has to track the pick
+    // itself (PR review finding on the C4 fix).
+    void quickAdd_explicitP4Pick_beatsInlinePriority()
+    {
+        g_messages.clear();
+        g_capturing.store(true);
+        QString err;
+        QObject *wrapper = createWrapper(
+            QStringLiteral("    QuickAdd { objectName: \"qa\"; width: 700 }\n"), &err);
+        QVERIFY2(wrapper, qPrintable(err));
+        QObject *qa = wrapper->findChild<QObject *>(QStringLiteral("qa"));
+        QVERIFY(qa);
+        QObject *input = qa->findChild<QObject *>(QStringLiteral("quickAddInput"));
+        QVERIFY(input);
+        QObject *picker = qa->findChild<QObject *>(QStringLiteral("quickAddPriorityPicker"));
+        QVERIFY(picker);
+
+        input->setProperty("text", QStringLiteral("Explicit four p1"));
+        // Go through the real picker signal → QuickAdd handler wiring.
+        QVERIFY(QMetaObject::invokeMethod(picker, "prioritySelected", Q_ARG(int, 4)));
+        QCOMPARE(qa->property("_priorityPicked").toBool(), true);
+        qa->setProperty("selectedDueString", QStringLiteral("tomorrow"));
+        QVERIFY(QMetaObject::invokeMethod(qa, "submitTask"));
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        g_capturing.store(false);
+
+        const QStringList errors = scriptErrors();
+        QVERIFY2(errors.isEmpty(), qPrintable(errors.join(QLatin1Char('\n'))));
+
+        Task *created = nullptr;
+        for (Task *t : m_dataStore->allTasks()) {
+            if (t->content().startsWith(QStringLiteral("Explicit four")))
+                created = t;
+        }
+        QVERIFY2(created, "task was not created");
+        QCOMPARE(created->priority(), 4);
+        QCOMPARE(created->dueDate(), isoDate(QDate::currentDate().addDays(1)));
+        QCOMPARE(qa->property("_priorityPicked").toBool(), false);   // reset after submit
+
+        delete wrapper;
+    }
+
     // ── C2 ──────────────────────────────────────────────────────────────────
     void editorMetaRow_labelEdit_usesCurrentLabels()
     {

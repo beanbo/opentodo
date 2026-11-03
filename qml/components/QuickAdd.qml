@@ -9,6 +9,10 @@ Rectangle {
 
     // ─── Public API ────────────────────────────────────────────────────────────
     property int    selectedPriority:  4
+    // True once the user (or the AI suggestion) picked a priority. 4 is also
+    // the default, so selectedPriority alone can't tell an explicit P4 pick
+    // from "not chosen" — an inline "p1" in the text must not beat a P4 pick.
+    property bool   _priorityPicked:   false
     property string selectedDueString: ""
     property var    selectedLabels:    []
     // ITER1 #30: selected section for the task (empty = project root)
@@ -432,9 +436,11 @@ Rectangle {
 
                 PriorityPicker {
                     id: priorityPicker
+                    objectName: "quickAddPriorityPicker"
                     selectedPriority: root.selectedPriority
                     onPrioritySelected: (p) => {
                         root.selectedPriority = p
+                        root._priorityPicked = true
                     }
                 }
             }
@@ -1230,8 +1236,10 @@ Rectangle {
         function onPrioritySuggested(p) {
             root._aiBusy = false
             // Clamp defensively in case future changes widen the contract.
-            if (p >= 1 && p <= 4)
+            if (p >= 1 && p <= 4) {
                 root.selectedPriority = p
+                root._priorityPicked = true
+            }
             // Telemetry: ai_priority_suggested {priority: N}
             if (typeof telemetry !== "undefined" && telemetry && telemetry.enabled) {
                 try {
@@ -1288,7 +1296,8 @@ Rectangle {
             // be applied: in that case we still go through the structured
             // path but seed it with the NLP-parsed components so dates and
             // labels typed inline still work.
-            let userOverrode = root.selectedPriority !== 4
+            let userOverrode = root._priorityPicked
+                            || root.selectedPriority !== 4
                             || root.selectedDueString !== ""
                             || (root.selectedLabels && root.selectedLabels.length > 0)
 
@@ -1313,8 +1322,8 @@ Rectangle {
                 let redirected = redirectId !== "" && redirectId !== root.selectedProjectId
                 if (redirected) targetProjectId = redirectId
 
-                let effectivePriority = root.selectedPriority !== 4 ? root.selectedPriority
-                                                                    : parsedPriority
+                let effectivePriority = (root._priorityPicked || root.selectedPriority !== 4)
+                                        ? root.selectedPriority : parsedPriority
                 let effectiveDue = root.selectedDueString !== "" ? root.selectedDueString
                                                                  : parsedDue
                 let pickedLabels = root._mergeLabels(root.selectedLabels, parsedLabels)
@@ -1422,6 +1431,7 @@ Rectangle {
     function clearFields() {
         taskField.text         = ""
         root.selectedPriority  = 4
+        root._priorityPicked   = false
         root.selectedDueString = ""
         root.selectedLabels    = []
         // ITER1 #30: reset section selection
