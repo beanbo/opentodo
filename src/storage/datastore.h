@@ -185,6 +185,13 @@ public:
     Q_INVOKABLE Reminder *reminderById(const QString &id) const;
     Q_INVOKABLE bool removeReminder(const QString &id);
     Q_INVOKABLE QList<Reminder *> remindersForTask(const QString &taskId) const;
+
+    // Maps the id a notification was scheduled under back to its live task.
+    // Notification ids are not always task ids: ReminderScheduler keys OS
+    // notifications by REMINDER id (so each reminder can be cancelled on its
+    // own), snoozes use "snooze-<taskId>" and the mobile editor
+    // "reminder-<taskId>". Returns "" when nothing live matches.
+    Q_INVOKABLE QString taskIdForNotification(const QString &notificationId) const;
     // Returns ALL reminders, including soft-deleted ones. Used by the
     // reminder scheduler to cascade-cancel platform notifications for
     // reminders that were tombstoned by removeTask() — by the time the

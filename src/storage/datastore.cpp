@@ -1711,6 +1711,29 @@ bool DataStore::removeReminder(const QString &id)
     return true;
 }
 
+QString DataStore::taskIdForNotification(const QString &notificationId) const
+{
+    QString id = notificationId;
+    for (const QLatin1String prefix : { QLatin1String("snooze-"),
+                                        QLatin1String("reminder-") }) {
+        if (id.startsWith(prefix)) {
+            id = id.mid(prefix.size());
+            break;
+        }
+    }
+    if (id.isEmpty())
+        return {};
+    if (Task *t = taskById(id))
+        return t->isDeleted() ? QString() : t->id();
+    if (Reminder *r = reminderById(id)) {
+        if (r->isDeleted())
+            return {};
+        Task *t = taskById(r->taskId());
+        return (t && !t->isDeleted()) ? t->id() : QString();
+    }
+    return {};
+}
+
 QList<Reminder *> DataStore::remindersForTask(const QString &taskId) const
 {
     QList<Reminder *> result;
@@ -1737,14 +1760,11 @@ void DataStore::addExistingReminder(Reminder *reminder)
 
 Comment *DataStore::addComment(const QString &content, const QString &taskId, const QString &projectId, const QString &author)
 {
-    // B-1.47: a comment must belong to exactly one parent.
-    Q_ASSERT_X(taskId.isEmpty() || projectId.isEmpty(),
-               "DataStore::addComment",
-               "Comment cannot have both taskId and projectId set simultaneously.");
-    if (!taskId.isEmpty() && !projectId.isEmpty()) {
-        qWarning("DataStore::addComment: both taskId and projectId set — ignoring projectId.");
-    }
-
+    // B-1.47: a comment must belong to exactly one parent. Several legitimate
+    // callers pass both ids (mobile editor, CLI bridge, Todoist CSV notes —
+    // the task's project travels along), so normalise here instead of
+    // asserting: the task wins and projectId is dropped. A Q_ASSERT used to
+    // abort Debug builds on every one of those paths.
     auto *comment = new Comment(this);
     comment->setContent(content);
     comment->setTaskId(taskId);

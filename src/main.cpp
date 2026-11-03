@@ -262,16 +262,6 @@ int main(int argc, char *argv[])
     // Load data from disk
     fileManager->load();
 
-    // Flush any pending in-memory changes when the app is quitting.
-    // Without this the 1 s autosave debounce gets killed on shutdown and
-    // every edit made in the last second before quit is silently lost —
-    // this was the root cause of "data doesn't reach the disk" complaints
-    // when users toggled a setting and closed the window quickly.
-    QObject::connect(&app, &QCoreApplication::aboutToQuit,
-                     fileManager, [fileManager] {
-        fileManager->saveImmediate();
-    });
-
     // Platform services — notifications
     NotificationService *notificationService = nullptr;
 #if defined(Q_OS_WASM)
@@ -575,12 +565,6 @@ int main(int argc, char *argv[])
     // existing user requires the Settings screen to be opened first.
     applyIntervalTimer();
 
-    // Force a flush to Drive on quit too, so changes made just before
-    // closing aren't lost in the 5-second debounce.
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, syncVM, [syncVM]() {
-        syncVM->push();
-    });
-
     // Persist current view state so the next launch can restore exactly where
     // the user left off. We save even when no task is open (empty string clears
     // the restored selection gracefully on next startup).
@@ -604,6 +588,10 @@ int main(int argc, char *argv[])
                               taskVM->currentProjectId());
         dataStore->setSetting(QLatin1String(SettingsKeys::LastFilter),
                               taskVM->currentFilter());
+        // No save here: setSetting() only restarts the 1 s autosave debounce,
+        // which never fires once the event loop is exiting. The final
+        // saveImmediate() hook is connected last (just before app.exec()) so
+        // it runs after this handler and flushes the view state too.
     });
 
     // Sec-1: secretStore was constructed above (before the sync backend block).
@@ -691,25 +679,40 @@ int main(int argc, char *argv[])
     // QML handles raising the window in its Connections block; the C++ side
     // only needs to bridge the signal to TaskViewModel.
     if (notificationService) {
+        // The id a platform service hands back is the id the notification was
+        // scheduled under, which is not always a task id (reminder id,
+        // "snooze-<taskId>", "reminder-<taskId>"). Map it back to the task
+        // before acting — a raw taskById(reminderId) finds nothing, which left
+        // the Complete/Snooze buttons and click-to-open silently dead.
+        auto resolveNotificationTaskId = [dataStore](const QString &rawId) {
+            return dataStore->taskIdForNotification(rawId);
+        };
         QObject::connect(notificationService, &NotificationService::notificationClicked,
-                         taskVM, [taskVM](const QString &taskId) {
-            taskVM->openTaskById(taskId);
+                         taskVM, [taskVM, resolveNotificationTaskId](const QString &id) {
+            const QString taskId = resolveNotificationTaskId(id);
+            if (!taskId.isEmpty())
+                taskVM->openTaskById(taskId);
         });
-        // Reminder action buttons (Android): "complete" finishes the task,
-        // "snooze" re-fires the reminder in 10 minutes — without opening the app.
+        // Reminder action buttons (Android / Windows toasts): "complete"
+        // finishes the task, "snooze" re-fires the reminder in 10 minutes —
+        // without opening the app.
         QObject::connect(notificationService, &NotificationService::notificationActionInvoked,
-                         taskVM, [taskVM, dataStore, notificationService](const QString &taskId,
-                                                                          const QString &action) {
+                         taskVM, [taskVM, dataStore, notificationService, resolveNotificationTaskId](
+                                     const QString &id, const QString &action) {
+            const QString taskId = resolveNotificationTaskId(id);
             if (taskId.isEmpty())
                 return;
             if (action == QStringLiteral("complete")) {
                 taskVM->completeTask(taskId);
             } else if (action == QStringLiteral("snooze")) {
+                // Same id scheme as Main.qml's banner snooze, so a repeated
+                // snooze replaces the pending one instead of stacking.
                 if (Task *t = dataStore->taskById(taskId))
                     notificationService->scheduleNotification(
                         t->content(),
                         QObject::tr("Отложенное напоминание"),
-                        QDateTime::currentDateTime().addSecs(600), taskId);
+                        QDateTime::currentDateTime().addSecs(600),
+                        QStringLiteral("snooze-") + taskId);
             }
         });
         // Record that the user has responded to the notification permission prompt,
@@ -981,6 +984,29 @@ int main(int argc, char *argv[])
     // .available and bind the visibility switch.
     ctx->setContextProperty(QStringLiteral("trayIcon"), trayIcon);
 #endif
+
+    // Flush any pending in-memory changes when the app is quitting.
+    // Without this the 1 s autosave debounce gets killed on shutdown and
+    // every edit made in the last second before quit is silently lost —
+    // this was the root cause of "data doesn't reach the disk" complaints
+    // when users toggled a setting and closed the window quickly.
+    //
+    // Slots run in connection order, so this hook is connected after every
+    // handler that still mutates DataStore on quit (e.g. the last-view-state
+    // persistence above) — otherwise their writes only restart the autosave
+    // debounce, which never fires once the event loop is exiting.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit,
+                     fileManager, [fileManager] {
+        fileManager->saveImmediate();
+    });
+
+    // Force a flush to Drive on quit too, so changes made just before
+    // closing aren't lost in the 5-second debounce. Connected AFTER the local
+    // save: the push blocks on network I/O, and if the OS kills the process
+    // during that wait the last edits must already be on disk.
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, syncVM, [syncVM]() {
+        syncVM->push();
+    });
 
     return app.exec();
 }
