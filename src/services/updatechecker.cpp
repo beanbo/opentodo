@@ -61,6 +61,9 @@ void UpdateChecker::checkForUpdates(bool force)
     request.setRawHeader("User-Agent", "OpenTodo-UpdateChecker");
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
+    // Default transfer timeout is 0 (never): a hung connection (captive
+    // portal) would leave m_isChecking stuck true and block every later check.
+    request.setTransferTimeout(30000);
 
     postCheckRequest(request, /*isRetry=*/false);
 }

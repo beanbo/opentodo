@@ -77,6 +77,7 @@ void SecretStore::setSecret(const QString &key, const QString &value)
     // experience continues to work for the rest of the session.
     m_cache[key]   = value;
     m_present[key] = true;
+    ++m_writeGen[key];
 
 #ifdef HAS_QTKEYCHAIN
     auto *job = new QKeychain::WritePasswordJob(serviceName(), this);
@@ -114,9 +115,17 @@ void SecretStore::getSecret(const QString &key)
 #ifdef HAS_QTKEYCHAIN
     auto *job = new QKeychain::ReadPasswordJob(serviceName(), this);
     job->setKey(key);
+    const quint64 issuedGen = m_writeGen.value(key);
     QObject::connect(job, &QKeychain::Job::finished, this,
-                     [this, job, key]() {
+                     [this, job, key, issuedGen]() {
         job->deleteLater();
+        // A set/delete for this key was issued after this read: its value is
+        // newer than whatever the backend returned to us, so report that one
+        // and keep the cache as the write left it.
+        if (m_writeGen.value(key) != issuedGen) {
+            emit secretRetrieved(key, m_cache.value(key));
+            return;
+        }
         if (job->error() != QKeychain::NoError) {
             // EntryNotFound is the normal "no key yet" state — emit a
             // retrieved-with-empty-value signal in that specific case so the
@@ -154,6 +163,7 @@ void SecretStore::deleteSecret(const QString &key)
 {
     m_cache.remove(key);
     m_present.remove(key);
+    ++m_writeGen[key];
 
 #ifdef HAS_QTKEYCHAIN
     auto *job = new QKeychain::DeletePasswordJob(serviceName(), this);

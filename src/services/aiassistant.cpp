@@ -13,6 +13,8 @@
 #include <QTimer>
 #include <QRegularExpression>
 
+#include <memory>
+
 #include "storage/datastore.h"
 #include "model/task.h"
 #include "model/project.h"
@@ -335,8 +337,12 @@ void AIAssistant::setNetworkManagerForTesting(QNetworkAccessManager *nam)
 
 // S-AISafety: Default Qt transfer timeout in Qt 6.11 is 0 (= no timeout). Without
 // this a hanging API endpoint would leave m_isResponding stuck at true forever,
-// disabling the UI. 30 s is the canonical Anthropic SDK default.
-static constexpr int kTransferTimeoutMs = 30 * 1000;
+// disabling the UI. setTransferTimeout() is an INACTIVITY timeout, and these
+// requests are non-streaming: the server sends nothing until the whole reply
+// is generated, which for a multi-thousand-token answer on a large model can
+// take well over a minute. 30 s used to cancel such replies mid-generation
+// (still billed, user message dropped). 3 minutes still unsticks the UI.
+static constexpr int kTransferTimeoutMs = 180 * 1000;
 static void applyTransferTimeout(QNetworkRequest &req)
 {
     req.setTransferTimeout(kTransferTimeoutMs);
@@ -423,10 +429,38 @@ void AIAssistant::setSecretStore(SecretStore *store)
     if (!stored.isEmpty()) {
         const QString clear = deobfuscate(stored).trimmed();
         if (!clear.isEmpty()) {
-            store->setSecret(QLatin1String(kAnthropicSecretKey), clear);
+            // Purge the legacy entry ONLY once the keyring write is confirmed.
+            // setSecret() is async; on a machine without a keyring backend
+            // (no Secret Service / KWallet) it fails with secretError and the
+            // key would otherwise live only in this session's cache — gone
+            // after a restart. Keeping the legacy entry means loadKeyFor()
+            // still finds it and the migration is retried on the next launch.
+            const QString secretKey = QLatin1String(kAnthropicSecretKey);
+            auto ok  = std::make_shared<QMetaObject::Connection>();
+            auto err = std::make_shared<QMetaObject::Connection>();
+            *ok = connect(store, &SecretStore::secretStored, this,
+                          [secretKey, ok, err](const QString &k) {
+                if (k != secretKey) return;
+                QSettings s2;
+                s2.remove(QLatin1String(kLegacyAnthropicSettingsKey));
+                s2.sync();
+                QObject::disconnect(*ok);
+                QObject::disconnect(*err);
+            });
+            *err = connect(store, &SecretStore::secretError, this,
+                           [secretKey, ok, err](const QString &k, const QString &reason) {
+                if (k != secretKey) return;
+                qWarning("AIAssistant: keyring write failed during API key migration "
+                         "(%s); keeping the legacy entry", qPrintable(reason));
+                QObject::disconnect(*ok);
+                QObject::disconnect(*err);
+            });
+            store->setSecret(secretKey, clear);
+        } else {
+            // Undecodable leftover — nothing to migrate.
+            s.remove(QLatin1String(kLegacyAnthropicSettingsKey));
+            s.sync();
         }
-        s.remove(QLatin1String(kLegacyAnthropicSettingsKey));
-        s.sync();
     }
     emit isConfiguredChanged();
 }
@@ -1718,14 +1752,25 @@ bool AIAssistant::executeAction(const QJsonObject &a, QString *summary)
     const QString op = a.value(QStringLiteral("op")).toString();
     const QString content = a.value(QStringLiteral("content")).toString().trimmed();
 
+    // Resolve a task by its (case-insensitive) content. Active tasks win over
+    // completed ones: allTasks() is in insertion order, so an old completed
+    // "Купить молоко" would otherwise shadow today's open one and the
+    // confirmed action (complete / reprioritise / delete with its subtree)
+    // would hit the stale copy while the UI reports success.
     const auto findTask = [this](const QString &c) -> Task * {
         if (c.isEmpty()) return nullptr;
+        Task *completedMatch = nullptr;
         const auto tasks = m_store->allTasks();
-        for (Task *t : tasks)
-            if (t && !t->isDeleted()
-                && t->content().compare(c, Qt::CaseInsensitive) == 0)
+        for (Task *t : tasks) {
+            if (!t || t->isDeleted()
+                || t->content().compare(c, Qt::CaseInsensitive) != 0)
+                continue;
+            if (!t->isCompleted())
                 return t;
-        return nullptr;
+            if (!completedMatch)
+                completedMatch = t;
+        }
+        return completedMatch;
     };
 
     if (op == QStringLiteral("add_task")) {

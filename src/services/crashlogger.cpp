@@ -82,10 +82,17 @@ CrashLogger::~CrashLogger()
         s_prevHandler = nullptr;
     }
 
-    if (s_logFile) {
-        s_logFile->flush();
-        s_logFile->close();
-        s_logFile = nullptr;
+    // Take the write mutex: a message from a worker thread (e.g. a QNAM HTTP
+    // thread warning during teardown) may be inside handleMessage right now.
+    // The QFile is a child of this object and is deleted right after us, so
+    // it must be unpublished under the same lock the writer holds.
+    {
+        QMutexLocker locker(&s_writeMutex);
+        if (s_logFile) {
+            s_logFile->flush();
+            s_logFile->close();
+            s_logFile = nullptr;
+        }
     }
 
     if (s_instance == this)
@@ -172,18 +179,22 @@ void CrashLogger::handleMessage(QtMsgType type,
         QStringLiteral("[%1] [%2]%3 %4\n")
             .arg(timestamp, QString::fromLatin1(level), location, msg);
 
-    // Write to file under the mutex.
-    if (s_logFile) {
+    // Write to file under the mutex. Re-check s_logFile once the lock is held:
+    // the destructor clears it under the same mutex.
+    {
         QMutexLocker locker(&s_writeMutex);
-        s_logFile->write(line.toUtf8());
-        // Flush after every write — especially important for qFatal so the
-        // last lines reach disk before the process is aborted.
-        s_logFile->flush();
+        if (s_logFile) {
+            s_logFile->write(line.toUtf8());
+            // Flush after every write — especially important for qFatal so the
+            // last lines reach disk before the process is aborted.
+            s_logFile->flush();
+        }
     }
 
     // Forward to the previous handler (keeps stderr output intact).
     // For qFatal we forward AFTER flushing so the abort() that the default
-    // handler issues does not cut off our write.
-    if (s_prevHandler)
-        s_prevHandler(type, ctx, msg);
+    // handler issues does not cut off our write. Read the pointer once — the
+    // destructor may reset it concurrently.
+    if (const QtMessageHandler prev = s_prevHandler)
+        prev(type, ctx, msg);
 }

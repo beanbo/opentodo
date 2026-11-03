@@ -17,6 +17,8 @@
 #include <QUuid>
 #include <QVariant>
 
+#include <utility>
+
 // S-5.37: If the endpoint is empty or contains "TODO", no HTTP requests are made.
 // Open-source builds ship with NO collector: whoever distributes a build that
 // should report usage sets the endpoint at configure time
@@ -231,7 +233,9 @@ void Telemetry::flush(bool synchronous)
 {
     // A queue rehydrated from disk may predate the endpoint being removed;
     // without an endpoint it must stay put rather than POST to nowhere.
-    if (m_queue.isEmpty() || !available())
+    // Opt-out is authoritative: a queue rehydrated from disk (or re-queued
+    // after a failed POST) must never be uploaded while telemetry is off.
+    if (m_queue.isEmpty() || !available() || !enabled())
         return;
 
     // Snapshot the queue contents we're about to upload so we can either
@@ -254,6 +258,10 @@ void Telemetry::flush(bool synchronous)
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QStringLiteral("application/json"));
     request.setRawHeader("User-Agent", "OpenTodo-Telemetry");
+    // Qt's default transfer timeout is 0 (never). A stalled collector would
+    // otherwise pin the reply in m_inFlight for the whole session while new
+    // flushes pile up behind it every 5 minutes.
+    request.setTransferTimeout(30000);
 
     QNetworkReply *reply = m_nam.post(request, body);
     m_inFlight.append(QPointer<QNetworkReply>(reply));
@@ -275,7 +283,7 @@ void Telemetry::flush(bool synchronous)
             } else {
                 schedulePersistQueue();
             }
-        } else {
+        } else if (enabled()) {
             // Network failed — restore the snapshot back to the head of the
             // queue so the next flush retries them. Respect the cap during
             // re-queue: if NEW events arrived in the meantime and pushed us
@@ -482,18 +490,19 @@ bool Telemetry::isRateLimited()
 void Telemetry::clearInFlightAndQueue()
 {
     // Abort any in-flight replies so the last batch never lands.
-    for (auto &p : m_inFlight) {
+    // Detach the list first: abort() emits finished() synchronously and the
+    // reply's handler calls m_inFlight.removeAll(), which would mutate the
+    // container under a live range-for (UB; in practice the element shifted
+    // into the current slot was skipped and its batch still landed).
+    const QList<QPointer<QNetworkReply>> inFlight = std::exchange(m_inFlight, {});
+    for (const auto &p : inFlight) {
         if (p)
-            p->abort(); // finished() will fire from abort(); our handler re-queues then re-deletes
+            p->abort(); // finished() fires from abort(); telemetry is already off, so nothing is re-queued
     }
-    m_inFlight.clear();
 
-    // After aborting the replies above their finished() lambda will run and
-    // try to re-queue the snapshot. We're about to wipe the queue, but the
-    // ordering inside Qt is: abort() emits finished() synchronously OR via
-    // queued connection depending on the connection type. We used a direct
-    // connect (default for same-thread), so finished() fires synchronously
-    // inside abort() and the re-queue runs FIRST. We then wipe.
+    // The finished() handlers ran synchronously inside abort() above (direct
+    // same-thread connection). They skip re-queueing while telemetry is
+    // disabled; wipe anyway so nothing queued earlier survives the opt-out.
     m_queue.clear();
     m_rateWindow.clear();
     m_queueDirty = false;

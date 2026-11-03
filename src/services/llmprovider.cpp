@@ -347,15 +347,19 @@ QString OpenAICompatibleProvider::effectiveBaseUrl() const
     // like "localhost:8080/path" are not misread (StrictMode treats the
     // scheme as the part before the first colon only when there is no
     // unambiguous host). An attacker-supplied base_url like file:///...
-    // or ftp:// is then rejected by the scheme check below and we fall
-    // back to api.openai.com — safer than letting the API key fly to a
-    // hostile target via the Authorization header.
+    // or ftp:// is then rejected by the scheme check below.
+    //
+    // Every rejection FAILS CLOSED (returns an empty string): buildRequest()
+    // then produces a request with no URL and no Authorization header, and
+    // parseResponse() reports the bad base URL. Silently substituting
+    // api.openai.com would ship the user's OpenRouter/Groq/self-hosted key
+    // to a third party.
     if (!u.startsWith(QLatin1String("http://"), Qt::CaseInsensitive)
         && !u.startsWith(QLatin1String("https://"), Qt::CaseInsensitive)) {
         qWarning("OpenAICompatibleProvider: rejecting base_url '%s' "
-                 "without explicit http(s):// scheme — falling back to api.openai.com",
+                 "without explicit http(s):// scheme — refusing to send the key",
                  qPrintable(u));
-        return QStringLiteral("https://api.openai.com");
+        return QString();
     }
 
     const QUrl parsed(u, QUrl::StrictMode);
@@ -363,9 +367,9 @@ QString OpenAICompatibleProvider::effectiveBaseUrl() const
         || (parsed.scheme() != QLatin1String("http")
             && parsed.scheme() != QLatin1String("https"))) {
         qWarning("OpenAICompatibleProvider: rejecting invalid base_url '%s' "
-                 "— falling back to api.openai.com",
+                 "— refusing to send the key",
                  qPrintable(u));
-        return QStringLiteral("https://api.openai.com");
+        return QString();
     }
 
     // Refuse cleartext http:// to a PUBLIC host — the Authorization: Bearer API
@@ -374,9 +378,9 @@ QString OpenAICompatibleProvider::effectiveBaseUrl() const
     if (parsed.scheme() == QLatin1String("http") && !isLocalOrPrivateHost(parsed.host())) {
         qWarning("OpenAICompatibleProvider: rejecting cleartext http:// base_url "
                  "'%s' to a public host (API key would leak) — use https or a "
-                 "loopback/LAN host; falling back to api.openai.com",
+                 "loopback/LAN host; refusing to send the key",
                  qPrintable(u));
-        return QStringLiteral("https://api.openai.com");
+        return QString();
     }
 
     // Strip a trailing slash so we can append "/v1/chat/completions" cleanly.
@@ -411,7 +415,16 @@ OpenAICompatibleProvider::buildRequest(const QString &apiKey,
     body[QStringLiteral("max_tokens")] = maxTokens;
     body[QStringLiteral("messages")]   = jsonMessages;
 
-    QNetworkRequest req{QUrl(effectiveBaseUrl() + QStringLiteral("/v1/chat/completions"))};
+    const QString base = effectiveBaseUrl();
+    if (base.isEmpty()) {
+        // Rejected base URL: no destination and, crucially, no credentials.
+        // The send fails immediately and parseResponse() explains why.
+        QNetworkRequest req;
+        req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+        return { req, QJsonDocument(body).toJson(QJsonDocument::Compact) };
+    }
+
+    QNetworkRequest req{QUrl(base + QStringLiteral("/v1/chat/completions"))};
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("Authorization", QByteArray("Bearer ") + apiKey.toUtf8());
 
@@ -422,6 +435,13 @@ QString OpenAICompatibleProvider::parseResponse(const QByteArray &rawBody,
                                                   int /*httpStatus*/,
                                                   QString *errorOut) const
 {
+    if (effectiveBaseUrl().isEmpty()) {
+        if (errorOut)
+            *errorOut = QStringLiteral("Некорректный Base URL. Укажите адрес с https:// "
+                                       "(http:// допустим только для локального или LAN-хоста).");
+        return {};
+    }
+
     const QJsonDocument doc = QJsonDocument::fromJson(rawBody);
     if (!doc.isObject()) {
         if (errorOut) *errorOut = invalidShapeError();
